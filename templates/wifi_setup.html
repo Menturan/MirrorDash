@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MirrorDash - WiFi Configuration</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fira+Code&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/admin.css">
+    <style>
+        body {
+            align-items: center;
+            padding: 20px;
+        }
+        .setup-card {
+            width: 100%;
+            max-width: 480px;
+            margin: auto;
+        }
+        .setup-header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .setup-header svg {
+            width: 48px;
+            height: 48px;
+            color: var(--accent-color);
+            margin-bottom: 12px;
+        }
+        .setup-header h1 {
+            justify-content: center;
+            font-size: 1.6rem;
+            margin-bottom: 8px;
+        }
+        .input-row {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-icon {
+            padding: 10px;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .mode-toggle {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            text-decoration: underline;
+            background: none;
+            border: none;
+            padding: 0;
+            margin-top: 4px;
+            text-align: left;
+            width: max-content;
+        }
+        .mode-toggle:hover {
+            color: white;
+        }
+        .status-box {
+            margin-top: 16px;
+            padding: 12px 16px;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .status-box.info { display: flex; align-items: center; gap: 8px; background: rgba(245, 158, 11, 0.08); border: 1px solid var(--warning-color); color: var(--warning-color); }
+        .status-box.success { display: flex; align-items: center; gap: 8px; background: rgba(160, 255, 186, 0.08); border: 1px solid var(--success-color); color: var(--success-color); }
+        .status-box.error { display: flex; align-items: center; gap: 8px; background: rgba(255, 180, 171, 0.08); border: 1px solid var(--error-color); color: var(--error-color); }
+        
+        input[type="password"] {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid var(--card-border);
+            border-radius: 10px;
+            color: white;
+            padding: 11px 15px;
+            font-family: var(--font-family);
+            font-size: 0.9rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input[type="password"]:focus-visible {
+            border-color: var(--accent-color);
+            outline: 2px solid var(--accent-color);
+            outline-offset: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="card setup-card">
+            <div class="setup-header">
+                <i data-lucide="wifi"></i>
+                <h1>WiFi Setup</h1>
+                <p>Configure the network connection for your MirrorDash display.</p>
+            </div>
+            
+            <form id="wifi-form" onsubmit="handleSubmit(event)">
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="ssid-select" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Network SSID</label>
+                    <div id="select-container" class="input-row">
+                        <select id="ssid-select" class="form-control" style="flex: 1; height: 42px;">
+                            <option value="">Scanning for networks...</option>
+                        </select>
+                        <button type="button" id="scan-btn" class="btn secondary btn-icon" onclick="scanNetworks()" title="Scan again">
+                            <i data-lucide="refresh-cw"></i>
+                        </button>
+                    </div>
+                    <div id="manual-container" style="display: none;">
+                        <input type="text" id="ssid-input" class="form-control" placeholder="Enter network SSID" style="height: 42px; width: 100%;">
+                    </div>
+                    <button type="button" id="toggle-mode-btn" class="mode-toggle" onclick="toggleSSIDMode()">Or enter SSID manually</button>
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label for="password" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Password</label>
+                    <input type="password" id="password" placeholder="Enter WiFi password">
+                </div>
+                
+                <div class="form-group" style="margin-bottom: 24px;">
+                    <label for="timezone" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">System Timezone</label>
+                    <select id="timezone" class="form-control" style="width: 100%; height: 42px;">
+                        <option value="Europe/Stockholm">Europe/Stockholm (Default)</option>
+                        <option value="UTC">UTC</option>
+                        <option value="Europe/London">Europe/London</option>
+                        <option value="Europe/Paris">Europe/Paris</option>
+                        <option value="Europe/Berlin">Europe/Berlin</option>
+                        <option value="America/New_York">America/New_York (US Eastern)</option>
+                        <option value="America/Chicago">America/Chicago (US Central)</option>
+                        <option value="America/Denver">America/Denver (US Mountain)</option>
+                        <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
+                        <option value="Asia/Tokyo">Asia/Tokyo</option>
+                        <option value="Asia/Shanghai">Asia/Shanghai</option>
+                        <option value="Asia/Singapore">Asia/Singapore</option>
+                        <option value="Australia/Sydney">Australia/Sydney</option>
+                    </select>
+                </div>
+                
+                <div id="admin-auth-group" class="form-group" style="margin-bottom: 24px; display: none;">
+                    <label for="admin-password" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Admin Password</label>
+                    <input type="password" id="admin-password" placeholder="Enter admin password to authorize">
+                </div>
+
+                <button type="submit" id="submit-btn" class="btn primary" style="width: 100%; height: 44px;">
+                    Connect & Reboot
+                </button>
+            </form>
+            
+            <div id="status-box" class="status-box">
+                <span id="status-message"></span>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        let manualMode = false;
+        let setupRequired = true;
+        
+        async function checkAuthStatus() {
+            try {
+                const response = await fetch("/admin/auth/status");
+                const data = await response.json();
+                setupRequired = data.setup_required;
+                if (!setupRequired) {
+                    document.getElementById("admin-auth-group").style.display = "block";
+                }
+            } catch (err) {
+                console.error("Failed to check auth status", err);
+            }
+        }
+        
+        function toggleSSIDMode() {
+            manualMode = !manualMode;
+            const selectContainer = document.getElementById("select-container");
+            const manualContainer = document.getElementById("manual-container");
+            const toggleBtn = document.getElementById("toggle-mode-btn");
+            
+            if (manualMode) {
+                selectContainer.style.display = "none";
+                manualContainer.style.display = "block";
+                toggleBtn.innerText = "Or select from nearby networks";
+            } else {
+                selectContainer.style.display = "flex";
+                manualContainer.style.display = "none";
+                toggleBtn.innerText = "Or enter SSID manually";
+                scanNetworks();
+            }
+        }
+        
+        async function scanNetworks() {
+            const select = document.getElementById("ssid-select");
+            const scanBtn = document.getElementById("scan-btn");
+            
+            select.innerHTML = '<option value="">Scanning for networks...</option>';
+            scanBtn.disabled = true;
+            
+            // Add a small rotation animation class to the icon
+            const icon = scanBtn.querySelector("svg");
+            if (icon) icon.style.animation = "spin 1s linear infinite";
+            
+            try {
+                const headers = {};
+                if (!setupRequired) {
+                    const adminPw = document.getElementById("admin-password").value;
+                    headers["X-API-Key"] = adminPw;
+                }
+                const response = await fetch("/api/wifi/scan", { headers });
+                if (response.status === 401) {
+                    select.innerHTML = '<option value="">Authentication required to scan</option>';
+                    showStatus("Admin password is required to scan nearby networks.", "error");
+                    return;
+                }
+                const data = await response.json();
+                
+                select.innerHTML = '';
+                if (data.networks && data.networks.length > 0) {
+                    data.networks.forEach(net => {
+                        const opt = document.createElement("option");
+                        opt.value = net;
+                        opt.textContent = net;
+                        select.appendChild(opt);
+                    });
+                } else {
+                    const opt = document.createElement("option");
+                    opt.value = "";
+                    opt.textContent = "No networks found";
+                    select.appendChild(opt);
+                }
+            } catch (err) {
+                console.error("Scan failed", err);
+                select.innerHTML = '<option value="">Failed to scan networks</option>';
+            } finally {
+                scanBtn.disabled = false;
+                if (icon) icon.style.animation = "";
+            }
+        }
+        
+        async function handleSubmit(event) {
+            event.preventDefault();
+            
+            const ssid = manualMode 
+                ? document.getElementById("ssid-input").value.trim()
+                : document.getElementById("ssid-select").value;
+            const password = document.getElementById("password").value;
+            const timezone = document.getElementById("timezone").value;
+            
+            const statusBox = document.getElementById("status-box");
+            const statusMessage = document.getElementById("status-message");
+            const submitBtn = document.getElementById("submit-btn");
+            
+            if (!ssid) {
+                showStatus("Please enter or select a network SSID.", "error");
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            showStatus("Connecting to network... This may take up to 30 seconds.", "info");
+            
+            try {
+                const headers = { "Content-Type": "application/json" };
+                if (!setupRequired) {
+                    const adminPw = document.getElementById("admin-password").value;
+                    if (!adminPw) {
+                        showStatus("Admin password is required to authorize WiFi setup.", "error");
+                        submitBtn.disabled = false;
+                        return;
+                    }
+                    headers["X-API-Key"] = adminPw;
+                }
+                const response = await fetch("/api/wifi/setup", {
+                    method: "POST",
+                    headers: headers,
+                    body: JSON.stringify({ ssid, password, timezone })
+                });
+                
+                const data = await response.json();
+                if (response.status === 401) {
+                    showStatus("Invalid admin password.", "error");
+                    submitBtn.disabled = false;
+                } else if (data.status === "success") {
+                    showStatus(data.message, "success");
+                    // Disable all form controls during reboot countdown
+                    document.getElementById("wifi-form").querySelectorAll("input, select, button").forEach(el => el.disabled = true);
+                } else {
+                    showStatus(data.message || "Failed to connect to network.", "error");
+                    submitBtn.disabled = false;
+                }
+            } catch (err) {
+                console.error("Submit failed", err);
+                showStatus("Network request failed.", "error");
+                submitBtn.disabled = false;
+            }
+        }
+        
+        function showStatus(msg, type) {
+            const box = document.getElementById("status-box");
+            const text = document.getElementById("status-message");
+            box.className = "status-box " + type;
+            text.innerText = msg;
+            box.style.display = "flex";
+        }
+        
+        // Auto-detect browser timezone
+        try {
+            const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (localTz) {
+                const tzSelect = document.getElementById("timezone");
+                let exists = false;
+                for (let i = 0; i < tzSelect.options.length; i++) {
+                    if (tzSelect.options[i].value === localTz) {
+                        tzSelect.selectedIndex = i;
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists) {
+                    const opt = document.createElement("option");
+                    opt.value = localTz;
+                    opt.textContent = localTz + " (Auto-detected)";
+                    tzSelect.insertBefore(opt, tzSelect.firstChild);
+                    tzSelect.selectedIndex = 0;
+                }
+            }
+        } catch (e) {
+            console.error("Timezone auto-detection failed", e);
+        }
+        
+        // Initial setup check and scan
+        checkAuthStatus().then(() => {
+            scanNetworks();
+        });
+    </script>
+    
+    <style>
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</body>
+</html>

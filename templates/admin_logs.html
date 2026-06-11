@@ -1,0 +1,41 @@
+<!-- Logs Tab Panel -->
+<div class="page-panel" id="page-panel-logs" role="tabpanel" aria-labelledby="page-tab-logs" style="display: none;">
+    <section class="card">
+        <div class="logs-header">
+            <h2><i class="fas fa-file-alt" aria-hidden="true"></i> System & Module Logs</h2>
+            <div class="logs-actions">
+                <label for="log-type-select">Source:</label>
+                <select id="log-type-select" class="form-control log-select">
+                    <option value="system" selected>System Logs (Core)</option>
+                    <option value="modules">Module Logs</option>
+                    <option value="raspberry">Raspberry Pi Logs</option>
+                </select>
+                
+                <span id="log-module-select-container" style="display: none; align-items: center; gap: 5px; margin-right: 5px;">
+                    <label for="log-module-select">Module:</label>
+                    <select id="log-module-select" class="form-control log-select">
+                        <option value="" selected>All Modules</option>
+                    </select>
+                </span>
+                
+                <label for="log-lines-select">Lines:</label>
+                <select id="log-lines-select" class="form-control log-select">
+                    <option value="50">50</option>
+                    <option value="100" selected>100</option>
+                    <option value="250">250</option>
+                    <option value="500">500</option>
+                </select>
+                
+                <button id="refresh-logs-btn" class="btn secondary btn-sm">
+                    <i class="fas fa-sync"></i> Refresh
+                </button>
+                <button id="copy-logs-btn" class="btn secondary btn-sm">
+                    <i class="fas fa-copy"></i> Copy
+                </button>
+            </div>
+        </div>
+        <div class="logs-viewer-container">
+            <pre id="logs-viewer" class="logs-viewer">Loading logs...</pre>
+        </div>
+    </section>
+</div>

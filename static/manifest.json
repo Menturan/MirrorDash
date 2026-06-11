@@ -1,0 +1,22 @@
+{
+  "name": "MirrorDash",
+  "short_name": "MirrorDash",
+  "description": "A sophisticated, minimalist dashboard for MirrorDash ambient displays.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/apple-touch-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}

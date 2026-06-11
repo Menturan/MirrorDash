@@ -1,0 +1,174 @@
+<!-- System Settings Tab Panel -->
+<div class="page-panel" id="page-panel-system" role="tabpanel" aria-labelledby="page-tab-system" style="display: none;">
+    <section class="card">
+        <h2><i class="fas fa-desktop" aria-hidden="true"></i> System Settings</h2>
+        <p class="panel-subtitle">Manage screen brightness, volume, rotation, and resolution directly from the dashboard.</p>
+        
+        <form id="system-settings-form">
+            <!-- Screen Brightness -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-brightness" style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Brightness</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Control display backlight level (10% - 100%).</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
+                    <input type="range" id="sys-brightness" min="10" max="100" value="100" class="form-control-range" style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);">
+                    <span id="sys-brightness-val" style="font-weight: 600; min-width: 45px; text-align: right;">100%</span>
+                </div>
+            </div>
+
+            <!-- System Volume -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-volume" style="font-weight: 500; font-size: 0.9rem; color: white;">System Volume</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Control system audio output level (0% - 100%).</p>
+                </div>
+                <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
+                    <input type="range" id="sys-volume" min="0" max="100" value="80" class="form-control-range" style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);">
+                    <span id="sys-volume-val" style="font-weight: 600; min-width: 45px; text-align: right;">80%</span>
+                </div>
+            </div>
+
+            <!-- Screen Rotation -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-rotation" style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Rotation</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Rotate display layout for vertical or landscape mounts.</p>
+                </div>
+                <select id="sys-rotation" class="form-control">
+                    <option value="normal">Landscape (0°)</option>
+                    <option value="left">Portrait Left (90° CCW)</option>
+                    <option value="right">Portrait Right (90° CW)</option>
+                    <option value="inverted">Inverted Landscape (180°)</option>
+                </select>
+            </div>
+
+            <!-- Screen Resolution -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-resolution" style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Resolution</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Change display modes or mode canvas resolution.</p>
+                </div>
+                <select id="sys-resolution" class="form-control">
+                    <option value="auto">Auto (Default)</option>
+                </select>
+            </div>
+
+            <!-- SSH Server Control -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-ssh" style="font-weight: 500; font-size: 0.9rem; color: white;">SSH Server <span style="font-size: 0.75rem; color: var(--warning-color); font-weight: normal; margin-left: 5px;">(Developer Setting)</span></label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Enable or disable secure shell command-line access. Note that the default SSH username is <strong>pi</strong>.</p>
+                </div>
+                <div style="display: flex; align-items: center; height: 38px; margin-bottom: 8px;">
+                    <label class="switch">
+                        <input type="checkbox" id="sys-ssh">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                
+                <!-- Password input when SSH is enabled -->
+                <div id="sys-ssh-password-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-top: 10px;">
+                    <label for="sys-ssh-password" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 6px;">Set New Password for System User 'pi'</label>
+                    <input type="password" id="sys-ssh-password" class="form-control" placeholder="Enter password (min 8 chars)" style="max-width: 300px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border); border-radius: 8px; color: white; padding: 8px 12px; outline: none;">
+                </div>
+            </div>
+
+            <!-- Display Power Management Mode -->
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-display-mode" style="font-weight: 500; font-size: 0.9rem; color: white;">Display Power Management</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--color-standard-gray); margin: 0;">Choose how the screen is turned on/off automatically.</p>
+                </div>
+                <select id="sys-display-mode" class="form-control" style="margin-bottom: 12px;">
+                    <option value="manual">Manual / Always On</option>
+                    <option value="interval">Time of Day Schedule</option>
+                    <option value="pir">PIR Motion Detector</option>
+                    <option value="button">Physical GPIO Button</option>
+                </select>
+
+                <!-- Interval Settings Group -->
+                <div id="display-mode-interval-group" class="sub-form-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
+                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <span style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Active Start Time</span>
+                            <div id="sys-display-start-container"></div>
+                        </div>
+                        <div style="flex: 1;">
+                            <span style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Active End Time</span>
+                            <div id="sys-display-end-container"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PIR Settings Group -->
+                <div id="display-mode-pir-group" class="sub-form-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
+                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                        <div style="flex: 1;">
+                            <label for="sys-display-pir-pin" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">GPIO Input Pin (BCM)</label>
+                            <input type="number" id="sys-display-pir-pin" class="form-control" min="1" max="40" value="18">
+                        </div>
+                        <div style="flex: 1;">
+                            <label for="sys-display-pir-timeout" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Timeout (Minutes)</label>
+                            <input type="number" id="sys-display-pir-timeout" class="form-control" min="1" max="1440" value="5">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Button Settings Group -->
+                <div id="display-mode-button-group" class="sub-form-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
+                    <div>
+                        <label for="sys-display-button-pin" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">GPIO Button Pin (BCM)</label>
+                        <input type="number" id="sys-display-button-pin" class="form-control" min="1" max="40" value="23">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Screen Power Control -->
+            <div class="form-group" style="margin-bottom: 25px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Power</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Turn the mirror display output ON or OFF.</p>
+                </div>
+                <div style="display: flex; gap: 12px; width: 100%;">
+                    <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;">
+                        <i class="fas fa-desktop" aria-hidden="true"></i> Turn Screen ON
+                    </button>
+                    <button type="button" id="screen-off-btn" class="btn danger" style="flex: 1; justify-content: center;">
+                        <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="card-actions">
+            <button id="save-system-btn" class="btn primary" aria-label="Apply system settings">
+                <i class="fas fa-save" aria-hidden="true"></i>
+                <span id="save-system-label">Apply Settings</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- MirrorDash Core Update -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Core Update</h2>
+        <p class="panel-subtitle">Check whether a newer version of the MirrorDash core framework is available on PyPI and upgrade it here.</p>
+
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+            <div>
+                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Installed Version</span>
+                <div id="core-current-version" style="font-size: 1rem; font-weight: 600; color: white; margin-top: 2px;">—</div>
+            </div>
+            <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;">
+                <i class="fas fa-search" aria-hidden="true"></i>
+                <span id="core-check-label">Check for Updates</span>
+            </button>
+        </div>
+
+        <!-- Dynamic result area -->
+        <div id="core-update-result" style="display: none;">
+            <!-- populated by system.js -->
+        </div>
+    </section>
+</div>
+

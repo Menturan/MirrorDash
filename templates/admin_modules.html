@@ -1,0 +1,72 @@
+<!-- Modules Tab Panel -->
+<div class="page-panel" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules" style="display: none;">
+    <!-- Search Bar -->
+    <div class="search-bar-container" style="position: relative; margin-bottom: 2rem;">
+        <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem;"></i>
+        <input type="text" id="module-search-input" placeholder="Search installed modules or discover new ones to install..." class="form-control" style="padding-left: 2.8rem; font-size: 1.05rem; height: 3rem; background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; color: white; width: 100%;">
+    </div>
+
+    <!-- Installed Modules List -->
+    <section class="card">
+        <h2><i class="fas fa-puzzle-piece" aria-hidden="true"></i> Installed Modules</h2>
+        <p class="panel-subtitle">Manage, configure, update, or uninstall modules currently installed in the mirror's environment.</p>
+
+        <!-- Disk Space Usage Gauge -->
+        <div id="disk-usage-section" style="margin-bottom: 2rem; padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 10px;">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+                <h3 style="margin: 0; font-size: 0.95rem; font-weight: 500; color: white; display: flex; align-items: center; gap: 8px;">
+                    <i class="fas fa-database" style="color: var(--accent-color);"></i>
+                    <span>Root Partition Storage (Virtual Env)</span>
+                </h3>
+                <span id="disk-usage-summary" style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--mono-family);">
+                    Loading storage stats...
+                </span>
+            </div>
+
+            <div class="gauge-bar" style="margin-top: 0;">
+                <div class="gauge-bar__track">
+                    <div id="disk-usage-fill" class="gauge-bar__fill" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <div id="disk-usage-warning" style="display: none; margin-top: 10px; font-size: 0.8rem; color: var(--error-color); align-items: center; gap: 6px;">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span>Disk space is critically low (less than 500MB free). Deactivate or uninstall unused modules.</span>
+            </div>
+        </div>
+        
+        <div id="installed-modules-container" class="installed-modules-container" style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;">
+            <div class="loading-spinner" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                <i class="fas fa-spinner fa-spin" style="margin-right: 8px;"></i> Loading installed modules...
+            </div>
+        </div>
+    </section>
+
+    <!-- Discover / Popular Modules -->
+    <section class="card" id="discover-modules-section" style="margin-top: 2rem;">
+        <h2><i class="fas fa-compass" aria-hidden="true"></i> Discover New Modules</h2>
+        <p class="panel-subtitle">Install community-developed plugins from PyPI directly onto your mirror.</p>
+        
+        <div id="discover-modules-container" class="discover-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
+            <!-- Populated via JS search results -->
+        </div>
+    </section>
+
+    <!-- Install Custom Module -->
+    <section class="card" style="margin-top: 2rem;">
+        <h2><i class="fas fa-download" aria-hidden="true"></i> Install Custom Module Package</h2>
+        <p>Enter the PyPI package name or a local filesystem path to install a custom module via <code>uv</code>.</p>
+        <div class="input-group" style="display: flex; gap: 12px; margin-top: 1rem;">
+            <input type="text" id="custom-package-name"
+                   placeholder="e.g. mirrordash-weather or /path/to/local/mirrordash-custom"
+                   aria-label="Custom package name or path"
+                   style="flex: 1; background: #0c0c0e; border: 1px solid #27272a; color: white; border-radius: 6px; padding: 10px 14px;"
+                   autocomplete="off">
+            <button id="custom-install-btn" class="btn secondary" aria-label="Install custom module">
+                <i class="fas fa-plus" aria-hidden="true" style="margin-right: 5px;"></i>
+                <span id="custom-install-btn-label">Install</span>
+            </button>
+        </div>
+        <div id="custom-install-status" class="status-msg" role="status" aria-live="polite" style="margin-top: 1rem;"></div>
+    </section>
+</div>

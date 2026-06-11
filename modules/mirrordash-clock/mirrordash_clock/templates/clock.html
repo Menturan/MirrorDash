@@ -1,0 +1,60 @@
+<div class="clock-container">
+    {% if show_header and translations and translations.title %}
+    <h2 class="module-header" style="margin-bottom: 5px;">{{ translations.title }}</h2>
+    {% endif %}
+    <div class="clock-time">
+        <span class="clock-hm">{{ hm_str }}</span>{% if s_str %}<span class="clock-s">{{ s_str }}</span>{% endif %}{% if ampm_str %}<span class="clock-ampm">{{ ampm_str }}</span>{% endif %}
+    </div>
+    <div class="clock-date">{{ date_str }}</div>
+</div>
+
+<style>
+.clock-container {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    text-align: right;
+}
+
+.clock-time {
+    display: flex;
+    align-items: baseline;
+}
+
+.clock-hm {
+    font-size: 75px;
+    font-weight: 100;
+    line-height: 1.0;
+    letter-spacing: -0.04em;
+    color: var(--color-high-contrast, #ffffff);
+}
+
+.clock-s {
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--color-dimmed-charcoal, #666666);
+    margin-left: 2px;
+}
+
+.clock-ampm {
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0.05em;
+    color: var(--color-standard-gray, #999999);
+    margin-left: 6px;
+    align-self: flex-end;
+    padding-bottom: 4px;
+}
+
+.clock-date {
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-standard-gray, #999999);
+    margin-top: var(--label-gap, 8px);
+}
+</style>

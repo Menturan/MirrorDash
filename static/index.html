@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MirrorDash</title>
+    <link rel="manifest" href="/static/manifest.json">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
+    <!-- #19: Google Fonts via <link> with preconnect — not render-blocking @import -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <!-- Connection status indicator (#9) -->
+    <div id="ws-status" class="ws-status ws-status--connecting" aria-live="polite" aria-label="Connection status">
+        <span class="ws-status__dot"></span>
+        <i data-lucide="wifi" style="width: 14px; height: 14px; stroke-width: 2px;"></i>
+        <span class="ws-status__label">Connecting…</span>
+    </div>
+
+    <div class="container">
+        <section id="top_left" class="region top left" aria-live="polite"></section>
+        <section id="top_center" class="region top center" aria-live="polite"></section>
+        <section id="top_right" class="region top right" aria-live="polite"></section>
+        <section id="middle_left" class="region middle left" aria-live="polite"></section>
+        <main id="middle_center" class="region middle center" aria-live="polite"></main>
+        <section id="middle_right" class="region middle right" aria-live="polite"></section>
+        <section id="bottom_left" class="region bottom left" aria-live="polite"></section>
+        <section id="bottom_center" class="region bottom center" aria-live="polite"></section>
+        <section id="bottom_right" class="region bottom right" aria-live="polite"></section>
+    </div>
+
+    <noscript>
+        <p style="color:white;text-align:center;padding:2rem;">JavaScript is required to run MirrorDash.</p>
+    </noscript>
+
+    <script>
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws`;
+        let socket;
+        let retryDelay = 2000;       // #10: exponential backoff starting at 2s
+        const MAX_RETRY_DELAY = 30000;
+
+        const statusEl = document.getElementById('ws-status');
+        const statusLabel = statusEl.querySelector('.ws-status__label');
+
+        function setStatus(state) {
+            statusEl.className = `ws-status ws-status--${state}`;
+            statusLabel.textContent = { connected: 'Connected', disconnected: 'Reconnecting…', connecting: 'Connecting…' }[state] ?? state;
+            const iconEl = statusEl.querySelector('[data-lucide]');
+            if (iconEl) {
+                if (state === 'disconnected') {
+                    iconEl.setAttribute('data-lucide', 'wifi-off');
+                } else {
+                    iconEl.setAttribute('data-lucide', 'wifi');
+                }
+                if (window.lucide) {
+                    lucide.createIcons({ root: statusEl });
+                }
+            }
+        }
+
+        function updateCarouselGroup(groupContainer) {
+            const slides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
+            if (slides.length === 0) {
+                if (groupContainer._carouselTimer) {
+                    clearInterval(groupContainer._carouselTimer);
+                    groupContainer._carouselTimer = null;
+                }
+                return;
+            }
+
+            // Ensure at least one slide is active
+            let activeSlide = groupContainer.querySelector('.carousel-slide.carousel-active');
+            if (!activeSlide) {
+                activeSlide = slides[0];
+                activeSlide.classList.add('carousel-active');
+            }
+
+            // Manage timer
+            if (groupContainer._carouselTimer) {
+                clearInterval(groupContainer._carouselTimer);
+                groupContainer._carouselTimer = null;
+            }
+
+            if (slides.length > 1) {
+                const intervalSec = parseInt(groupContainer.getAttribute('data-carousel-interval'), 10) || 15;
+                groupContainer._carouselTimer = setInterval(() => {
+                    const currentSlides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
+                    if (currentSlides.length <= 1) return;
+                    
+                    const currentActive = groupContainer.querySelector('.carousel-slide.carousel-active');
+                    let nextIndex = 0;
+                    if (currentActive) {
+                        const currentIndex = currentSlides.indexOf(currentActive);
+                        nextIndex = (currentIndex + 1) % currentSlides.length;
+                        currentActive.classList.remove('carousel-active');
+                    }
+                    currentSlides[nextIndex].classList.add('carousel-active');
+                }, intervalSec * 1000);
+            }
+        }
+
+        function connect() {
+            setStatus('connecting');
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                retryDelay = 2000; // Reset backoff on successful connection
+                setStatus('connected');
+                // Fade out the status indicator after a moment
+                setTimeout(() => statusEl.classList.add('ws-status--hidden'), 3000);
+            };
+
+            socket.onmessage = (event) => {
+                // #13: safe JSON parse
+                let data;
+                try {
+                    data = JSON.parse(event.data);
+                } catch (e) {
+                    console.warn('Received malformed WebSocket message:', event.data);
+                    return;
+                }
+
+                if (data.action === 'reload') {
+                    window.location.reload();
+                    return;
+                }
+
+                if (data.type === 'ping') {
+                    return;
+                }
+
+                const targetElement = document.getElementById(data.position);
+                if (!targetElement) return;
+
+                // Find existing module anywhere in the document to prevent duplication when position changes
+                let moduleDiv = document.querySelector(`[data-module="${data.module}"]`);
+                const oldParent = moduleDiv ? moduleDiv.parentElement : null;
+
+                // Handle carousel grouping
+                let groupContainer = null;
+                if (data.carousel_group) {
+                    groupContainer = targetElement.querySelector(`.carousel-group-container[data-carousel-group="${data.carousel_group}"]`);
+                    if (!groupContainer) {
+                        groupContainer = document.createElement('div');
+                        groupContainer.className = 'carousel-group-container';
+                        groupContainer.setAttribute('data-carousel-group', data.carousel_group);
+                        groupContainer.setAttribute('data-carousel-interval', data.carousel_interval || 15);
+                        targetElement.appendChild(groupContainer);
+                    } else {
+                        groupContainer.setAttribute('data-carousel-interval', data.carousel_interval || 15);
+                    }
+                }
+
+                const parentContainer = groupContainer || targetElement;
+
+                if (moduleDiv) {
+                    if (moduleDiv.parentElement !== parentContainer) {
+                        parentContainer.appendChild(moduleDiv);
+                    }
+                    if (moduleDiv.classList.contains('module-loading-placeholder')) {
+                        moduleDiv.classList.remove('module-loading-placeholder');
+                        moduleDiv.classList.add('module-enter');
+                        moduleDiv.addEventListener('animationend', () => {
+                            moduleDiv.classList.remove('module-enter');
+                        }, { once: true });
+                    }
+                } else {
+                    // #11: animation only fires on first creation, not on every innerHTML update
+                    moduleDiv = document.createElement('div');
+                    moduleDiv.setAttribute('data-module', data.module);
+                    moduleDiv.classList.add('module-enter');
+                    parentContainer.appendChild(moduleDiv);
+                    // Remove animation class after it plays so it doesn't re-trigger
+                    moduleDiv.addEventListener('animationend', () => {
+                        moduleDiv.classList.remove('module-enter');
+                    }, { once: true });
+                }
+
+                // Set classes and content
+                if (data.carousel_group) {
+                    moduleDiv.className = 'carousel-slide';
+                } else {
+                    moduleDiv.className = '';
+                }
+
+                moduleDiv.innerHTML = data.html;
+                if (window.lucide) {
+                    lucide.createIcons({ root: moduleDiv });
+                }
+
+                // Update old parent if it was a carousel group and is now empty/changed
+                if (oldParent && oldParent.classList.contains('carousel-group-container') && oldParent !== parentContainer) {
+                    updateCarouselGroup(oldParent);
+                    if (oldParent.children.length === 0) {
+                        oldParent.remove();
+                    }
+                }
+
+                // Update new parent if it is a carousel group
+                if (groupContainer) {
+                    updateCarouselGroup(groupContainer);
+                }
+            };
+
+            socket.onclose = () => {
+                setStatus('disconnected');
+                statusEl.classList.remove('ws-status--hidden');
+                // #10: exponential backoff
+                console.log(`WebSocket closed. Reconnecting in ${retryDelay / 1000}s...`);
+                setTimeout(connect, retryDelay);
+                retryDelay = Math.min(retryDelay * 2, MAX_RETRY_DELAY);
+            };
+
+            socket.onerror = (err) => {
+                console.error('WebSocket error:', err);
+                socket.close();
+            };
+        }
+
+        async function loadActiveModules() {
+            try {
+                const response = await fetch('/api/active-modules');
+                const data = await response.json();
+                if (data && data.modules) {
+                    for (const mod of data.modules) {
+                        const targetElement = document.getElementById(mod.position);
+                        if (!targetElement) continue;
+
+                        // Prevent duplicate placeholder if the real module is already loaded
+                        if (document.querySelector(`[data-module="${mod.name}"]`)) continue;
+
+                        let groupContainer = null;
+                        if (mod.carousel_group) {
+                            groupContainer = targetElement.querySelector(`.carousel-group-container[data-carousel-group="${mod.carousel_group}"]`);
+                            if (!groupContainer) {
+                                groupContainer = document.createElement('div');
+                                groupContainer.className = 'carousel-group-container';
+                                groupContainer.setAttribute('data-carousel-group', mod.carousel_group);
+                                groupContainer.setAttribute('data-carousel-interval', mod.carousel_interval || 15);
+                                targetElement.appendChild(groupContainer);
+                            }
+                        }
+
+                        const parentContainer = groupContainer || targetElement;
+
+                        const moduleDiv = document.createElement('div');
+                        moduleDiv.setAttribute('data-module', mod.name);
+                        
+                        if (mod.carousel_group) {
+                            moduleDiv.className = 'module-loading-placeholder carousel-slide';
+                            if (parentContainer.querySelectorAll('.carousel-slide').length === 0) {
+                                moduleDiv.classList.add('carousel-active');
+                            }
+                        } else {
+                            moduleDiv.className = 'module-loading-placeholder';
+                        }
+
+                        moduleDiv.innerHTML = `
+                            <div class="module-loading-content">
+                                <span class="module-loading-spinner"></span>
+                                <span class="module-loading-text">Loading ${mod.title}…</span>
+                            </div>
+                        `;
+                        parentContainer.appendChild(moduleDiv);
+
+                        if (groupContainer) {
+                            updateCarouselGroup(groupContainer);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error('Failed to load active modules list:', err);
+            }
+        }
+
+        loadActiveModules();
+        connect();
+    </script>
+    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+{
+    "title": "Clock",
+    "description": "Displays the current time and date in a premium look.",
+    "properties": {
+        "enabled": {
+            "type": "boolean",
+            "default": true,
+            "title": "Enabled",
+            "description": "Show or hide the clock module on the screen."
+        },
+        "position": {
+            "type": "string",
+            "default": "middle_center",
+            "enum": [
+                "top_bar",
+                "top_left",
+                "top_center",
+                "top_right",
+                "upper_third",
+                "middle_left",
+                "middle_center",
+                "middle_right",
+                "lower_third",
+                "bottom_left",
+                "bottom_center",
+                "bottom_right",
+                "bottom_bar"
+            ],
+            "title": "Screen Position",
+            "description": "Which section of the screen the clock is rendered in."
+        },
+        "format": {
+            "type": "string",
+            "default": "24h",
+            "enum": ["12h", "24h"],
+            "title": "Time Format",
+            "description": "Display time in 12-hour (AM/PM) or 24-hour clock format."
+        },
+        "show_seconds": {
+            "type": "boolean",
+            "default": true,
+            "title": "Show Seconds",
+            "description": "Display active ticking seconds beside the hour and minutes."
+        },
+        "show_header": {
+            "type": "boolean",
+            "default": true,
+            "title": "Show Header",
+            "description": "Show or hide the module's header/title."
+        },
+        "date_format": {
+            "type": "string",
+            "default": "full",
+            "enum": ["full", "long", "medium", "short", "yyyy-MM-dd"],
+            "title": "Date Format",
+            "description": "Localized date format style (full, long, medium, short) or a custom pattern."
+        }
+    }
+}

@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+
+# IDE / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# System / OS
+.DS_Store
+Thumbs.db
+
+# App local logs or cli tools cache
+.antigravitycli/
+.kilo/
+

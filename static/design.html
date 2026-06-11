@@ -1,0 +1,1247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ethereal Mirror — Design Explorer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* Design System Explorer Overrides (avoiding breaking index.html fixed display) */
+        html, body {
+            overflow: auto !important;
+            width: 100%;
+            height: 100%;
+            background-color: #000000;
+            color: #d1d1d1;
+        }
+
+        .explorer-layout {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        .explorer-sidebar {
+            width: 300px;
+            background: rgba(10, 10, 10, 0.95);
+            border-right: 1px solid var(--color-dimmed-charcoal);
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            display: flex;
+            flex-direction: column;
+            padding: 2.5rem 1.5rem;
+            z-index: 100;
+        }
+
+        .explorer-brand {
+            font-size: 18px;
+            font-weight: 600;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--color-high-contrast);
+            margin-bottom: 0.5rem;
+        }
+
+        .explorer-subtitle {
+            font-size: 11px;
+            color: var(--color-standard-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 3rem;
+        }
+
+        .explorer-nav {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            overflow-y: auto;
+        }
+
+        .explorer-nav-item {
+            color: var(--color-standard-gray);
+            text-decoration: none;
+            font-size: 14px;
+            padding: 0.75rem 1rem;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .explorer-nav-item:hover, .explorer-nav-item.active {
+            color: var(--color-high-contrast);
+            background: rgba(255, 255, 255, 0.05);
+            padding-left: 1.5rem;
+        }
+
+        /* Main Workspace */
+        .explorer-main {
+            margin-left: 300px;
+            flex: 1;
+            padding: 4rem 3rem 6rem 3rem;
+            max-width: 1200px;
+        }
+
+        .explorer-section {
+            margin-bottom: 5rem;
+            scroll-margin-top: 4rem;
+        }
+
+        .explorer-section-title {
+            font-size: 24px;
+            font-weight: 300;
+            letter-spacing: -0.01em;
+            color: var(--color-high-contrast);
+            margin-bottom: 0.75rem;
+            border-bottom: 1px solid var(--color-dimmed-charcoal);
+            padding-bottom: 0.75rem;
+        }
+
+        .explorer-section-desc {
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--color-standard-gray);
+            margin-bottom: 2.5rem;
+        }
+
+        /* Component Card Block */
+        .component-card {
+            background: rgba(15, 15, 15, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            margin-bottom: 2rem;
+            overflow: hidden;
+        }
+
+        .component-meta {
+            padding: 1rem 1.5rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .component-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--color-high-contrast);
+            letter-spacing: 0.02em;
+        }
+
+        .component-tag {
+            font-size: 11px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--color-standard-gray);
+        }
+
+        .component-body {
+            padding: 2.5rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: radial-gradient(circle at center, rgba(15,15,15,0) 0%, rgba(0,0,0,0.4) 100%);
+            min-height: 160px;
+        }
+
+        .component-body--left {
+            justify-content: flex-start;
+        }
+
+        .component-body--column {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1.5rem;
+        }
+
+        .code-container {
+            position: relative;
+            background: #090909;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        pre {
+            margin: 0;
+            padding: 1.5rem;
+            overflow-x: auto;
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            color: #a9b7c6;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1.5rem;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--color-standard-gray);
+            font-size: 11px;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: var(--color-high-contrast);
+        }
+
+        /* Interactive controls */
+        .demo-control-bar {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1rem 1.5rem;
+            border-radius: 6px;
+            align-items: center;
+        }
+
+        .demo-label {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--color-standard-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-right: 0.5rem;
+        }
+
+        .btn-action {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--color-high-contrast);
+            padding: 0.5rem 1rem;
+            font-size: 13px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-action:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .btn-active {
+            background: rgba(255, 255, 255, 0.2) !important;
+            border-color: var(--color-high-contrast) !important;
+        }
+
+        /* Custom override for demonstration of fixed status element in cards */
+        .component-body .ws-status {
+            position: static !important;
+            transform: none !important;
+        }
+
+        /* Loading skeleton simulator specific container size */
+        .skeleton-simulator-container {
+            width: 320px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="explorer-layout">
+        <!-- Sidebar -->
+        <aside class="explorer-sidebar">
+            <div class="explorer-brand">Ethereal Mirror</div>
+            <div class="explorer-subtitle">Design System Explorer</div>
+            
+            <nav class="explorer-nav">
+                <a href="#typography" class="explorer-nav-item">Typography</a>
+                <a href="#palette" class="explorer-nav-item">Color Palette</a>
+                <a href="#colors" class="explorer-nav-item">Text Utilities</a>
+                <a href="#icons" class="explorer-nav-item">Iconography</a>
+                <a href="#containers" class="explorer-nav-item">Containers & Glow</a>
+                <a href="#components" class="explorer-nav-item">UI Components</a>
+                <a href="#extended" class="explorer-nav-item">Extended Layouts</a>
+                <a href="#system" class="explorer-nav-item">System & Connection</a>
+                <a href="#loading" class="explorer-nav-item">Loading Skeletons</a>
+            </nav>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="explorer-main">
+            
+            <!-- SECTION: Typography -->
+            <section id="typography" class="explorer-section">
+                <h2 class="explorer-section-title">Typography Scale</h2>
+                <p class="explorer-section-desc">
+                    Typography is the driving visual force of the mirror. We use <strong>Inter</strong>. 
+                    Display headings use very thin weights to minimize light dispersion, while smaller labels use bold weights for legibility behind the reflective glass.
+                </p>
+
+                <!-- XL Display -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Display Extra Large (.display-xl / h1)</span>
+                        <span class="component-tag">75px | Thin (100) | Tracking: -0.04em</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <h1 class="display-xl">08:32</h1>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;h1 class="display-xl"&gt;08:32&lt;/h1&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- LG Display -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Display Large (.display-lg)</span>
+                        <span class="component-tag">64px | Light (300) | Tracking: -0.02em</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <div class="display-lg">-14°C</div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="display-lg"&gt;-14°C&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Headline MD -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Headline Medium (.headline-md)</span>
+                        <span class="component-tag">32px | Medium (500) | Tracking: 0</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <div class="headline-md">Stockholm</div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="headline-md"&gt;Stockholm&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Body Base -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Body Base (.body-base)</span>
+                        <span class="component-tag">20px | Regular (400) | Line-Height: 1.5</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <div class="body-base">Main content paragraph or secondary temperature description.</div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="body-base"&gt;Main content paragraph or secondary temperature description.&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Body SM -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Body Small (.body-sm)</span>
+                        <span class="component-tag">16px | Regular (400) | Line-Height: 1.4</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <div class="body-sm">Details, metadata labels, or smaller paragraph blocks.</div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="body-sm"&gt;Details, metadata labels, or smaller paragraph blocks.&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Section Label -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Module Header / Caps Label (.label-caps / h2 / .module-header)</span>
+                        <span class="component-tag">14px (0.875rem) | Semi-Bold (600) | Uppercase | Tracking: 0.1em</span>
+                    </div>
+                    <div class="component-body component-body--left">
+                        <h2 class="module-header" style="margin: 0;">Name Day</h2>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;h2 class="module-header"&gt;Name Day&lt;/h2&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Color Palette -->
+            <section id="palette" class="explorer-section">
+                <h2 class="explorer-section-title">Color Palette</h2>
+                <p class="explorer-section-desc">
+                    The palette is strictly functional, optimized for light transmission through two-way glass. Every color has a defined purpose.
+                </p>
+
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Core Mirror Palette</span>
+                        <span class="component-tag">CSS Custom Properties</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column" style="gap: 0;">
+                        <!-- Void -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #000000; border: 1px solid rgba(255,255,255,0.1); flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">The Void</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-void: #000000 — Mandatory background. Absolute black for mirror invisibility.</div>
+                            </div>
+                        </div>
+                        <!-- High Contrast -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #ffffff; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">High-Contrast White</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-high-contrast: #ffffff — Primary data, time, headers.</div>
+                            </div>
+                        </div>
+                        <!-- Standard Gray -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #999999; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Standard Gray</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-standard-gray: #999999 — Body text, labels, secondary info.</div>
+                            </div>
+                        </div>
+                        <!-- Dimmed Charcoal -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #666666; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Dimmed Charcoal</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-dimmed-charcoal: #666666 — Borders, dividers, inactive elements.</div>
+                            </div>
+                        </div>
+                        <!-- Ice Blue -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #cceeff; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Soft Ice Blue</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-ice-blue: #cceeff — Cold / inactive data visualization accents.</div>
+                            </div>
+                        </div>
+                        <!-- Rose Pink -->
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #ffccd5; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Soft Rose Pink</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-rose-pink: #ffccd5 — Warmth / urgent alert accents.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Status & Error Colors</span>
+                        <span class="component-tag">Functional Indicators</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column" style="gap: 0;">
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #a0ffba; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Status Online</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-status-online: #a0ffba — Online / active / success.</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #f87171; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Status Warning</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-status-warning: #f87171 — Error / warning / offline.</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 1.25rem; padding: 0.75rem 0;">
+                            <div style="width: 40px; height: 40px; border-radius: 4px; background: #ffb4ab; flex-shrink:0;"></div>
+                            <div style="flex: 1;">
+                                <div class="body-sm text-primary" style="font-weight: 600;">Error</div>
+                                <div style="font-size: 12px; color: var(--color-standard-gray);">--color-error: #ffb4ab — Error text and alert titles.</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Text Utilities -->
+            <section id="colors" class="explorer-section">
+                <h2 class="explorer-section-title">Color Utility Classes</h2>
+                <p class="explorer-section-desc">
+                    Colors have specific purposes to help prioritize readability against ambient lighting.
+                </p>
+
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Color Aliases</span>
+                        <span class="component-tag">CSS Classes</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column">
+                        <div class="text-primary font-weight-500">.text-primary — High contrast data (#ffffff)</div>
+                        <div class="text-secondary">.text-secondary — Secondary information / labels (#999999)</div>
+                        <div class="text-dimmed">.text-dimmed — Low contrast labels, inactive items (#666666)</div>
+                        <div class="text-error">.text-error — Error messages or warnings (#ffb4ab)</div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;span class="text-primary"&gt;Primary Light&lt;/span&gt;
+&lt;span class="text-secondary"&gt;Standard gray label&lt;/span&gt;
+&lt;span class="text-dimmed"&gt;Dimmed Charcoal&lt;/span&gt;
+&lt;span class="text-error"&gt;Critical Error alert&lt;/span&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Iconography -->
+            <section id="icons" class="explorer-section">
+                <h2 class="explorer-section-title">Iconography</h2>
+                <p class="explorer-section-desc">
+                    The system uses <strong>Lucide Icons</strong> as its standard, vector-based line-art iconography. All icons inherit their parent element's text color and use a thin outline (default 1.5px stroke weight).
+                </p>
+
+                <!-- Weather Icons Grid -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Recommended Weather Icons</span>
+                        <span class="component-tag">Lucide Icons</span>
+                    </div>
+                    <div class="component-body component-body--left" style="background: #111; padding: 2.5rem;">
+                        <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="sun" class="text-primary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">sun</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="cloud-sun" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">cloud-sun</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="cloud" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">cloud</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="cloud-rain" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">cloud-rain</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="cloud-lightning" class="text-error"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">cloud-lightning</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="snowflake" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">snowflake</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="wind" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">wind</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Utility Icons -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Recommended Utility Icons</span>
+                        <span class="component-tag">Lucide Icons</span>
+                    </div>
+                    <div class="component-body component-body--left" style="background: #111; padding: 2.5rem;">
+                        <div style="display: flex; gap: 2rem; flex-wrap: wrap;">
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="wifi" class="text-primary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">wifi</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="wifi-off" class="text-error"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">wifi-off</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="award" class="text-primary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">award</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="settings" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">settings</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="clock" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">clock</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="calendar" class="text-secondary"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">calendar</span>
+                            </div>
+                            <div style="display: flex; flex-direction: column; align-items: center; width: 80px; gap: 8px;">
+                                <i data-lucide="alert-triangle" class="text-error"></i>
+                                <span class="body-sm text-secondary" style="font-size: 11px;">alert-triangle</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- How to use -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Markup Usage</span>
+                        <span class="component-tag">HTML snippet</span>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;!-- Monochromatic line-art icons --&gt;
+&lt;i data-lucide="sun"&gt;&lt;/i&gt;
+&lt;i data-lucide="settings" class="text-secondary"&gt;&lt;/i&gt;
+&lt;i data-lucide="alert-triangle" class="text-error glow"&gt;&lt;/i&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Containers & Glow -->
+            <section id="containers" class="explorer-section">
+                <h2 class="explorer-section-title">Containers & Depth</h2>
+                <p class="explorer-section-desc">
+                    In a physical mirror, drop shadows are useless. Instead, we use semi-opaque dark backdrops to isolate content and subtle atmospheric glow filters to emphasize elements.
+                </p>
+
+                <!-- Standard Container -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Module Container ([data-module])</span>
+                        <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 4px | Padding: 16px</span>
+                    </div>
+                    <div class="component-body">
+                        <div data-module="demo-box" style="width: 250px;">
+                            <h2 class="module-header" style="margin-bottom: 8px;">Demo Module</h2>
+                            <div class="body-sm text-primary">Content floats over mirror. Note the absence of boxy borders.</div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div data-module="my-custom-module"&gt;
+    &lt;h2 class="module-header"&gt;Demo Module&lt;/h2&gt;
+    &lt;div class="body-sm text-primary"&gt;Content goes here.&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Glow Filter -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Atmospheric Glow (.glow)</span>
+                        <span class="component-tag">Filter: drop-shadow(0 0 4px white(15%))</span>
+                    </div>
+                    <div class="component-body">
+                        <div class="glow" style="font-size: 40px; font-weight: 100; color: #ffffff;">
+                            GLOWING TEXT
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="glow display-xl"&gt;GLOWING TEXT&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Backdrop Blur -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Backdrop Blur (.backdrop-blur-active)</span>
+                        <span class="component-tag">Critical Alert Focus Mode | blur(2px) brightness(50%)</span>
+                    </div>
+                    <div class="demo-control-bar">
+                        <span class="demo-label">Simulator:</span>
+                        <button class="btn-action" onclick="toggleBackdropBlur(this)">Toggle Backdrop Blur</button>
+                    </div>
+                    <div class="component-body" id="backdrop-blur-demo" style="background: #000; gap: 1rem;">
+                        <div data-module="blur-demo-1" style="width: 140px; padding: 12px;">
+                            <div class="body-sm text-primary">Widget A</div>
+                        </div>
+                        <div data-module="blur-demo-2" style="width: 140px; padding: 12px;">
+                            <div class="body-sm text-primary">Widget B</div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;!-- Add class to body or container during critical alerts --&gt;
+&lt;body class="backdrop-blur-active"&gt;
+    &lt;div data-module="weather"&gt;…&lt;/div&gt;  &lt;!-- blurred --&gt;
+    &lt;div class="alert-modal"&gt;…&lt;/div&gt;     &lt;!-- stays sharp --&gt;
+&lt;/body&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: UI Components -->
+            <section id="components" class="explorer-section">
+                <h2 class="explorer-section-title">UI Components</h2>
+                <p class="explorer-section-desc">
+                    Pre-designed structural blocks for building clean, consistent mirror layouts.
+                </p>
+
+                <!-- Widget Header -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Widget Header (.widget-header)</span>
+                        <span class="component-tag">Bottom underline divider</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 320px;">
+                            <div class="widget-header">
+                                <h2 class="module-header" style="margin: 0;">Weather Forecast</h2>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="widget-header"&gt;
+    &lt;h2 class="module-header"&gt;Weather Forecast&lt;/h2&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Clock Module -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Clock Module (display-xl + headline-md)</span>
+                        <span class="component-tag">DESIGN.md Centerpiece Pattern</span>
+                    </div>
+                    <div class="component-body" style="background: #000;">
+                        <div style="display: flex; align-items: baseline;">
+                            <span class="display-xl">08:32</span><span class="headline-md text-dimmed" style="margin-left: 4px;">:45</span>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div style="display: flex; align-items: baseline;"&gt;
+    &lt;span class="display-xl"&gt;08:32&lt;/span&gt;
+    &lt;span class="headline-md text-dimmed"&gt;:45&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Notification Card -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Notification Card ([data-module] pattern)</span>
+                        <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 4px | Padding: 16px</span>
+                    </div>
+                    <div class="component-body" style="background: #000;">
+                        <div data-module="notification-demo" style="width: 320px;">
+                            <div class="body-sm text-primary" style="font-weight: 500; margin-bottom: 4px;">System Update Available</div>
+                            <div class="body-sm text-secondary">Version 2.4.1 is ready to install. The mirror will restart automatically.</div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div data-module="notification"&gt;
+    &lt;div class="body-sm text-primary"&gt;System Update Available&lt;/div&gt;
+    &lt;div class="body-sm text-secondary"&gt;Details here.&lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Data List -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Data Lists (.data-list)</span>
+                        <span class="component-tag">Clean Label/Value grids with online/warning deltas</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 320px;">
+                            <div class="data-list">
+                                <div class="data-list__item">
+                                    <span class="data-list__label">SSE index</span>
+                                    <span class="data-list__value data-list__value--up">2,410.50 (+1.2%)</span>
+                                </div>
+                                <div class="data-list__item">
+                                    <span class="data-list__label">OMX Stockholm</span>
+                                    <span class="data-list__value data-list__value--down">960.20 (-0.8%)</span>
+                                </div>
+                                <div class="data-list__item">
+                                    <span class="data-list__label">System Load</span>
+                                    <span class="data-list__value">0.12</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="data-list"&gt;
+    &lt;div class="data-list__item"&gt;
+        &lt;span class="data-list__label"&gt;SSE index&lt;/span&gt;
+        &lt;span class="data-list__value data-list__value--up"&gt;2,410.50 (+1.2%)&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="data-list__item"&gt;
+        &lt;span class="data-list__label"&gt;OMX Stockholm&lt;/span&gt;
+        &lt;span class="data-list__value data-list__value--down"&gt;960.20 (-0.8%)&lt;/span&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Status Indicators -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Status Indicators (.status-indicator)</span>
+                        <span class="component-tag">8px colored inline dots</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column" style="background: #111;">
+                        <div>
+                            <span class="status-indicator status-indicator--online"></span>
+                            <span class="body-sm text-primary">API Service Online</span>
+                        </div>
+                        <div>
+                            <span class="status-indicator status-indicator--warning"></span>
+                            <span class="body-sm text-primary">Database connection warning</span>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;span class="status-indicator status-indicator--online"&gt;&lt;/span&gt; Online
+&lt;span class="status-indicator status-indicator--warning"&gt;&lt;/span&gt; Warning</code></pre>
+                    </div>
+                </div>
+
+                <!-- Separators -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Horizontal Separators (.separator-hr)</span>
+                        <span class="component-tag">1px rule in dimmed charcoal</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 320px;">
+                            <div class="body-sm text-secondary">Block above separator</div>
+                            <hr class="separator-hr">
+                            <div class="body-sm text-primary">Block below separator</div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;hr class="separator-hr"&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Extended Layouts -->
+            <section id="extended" class="explorer-section">
+                <h2 class="explorer-section-title">Extended Layout Elements</h2>
+                <p class="explorer-section-desc">
+                    Comprehensive, layout-ready widgets and telemetry patterns to simplify building common dashboard modules.
+                </p>
+
+                <!-- Weather Forecast Grid -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Weather Forecast Grid (.forecast-grid)</span>
+                        <span class="component-tag">Horizontal Forecast Rows</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 380px;">
+                            <div class="forecast-grid">
+                                <div class="forecast-grid__day">
+                                    <span class="forecast-grid__name">Mon</span>
+                                    <i data-lucide="sun" class="forecast-grid__icon text-primary"></i>
+                                    <span class="forecast-grid__temp">22°<span class="forecast-grid__temp-low">14°</span></span>
+                                </div>
+                                <div class="forecast-grid__day">
+                                    <span class="forecast-grid__name">Tue</span>
+                                    <i data-lucide="cloud-sun" class="forecast-grid__icon text-secondary"></i>
+                                    <span class="forecast-grid__temp">20°<span class="forecast-grid__temp-low">12°</span></span>
+                                </div>
+                                <div class="forecast-grid__day">
+                                    <span class="forecast-grid__name">Wed</span>
+                                    <i data-lucide="cloud-rain" class="forecast-grid__icon text-secondary"></i>
+                                    <span class="forecast-grid__temp">16°<span class="forecast-grid__temp-low">10°</span></span>
+                                </div>
+                                <div class="forecast-grid__day">
+                                    <span class="forecast-grid__name">Thu</span>
+                                    <i data-lucide="cloud-lightning" class="forecast-grid__icon text-error"></i>
+                                    <span class="forecast-grid__temp">18°<span class="forecast-grid__temp-low">11°</span></span>
+                                </div>
+                                <div class="forecast-grid__day">
+                                    <span class="forecast-grid__name">Fri</span>
+                                    <i data-lucide="sun" class="forecast-grid__icon text-primary"></i>
+                                    <span class="forecast-grid__temp">24°<span class="forecast-grid__temp-low">15°</span></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="forecast-grid"&gt;
+    &lt;div class="forecast-grid__day"&gt;
+        &lt;span class="forecast-grid__name"&gt;Mon&lt;/span&gt;
+        &lt;i data-lucide="sun" class="forecast-grid__icon"&gt;&lt;/i&gt;
+        &lt;span class="forecast-grid__temp"&gt;22°&lt;span class="forecast-grid__temp-low"&gt;14°&lt;/span&gt;&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="forecast-grid__day"&gt;
+        &lt;span class="forecast-grid__name"&gt;Tue&lt;/span&gt;
+        &lt;i data-lucide="cloud-sun" class="forecast-grid__icon"&gt;&lt;/i&gt;
+        &lt;span class="forecast-grid__temp"&gt;20°&lt;span class="forecast-grid__temp-low"&gt;12°&lt;/span&gt;&lt;/span&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Agenda List -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Agenda / Schedule Lists (.agenda-list)</span>
+                        <span class="component-tag">Calendar Event Layouts</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 380px;">
+                            <div class="agenda-list">
+                                <div class="agenda-list__item">
+                                    <div class="agenda-list__date">
+                                        <span class="agenda-list__date-month">Jun</span>
+                                        <span class="agenda-list__date-day">02</span>
+                                    </div>
+                                    <div class="agenda-list__details">
+                                        <span class="agenda-list__title">Design Sync Meeting</span>
+                                        <span class="agenda-list__subtitle">09:00 - 10:30 | Room 404</span>
+                                    </div>
+                                </div>
+                                <div class="agenda-list__item">
+                                    <div class="agenda-list__date">
+                                        <span class="agenda-list__date-month">Jun</span>
+                                        <span class="agenda-list__date-day">04</span>
+                                    </div>
+                                    <div class="agenda-list__details">
+                                        <span class="agenda-list__title">Product Launch Dinner</span>
+                                        <span class="agenda-list__subtitle">18:00 - 21:00 | Grand Hotel</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="agenda-list"&gt;
+    &lt;div class="agenda-list__item"&gt;
+        &lt;div class="agenda-list__date"&gt;
+            &lt;span class="agenda-list__date-month"&gt;Jun&lt;/span&gt;
+            &lt;span class="agenda-list__date-day"&gt;02&lt;/span&gt;
+        &lt;/div&gt;
+        &lt;div class="agenda-list__details"&gt;
+            &lt;span class="agenda-list__title"&gt;Design Sync Meeting&lt;/span&gt;
+            &lt;span class="agenda-list__subtitle"&gt;09:00 - 10:30 | Room 404&lt;/span&gt;
+        &lt;/div&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Progress Gauge Bars -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Progress & Gauge Bars (.gauge-bar)</span>
+                        <span class="component-tag">Visual Telemetry Gauges</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 380px;">
+                            <div class="gauge-bar">
+                                <div class="gauge-bar__label-row">
+                                    <span>System Storage</span>
+                                    <span>65%</span>
+                                </div>
+                                <div class="gauge-bar__track">
+                                    <div class="gauge-bar__fill" style="width: 65%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="gauge-bar"&gt;
+    &lt;div class="gauge-bar__label-row"&gt;
+        &lt;span&gt;System Storage&lt;/span&gt;
+        &lt;span&gt;65%&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="gauge-bar__track"&gt;
+        &lt;div class="gauge-bar__fill" style="width: 65%;"&gt;&lt;/div&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Stats Grid (.stats-grid)</span>
+                        <span class="component-tag">Visual Dash Grid telemetry</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 380px;">
+                            <div class="stats-grid">
+                                <div class="stats-grid__item">
+                                    <span class="stats-grid__value">0.12</span>
+                                    <span class="stats-grid__label">Load</span>
+                                </div>
+                                <div class="stats-grid__item">
+                                    <span class="stats-grid__value">42°</span>
+                                    <span class="stats-grid__label">Temp</span>
+                                </div>
+                                <div class="stats-grid__item">
+                                    <span class="stats-grid__value">1.2G</span>
+                                    <span class="stats-grid__label">RAM</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="stats-grid"&gt;
+    &lt;div class="stats-grid__item"&gt;
+        &lt;span class="stats-grid__value"&gt;0.12&lt;/span&gt;
+        &lt;span class="stats-grid__label"&gt;Load&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="stats-grid__item"&gt;
+        &lt;span class="stats-grid__value"&gt;42°&lt;/span&gt;
+        &lt;span class="stats-grid__label"&gt;Temp&lt;/span&gt;
+    &lt;/div&gt;
+    &lt;div class="stats-grid__item"&gt;
+        &lt;span class="stats-grid__value"&gt;1.2G&lt;/span&gt;
+        &lt;span class="stats-grid__label"&gt;RAM&lt;/span&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Alert Callouts -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Alert Callout Banners (.alert-callout)</span>
+                        <span class="component-tag">Critical Warn Indicators</span>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 380px;">
+                            <div class="alert-callout">
+                                <div>
+                                    <div class="alert-callout__title">Warning</div>
+                                    <div class="alert-callout__desc">The back door has been left open for 10 minutes.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="alert-callout"&gt;
+    &lt;div&gt;
+        &lt;div class="alert-callout__title"&gt;Warning&lt;/div&gt;
+        &lt;div class="alert-callout__desc"&gt;The back door has been left open for 10 minutes.&lt;/div&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Connection States -->
+            <section id="system" class="explorer-section">
+                <h2 class="explorer-section-title">System & Connection Status</h2>
+                <p class="explorer-section-desc">
+                    System-level indicators displayed at the top-center to show connection statuses. Use the buttons below to preview the states.
+                </p>
+
+                <!-- WebSocket Status Pill -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">WebSocket Status Pill (.ws-status)</span>
+                        <span class="component-tag">Interactive States</span>
+                    </div>
+                    <div class="demo-control-bar">
+                        <span class="demo-label">Simulator:</span>
+                        <button class="btn-action btn-active" onclick="toggleStatusState('connecting', this)">Connecting</button>
+                        <button class="btn-action" onclick="toggleStatusState('connected', this)">Connected</button>
+                        <button class="btn-action" onclick="toggleStatusState('disconnected', this)">Disconnected</button>
+                    </div>
+                    <div class="component-body" style="background: #000;">
+                        <!-- Displaying mock status block (styles set inline/override for non-fixed view) -->
+                        <div id="demo-ws-status" class="ws-status ws-status--connecting">
+                            <span class="ws-status__dot"></span>
+                            <span class="ws-status__label">Connecting…</span>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="ws-status ws-status--connecting"&gt;
+    &lt;span class="ws-status__dot"&gt;&lt;/span&gt;
+    &lt;span class="ws-status__label"&gt;Connecting…&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
+            <!-- SECTION: Loading Skeletons -->
+            <section id="loading" class="explorer-section">
+                <h2 class="explorer-section-title">Module Loading Skeletons</h2>
+                <p class="explorer-section-desc">
+                    Visual skeletons displayed on page load before WebSocket messages populate data. Click "Simulate Load Done" to see the fade-in and slide entrance animation.
+                </p>
+
+                <!-- Loading Placeholder Simulator -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Module Loading Placeholder (.module-loading-placeholder)</span>
+                        <span class="component-tag">Interactive Simulator</span>
+                    </div>
+                    <div class="demo-control-bar">
+                        <button class="btn-action" onclick="resetLoaderSimulator()">Reset Loader</button>
+                        <button class="btn-action" onclick="simulateLoadFinish()">Simulate Load Done</button>
+                    </div>
+                    <div class="component-body" style="background: #000;">
+                        <div class="skeleton-simulator-container">
+                            <div id="simulated-module" class="module-loading-placeholder" data-module="simulated_names">
+                                <div class="module-loading-content">
+                                    <span class="module-loading-spinner"></span>
+                                    <span class="module-loading-text">Loading Swedish Name Day…</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;!-- Pre-rendered loading state --&gt;
+&lt;div data-module="mirrordash_namnsdag" class="module-loading-placeholder"&gt;
+    &lt;div class="module-loading-content"&gt;
+        &lt;span class="module-loading-spinner"&gt;&lt;/span&gt;
+        &lt;span class="module-loading-text"&gt;Loading Swedish Name Day…&lt;/span&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- Script for interactive system and simulation states -->
+    <script>
+        // Copy to clipboard helper
+        function copyCode(btn) {
+            const container = btn.parentElement;
+            const code = container.querySelector('code').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                const originalText = btn.innerText;
+                btn.innerText = 'Copied!';
+                btn.style.background = 'rgba(160, 255, 186, 0.1)';
+                btn.style.color = '#a0ffba';
+                setTimeout(() => {
+                    btn.innerText = originalText;
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 1500);
+            });
+        }
+
+        // Toggle WS Status Pill Simulator
+        function toggleStatusState(state, btn) {
+            // Manage button active states
+            const buttons = btn.parentElement.querySelectorAll('button');
+            buttons.forEach(b => b.classList.remove('btn-active'));
+            btn.classList.add('btn-active');
+
+            const statusBlock = document.getElementById('demo-ws-status');
+            const dot = statusBlock.querySelector('.ws-status__dot');
+            const label = statusBlock.querySelector('.ws-status__label');
+
+            statusBlock.className = `ws-status ws-status--${state}`;
+            
+            const labels = {
+                connecting: 'Connecting…',
+                connected: 'Connected',
+                disconnected: 'Reconnecting…'
+            };
+            label.textContent = labels[state];
+        }
+
+        // Simulator for loading skeleton replacement
+        const mockNamnsdagHTML = `
+            <div class="namnsdag-container" style="display: flex; flex-direction: column; align-items: center; text-align: center;">
+                <h2 class="module-header" style="margin-bottom: 5px;">
+                    <i data-lucide="award" style="width: 14px; height: 14px; stroke-width: 2px; vertical-align: middle; margin-right: 4px;"></i>Today's Name Day
+                </h2>
+                <div class="namnsdag-body" style="margin-top: 4px;">
+                    <div class="namnsdag-names" style="font-size: 28px; font-weight: 300;">
+                        <span style="font-weight: 300; background: linear-gradient(135deg, var(--color-high-contrast, #ffffff) 40%, color-mix(in srgb, var(--color-high-contrast, #ffffff) 70%, transparent) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gunilla</span>
+                        <span class="namnsdag-separator"> & </span>
+                        <span style="font-weight: 300; background: linear-gradient(135deg, var(--color-high-contrast, #ffffff) 40%, color-mix(in srgb, var(--color-high-contrast, #ffffff) 70%, transparent) 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Gun</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        function resetLoaderSimulator() {
+            const moduleDiv = document.getElementById('simulated-module');
+            moduleDiv.className = 'module-loading-placeholder';
+            moduleDiv.innerHTML = `
+                <div class="module-loading-content">
+                    <span class="module-loading-spinner"></span>
+                    <span class="module-loading-text">Loading Swedish Name Day…</span>
+                </div>
+            `;
+        }
+
+        function simulateLoadFinish() {
+            const moduleDiv = document.getElementById('simulated-module');
+            if (moduleDiv.classList.contains('module-loading-placeholder')) {
+                moduleDiv.classList.remove('module-loading-placeholder');
+                moduleDiv.classList.add('module-enter');
+                moduleDiv.innerHTML = mockNamnsdagHTML;
+                if (window.lucide) {
+                    lucide.createIcons();
+                }
+
+                moduleDiv.addEventListener('animationend', () => {
+                    moduleDiv.classList.remove('module-enter');
+                }, { once: true });
+            }
+        }
+
+        // Active navigation sidebar link tracking
+        const sections = document.querySelectorAll('.explorer-section');
+        const navItems = document.querySelectorAll('.explorer-nav-item');
+
+        window.addEventListener('scroll', () => {
+            let current = '';
+            sections.forEach(section => {
+                const sectionTop = section.offsetTop;
+                const sectionHeight = section.clientHeight;
+                if (window.scrollY >= (sectionTop - 120)) {
+                    current = section.getAttribute('id');
+                }
+            });
+
+            navItems.forEach(item => {
+                item.classList.remove('active');
+                if (item.getAttribute('href') === `#${current}`) {
+                    item.classList.add('active');
+                }
+            });
+        });
+
+        // Backdrop blur toggle for demo
+        function toggleBackdropBlur(btn) {
+            const demo = document.getElementById('backdrop-blur-demo');
+            demo.classList.toggle('backdrop-blur-active');
+            btn.classList.toggle('btn-active');
+        }
+    </script>
+    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js" onload="lucide.createIcons()"></script>
+</body>
+</html>

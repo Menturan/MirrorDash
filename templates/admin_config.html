@@ -1,0 +1,42 @@
+<!-- Configuration Tab Panel -->
+<div class="page-panel active" id="page-panel-config" role="tabpanel" aria-labelledby="page-tab-config">
+    <section class="card">
+        <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Global Configuration</h2>
+        
+        <!-- Tab Navigation -->
+        <div class="tabs" role="tablist">
+            <button class="tab-btn active" id="tab-visual" role="tab" aria-selected="true" aria-controls="panel-visual">
+                <i class="fas fa-magic" aria-hidden="true"></i> Visual Editor
+            </button>
+            <button class="tab-btn" id="tab-raw" role="tab" aria-selected="false" aria-controls="panel-raw">
+                <i class="fas fa-code" aria-hidden="true"></i> Raw JSON
+            </button>
+        </div>
+
+        <!-- Tab Panels -->
+        <div class="tab-panels">
+            <!-- Visual Editor Panel -->
+            <div class="tab-panel" id="panel-visual" role="tabpanel" aria-labelledby="tab-visual">
+                <p class="panel-subtitle">Configure system-wide settings inherited by all mirror modules.</p>
+                <div id="visual-form-container" class="visual-form-container">
+                    <div class="loading-spinner"><i class="fas fa-spinner fa-spin"></i> Loading settings...</div>
+                </div>
+            </div>
+
+            <!-- Raw JSON Panel -->
+            <div class="tab-panel" id="panel-raw" role="tabpanel" aria-labelledby="tab-raw" style="display: none;">
+                <p class="panel-subtitle">Edit the raw system <code>globals</code> configuration block directly.</p>
+                
+                <label for="config-editor" class="sr-only">Configuration Globals JSON</label>
+                <textarea id="config-editor" spellcheck="false" aria-label="Configuration Globals JSON editor" style="height: 300px; font-family: 'Fira Code', monospace;"></textarea>
+            </div>
+        </div>
+
+        <div class="card-actions">
+            <button id="save-config-btn" class="btn primary" aria-label="Save configuration">
+                <i class="fas fa-save" aria-hidden="true"></i>
+                <span id="save-btn-label">Save Settings</span>
+            </button>
+        </div>
+    </section>
+</div>

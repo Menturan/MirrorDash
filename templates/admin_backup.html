@@ -1,0 +1,112 @@
+<!-- Backup & Restore Tab Panel -->
+<div class="page-panel" id="page-panel-backup" role="tabpanel" aria-labelledby="page-tab-backup" style="display: none;">
+    <!-- Info Alert Banner -->
+    <div class="info-alert-banner">
+        <div class="info-alert-icon">
+            <i class="fas fa-info-circle"></i>
+        </div>
+        <div class="info-alert-content">
+            <strong>Security Notice:</strong> Dashboard credentials are excluded from backups. Importing a backup will preserve your current active admin login password.<br>
+            <strong>Storage Policy:</strong> Backups contain configuration files (`config.json`), local custom module code, and persistent databases (`data_dir`). Transient caches (`cache_dir`) are excluded.
+        </div>
+    </div>
+
+    <div class="backup-grid">
+        <!-- Create Backup Card -->
+        <section class="card backup-card">
+            <h2><i class="fas fa-file-archive"></i> Create Backup</h2>
+            <p class="description-text">Generate a `.mirror` backup file of your mirror's settings and custom module states.</p>
+            
+            <div class="form-group checkbox-group">
+                <label class="checkbox-label" for="backup-encrypt-toggle">
+                    <input type="checkbox" id="backup-encrypt-toggle">
+                    <span>Enable Password Protection (Encryption)</span>
+                </label>
+            </div>
+            
+            <div id="backup-password-container" class="form-group" style="display: none;">
+                <label for="backup-password">Archive Password</label>
+                <input type="password" id="backup-password" class="form-control" placeholder="Enter password to secure the archive">
+            </div>
+            
+            <button id="create-backup-btn" class="btn primary">
+                <i class="fas fa-cog fa-spin" id="create-backup-spinner" style="display: none; margin-right: 5px;"></i>
+                <i class="fas fa-plus-circle" id="create-backup-icon"></i> Generate Backup
+            </button>
+        </section>
+
+        <!-- Import Backup Card -->
+        <section class="card backup-card">
+            <h2><i class="fas fa-file-import"></i> Import Backup</h2>
+            <p class="description-text">Upload a `.mirror` backup file to restore layouts, local custom modules, and settings.</p>
+            
+            <div id="backup-drop-zone" class="backup-drop-zone">
+                <i class="fas fa-cloud-upload-alt"></i>
+                <p>Drag and drop a <strong>.mirror</strong> file here, or click to browse</p>
+                <input type="file" id="backup-file-input" accept=".mirror" style="display: none;">
+            </div>
+        </section>
+    </div>
+
+    <!-- Backup Validation Panel -->
+    <section class="card" id="backup-validation-panel" style="display: none;">
+        <h2><i class="fas fa-clipboard-check"></i> Verify Import Contents</h2>
+        <div class="validation-summary">
+            <div class="validation-stat">
+                <span class="label">Manifest Version:</span>
+                <span id="val-manifest-version" class="value">-</span>
+            </div>
+            <div class="validation-stat">
+                <span class="label">Backup Timestamp:</span>
+                <span id="val-timestamp" class="value">-</span>
+            </div>
+            <div class="validation-stat">
+                <span class="label">Modules Included:</span>
+                <span id="val-modules-count" class="value">-</span>
+            </div>
+        </div>
+        <div class="validation-modules-list">
+            <h4>Restored Modules Listing:</h4>
+            <ul id="val-modules-list-ul">
+                <!-- Populated in JS -->
+            </ul>
+        </div>
+        <div class="validation-actions">
+            <button id="run-restore-btn" class="btn primary">
+                <i class="fas fa-exclamation-triangle"></i> Start Restoration
+            </button>
+            <button id="cancel-restore-btn" class="btn secondary">
+                Cancel
+            </button>
+        </div>
+    </section>
+
+    <!-- Restoration Progress Panel -->
+    <section class="card" id="backup-progress-panel" style="display: none;">
+        <h2><i class="fas fa-tasks"></i> Restoration Progress</h2>
+        <div class="logs-viewer-container" style="margin-top: 1rem;">
+            <pre id="backup-progress-log" class="logs-viewer">Initializing restore...</pre>
+        </div>
+    </section>
+
+    <!-- Backups List Section -->
+    <section class="card" style="margin-top: 2rem;">
+        <h2><i class="fas fa-list-ul"></i> Saved Local Backups</h2>
+        <div class="table-responsive">
+            <table class="backup-table">
+                <thead>
+                    <tr>
+                        <th>Filename</th>
+                        <th>Created At</th>
+                        <th>Size</th>
+                        <th>Protected</th>
+                        <th style="text-align: right;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="backups-list-tbody">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>

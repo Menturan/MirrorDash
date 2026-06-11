@@ -1,0 +1,26 @@
+{
+  "globals": {
+    "language": "en",
+    "timezone": "Europe/Stockholm",
+    "time_format": "24h",
+    "temperature_unit": "C",
+    "distance_unit": "km",
+    "latitude": 59.3293,
+    "longitude": 18.0686
+  },
+  "modules": {
+    "mirrordash-clock": {
+      "position": "top_right",
+      "enabled": true,
+      "format": "24h",
+      "show_seconds": false,
+      "show_header": false
+    }
+  },
+  "system": {
+    "rotation": "normal",
+    "resolution": "auto",
+    "brightness": 100,
+    "volume": 87
+  }
+}

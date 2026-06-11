@@ -1,0 +1,626 @@
+/* ============================================================
+   MyMagicMirror — Ethereal Mirror Design System
+   style.css — single source of truth for the mirror display
+   ============================================================ */
+
+:root {
+    color-scheme: dark; /* #28: native dark scrollbars/form elements */
+
+    /* --- Stitch Design System - Ethereal Mirror Tokens --- */
+    --background: #131313;
+    --on-background: #e2e2e2;
+    
+    --surface: #131313;
+    --surface-dim: #131313;
+    --surface-bright: #393939;
+    --surface-container-lowest: #0e0e0e;
+    --surface-container-low: #1b1b1b;
+    --surface-container: #1f1f1f;
+    --surface-container-high: #2a2a2a;
+    --surface-container-highest: #353535;
+    
+    --on-surface: #e2e2e2;
+    --on-surface-variant: #c4c7c8;
+    --inverse-surface: #e2e2e2;
+    --inverse-on-surface: #303030;
+    
+    --outline: #8e9192;
+    --outline-variant: #444748;
+    --surface-tint: #c6c6c7;
+    
+    --primary: #ffffff;
+    --on-primary: #2f3131;
+    --primary-container: #e2e2e2;
+    --on-primary-container: #636565;
+    --inverse-primary: #5d5f5f;
+    
+    --secondary: #c7c6c6;
+    --on-secondary: #2f3131;
+    --secondary-container: #464747;
+    --on-secondary-container: #b5b5b5;
+    
+    --tertiary: #ffffff;
+    --on-tertiary: #303031;
+    --tertiary-container: #e4e2e2;
+    --on-tertiary-container: #646464;
+    
+    --error: #ffb4ab;
+    --on-error: #690005;
+    --error-container: #93000a;
+    --on-error-container: #ffdad6;
+
+    /* --- Core palette aliases --- */
+    --color-void: #000000;          /* Background (pure black for mirror void) */
+    --color-high-contrast: var(--primary); /* Primary data / time */
+    --color-standard-gray: #999999; /* Body text / labels */
+    --color-dimmed-charcoal: #666666; /* Borders / inactive */
+
+    /* DESIGN.md surface tokens */
+    --surface-1: #131313;
+    --surface-2: #1e1e1e;
+    --surface-3: #252525;
+    --surface-4: #393939;
+
+    /* Error palette */
+    --color-error: var(--error);
+    --color-error-container: var(--error-container);
+    --color-error-dark: var(--on-error);
+
+    /* Accent colors */
+    --color-ice-blue: #cceeff;
+    --color-rose-pink: #ffccd5;
+
+    /* Status indicator colors */
+    --color-status-online: #a0ffba;
+    --color-status-warning: #f87171;
+
+    /* --- Alias variables used in MODULE_GUIDE.md --- */
+    --mirror-primary: var(--color-high-contrast);   /* #5 */
+    --mirror-secondary: var(--color-standard-gray); /* #5 */
+    --mirror-success: var(--color-status-online);
+    --mirror-warning: var(--color-status-warning);
+    --mirror-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    /* --- Layout & Spacing --- */
+    --safe-margin: 60px;
+    --widget-gap: 30px;
+    --internal-padding: 16px;
+    --label-gap: 8px;
+    --mirror-gutter: 2rem;
+
+    /* --- Radii --- */
+    --radius-sm: 0.125rem;
+    --radius-default: 0.25rem;
+    --radius-md: 0.375rem;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    
+    --radius-container: var(--radius-default);
+    --radius-alert: 1rem;
+    --radius-full: 9999px;
+
+    /* --- Typography (legacy font-family alias) --- */
+    --font-family: var(--mirror-font-family);
+}
+
+/* ============================================================
+   Global reset
+   ============================================================ */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body, html {
+    width: 100vw;
+    height: 100vh;
+    background-color: var(--color-void);
+    color: var(--color-standard-gray);
+    font-family: var(--font-family);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ============================================================
+   Peripheral Modular Grid Layout
+   ============================================================ */
+.container {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: 1fr 1fr 1fr;
+    grid-template-areas:
+        "top_left top_center top_right"
+        "middle_left middle_center middle_right"
+        "bottom_left bottom_center bottom_right";
+    width: 100%;
+    height: 100%;
+    padding: var(--safe-margin);
+}
+
+.region {
+    display: flex;
+    flex-direction: column;
+    gap: var(--widget-gap);
+}
+
+#top_left      { grid-area: top_left;      align-items: flex-start; }
+#top_center    { grid-area: top_center;    align-items: center; }
+#top_right     { grid-area: top_right;     align-items: flex-end; }
+#middle_left   { grid-area: middle_left;   align-items: flex-start; justify-content: center; }
+#middle_center { grid-area: middle_center; justify-content: center; align-items: center; }
+#middle_right  { grid-area: middle_right;  align-items: flex-end;   justify-content: center; }
+#bottom_left   { grid-area: bottom_left;   align-items: flex-start; justify-content: flex-end; }
+#bottom_center { grid-area: bottom_center; align-items: center;     justify-content: flex-end; }
+#bottom_right  { grid-area: bottom_right;  align-items: flex-end;   justify-content: flex-end; }
+
+/* ============================================================
+   Module containers
+   ============================================================ */
+[data-module] {
+    background: rgba(0, 0, 0, 0.93);
+    border-radius: var(--radius-container);
+    padding: var(--internal-padding);
+}
+
+/* #11: Animation only on first mount (.module-enter class, removed after animationend) */
+.module-enter {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   Carousel groups
+   ============================================================ */
+.carousel-group-container {
+    display: grid;
+    grid-template-columns: 100%;
+    width: 100%;
+}
+
+.carousel-slide {
+    grid-area: 1 / 1 / 2 / 2;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.8s ease-in-out, visibility 0.8s ease-in-out;
+    pointer-events: none;
+}
+
+.carousel-slide.carousel-active {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+/* ============================================================
+   Typography — DESIGN.md scale
+   ============================================================ */
+.display-xl, h1 {
+    font-size: 75px;
+    font-weight: 100;
+    line-height: 1.0;
+    letter-spacing: -0.04em;
+    color: var(--color-high-contrast);
+}
+
+.display-lg {
+    font-size: 64px;
+    font-weight: 300;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    color: var(--color-high-contrast);
+}
+
+.headline-md {
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: 0;
+}
+
+.body-base {
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1.5;
+}
+
+.body-sm {
+    font-size: 16px;
+    font-weight: 400;
+    line-height: 1.4;
+}
+
+.label-caps, h2, .module-header {  /* #5: .module-header alias */
+    font-size: 0.875rem; /* 14px */
+    font-weight: 600; /* Medium-bold */
+    line-height: 1.0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-standard-gray);
+    border-bottom: 1px solid var(--color-dimmed-charcoal);
+    padding-bottom: var(--label-gap);
+    margin-bottom: var(--internal-padding);
+    display: block;
+    width: 100%;
+}
+
+/* #5: Utility text color classes used in MODULE_GUIDE.md */
+.text-primary   { color: var(--color-high-contrast); }
+.text-secondary { color: var(--color-standard-gray); }
+.text-dimmed    { color: var(--color-dimmed-charcoal); }
+.text-error     { color: var(--color-error); }
+
+/* ============================================================
+   #18: Status indicators (DESIGN.md spec)
+   ============================================================ */
+.status-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+}
+.status-indicator--online  { background-color: var(--color-status-online); }
+.status-indicator--warning { background-color: var(--color-status-warning); }
+
+/* ============================================================
+   #18: Data lists (DESIGN.md spec — label left, value right)
+   ============================================================ */
+.data-list {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+.data-list__item {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+}
+.data-list__label { color: var(--color-standard-gray); font-size: 0.875rem; }
+.data-list__value { color: var(--color-high-contrast); font-variant-numeric: tabular-nums; }
+.data-list__value--up   { color: var(--color-status-online); }
+.data-list__value--down { color: var(--color-status-warning); }
+
+/* ============================================================
+   #18: Atmospheric Glow (DESIGN.md — subtle outer glow)
+   ============================================================ */
+.glow {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.15));
+}
+
+/* ============================================================
+   Widget helper components
+   ============================================================ */
+.widget-header {
+    border-bottom: 1px solid var(--color-dimmed-charcoal);
+    padding-bottom: var(--label-gap);
+    margin-bottom: var(--internal-padding);
+    width: 100%;
+}
+.widget-header .module-header {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
+.separator-hr {
+    border: none;
+    border-top: 1px solid var(--color-dimmed-charcoal);
+    margin: var(--internal-padding) 0;
+}
+
+/* ============================================================
+   #9: WebSocket connection status indicator
+   ============================================================ */
+.ws-status {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    background: var(--surface-2);
+    border: 1px solid var(--color-dimmed-charcoal);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    z-index: 9999;
+    transition: opacity 0.5s ease, transform 0.3s ease;
+}
+
+.ws-status--hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.ws-status__dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.ws-status--connecting .ws-status__dot { background: #f59e0b; animation: pulse 1.2s infinite ease-in-out; }
+.ws-status--connected .ws-status__dot  { background: var(--color-status-online); }
+.ws-status--disconnected .ws-status__dot { background: var(--color-status-warning); animation: pulse 1s infinite ease-in-out; }
+
+.ws-status--connecting  { color: #f59e0b; }
+.ws-status--connected   { color: var(--color-status-online); }
+.ws-status--disconnected { color: var(--color-status-warning); }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+/* ============================================================
+   Module Loading Skeletons
+   ============================================================ */
+.module-loading-placeholder {
+    animation: placeholderPulse 2s infinite ease-in-out;
+    min-width: 220px;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.module-loading-content {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--color-standard-gray);
+}
+
+.module-loading-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--color-high-contrast);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    flex-shrink: 0;
+}
+
+.module-loading-text {
+    font-size: 13px;
+    font-weight: 400;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+@keyframes placeholderPulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 0.75; }
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================================
+   Extended UI Components
+   ============================================================ */
+
+/* 1. Weather Forecast Grid */
+.forecast-grid {
+    display: flex;
+    justify-content: space-between;
+    width: 100%;
+    gap: 1rem;
+}
+.forecast-grid__day {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+.forecast-grid__name {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-standard-gray);
+    letter-spacing: 0.05em;
+}
+.forecast-grid__icon {
+    font-size: 20px;
+    margin: 4px 0;
+}
+.forecast-grid__temp {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-high-contrast);
+}
+.forecast-grid__temp-low {
+    color: var(--color-dimmed-charcoal);
+    font-weight: 400;
+    margin-left: 2px;
+}
+
+/* 2. Agenda / Schedule List */
+.agenda-list {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 0.75rem;
+}
+.agenda-list__item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+.agenda-list__date {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    flex-shrink: 0;
+}
+.agenda-list__date-month {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-standard-gray);
+    letter-spacing: 0.05em;
+    line-height: 1;
+}
+.agenda-list__date-day {
+    font-size: 18px;
+    font-weight: 200;
+    color: var(--color-high-contrast);
+    line-height: 1.1;
+}
+.agenda-list__details {
+    display: flex;
+    flex-direction: column;
+}
+.agenda-list__title {
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--color-high-contrast);
+}
+.agenda-list__subtitle {
+    font-size: 12px;
+    color: var(--color-standard-gray);
+}
+
+/* 3. Progress / Gauge Bars */
+.gauge-bar {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.gauge-bar__label-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-standard-gray);
+}
+.gauge-bar__track {
+    width: 100%;
+    height: 4px;
+    background: var(--surface-3);
+    border-radius: 2px;
+    overflow: hidden;
+}
+.gauge-bar__fill {
+    height: 100%;
+    background: var(--color-high-contrast);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+/* 4. Stat Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    gap: 1rem;
+}
+.stats-grid__item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.5rem;
+    text-align: center;
+}
+.stats-grid__value {
+    font-size: 28px;
+    font-weight: 200;
+    color: var(--color-high-contrast);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+.stats-grid__label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    color: var(--color-standard-gray);
+    letter-spacing: 0.05em;
+}
+
+/* 5. Alert Callouts */
+.alert-callout {
+    width: 100%;
+    background: rgba(255, 180, 171, 0.05);
+    border-left: 3px solid var(--color-error);
+    padding: 12px 16px;
+    border-radius: 0 var(--radius-alert) var(--radius-alert) 0;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+.alert-callout__title {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-error);
+    margin-bottom: 2px;
+}
+.alert-callout__desc {
+    font-size: 14px;
+    color: var(--color-standard-gray);
+    line-height: 1.4;
+}
+
+/* ============================================================
+   Backdrop Blur (DESIGN.md — critical alert focus mode)
+   ============================================================ */
+.backdrop-blur-active [data-module] {
+    filter: blur(2px) brightness(0.5);
+    transition: filter 0.3s ease;
+}
+
+/* ============================================================
+   Lucide SVG Icon styling
+   ============================================================ */
+svg.lucide, .lucide {
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.5px;
+    stroke: currentColor;
+    fill: none;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+/* ============================================================
+   Responsive Layout Scaling (Support for smaller screens)
+   ============================================================ */
+@media (max-width: 1024px) {
+    :root {
+        --safe-margin: 30px;
+        --widget-gap: 20px;
+    }
+}
+
+@media (max-width: 640px) {
+    :root {
+        --safe-margin: 15px;
+        --widget-gap: 12px;
+        font-size: 14px;
+    }
+}
+
+
