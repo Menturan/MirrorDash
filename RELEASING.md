@@ -2,23 +2,6 @@
 
 This document outlines the professional release workflow for MirrorDash. Releases are automated via GitHub Actions, and packages are securely published to PyPI using OpenID Connect (OIDC) Trusted Publishing.
 
----
-
-## One-Time PyPI & GitHub Linkage
-
-Before the automated release workflow can run, you must link the GitHub repository to PyPI:
-
-1. Log in to your account on [PyPI](https://pypi.org/).
-2. Navigate to **Account Settings** -> **Publishing** -> **Add Publisher** (or add a "Pending Publisher" if the package has never been uploaded to PyPI before).
-3. Select **GitHub** as the publisher type and fill in the following details:
-   * **Owner**: `Menturan` (or your GitHub username/organization)
-   * **Repository**: `MirrorDash`
-   * **Workflow name**: `publish.yml`
-   * **Environment**: `pypi` (This must match the environment name declared in the GitHub Actions job)
-4. Click **Add / Save**.
-
----
-
 ## Release Guidelines
 
 - **Only Release Stable Code**: Ensure all tests pass successfully before releasing.
