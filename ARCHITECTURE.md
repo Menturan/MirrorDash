@@ -65,7 +65,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Aligns the platform with the locked read-only system blueprint (OverlayFS). Under read-only systems, `~/.mirrordash/cache/` is mapped directly to a RAM-disk tmpfs buffer to eliminate physical SD card wear and ensure crash immunity. `~/.mirrordash/data/` acts as the persistent sector.
 
 ## 16. WiFi Fallback / Captive Portal State Machine
-* **Decision**: Implemented an automated fallback WiFi captive portal setup state machine. If network connectivity is not verified within 30 seconds of system boot, NetworkManager shifts `wlan0` to an autonomous Access Point (AP) setup hotspot. The FastAPI backend detects requests to `10.42.0.1:8000` (or `?captive=true`) and redirects the user to `/wifi-setup`. Submitting credentials remounts the filesystem read-write, saves the new NetworkManager profiles, remounts read-only, and reboots the OS back into client mode.
+* **Decision**: Implemented an automated fallback WiFi captive portal setup state machine. If network connectivity is not verified within 30 seconds of system boot, NetworkManager shifts `wlan0` to an autonomous Access Point (AP) setup hotspot. The FastAPI backend detects requests to `10.42.0.1` (or `?captive=true`) and redirects the user to `/wifi-setup`. Submitting credentials remounts the filesystem read-write, saves the new NetworkManager profiles, remounts read-only, and reboots the OS back into client mode.
 * **Rationale**: Minimizes appliance maintenance and makes the device plug-and-play across different network environments without requiring terminal access or physical disassembly.
 
 ## 17. Watchdog and Time Synchronization Boot Guard

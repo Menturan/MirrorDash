@@ -6,10 +6,12 @@ from mirrordash_core.app import app
 
 @pytest.fixture
 def client():
-    return TestClient(app)
+    with patch("mirrordash_core.app.load_config") as mock_load:
+        mock_load.return_value = {}
+        yield TestClient(app)
 
 def test_index_redirect_captive_host(client):
-    response = client.get("/", headers={"host": "10.42.0.1:8000"}, follow_redirects=False)
+    response = client.get("/", headers={"host": "10.42.0.1"}, follow_redirects=False)
     assert response.status_code == 307
     assert response.headers["location"] == "/wifi-setup"
 
