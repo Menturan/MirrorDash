@@ -3,6 +3,8 @@
 [![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](#)
 [![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%2F%20Linux-orange.svg)](#)
+[![PyPI version](https://img.shields.io/pypi/v/mirrordash.svg)](https://pypi.org/project/mirrordash/)
+[![Downloads](https://pepy.tech/badge/mirrordash)](https://pepy.tech/project/mirrordash)
 
 **The ambient, zero-friction smart display designed to bring your home to life—silently, elegantly, and beautifully.**
 
