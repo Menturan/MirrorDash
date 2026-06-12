@@ -61,6 +61,7 @@ sudo apt install -y --no-install-recommends \
     labwc \
     chromium \
     wlr-randr \
+    avahi-daemon \
     plymouth \
     plymouth-themes && \
 sudo apt autoclean -y && sudo apt autoremove -y
@@ -73,13 +74,33 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `labwc` | Minimal wlroots-based Wayland compositor (~5 MB RSS). Replaces Xorg + Openbox. |
 | `chromium` | Kiosk display browser with native Wayland support via `--ozone-platform=wayland`. The legacy `chromium-browser` package is deprecated on Trixie/Debian 13. |
 | `wlr-randr` | Display output control (rotation, resolution, power on/off) under Wayland. Replaces `xrandr`. |
+| `avahi-daemon` | mDNS/DNS-SD responder (Bonjour/Zeroconf). Advertises the device as `mirrordash.local` on the local network so users never need to type an IP address. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
 | `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. The `pix` theme is provided by Raspberry Pi OS repos. |
 
 > [!NOTE]
 > **NetworkManager** is the default network backend on Trixie — no separate install is needed. **log2ram** is not installed because Trixie configures `systemd-journald` as **volatile by default** (logs go to RAM and are lost on reboot), which already eliminates the primary SD card write source.
 
-### 1.5 Console Auto-Login & Kiosk Autostart Setup
+### 1.5 Hostname & mDNS Setup
+
+Set the device hostname to `mirrordash` so it is reachable at **`mirrordash.local`** on the local network from any device (Mac, Linux, Windows 10+) — no IP address needed.
+
+```bash
+# Set the hostname
+sudo hostnamectl set-hostname mirrordash
+
+# Reflect the new hostname in /etc/hosts
+sudo sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
+
+# Enable and start the mDNS daemon
+sudo systemctl enable avahi-daemon
+sudo systemctl start avahi-daemon
+```
+
+> [!NOTE]
+> `avahi-daemon` broadcasts the device hostname via mDNS (Bonjour/Zeroconf) on the local subnet. After this step, your mirror's admin dashboard is reachable at `http://mirrordash.local:8000/admin` from any browser on the same WiFi network — no IP lookup required. The `.local` resolution works natively on macOS and Linux. On Windows 10/11, it requires Bonjour (bundled with iTunes) or is handled automatically by the mDNS client built into Windows 10 1903+.
+
+### 1.6 Console Auto-Login & Kiosk Autostart Setup
 
 Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, and create the labwc compositor auto-start layout file in one step:
 

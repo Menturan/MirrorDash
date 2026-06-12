@@ -25,16 +25,23 @@ apt install -y --no-install-recommends \
     labwc \
     chromium \
     wlr-randr \
+    avahi-daemon \
     plymouth \
     plymouth-themes \
     parted
 apt autoclean -y
 apt autoremove -y
 
-echo "=== 2. Configuring Console Auto-Login (B2) ==="
+echo "=== 2. Setting Hostname & Enabling mDNS ==="
+hostnamectl set-hostname mirrordash
+sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
+systemctl enable avahi-daemon
+systemctl start avahi-daemon
+
+echo "=== 3. Configuring Console Auto-Login (B2) ==="
 raspi-config nonint do_boot_behaviour B2
 
-echo "=== 3. Setting up Wayland Auto-launch & Kiosk Config ==="
+echo "=== 4. Setting up Wayland Auto-launch & Kiosk Config ==="
 # Launch labwc on tty1 login
 if ! grep -q "exec labwc" "$PI_HOME/.bash_profile" 2>/dev/null; then
   echo '[[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]] && exec labwc' >> "$PI_HOME/.bash_profile"
@@ -65,7 +72,7 @@ EOF
 chmod +x "$PI_HOME/.config/labwc/autostart"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
-echo "=== 4. Expanding Partition & Setting up Persistent Storage ==="
+echo "=== 5. Expanding Partition & Setting up Persistent Storage ==="
 # Expand root partition (p2) to 6GB and resize filesystem
 parted /dev/mmcblk0 resizepart 2 6GB
 resize2fs /dev/mmcblk0p2
@@ -105,7 +112,7 @@ fi
 # Mount all fstab entries (bind mounts, tmpfs)
 mount -a
 
-echo "=== 5. Installing uv & MirrorDash App ==="
+echo "=== 6. Installing uv & MirrorDash App ==="
 # Install uv as the pi user (standalone binary — does not require git or Python)
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
@@ -141,7 +148,7 @@ curl -sSL "$GITHUB_RAW/scripts/launch.sh" \
 chmod +x "$PI_HOME/mirrordash/launch.sh"
 chown "$PI_USER:$PI_USER" "$PI_HOME/mirrordash/launch.sh"
 
-echo "=== 6. Setting up Passwordless Sudo ==="
+echo "=== 7. Setting up Passwordless Sudo ==="
 cat << 'EOF' > /etc/sudoers.d/mirrordash
 # MirrorDash application — scoped passwordless sudo
 pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
@@ -159,7 +166,7 @@ EOF
 chmod 440 /etc/sudoers.d/mirrordash
 visudo -cf /etc/sudoers.d/mirrordash
 
-echo "=== 7. Enabling Watchdog & Optimizing Boot ==="
+echo "=== 8. Enabling Watchdog & Optimizing Boot ==="
 # Watchdog RuntimeWatchdogSec=14s
 sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
 systemctl daemon-reexec
@@ -181,17 +188,17 @@ if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
   sed -i 's/$/ console=tty3 loglevel=3 quiet splash/' /boot/firmware/cmdline.txt
 fi
 
-echo "=== 8. Configuring Plymouth Splash Screen ==="
+echo "=== 9. Configuring Plymouth Splash Screen ==="
 # Download splash asset directly from GitHub (no repo on device)
 curl -sSL "$GITHUB_RAW/static/splash.png" \
     | tee /usr/share/plymouth/themes/pix/splash.png > /dev/null
 # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
 plymouth-set-default-theme --rebuild-initrd pix
 
-echo "=== 9. Enabling systemd-time-wait-sync ==="
+echo "=== 10. Enabling systemd-time-wait-sync ==="
 systemctl enable systemd-time-wait-sync.service
 
-echo "=== 10. Creating WiFi Fallback Captive Portal Script & Service ==="
+echo "=== 11. Creating WiFi Fallback Captive Portal Script & Service ==="
 cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check.sh
 #!/bin/bash
 INTERFACE="wlan0"
@@ -236,7 +243,7 @@ WantedBy=multi-user.target
 EOF
 systemctl enable mirrordash-wifi-fallback.service
 
-echo "=== 11. Creating MirrorDash Background Service ==="
+echo "=== 12. Creating MirrorDash Background Service ==="
 cat << 'EOF' > /etc/systemd/system/mirrordash.service
 [Unit]
 Description=MirrorDash Core App Backend

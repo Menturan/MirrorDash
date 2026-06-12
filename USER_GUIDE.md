@@ -17,8 +17,10 @@ MirrorDash is an ambient heads-up display (HUD) designed to run on a screen behi
 
 Once your mirror server is running, you can access it via a web browser on any device (phone, tablet, or computer) connected to the same local Wi-Fi network:
 
-*   **Mirror Display**: `http://localhost:8000/` (or `http://<your-pi-ip>:8000/`)
-*   **Admin Dashboard**: `http://localhost:8000/admin` (or `http://<your-pi-ip>:8000/admin`)
+*   **Mirror Display**: `http://mirrordash.local:8000/`
+*   **Admin Dashboard**: `http://mirrordash.local:8000/admin`
+
+> **Tip:** The `.local` address works automatically on macOS, Linux, and Windows 10/11 without any configuration. If it doesn't resolve on your device, fall back to the IP address: `http://<your-pi-ip>:8000/admin`.
 
 ---
 
