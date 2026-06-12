@@ -26,6 +26,7 @@ apt install -y --no-install-recommends \
     chromium \
     wlr-randr \
     avahi-daemon \
+    nginx \
     plymouth \
     plymouth-themes \
     parted
@@ -38,10 +39,43 @@ sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
 systemctl enable avahi-daemon
 systemctl start avahi-daemon
 
-echo "=== 3. Configuring Console Auto-Login (B2) ==="
+echo "=== 3. Configuring nginx Reverse Proxy ==="
+# Remove the default nginx site and write the MirrorDash proxy config.
+# This makes the mirror reachable at http://mirrordash.local (port 80, no port number needed).
+rm -f /etc/nginx/sites-enabled/default
+cat << 'EOF' > /etc/nginx/sites-available/mirrordash
+server {
+    listen 80 default_server;
+    server_name mirrordash.local _;
+
+    # WebSocket endpoint — must upgrade the connection
+    location /ws {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade    $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host       $host;
+        proxy_read_timeout 86400;
+    }
+
+    # All other requests
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    }
+}
+EOF
+ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
+nginx -t
+systemctl enable nginx
+systemctl restart nginx
+
+echo "=== 4. Configuring Console Auto-Login (B2) ==="
 raspi-config nonint do_boot_behaviour B2
 
-echo "=== 4. Setting up Wayland Auto-launch & Kiosk Config ==="
+echo "=== 5. Setting up Wayland Auto-launch & Kiosk Config ==="
 # Launch labwc on tty1 login
 if ! grep -q "exec labwc" "$PI_HOME/.bash_profile" 2>/dev/null; then
   echo '[[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]] && exec labwc' >> "$PI_HOME/.bash_profile"
@@ -72,7 +106,7 @@ EOF
 chmod +x "$PI_HOME/.config/labwc/autostart"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
-echo "=== 5. Expanding Partition & Setting up Persistent Storage ==="
+echo "=== 6. Expanding Partition & Setting up Persistent Storage ==="
 # Expand root partition (p2) to 6GB and resize filesystem
 parted /dev/mmcblk0 resizepart 2 6GB
 resize2fs /dev/mmcblk0p2
@@ -112,7 +146,7 @@ fi
 # Mount all fstab entries (bind mounts, tmpfs)
 mount -a
 
-echo "=== 6. Installing uv & MirrorDash App ==="
+echo "=== 7. Installing uv & MirrorDash App ==="
 # Install uv as the pi user (standalone binary — does not require git or Python)
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
@@ -148,7 +182,7 @@ curl -sSL "$GITHUB_RAW/scripts/launch.sh" \
 chmod +x "$PI_HOME/mirrordash/launch.sh"
 chown "$PI_USER:$PI_USER" "$PI_HOME/mirrordash/launch.sh"
 
-echo "=== 7. Setting up Passwordless Sudo ==="
+echo "=== 8. Setting up Passwordless Sudo ==="
 cat << 'EOF' > /etc/sudoers.d/mirrordash
 # MirrorDash application — scoped passwordless sudo
 pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
@@ -166,7 +200,7 @@ EOF
 chmod 440 /etc/sudoers.d/mirrordash
 visudo -cf /etc/sudoers.d/mirrordash
 
-echo "=== 8. Enabling Watchdog & Optimizing Boot ==="
+echo "=== 9. Enabling Watchdog & Optimizing Boot ==="
 # Watchdog RuntimeWatchdogSec=14s
 sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
 systemctl daemon-reexec
@@ -188,17 +222,17 @@ if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
   sed -i 's/$/ console=tty3 loglevel=3 quiet splash/' /boot/firmware/cmdline.txt
 fi
 
-echo "=== 9. Configuring Plymouth Splash Screen ==="
+echo "=== 10. Configuring Plymouth Splash Screen ==="
 # Download splash asset directly from GitHub (no repo on device)
 curl -sSL "$GITHUB_RAW/static/splash.png" \
     | tee /usr/share/plymouth/themes/pix/splash.png > /dev/null
 # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
 plymouth-set-default-theme --rebuild-initrd pix
 
-echo "=== 10. Enabling systemd-time-wait-sync ==="
+echo "=== 11. Enabling systemd-time-wait-sync ==="
 systemctl enable systemd-time-wait-sync.service
 
-echo "=== 11. Creating WiFi Fallback Captive Portal Script & Service ==="
+echo "=== 12. Creating WiFi Fallback Captive Portal Script & Service ==="
 cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check.sh
 #!/bin/bash
 INTERFACE="wlan0"
@@ -243,7 +277,7 @@ WantedBy=multi-user.target
 EOF
 systemctl enable mirrordash-wifi-fallback.service
 
-echo "=== 12. Creating MirrorDash Background Service ==="
+echo "=== 13. Creating MirrorDash Background Service ==="
 cat << 'EOF' > /etc/systemd/system/mirrordash.service
 [Unit]
 Description=MirrorDash Core App Backend

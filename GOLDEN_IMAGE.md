@@ -62,6 +62,7 @@ sudo apt install -y --no-install-recommends \
     chromium \
     wlr-randr \
     avahi-daemon \
+    nginx \
     plymouth \
     plymouth-themes && \
 sudo apt autoclean -y && sudo apt autoremove -y
@@ -75,6 +76,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `chromium` | Kiosk display browser with native Wayland support via `--ozone-platform=wayland`. The legacy `chromium-browser` package is deprecated on Trixie/Debian 13. |
 | `wlr-randr` | Display output control (rotation, resolution, power on/off) under Wayland. Replaces `xrandr`. |
 | `avahi-daemon` | mDNS/DNS-SD responder (Bonjour/Zeroconf). Advertises the device as `mirrordash.local` on the local network so users never need to type an IP address. |
+| `nginx` | Lightweight reverse proxy. Listens on port 80 so the mirror is reachable at `http://mirrordash.local` with no port number, then forwards traffic to uvicorn on `localhost:8000`. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
 | `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. The `pix` theme is provided by Raspberry Pi OS repos. |
 
@@ -98,9 +100,47 @@ sudo systemctl start avahi-daemon
 ```
 
 > [!NOTE]
-> `avahi-daemon` broadcasts the device hostname via mDNS (Bonjour/Zeroconf) on the local subnet. After this step, your mirror's admin dashboard is reachable at `http://mirrordash.local:8000/admin` from any browser on the same WiFi network — no IP lookup required. The `.local` resolution works natively on macOS and Linux. On Windows 10/11, it requires Bonjour (bundled with iTunes) or is handled automatically by the mDNS client built into Windows 10 1903+.
+> `avahi-daemon` broadcasts the device hostname via mDNS (Bonjour/Zeroconf) on the local subnet. After completing the nginx step below, your mirror will be reachable at `http://mirrordash.local` from any browser on the same WiFi network — no IP lookup or port number required. The `.local` resolution works natively on macOS and Linux. On Windows 10/11, it requires Bonjour (bundled with iTunes) or is handled automatically by the mDNS client built into Windows 10 1903+.
 
-### 1.6 Console Auto-Login & Kiosk Autostart Setup
+### 1.6 nginx Reverse Proxy
+
+Install nginx as a reverse proxy so the mirror is reachable at **`http://mirrordash.local`** (port 80, no port number) instead of `http://mirrordash.local:8000`.
+
+```bash
+# Remove the default nginx site and write the MirrorDash proxy config
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo tee /etc/nginx/sites-available/mirrordash << 'EOF'
+server {
+    listen 80 default_server;
+    server_name mirrordash.local _;
+
+    # WebSocket endpoint — must upgrade the connection
+    location /ws {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_set_header   Upgrade    $http_upgrade;
+        proxy_set_header   Connection "upgrade";
+        proxy_set_header   Host       $host;
+        proxy_read_timeout 86400;
+    }
+
+    # All other requests
+    location / {
+        proxy_pass         http://127.0.0.1:8000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+    }
+}
+EOF
+sudo ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
+sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
+```
+
+> [!NOTE]
+> The `/ws` location block is critical — WebSocket connections require `Upgrade` and `Connection` headers to be forwarded. Without this block, the real-time module updates on the mirror display will fail. The `proxy_read_timeout 86400` prevents nginx from closing idle WebSocket connections after 60 seconds.
+
+### 1.7 Console Auto-Login & Kiosk Autostart Setup
 
 Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, and create the labwc compositor auto-start layout file in one step:
 
