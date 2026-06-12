@@ -296,6 +296,7 @@ The file `static/design.html` (served at `/design`) is a live component kitchen-
 | `USER_GUIDE.md` | Any end-user features, settings tabs, configuration keys, or layout rules change |
 | `AGENTS.md` | New coding rules, patterns, or constraints are established |
 | `CHANGELOG.md` | Any notable feature, bug fix, or codebase change is committed |
+| `RELEASING.md` | The release workflow, OIDC configurations, or pre-release checklists change |
 
 ---
 
