@@ -172,13 +172,22 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
             logger.error(f"Failed to package modules metadata: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")
 
+        # Resolve the currently installed version
+        core_version = "0.2.0"
+        for pkg_name in ("mirrordash-core", "mirrordash_core"):
+            try:
+                core_version = importlib.metadata.version(pkg_name)
+                break
+            except importlib.metadata.PackageNotFoundError:
+                continue
+
         # 4. Generate manifest file
         manifest = {
             "backup_version": "1.0",
             "timestamp": datetime.now().isoformat(),
             "encrypted": bool(password),
             "system": {
-                "core_version": "0.1.0"
+                "core_version": core_version
             },
             "modules": modules_list
         }

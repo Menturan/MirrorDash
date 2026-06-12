@@ -26,7 +26,7 @@ def client():
 @patch("importlib.metadata.version")
 def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
-    mock_version.return_value = "0.1.0"
+    mock_version.return_value = "0.2.0"
     
     # Upgrade process mock
     mock_proc_upgrade = MagicMock()
@@ -57,7 +57,7 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock
 @patch("importlib.metadata.version")
 def test_failsafe_update_rollback(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
-    mock_version.return_value = "0.1.0"
+    mock_version.return_value = "0.2.0"
     
     # 1. Upgrade process mock (succeeds)
     mock_proc_upgrade = MagicMock()
