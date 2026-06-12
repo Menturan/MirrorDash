@@ -220,10 +220,9 @@ def get_module_schema(plugin_class) -> dict | None:
     return None
 
 VALID_POSITIONS = {
-    "top_bar", "top_left", "top_center", "top_right",
-    "upper_third", "middle_left", "middle_center", "middle_right",
-    "lower_third", "bottom_left", "bottom_center", "bottom_right",
-    "bottom_bar"
+    "top_left", "top_center", "top_right",
+    "middle_left", "middle_center", "middle_right",
+    "bottom_left", "bottom_center", "bottom_right"
 }
 
 def validate_config(config: dict) -> None:

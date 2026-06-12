@@ -33,6 +33,21 @@
         <section id="bottom_right" class="region bottom right" aria-live="polite"></section>
     </div>
 
+    <!-- First-run setup prompt (shown when no admin password is set) -->
+    <div id="setup-prompt" style="display:none; position:fixed; inset:0; z-index:1000; background:rgba(0,0,0,0.85); backdrop-filter:blur(4px); align-items:center; justify-content:center; opacity:0; transition:opacity 0.6s ease;">
+        <div style="max-width:520px; width:90%; background:rgba(0,0,0,0.93); border-radius:1rem; padding:2.5rem; border:1px solid var(--color-dimmed-charcoal); text-align:center;">
+            <div style="margin-bottom:1.5rem;">
+                <i data-lucide="monitor-smartphone" style="width:48px;height:48px;stroke-width:1px;color:var(--color-high-contrast);"></i>
+            </div>
+            <h1 style="font-size:1.25rem;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-high-contrast);margin-bottom:0.75rem;">Welcome to MirrorDash</h1>
+            <p style="font-size:0.9375rem;color:var(--color-standard-gray);line-height:1.6;margin-bottom:2rem;">Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.</p>
+            <div style="background:var(--surface-container);border-radius:0.5rem;padding:1rem 1.5rem;margin-bottom:2rem;font-family:monospace;font-size:1.0625rem;color:var(--color-high-contrast);letter-spacing:0.04em;">
+                mirrordash.local:8000/admin
+            </div>
+            <p style="font-size:0.8125rem;color:var(--color-dimmed-charcoal);line-height:1.5;">Set an admin password to secure your mirror and configure modules. This message will disappear automatically once setup is complete.</p>
+        </div>
+    </div>
+
     <noscript>
         <p style="color:white;text-align:center;padding:2rem;">JavaScript is required to run MirrorDash.</p>
     </noscript>
@@ -313,7 +328,35 @@
             }
         }
 
+        async function checkSetupRequired() {
+            try {
+                const res = await fetch('/admin/auth/status');
+                const data = await res.json();
+                const prompt = document.getElementById('setup-prompt');
+                if (!prompt) return;
+                if (data.setup_required) {
+                    prompt.style.display = 'flex';
+                    // Trigger fade-in on next frame
+                    requestAnimationFrame(() => requestAnimationFrame(() => { prompt.style.opacity = '1'; }));
+                    if (window.lucide) lucide.createIcons({ root: prompt });
+                    // Poll until password is set, then fade out
+                    const poll = setInterval(async () => {
+                        try {
+                            const r = await fetch('/admin/auth/status');
+                            const d = await r.json();
+                            if (!d.setup_required) {
+                                clearInterval(poll);
+                                prompt.style.opacity = '0';
+                                setTimeout(() => { prompt.style.display = 'none'; }, 700);
+                            }
+                        } catch (_) {}
+                    }, 10000);
+                }
+            } catch (_) {}
+        }
+
         loadActiveModules();
+        checkSetupRequired();
         connect();
     </script>
     <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>
