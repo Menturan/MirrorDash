@@ -5,11 +5,18 @@ All notable changes to the MirrorDash project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.2] - 2026-06-12
+
+### Fixed
+- Added missing `python-multipart` dependency to `pyproject.toml` to prevent FastAPI runtime crash on startup when handling form data / file uploads.
+- Relocated the `static/` and `templates/` resource directories inside the `mirrordash_core` package to prevent PyPI wheel installations from omitting essential frontend assets.
+- Refactored `app.py` path resolution logic to dynamically load assets relative to the package directory using local module resolution, fixing `RuntimeError` directory missing boot crashes in production.
+- Corrected Plymouth splash screen image URLs and layouts across setup scripts, golden image guidelines, and agent/design documentation files.
 
 ## [0.2.1] - 2026-06-12
 
 ### Fixed
+- Fixed appliance setup step 7 (`installing_app`) by using a robust heredoc execution pattern instead of fragile `sudo -i` argument concatenation with nested quotes, resolving a bug where virtual environments were not created during setup.
 - Fixed PyPI Trusted Publishing OIDC token authentication by explicitly configuring the `pypi` deployment environment on the GitHub Actions job.
 - Resolved port `8000` hardcoding in captive portal setup instructions (`USER_GUIDE.md`, `ARCHITECTURE.md`, and test suites) to support the new `nginx` port 80 reverse proxy.
 - Fixed `VALID_POSITIONS` in `admin.py` to match the 9 valid CSS grid regions, removing obsolete positions (`top_bar`, `upper_third`, `lower_third`, `bottom_bar`).
@@ -61,7 +68,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Chores
 - Add jinja2 to dependencies in pyproject.toml
 
-[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/Menturan/MirrorDash/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Menturan/MirrorDash/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Menturan/MirrorDash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Menturan/MirrorDash/releases/tag/v0.1.0

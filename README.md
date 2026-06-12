@@ -14,7 +14,7 @@ That is **MirrorDash**—a professional-grade, ambient smart display that turns 
 
 ---
 
-![MirrorDash Ambient Smart Display Preview](mirrordash_concept.png)
+![MirrorDash Ambient Smart Display Preview](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_concept.png)
 
 ---
 
@@ -29,7 +29,7 @@ While smart mirrors and screens have existed for years, they are notoriously dif
 
 ---
 
-![MirrorDash Ambient Smart Display Preview](screenshot.png)
+![MirrorDash Ambient Smart Display Preview](https://raw.githubusercontent.com/Menturan/MirrorDash/master/screenshot.png)
 
 ---
 

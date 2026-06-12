@@ -43,7 +43,51 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 3. **Eject and insert**:
    Eject the SD card from your workstation, insert it into the Raspberry Pi, and power it on.
 
-### 1.4 Boot, Update & Install Packages
+### 1.4 First Boot: Expand Root & Create Persistent Partition
+
+Because the automatic partition expansion script was disabled in Section 1.3, your root partition (`/dev/mmcblk0p2`) starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories, run the unified command chain:
+
+```bash
+# Expand root to 6GB, create partition 3, format it, and initialize directories
+printf "Yes\nIgnore\n" | sudo parted /dev/mmcblk0 ---pretend-input-tty resizepart 2 6GB && \
+sudo resize2fs /dev/mmcblk0p2 && \
+printf "Ignore\n" | sudo parted /dev/mmcblk0 ---pretend-input-tty mkpart primary ext4 6GB 100% && \
+sudo mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 && \
+sudo mkdir -p /storage && \
+sudo mount /dev/mmcblk0p3 /storage && \
+sudo mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b && \
+sudo chown -R pi:pi /storage && \
+mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
+```
+
+### 1.5 Update `/etc/fstab` & Mount
+
+Append the storage layout mounts to `/etc/fstab` and mount all filesystems in one step:
+
+```bash
+# Append MirrorDash storage layout mounts to /etc/fstab
+sudo tee -a /etc/fstab << 'EOF'
+
+# --- MirrorDash Storage ---
+# Persistent data partition (survives OverlayFS)
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60,nofail,x-systemd.device-timeout=5  0  2
+
+# Bind-mount persistent data into the application's expected path
+/storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind,nofail,x-systemd.device-timeout=5  0  0
+
+# Volatile module cache in RAM (100 MB)
+tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
+EOF
+
+# Mount and check partition details
+sudo mount -a && df -h | grep -E "storage|mirrordash"
+```
+
+---
+
+## 2. System Configuration & Package Installation
+
+With the disk space expanded and the persistent storage mounted, you can safely update the system, install dependencies, and configure the services.
 
 > [!TIP]
 > **Fast-Track Scripted Setup (Recommended)**:
@@ -52,6 +96,8 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 > curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/setup_appliance.sh | sudo bash
 > ```
 > After the script finishes, you can reboot the Pi to verify the system, then skip directly to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)**.
+
+### 2.1 Update & Install Packages
 
 If you prefer to perform the setup manually step-by-step, run the unified system update and installation chain:
 
@@ -64,7 +110,8 @@ sudo apt install -y --no-install-recommends \
     avahi-daemon \
     nginx \
     plymouth \
-    plymouth-themes && \
+    plymouth-themes \
+    pix-plym-splash && \
 sudo apt autoclean -y && sudo apt autoremove -y
 ```
 
@@ -78,12 +125,13 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `avahi-daemon` | mDNS/DNS-SD responder (Bonjour/Zeroconf). Advertises the device as `mirrordash.local` on the local network so users never need to type an IP address. |
 | `nginx` | Lightweight reverse proxy. Listens on port 80 so the mirror is reachable at `http://mirrordash.local` with no port number, then forwards traffic to uvicorn on `localhost:8000`. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
-| `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. The `pix` theme is provided by Raspberry Pi OS repos. |
+| `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. |
+| `pix-plym-splash` | The Raspberry Pi-specific "pix" desktop Plymouth theme package required for the customized startup splash screen. |
 
 > [!NOTE]
 > **NetworkManager** is the default network backend on Trixie — no separate install is needed. **log2ram** is not installed because Trixie configures `systemd-journald` as **volatile by default** (logs go to RAM and are lost on reboot), which already eliminates the primary SD card write source.
 
-### 1.5 Hostname & mDNS Setup
+### 2.2 Hostname & mDNS Setup
 
 Set the device hostname to `mirrordash` so it is reachable at **`mirrordash.local`** on the local network from any device (Mac, Linux, Windows 10+) — no IP address needed.
 
@@ -102,7 +150,7 @@ sudo systemctl start avahi-daemon
 > [!NOTE]
 > `avahi-daemon` broadcasts the device hostname via mDNS (Bonjour/Zeroconf) on the local subnet. After completing the nginx step below, your mirror will be reachable at `http://mirrordash.local` from any browser on the same WiFi network — no IP lookup or port number required. The `.local` resolution works natively on macOS and Linux. On Windows 10/11, it requires Bonjour (bundled with iTunes) or is handled automatically by the mDNS client built into Windows 10 1903+.
 
-### 1.6 nginx Reverse Proxy
+### 2.3 nginx Reverse Proxy
 
 Install nginx as a reverse proxy so the mirror is reachable at **`http://mirrordash.local`** (port 80, no port number) instead of `http://mirrordash.local:8000`.
 
@@ -140,7 +188,7 @@ sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
 > [!NOTE]
 > The `/ws` location block is critical — WebSocket connections require `Upgrade` and `Connection` headers to be forwarded. Without this block, the real-time module updates on the mirror display will fail. The `proxy_read_timeout 86400` prevents nginx from closing idle WebSocket connections after 60 seconds.
 
-### 1.7 Console Auto-Login & Kiosk Autostart Setup
+### 2.4 Console Auto-Login & Kiosk Autostart Setup
 
 Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, and create the labwc compositor auto-start layout file in one step:
 
@@ -162,17 +210,68 @@ cat << 'EOF' > /home/pi/.config/labwc/autostart
 sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromium/'Local State' 2>/dev/null
 sed -i 's/"exit_type":"[^"]\+"/"exit_type":"Normal"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
 
-# Launch Chromium in kiosk mode with native Wayland rendering
-chromium \
-    --kiosk \
-    --ozone-platform=wayland \
-    --noerrdialogs \
-    --disable-infobars \
-    --no-first-run \
-    --disable-session-crashed-bubble \
-    --disable-features=TranslateUI \
-    --enable-features=OverlayScrollbar \
-    http://localhost:8000 &
+# Kiosk Browser Crash Supervisor Loop
+CRASH_COUNTER=0
+MAX_CRASHES=5
+THRESHOLD_SECS=10
+
+while true; do
+  START_TIME=$(date +%s)
+  
+  # Launch Chromium in kiosk mode with native Wayland rendering and touch/gesture hardening
+  chromium \
+      --kiosk \
+      --ozone-platform=wayland \
+      --noerrdialogs \
+      --disable-infobars \
+      --no-first-run \
+      --disable-session-crashed-bubble \
+      --disable-features=TranslateUI \
+      --enable-features=OverlayScrollbar \
+      --disable-pinch \
+      --overscroll-history-navigation=0 \
+      --disable-dev-tools \
+      http://localhost:8000
+      
+  EXIT_CODE=$?
+  END_TIME=$(date +%s)
+  DURATION=$((END_TIME - START_TIME))
+  
+  if [ "$DURATION" -lt "$THRESHOLD_SECS" ]; then
+    CRASH_COUNTER=$((CRASH_COUNTER + 1))
+    echo "Chromium crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
+  else
+    CRASH_COUNTER=0
+  fi
+  
+  if [ "$CRASH_COUNTER" -ge "$MAX_CRASHES" ]; then
+    echo "Chromium crash loop detected! Launching diagnostic fallback..." >&2
+    
+    cat << 'ERR_EOF' > /tmp/kiosk_error.html
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding-top: 20%; }
+        h1 { color: #ff3333; font-size: 2.5rem; }
+        p { color: #999; font-size: 1.2rem; }
+    </style>
+</head>
+<body>
+    <h1>Kiosk Display Error</h1>
+    <p>The kiosk browser crashed repeatedly. Please restart the device or contact support.</p>
+</body>
+</html>
+ERR_EOF
+    
+    chromium --kiosk --ozone-platform=wayland file:///tmp/kiosk_error.html
+    while true; do sleep 3600; done
+  fi
+  
+  SLEEP_TIME=$((CRASH_COUNTER * 2))
+  [ "$SLEEP_TIME" -eq 0 ] && SLEEP_TIME=1
+  sleep "$SLEEP_TIME"
+done &
 EOF
 chmod +x /home/pi/.config/labwc/autostart
 ```
@@ -180,62 +279,7 @@ chmod +x /home/pi/.config/labwc/autostart
 > [!NOTE]
 > The `sed` commands at the top are a **crash recovery guard**. After a hard power loss (pulling the plug), Chromium would normally show a "pages didn't load correctly" restore dialog on the next boot. These commands silently clear that state before launch, ensuring unattended kiosk recovery.
 
----
-
-## 2. Storage Strategy & Directory Contract
-
-To protect the physical SD card from high-frequency write cycles and ensure immunity to sudden power loss corruption, the filesystem operates in a strict hybrid mode. The SD card is partitioned into three regions:
-
-| Partition | Mount | Filesystem | Purpose |
-|-----------|-------|------------|---------|
-| `mmcblk0p1` | `/boot/firmware` | FAT32 | Boot partition (kernel, firmware, config.txt) |
-| `mmcblk0p2` | `/` | ext4 | Root filesystem (protected by OverlayFS in production) |
-| `mmcblk0p3` | `/storage` | ext4 | **Persistent data partition** (writable, survives OverlayFS) |
-
-> [!IMPORTANT]
-> In Trixie, `raspi-config nonint enable_overlayfs` makes the **entire root filesystem read-only** with a tmpfs upper layer. All writes to `/` (including `/home`, `/etc`, `/var`) are absorbed by RAM and **lost on reboot**. User configuration, module data, and any state that must persist across reboots **must** reside on a separate physical partition that is not covered by the overlay.
-
-### 2.1 Expand Root & Create Persistent Partition
-
-Because the automatic partition expansion script was disabled in Section 1.3, your root partition (`/dev/mmcblk0p2`) starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories, run the unified command chain:
-
-```bash
-# Expand root to 6GB, create partition 3, format it, and initialize directories
-sudo parted /dev/mmcblk0 resizepart 2 6GB && \
-sudo resize2fs /dev/mmcblk0p2 && \
-sudo parted -s /dev/mmcblk0 mkpart primary ext4 6GB 100% && \
-sudo mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 && \
-sudo mkdir -p /storage && \
-sudo mount /dev/mmcblk0p3 /storage && \
-sudo mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b && \
-sudo chown -R pi:pi /storage && \
-mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
-```
-
-### 2.2 Update `/etc/fstab` & Mount
-
-Append the storage layout mounts to `/etc/fstab` and mount all filesystems in one step:
-
-```bash
-# Append MirrorDash storage layout mounts to /etc/fstab
-sudo tee -a /etc/fstab << 'EOF'
-
-# --- MirrorDash Storage ---
-# Persistent data partition (survives OverlayFS)
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60  0  2
-
-# Bind-mount persistent data into the application's expected path
-/storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind  0  0
-
-# Volatile module cache in RAM (100 MB)
-tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
-EOF
-
-# Mount and check partition details
-sudo mount -a && df -h | grep -E "storage|mirrordash"
-```
-
-### 2.3 Logging
+### 2.5 Volatile Logging Strategy
 
 Trixie configures `systemd-journald` as **volatile by default** — logs are stored only in RAM (`/run/log/journal`) and are lost on reboot. This is the desired behavior for a production appliance: zero SD card wear from logging, with no additional packages needed.
 
@@ -256,7 +300,7 @@ Initialize the deployment working directory, install `uv` (modern Python package
 ```bash
 # 1. Install uv
 curl -LsSf https://astral.sh/uv/install.sh | sh && \
-source $HOME/.local/bin/env
+export PATH="$HOME/.local/bin:$PATH"
 
 # 2. Create app directory
 mkdir -p /home/pi/mirrordash && cd /home/pi/mirrordash
@@ -327,14 +371,18 @@ gpu_mem=128
 dtoverlay=disable-bt
 EOF
 
-# 3. Silence kernel log prints on console by appending parameters to cmdline.txt
-if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
-  sudo sed -i 's/$/ console=tty3 loglevel=3 quiet splash/' /boot/firmware/cmdline.txt
-fi
+# 3. Silence kernel log prints and redirect console to tty3 in cmdline.txt
+sudo sed -i 's/console=tty1/console=tty3/g' /boot/firmware/cmdline.txt
+for opt in "loglevel=3" "quiet" "splash" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles"; do
+  if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
+    sudo sed -i "s/$/ $opt/" /boot/firmware/cmdline.txt
+  fi
+done
 
 # 4. Download MirrorDash Plymouth splash asset, rebuild initramfs, and enable NTP sync guard
 # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot.
-curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/static/splash.png \
+sudo mkdir -p /usr/share/plymouth/themes/pix && \
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png \
     | sudo tee /usr/share/plymouth/themes/pix/splash.png > /dev/null && \
 sudo plymouth-set-default-theme --rebuild-initrd pix && \
 sudo systemctl enable systemd-time-wait-sync.service
@@ -368,15 +416,15 @@ PASSWORD="mirrordash"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
 for i in {1..30}; do
-    IP=$(ip -4 addr show dev "$INTERFACE" | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
-    if [ ! -z "$IP" ]; then
-        logger -t mirrordash-wifi "Network online. IP: $IP. Exiting."
+    # Check if the system has any default gateway (Ethernet or configured Wi-Fi)
+    if ip route show | grep -q "^default"; then
+        logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
         exit 0
     fi
     sleep 1
 done
 
-logger -t mirrordash-wifi "No IP assigned to $INTERFACE after 30 seconds. Switching to setup hotspot..."
+logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Switching to setup hotspot..."
 sudo nmcli device disconnect "$INTERFACE" 2>/dev/null || true
 sudo nmcli device wifi hotspot ifname "$INTERFACE" ssid "$SSID" password "$PASSWORD"
 

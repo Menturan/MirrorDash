@@ -167,7 +167,7 @@ Components are designed for **Passive Observation** rather than active interacti
 - **Status Indicators:** Small 8px circles. Green (`#a0ffba`) for "online/active", and the primary `accent_warm` for "error/warning".
 - **Separators**: Use horizontal lines `1px` thick in `#666666`. Never use vertical separators; use whitespace instead.
 - **Carousel Containers**: Use a `.carousel-group-container` wrapper with individual widgets marked as `.carousel-slide`. The slides are layered atop each other in a single grid cell (`grid-area: 1 / 1 / 2 / 2`) and cross-fade smoothly using `opacity` and `visibility` over a `0.8s` ease-in-out curve to prevent vertical layout shifting.
-- **Boot Splash Screen**: Represented by the design system asset [splash.png](file:///home/menturan/repos/mymagicmirror/static/splash.png) (1280x1024). It features a centered monochromatic MirrorDash monogram logo, tracking uppercase brand headers, a pulsating initialization state, and a minimalist loader bar. It is integrated as the early boot screen using Plymouth to guarantee a professional visual startup experience.
+- **Boot Splash Screen**: Represented by the design system asset [splash.png](file:///home/menturan/repos/mymagicmirror/mirrordash_core/static/splash.png) (1280x1024). It features a centered monochromatic MirrorDash monogram logo, tracking uppercase brand headers, a pulsating initialization state, and a minimalist loader bar. It is integrated as the early boot screen using Plymouth to guarantee a professional visual startup experience.
 
 ## Iconography
 

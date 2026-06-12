@@ -4,12 +4,13 @@
 import os
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from mirrordash_core.config import ROOT_DIR, load_config
+from mirrordash_core.config import load_config
 from mirrordash_core.ws_manager import manager
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
@@ -57,7 +58,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-templates = Jinja2Templates(directory=str(ROOT_DIR / "templates"))
+PACKAGE_DIR = Path(__file__).parent.resolve()
+templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
 
 # CORS — allow same-origin and local network access for admin panel
 app.add_middleware(
@@ -73,7 +75,7 @@ app.include_router(admin_router)
 app.include_router(backup_router)
 
 # Serve static files
-app.mount("/static", StaticFiles(directory=str(ROOT_DIR / "static")), name="static")
+app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
 
 # HTML pages routes
 @app.get("/")
@@ -81,7 +83,7 @@ async def get_index(request: Request):
     host = request.headers.get("host", "")
     if "10.42.0.1" in host or request.query_params.get("captive") == "true":
         return RedirectResponse(url="/wifi-setup")
-    return FileResponse(str(ROOT_DIR / "static" / "index.html"))
+    return FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
 
 @app.get("/wifi-setup")
 async def get_wifi_setup(request: Request):
@@ -130,7 +132,7 @@ async def get_admin(request: Request):
 
 @app.get("/design")
 async def get_design() -> FileResponse:
-    return FileResponse(str(ROOT_DIR / "static" / "design.html"))
+    return FileResponse(str(PACKAGE_DIR / "static" / "design.html"))
 
 @app.get("/health")
 async def health() -> dict:

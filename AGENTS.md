@@ -3,7 +3,7 @@
 This file provides AI coding agents with everything they need to work effectively on the MirrorDash codebase. Read this before making any changes.
 
 > [!IMPORTANT]
-> **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and aesthetic/contrast guidelines is critical. See `DESIGN.md` and `static/style.css` for details.
+> **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and aesthetic/contrast guidelines is critical. See `DESIGN.md` and `mirrordash_core/static/style.css` for details.
 
 ---
 
@@ -28,20 +28,20 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 │   ├── event_bus.py        # Async pub/sub inter-module event bus
 │   ├── system.py           # System controls (remount, brightness, rotation)
 │   ├── display_power.py    # Screen power manager daemon (schedule/PIR/button)
-│   └── api/
-│       ├── admin.py        # Admin REST API (requires X-API-Key header)
-│       └── backup.py       # Backup/restore REST API
+│   ├── api/
+│   │   ├── admin.py        # Admin REST API (requires X-API-Key header)
+│   │   └── backup.py       # Backup/restore REST API
+│   ├── static/             # Static files served at /static/*
+│   │   ├── index.html      # Mirror display (the kiosk page)
+│   │   ├── design.html     # Design System Explorer (served at /design)
+│   │   ├── admin_js/       # Admin dashboard split JavaScript files
+│   │   ├── style.css       # Global Ethereal Design System CSS
+│   │   └── admin.css       # Styles specific to the admin dashboard
+│   └── templates/          # Jinja2 templates (rendered server-side)
+│       ├── admin.html      # Main admin dashboard layout wrapper
+│       └── admin_*.html    # Modular sub-panels for admin dashboard tabs
 ├── modules/                # Each module is its own pip-installable Python package
 │   └── mirrordash-clock/         # Ticking clock/date widget with Babel localization
-├── static/                 # Static files served at /static/*
-│   ├── index.html          # Mirror display (the kiosk page)
-│   ├── design.html         # Design System Explorer (served at /design)
-│   ├── admin_js/           # Admin dashboard split JavaScript files
-│   ├── style.css           # Global Ethereal Design System CSS
-│   └── admin.css           # Styles specific to the admin dashboard
-├── templates/              # Jinja2 templates (rendered server-side)
-│   ├── admin.html          # Main admin dashboard layout wrapper
-│   └── admin_*.html        # Modular sub-panels for admin dashboard tabs
 ├── tests/                  # Pytest unit & integration test suite
 ├── config.json             # Runtime configuration (dev mode; relocates to ~/.mirrordash/data/config.json in package mode)
 ├── DESIGN.md               # Design system specification — always keep in sync with style.css
@@ -209,9 +209,9 @@ python mirrordash_core/main.py
 
 ### Design System
 
-The visual system is documented in `DESIGN.md` and implemented in `static/style.css`. These two files must always be kept in sync.
+The visual system is documented in `DESIGN.md` and implemented in `mirrordash_core/static/style.css`. These two files must always be kept in sync.
 
-- **Never put module-specific CSS in `static/style.css`.** Module styles belong inside a `<style>` block in the module's own Jinja2 template (e.g., `templates/widget.html`).
+- **Never put module-specific CSS in `mirrordash_core/static/style.css`.** Module styles belong inside a `<style>` block in the module's own Jinja2 template (e.g., `mirrordash_core/templates/widget.html`).
 - **Keep DESIGN.md design-system-only.** Do not add documentation, parameters, or configurations for specific modules to `DESIGN.md`. It must contain only the overall core design principles, layout grids, colors, typography, and shapes. Specific module documentation belongs in the module's own `README.md` or in `MODULE_GUIDE.md`.
 - CSS custom properties (variables) defined in `:root` in `style.css` are available in all module templates.
 - The design values to know: background is always `#000000`, primary text `#ffffff`, secondary text `#999999`, dimmed `#666666`.
@@ -275,11 +275,11 @@ When modifying `mirrordash_core/`:
 
 ## Design System Explorer
 
-The file `static/design.html` (served at `/design`) is a live component kitchen-sink for module developers. When adding new CSS components to `style.css`:
+The file `mirrordash_core/static/design.html` (served at `/design`) is a live component kitchen-sink for module developers. When adding new CSS components to `style.css`:
 
-1. Add the CSS classes to `static/style.css`.
+1. Add the CSS classes to `mirrordash_core/static/style.css`.
 2. Document them in `DESIGN.md` under the relevant section.
-3. Add a live rendered example with a copyable code snippet in `static/design.html`.
+3. Add a live rendered example with a copyable code snippet in `mirrordash_core/static/design.html`.
 
 ---
 

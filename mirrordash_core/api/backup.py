@@ -173,7 +173,7 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")
 
         # Resolve the currently installed version
-        core_version = "0.2.0"
+        core_version = "0.2.1"
         for pkg_name in ("mirrordash-core", "mirrordash_core"):
             try:
                 core_version = importlib.metadata.version(pkg_name)
