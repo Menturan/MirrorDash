@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reordered appliance setup script execution steps to mount and format the persistent partition before setting up the virtual environments.
 - Updated golden image guide commands, chapters, and persistence grid to reflect the A/B virtual environment symlink mappings and settings restoration.
 
+### Fixed
+- Fixed PyPI Trusted Publishing OIDC token authentication by explicitly configuring the `pypi` deployment environment on the GitHub Actions job.
+- Resolved port `8000` hardcoding in captive portal setup instructions (`USER_GUIDE.md`, `ARCHITECTURE.md`, and test suites) to support the new `nginx` port 80 reverse proxy.
+- Fixed `VALID_POSITIONS` in `admin.py` to match the 9 valid CSS grid regions, removing obsolete positions (`top_bar`, `upper_third`, `lower_third`, `bottom_bar`).
+- Corrected duplicate step numbers in `setup_appliance.sh` after introducing `nginx` setup.
+
 ## [0.1.0] - 2026-05-30
 
 ### Features
