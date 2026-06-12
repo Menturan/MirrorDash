@@ -34,9 +34,12 @@ After selecting the OS and storage media in Raspberry Pi Imager, click **Next** 
 Before ejecting the SD card from your workstation and booting the Pi for the first time, you must prevent the automatic root partition expansion script from running. This leaves the remaining SD card space unallocated so you can easily create the persistent partition later:
 
 1. **Open cmdline.txt**:
-   With the SD card still inserted in your workstation, open the boot partition (labeled `bootfs` or `boot`) and locate `cmdline.txt`.
-2. **Disable the resize script/parameter**:
-   Delete `init=/usr/lib/raspi-config/init_resize.sh` or the standalone parameter `resize` from the single line of boot arguments in `cmdline.txt`. Save and close the file.
+   With the SD card still inserted in your workstation, open the boot partition (labeled `bootfs`) and locate `cmdline.txt`.
+2. **Disable the resize parameter**:
+   Delete the standalone `resize` parameter from the single line of boot arguments in `cmdline.txt`. Save and close the file.
+
+   > [!NOTE]
+   > On the latest Raspberry Pi OS (Trixie), the auto-resize is controlled by the standalone `resize` parameter in `cmdline.txt`. The older `init=/usr/lib/raspi-config/init_resize.sh` form is a Bookworm-era artifact and will **not** appear on Trixie images.
 3. **Eject and insert**:
    Eject the SD card from your workstation, insert it into the Raspberry Pi, and power it on.
 
@@ -56,9 +59,8 @@ If you prefer to perform the setup manually step-by-step, run the unified system
 sudo apt update && sudo apt full-upgrade -y && \
 sudo apt install -y --no-install-recommends \
     labwc \
-    chromium-browser \
+    chromium \
     wlr-randr \
-    git \
     plymouth \
     plymouth-themes && \
 sudo apt autoclean -y && sudo apt autoremove -y
@@ -69,11 +71,10 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | Package | Purpose |
 |---------|---------|
 | `labwc` | Minimal wlroots-based Wayland compositor (~5 MB RSS). Replaces Xorg + Openbox. |
-| `chromium-browser` | Kiosk display browser with native Wayland support via `--ozone-platform=wayland`. |
+| `chromium` | Kiosk display browser with native Wayland support via `--ozone-platform=wayland`. The legacy `chromium-browser` package is deprecated on Trixie/Debian 13. |
 | `wlr-randr` | Display output control (rotation, resolution, power on/off) under Wayland. Replaces `xrandr`. |
-| `git` | Required for uv and development utilities. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
-| `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. |
+| `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. The `pix` theme is provided by Raspberry Pi OS repos. |
 
 > [!NOTE]
 > **NetworkManager** is the default network backend on Trixie — no separate install is needed. **log2ram** is not installed because Trixie configures `systemd-journald` as **volatile by default** (logs go to RAM and are lost on reboot), which already eliminates the primary SD card write source.
@@ -101,7 +102,7 @@ sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromi
 sed -i 's/"exit_type":"[^"]\+"/"exit_type":"Normal"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
 
 # Launch Chromium in kiosk mode with native Wayland rendering
-chromium-browser \
+chromium \
     --kiosk \
     --ozone-platform=wayland \
     --noerrdialogs \
@@ -196,7 +197,7 @@ Initialize the deployment working directory, install `uv` (modern Python package
 curl -LsSf https://astral.sh/uv/install.sh | sh && \
 source $HOME/.local/bin/env
 
-# 2. Setup app directory
+# 2. Create app directory
 mkdir -p /home/pi/mirrordash && cd /home/pi/mirrordash
 
 # 3. Setup symlinks to the persistent partition
@@ -205,14 +206,17 @@ ln -sfT /storage/mirrordash/venv /home/pi/mirrordash/.venv
 
 # 4. Create base_venv (Golden Copy) and active venv_a
 uv venv --python 3.14 /storage/mirrordash/venv_a && \
-uv venv --python 3.14 base_venv
+uv venv --python 3.14 /home/pi/mirrordash/base_venv
 
-# 5. Install mirrordash into both virtual environments
-.venv/bin/uv pip install -e . && \
-base_venv/bin/uv pip install -e .
+# 5. Install mirrordash from PyPI into both virtual environments
+# Note: uv is a standalone binary at ~/.local/bin/uv — it is NOT inside the venv.
+uv pip install --python .venv mirrordash && \
+uv pip install --python /home/pi/mirrordash/base_venv mirrordash
 
-# 6. Copy boot launcher script
-cp scripts/launch.sh launch.sh && chmod +x launch.sh
+# 6. Download the boot launcher script directly from GitHub
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh \
+    -o /home/pi/mirrordash/launch.sh && \
+chmod +x /home/pi/mirrordash/launch.sh
 ```
 
 ### 3.2 Passwordless Sudo for Application Commands
@@ -267,9 +271,11 @@ if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
   sudo sed -i 's/$/ console=tty3 loglevel=3 quiet splash/' /boot/firmware/cmdline.txt
 fi
 
-# 4. Install MirrorDash Plymouth splash asset, set pix theme, and enable NTP sync guard
-sudo cp static/splash.png /usr/share/plymouth/themes/pix/splash.png && \
-sudo plymouth-set-default-theme pix -R && \
+# 4. Download MirrorDash Plymouth splash asset, rebuild initramfs, and enable NTP sync guard
+# On Trixie, --rebuild-initrd is required for splash changes to take effect on boot.
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/static/splash.png \
+    | sudo tee /usr/share/plymouth/themes/pix/splash.png > /dev/null && \
+sudo plymouth-set-default-theme --rebuild-initrd pix && \
 sudo systemctl enable systemd-time-wait-sync.service
 ```
 
@@ -432,12 +438,25 @@ sudo poweroff
 
 Insert the SD card into a Linux workstation, extract the raw block image using `dd`, and minimize it using `pishrink.sh` in one step:
 
+> [!CAUTION]
+> **Identify your SD card device carefully before running `dd`.** Running `dd` on the wrong device will irrecoverably overwrite that disk. Verify your SD card's device path first with `lsblk` or `sudo fdisk -l` and substitute `/dev/sdX` below with the correct device (e.g. `/dev/sdb`). **Never use `/dev/sda`** unless you are absolutely certain that is your SD card and not your system drive.
+
+> [!IMPORTANT]
+> **Do NOT use PiShrink's `-a` (auto-expand) flag.** The `-a` flag does not exist in standard PiShrink releases. More critically, PiShrink targets the **last partition** of the image for shrinking — which is our `/storage` partition (`mmcblk0p3`), not the rootfs. Using auto-expand logic on our custom 3-partition layout will attempt to resize the wrong partition and **corrupt the image**. Always use `-z` only (gzip compression, no auto-expand). Our partitions are already sized correctly and require no expansion on first boot.
+
 ```bash
-# Extract the image, download pishrink, and shrink/compress it
-sudo dd if=/dev/sdX of=mirrordash-raw.img bs=4M status=progress && \
+# 0. Identify the correct device — substitute /dev/sdX with your actual SD card device
+lsblk
+
+# Extract the image
+sudo dd if=/dev/sdX of=mirrordash-raw.img bs=4M status=progress
+
+# Download PiShrink, shrink only the rootfs, and compress
+# -z: gzip compress the output. Do NOT add -a (auto-expand): our 3-partition layout
+# is already correctly sized and PiShrink would target the wrong (last) partition.
 wget -N https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh && \
 chmod +x pishrink.sh && \
-sudo ./pishrink.sh -z -a mirrordash-raw.img mirrordash-final.img
+sudo ./pishrink.sh -z mirrordash-raw.img mirrordash-final.img
 ```
 
 The compiled `mirrordash-final.img.gz` is a fully optimized, failsafe, locked golden image ready for deployment.

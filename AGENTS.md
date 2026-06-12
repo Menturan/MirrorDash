@@ -176,6 +176,17 @@ python mirrordash_core/main.py
 
 28. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) in the repository and group manual instructions into chained commands using `&&` to minimize copy-paste errors and user friction.
 
+29. **Golden Image is a Production IoT Environment.** `GOLDEN_IMAGE.md` and all associated setup scripts (`scripts/setup_appliance.sh`, `scripts/launch.sh`) must be authored with the same rigour as a professional, high-grade IoT production system. Concretely this means:
+   - **No source code on the device.** Install the application from PyPI; fetch only the specific assets needed (e.g. `launch.sh`, splash image) via `curl`. Never clone the development repository onto a production appliance.
+   - **No development artifacts.** No editable installs (`-e`), no test dependencies, no debug flags, no `print()` tracing left in production paths.
+   - **No leftover secrets.** Development WiFi credentials, SSH keys, and test API keys must be purged before image finalization (Section 7).
+   - **Assume zero human intervention after deployment.** Every failure mode must be handled automatically (watchdog, rollback, captive portal fallback). Never design a recovery path that requires SSH or physical access.
+   - **Treat every instruction as executed by a non-expert.** Commands must be unambiguous, safe by default, and include guards (e.g. `lsblk` before `dd`, `visudo -c` after sudoers edits).
+
+30. **Documentation ↔ Script Synchronization.** Documentation files that describe setup procedures (e.g. `GOLDEN_IMAGE.md`) and their corresponding automation scripts (e.g. `scripts/setup_appliance.sh`, `scripts/launch.sh`) are **two representations of the same truth**. When modifying commands, package names, paths, flags, or procedures in one, you **must** immediately update the other to match. Never leave them out of sync.
+
+    This principle applies universally across the entire project: any documentation file that describes behavior, configuration, APIs, or procedures must stay in sync with the code, scripts, templates, or config files that implement it. Examples include `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, `ARCHITECTURE.md` ↔ actual code patterns, and module `README.md` files ↔ module source code.
+
 ---
 
 ## Architecture Patterns
@@ -314,6 +325,8 @@ The file `static/design.html` (served at `/design`) is a live component kitchen-
 | Hardcoding fixed widths for columns or lists in module templates | Design layouts to be fully responsive. Other languages (like Swedish or German) can have words that are much longer than English. Use flexbox/grid and truncation (`text-overflow: ellipsis`) instead. |
 | Leaving root partition boundaries unmonitored during package installation | Expose and show root partition disk usage metrics, warning users if free space drops below 500MB on the 6GB partition. |
 | Writing instructions with dozens of manual copy-paste commands | Provide automated scripts (like `scripts/setup_appliance.sh`) and chain manual command segments using `&&`. |
+| Treating the golden image setup like a development environment | The golden image is a professional IoT production environment. No `git clone`, no editable installs, no debug flags, no leftover dev credentials. Install from PyPI; fetch only needed assets via `curl`. |
+| Updating documentation without updating the corresponding code/scripts (or vice versa) | Documentation and its implementation are two representations of the same truth. Always update both simultaneously — e.g. `GOLDEN_IMAGE.md` ↔ `setup_appliance.sh`, `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, module `README.md` ↔ module source. |
 
 
 

@@ -2,6 +2,9 @@
 # Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # MirrorDash Automatic Appliance Setup Script
 # Configure a fresh Debian Trixie (Raspberry Pi OS) installation into a production MirrorDash kiosk.
+#
+# This script is designed for production IoT appliances. It installs the application
+# from PyPI — no source code is cloned onto the device (AGENTS.md Rule 29).
 
 set -e
 
@@ -13,14 +16,15 @@ fi
 
 PI_USER="pi"
 PI_HOME="/home/$PI_USER"
+GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
 
 echo "=== 1. Updating and Installing APT Packages ==="
 apt update
+apt full-upgrade -y
 apt install -y --no-install-recommends \
     labwc \
-    chromium-browser \
+    chromium \
     wlr-randr \
-    git \
     plymouth \
     plymouth-themes \
     parted
@@ -44,10 +48,10 @@ cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
 
 # Prevent Chromium "didn't shut down correctly" restore prompt after power loss
 sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromium/'Local State' 2>/dev/null
-sed -i 's/"exit_type":"[^"]\+"/"exit_type":"Normal"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
+sed -i 's/"exit_type":"[^"]\+"/\"exit_type\":\"Normal\"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
 
 # Launch Chromium in kiosk mode with native Wayland rendering
-chromium-browser \
+chromium \
     --kiosk \
     --ozone-platform=wayland \
     --noerrdialogs \
@@ -63,24 +67,23 @@ chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
 echo "=== 4. Expanding Partition & Setting up Persistent Storage ==="
 # Expand root partition (p2) to 6GB and resize filesystem
-parted /dev/mmcblk0 resizepart 2 6GB || true
-resize2fs /dev/mmcblk0p2 || true
+parted /dev/mmcblk0 resizepart 2 6GB
+resize2fs /dev/mmcblk0p2
 
 # Create p3, format it
-parted -s /dev/mmcblk0 mkpart primary ext4 6GB 100% || true
-mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 || true
+parted -s /dev/mmcblk0 mkpart primary ext4 6GB 100%
+mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3
 
-# Setup storage directory structures
+# Mount the new partition first, then create directory structure on it
 mkdir -p /storage
-mkdir -p /storage/mirrordash/data
-mkdir -p /storage/mirrordash/venv_a
-mkdir -p /storage/mirrordash/venv_b
+mount /dev/mmcblk0p3 /storage
 
-# Ensure correct permissions on storage
+# Now create directories on the actual persistent partition
+mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b
 chown -R "$PI_USER:$PI_USER" /storage
 
-mkdir -p "$PI_HOME/.mirrordash/cache"
-mkdir -p "$PI_HOME/.mirrordash/data"
+# Create application data directories
+mkdir -p "$PI_HOME/.mirrordash/cache" "$PI_HOME/.mirrordash/data"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.mirrordash"
 
 # Update fstab
@@ -99,63 +102,44 @@ tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  
 EOF
 fi
 
-# Try mounting new mounts
-mount -a || true
+# Mount all fstab entries (bind mounts, tmpfs)
+mount -a
 
 echo "=== 5. Installing uv & MirrorDash App ==="
-# Run uv install as the pi user
+# Install uv as the pi user (standalone binary — does not require git or Python)
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
 
-# Set up app directory and symlinks
+# Create app directory
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "mkdir -p \$HOME/mirrordash"
 
-# Copy the source files of the app if they aren't already there (assuming the script is run from inside the repo)
-if [ -d "mirrordash_core" ]; then
-  echo "Copying MirrorDash repository files to $PI_HOME/mirrordash..."
-  cp -r . "$PI_HOME/mirrordash/"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/mirrordash"
-fi
-
-# Setup symlink structures
+# Setup symlink structures (A/B venv layout)
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "ln -sfT venv_a /storage/mirrordash/venv"
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "ln -sfT /storage/mirrordash/venv \$HOME/mirrordash/.venv"
 
-# Create base_venv (Golden Copy) and active venv_a
+# Create base_venv (Golden Copy) and active venv_a, then install from PyPI
+# Note: uv is a standalone binary at ~/.local/bin/uv — it is NOT inside the venv.
 sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "
   source \$HOME/.local/bin/env
   cd \$HOME/mirrordash
-  
+
   echo 'Creating primary virtual environment in venv_a...'
   uv venv --python 3.14 /storage/mirrordash/venv_a
-  
+
   echo 'Creating golden backup virtual environment base_venv...'
-  uv venv --python 3.14 base_venv
+  uv venv --python 3.14 \$HOME/mirrordash/base_venv
+
+  echo 'Installing MirrorDash from PyPI into primary venv...'
+  uv pip install --python .venv mirrordash
+
+  echo 'Installing MirrorDash from PyPI into golden venv...'
+  uv pip install --python \$HOME/mirrordash/base_venv mirrordash
 "
 
-# Install MirrorDash in both virtual environments
-sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "
-  source \$HOME/.local/bin/env
-  cd \$HOME/mirrordash
-  
-  echo 'Installing MirrorDash into primary virtual environment...'
-  .venv/bin/uv pip install -e .
-  
-  echo 'Installing MirrorDash into golden virtual environment...'
-  base_venv/bin/uv pip install -e .
-  
-  if [ -d 'modules/mirrordash-clock' ]; then
-    echo 'Installing mirrordash-clock module...'
-    .venv/bin/uv pip install -e modules/mirrordash-clock
-    base_venv/bin/uv pip install -e modules/mirrordash-clock
-  fi
-"
-
-# Copy launch script and make executable
-if [ -f "$PI_HOME/mirrordash/scripts/launch.sh" ]; then
-  cp "$PI_HOME/mirrordash/scripts/launch.sh" "$PI_HOME/mirrordash/launch.sh"
-  chmod +x "$PI_HOME/mirrordash/launch.sh"
-  chown "$PI_USER:$PI_USER" "$PI_HOME/mirrordash/launch.sh"
-fi
+# Download launch.sh directly from GitHub (no repo needed on device)
+curl -sSL "$GITHUB_RAW/scripts/launch.sh" \
+    -o "$PI_HOME/mirrordash/launch.sh"
+chmod +x "$PI_HOME/mirrordash/launch.sh"
+chown "$PI_USER:$PI_USER" "$PI_HOME/mirrordash/launch.sh"
 
 echo "=== 6. Setting up Passwordless Sudo ==="
 cat << 'EOF' > /etc/sudoers.d/mirrordash
@@ -198,12 +182,11 @@ if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
 fi
 
 echo "=== 8. Configuring Plymouth Splash Screen ==="
-if [ -f "static/splash.png" ]; then
-  cp static/splash.png /usr/share/plymouth/themes/pix/splash.png
-elif [ -f "$PI_HOME/mirrordash/static/splash.png" ]; then
-  cp "$PI_HOME/mirrordash/static/splash.png" /usr/share/plymouth/themes/pix/splash.png
-fi
-plymouth-set-default-theme pix -R || true
+# Download splash asset directly from GitHub (no repo on device)
+curl -sSL "$GITHUB_RAW/static/splash.png" \
+    | tee /usr/share/plymouth/themes/pix/splash.png > /dev/null
+# On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
+plymouth-set-default-theme --rebuild-initrd pix
 
 echo "=== 9. Enabling systemd-time-wait-sync ==="
 systemctl enable systemd-time-wait-sync.service
