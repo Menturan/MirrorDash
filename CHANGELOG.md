@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-06-12
+
+### Added
+- A/B virtual environment update architecture to stage updates in a separate clone (`venv_next`) before atomic symlink activation, preventing system bricks on update failures.
+- Boot fallback launcher (`launch.sh`) with startup crash detection and automatic rollback to the previous stable copy (`venv_old`) or fallback to the read-only Golden Copy (`base_venv` in Safe Mode).
+- Programmatic boot-time restoration of system configuration states (timezone, SSH toggle state, and system password hash) under OverlayFS.
+- Glassmorphic status alert banners in the Admin dashboard with interactive "Rebuild Active Environment" trigger.
+- Ambient HUD notification cards in the kiosk mirror interface during system rollback or Safe Mode states.
+- Dedicated `/admin/rebuild-venv` API endpoint to rebuild and reinstall the core application and modules from scratch.
+- Unit tests verifying chpasswd execution, rebuild-venv logic, and A/B update validation.
+
+### Changed
+- Reordered appliance setup script execution steps to mount and format the persistent partition before setting up the virtual environments.
+- Updated golden image guide commands, chapters, and persistence grid to reflect the A/B virtual environment symlink mappings and settings restoration.
+
 ## [0.1.0] - 2026-05-30
 
 ### Features
@@ -38,5 +53,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Chores
 - Add jinja2 to dependencies in pyproject.toml
 
-[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/Menturan/MirrorDash/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/Menturan/MirrorDash/releases/tag/v0.1.0

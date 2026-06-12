@@ -22,6 +22,107 @@ logger = logging.getLogger("mirrordash.core.api.admin")
 router = APIRouter(prefix="/admin")
 
 # ---------------------------------------------------------------------------
+# Virtual Environment A/B Swapping Helpers
+# ---------------------------------------------------------------------------
+
+def get_venv_paths():
+    """Get venv paths: (venv_link, active_path, next_path).
+    Returns None if not running on a system with /storage/mirrordash.
+    """
+    from pathlib import Path
+    storage_dir = Path("/storage/mirrordash")
+    if not storage_dir.exists():
+        return None
+    venv_link = storage_dir / "venv"
+    venv_a = storage_dir / "venv_a"
+    venv_b = storage_dir / "venv_b"
+    active_path = venv_a
+    next_path = venv_b
+    if venv_link.exists() and venv_link.is_symlink():
+        try:
+            target = os.readlink(str(venv_link))
+            if "venv_b" in target:
+                active_path = venv_b
+                next_path = venv_a
+        except Exception:
+            pass
+    return venv_link, active_path, next_path
+
+async def prepare_venv_next(force_clean: bool = False):
+    """Clone active venv to next venv and point symlink to next.
+    If force_clean is True, starts with a completely clean virtual environment.
+    Returns (active_path, next_path) or None.
+    """
+    import shutil
+    from pathlib import Path
+    paths = get_venv_paths()
+    if not paths:
+        return None
+    venv_link, active_path, next_path = paths
+    logger.info(f"Preparing A/B swap: Active={active_path.name}, Next={next_path.name}, Clean={force_clean}")
+    try:
+        if next_path.exists():
+            shutil.rmtree(next_path)
+        if active_path.exists() and not force_clean:
+            shutil.copytree(active_path, next_path, symlinks=True)
+        else:
+            next_path.parent.mkdir(parents=True, exist_ok=True)
+            proc = await asyncio.create_subprocess_exec(
+                "uv", "venv", "--python", "3.14", str(next_path),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+    except Exception as e:
+        logger.error(f"Failed to clone/create virtual environment: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
+
+    # Point symlink to next_path
+    tmp_link = venv_link.parent / "venv_tmp"
+    if tmp_link.exists() or tmp_link.is_symlink():
+        tmp_link.unlink()
+    try:
+        os.symlink(next_path.name, tmp_link)
+        os.replace(tmp_link, venv_link)
+    except Exception as e:
+        logger.error(f"Failed to swap symlink: {e}")
+        if next_path.exists():
+            shutil.rmtree(next_path)
+        raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
+    return active_path, next_path
+
+async def commit_venv_next(active_path, next_path):
+    """Confirm the swap, moving the old active path to venv_old."""
+    import shutil
+    venv_old = active_path.parent / "venv_old"
+    logger.info(f"Committing A/B swap: {next_path.name} is now active.")
+    try:
+        if venv_old.exists():
+            shutil.rmtree(venv_old)
+        if active_path.exists():
+            os.rename(active_path, venv_old)
+    except Exception as e:
+        logger.warning(f"Failed to move active venv to venv_old: {e}")
+
+async def revert_venv_next(active_path, next_path):
+    """Cancel the swap, reverting the symlink and wiping next_path."""
+    import shutil
+    paths = get_venv_paths()
+    if not paths:
+        return
+    venv_link = paths[0]
+    logger.warning(f"Reverting A/B swap to: {active_path.name}")
+    tmp_link = venv_link.parent / "venv_tmp"
+    try:
+        if tmp_link.exists() or tmp_link.is_symlink():
+            tmp_link.unlink()
+        os.symlink(active_path.name, tmp_link)
+        os.replace(tmp_link, venv_link)
+        if next_path.exists():
+            shutil.rmtree(next_path)
+    except Exception as e:
+        logger.error(f"Failed to revert symlink: {e}")
+
+# ---------------------------------------------------------------------------
 # Authentication
 # ---------------------------------------------------------------------------
 
@@ -243,6 +344,7 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
     if ".." in package_name:
         raise HTTPException(status_code=400, detail="Invalid package name")
 
+    swap_info = await prepare_venv_next()
     await remount_rw()
     try:
         logger.info(f"Installing package: {package_name}")
@@ -260,12 +362,22 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if proc.returncode == 0:
             logger.info(f"Successfully installed {package_name}")
+            if swap_info:
+                await commit_venv_next(*swap_info)
             asyncio.create_task(run_restart())
             return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
         else:
-            err_msg = stderr.decode()
+            err_msg = stderr.decode(errors="replace")
             logger.error(f"Failed to install {package_name}: {err_msg}")
+            if swap_info:
+                await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Installation failed: {err_msg}")
+    except Exception as e:
+        if swap_info:
+            await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Installation failed: {e}")
     finally:
         await remount_ro()
 
@@ -290,6 +402,7 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
         except importlib.metadata.PackageNotFoundError:
             continue
 
+    swap_info = await prepare_venv_next()
     await remount_rw()
     try:
         logger.info(f"Upgrading package: {package_name} (current version: {old_version or 'unknown'})")
@@ -307,6 +420,8 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")
             logger.error(f"Failed to upgrade {package_name}: {err_msg}")
+            if swap_info:
+                await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
 
         logger.info(f"Successfully upgraded {package_name}. Verifying installation compatibility...")
@@ -331,31 +446,26 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if check_proc.returncode == 0:
             logger.info(f"Upgrade check passed for {package_name}. Restarting server...")
+            if swap_info:
+                await commit_venv_next(*swap_info)
             asyncio.create_task(run_restart())
             return {"status": "success", "message": f"Upgraded {package_name}. Restarting..."}
         else:
             # Verification failed! Roll back.
             check_err = check_stderr.decode(errors="replace")
             logger.warning(f"Upgrade check failed for {package_name}: {check_err}. Initiating rollback...")
-
-            if old_version:
-                rollback_proc = await asyncio.create_subprocess_exec(
-                    "uv", "pip", "install", f"{package_name}=={old_version}",
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=safe_env
-                )
-                await rollback_proc.communicate()
-                logger.info(f"Rollback to version {old_version} complete.")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Verification failed. Rolled back to version {old_version}. Error: {check_err}"
-                )
-            else:
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Verification failed. No rollback version found. Error: {check_err}"
-                )
+            if swap_info:
+                await revert_venv_next(*swap_info)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Verification failed. Rolled back successfully. Error: {check_err}"
+            )
+    except Exception as e:
+        if swap_info:
+            await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Upgrade failed: {e}")
     finally:
         await remount_ro()
 
@@ -368,6 +478,7 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
     if ".." in package_name:
         raise HTTPException(status_code=400, detail="Invalid package name")
 
+    swap_info = await prepare_venv_next()
     await remount_rw()
     try:
         # Load and remove module config from config.json if configured
@@ -400,12 +511,22 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if proc.returncode == 0:
             logger.info(f"Successfully uninstalled {package_name}")
+            if swap_info:
+                await commit_venv_next(*swap_info)
             asyncio.create_task(run_restart())
             return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
         else:
             err_msg = stderr.decode()
             logger.error(f"Failed to uninstall {package_name}: {err_msg}")
+            if swap_info:
+                await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Uninstall failed: {err_msg}")
+    except Exception as e:
+        if swap_info:
+            await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Uninstall failed: {e}")
     finally:
         await remount_ro()
 
@@ -482,6 +603,7 @@ async def update_core() -> dict:
         except importlib.metadata.PackageNotFoundError:
             continue
 
+    swap_info = await prepare_venv_next()
     safe_env = {k: v for k, v in os.environ.items() if k in (
         "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
     )}
@@ -500,11 +622,118 @@ async def update_core() -> dict:
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")
             logger.error(f"mirrordash-core upgrade failed: {err_msg}")
+            if swap_info:
+                await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
 
         logger.info("mirrordash-core upgraded successfully. Restarting server...")
+        if swap_info:
+            await commit_venv_next(*swap_info)
         asyncio.create_task(run_restart())
         return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
+    except Exception as e:
+        if swap_info:
+            await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
+    finally:
+        await remount_ro()
+
+
+@router.post("/rebuild-venv", dependencies=[Depends(require_api_key)])
+async def rebuild_venv() -> dict:
+    """Wipe the current A/B virtual environment and rebuild it from scratch.
+
+    Installs the core package and all local/configured modules, then restarts.
+    """
+    logger.info("Starting fresh rebuild of the virtual environment...")
+
+    swap_info = await prepare_venv_next(force_clean=True)
+    if not swap_info:
+        raise HTTPException(
+            status_code=500,
+            detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash)."
+        )
+
+    active_path, next_path = swap_info
+
+    safe_env = {k: v for k, v in os.environ.items() if k in (
+        "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
+    )}
+
+    await remount_rw()
+    try:
+        # 1. Install mirrordash-core
+        current_version = "unknown"
+        for pkg_name in ("mirrordash-core", "mirrordash_core"):
+            try:
+                current_version = importlib.metadata.version(pkg_name)
+                break
+            except importlib.metadata.PackageNotFoundError:
+                continue
+
+        logger.info(f"Rebuilding venv: installing mirrordash-core (version: {current_version})")
+
+        install_target = "mirrordash-core"
+        if current_version != "unknown":
+            install_target = f"mirrordash-core=={current_version}"
+
+        proc = await asyncio.create_subprocess_exec(
+            "uv", "pip", "install", install_target,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=safe_env,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err_msg = stderr.decode(errors="replace")
+            logger.error(f"Failed to install mirrordash-core: {err_msg}")
+            await revert_venv_next(*swap_info)
+            raise HTTPException(status_code=500, detail=f"Failed to install core: {err_msg}")
+
+        # 2. Find and install local modules
+        from pathlib import Path
+        from mirrordash_core.config import get_base_dir
+        base_dir = get_base_dir()
+        modules_dir = Path(base_dir) / "modules"
+        local_module_names = []
+        if modules_dir.exists() and modules_dir.is_dir():
+            for folder in modules_dir.iterdir():
+                if folder.is_dir() and (folder / "pyproject.toml").exists():
+                    logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
+                    proc_local = await asyncio.create_subprocess_exec(
+                        "uv", "pip", "install", "-e", str(folder),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=safe_env,
+                    )
+                    await proc_local.communicate()
+                    local_module_names.append(folder.name)
+
+        # 3. Find and install configured PyPI modules
+        config = load_config()
+        configured_modules = config.get("modules", {})
+        for mod_name in configured_modules.keys():
+            if mod_name not in local_module_names and mod_name != "mirrordash-clock":
+                logger.info(f"Rebuilding venv: installing configured PyPI module {mod_name}")
+                proc_pypi = await asyncio.create_subprocess_exec(
+                    "uv", "pip", "install", mod_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=safe_env,
+                )
+                await proc_pypi.communicate()
+
+        logger.info("Fresh venv rebuild completed successfully. Committing swap and restarting...")
+        await commit_venv_next(*swap_info)
+        asyncio.create_task(run_restart())
+        return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
+    except Exception as e:
+        await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Rebuild failed: {e}")
     finally:
         await remount_ro()
 
@@ -678,6 +907,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["brightness"] = brightness
     system_cfg["volume"] = volume
     system_cfg["display_control"] = display_control
+    system_cfg["ssh"] = ssh_enabled
 
     await remount_rw()
     try:
@@ -688,37 +918,75 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     # Apply SSH state; if enabling SSH, require and apply new password for pi user
     from mirrordash_core.system import set_ssh_status, get_ssh_status
     current_ssh_active = await get_ssh_status()
-    if ssh_enabled and not current_ssh_active:
-        pi_password = settings.get("pi_password")
-        if not pi_password or len(pi_password) < 8:
-            raise HTTPException(
-                status_code=400,
-                detail="A password of at least 8 characters is required to enable SSH."
-            )
-        # Update the pi user's password using chpasswd
-        try:
-            chpasswd_input = f"pi:{pi_password}\n".encode()
-            proc = await asyncio.create_subprocess_exec(
-                "sudo", "chpasswd",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate(input=chpasswd_input)
-            if proc.returncode != 0:
-                err_msg = stderr.decode(errors="replace").strip()
-                logger.error(f"chpasswd failed: {err_msg}")
+    if ssh_enabled:
+        if not current_ssh_active:
+            pi_password = settings.get("pi_password")
+            if not pi_password or len(pi_password) < 8:
                 raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to update system password: {err_msg}"
+                    status_code=400,
+                    detail="A password of at least 8 characters is required to enable SSH."
                 )
-            logger.info("Password for user 'pi' updated successfully.")
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.error(f"Unexpected error running chpasswd: {exc}")
-            raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
+            # Update the pi user's password using chpasswd
+            try:
+                chpasswd_input = f"pi:{pi_password}\n".encode()
+                proc = await asyncio.create_subprocess_exec(
+                    "sudo", "chpasswd",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate(input=chpasswd_input)
+                if proc.returncode != 0:
+                    err_msg = stderr.decode(errors="replace").strip()
+                    logger.error(f"chpasswd failed: {err_msg}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to update system password: {err_msg}"
+                    )
+                logger.info("Password for user 'pi' updated successfully.")
 
+                # Generate secure SHA-512 crypt hash using openssl
+                proc_hash = await asyncio.create_subprocess_exec(
+                    "openssl", "passwd", "-6", "-stdin",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout_hash, stderr_hash = await proc_hash.communicate(input=pi_password.encode())
+                if proc_hash.returncode != 0:
+                    err_msg = stderr_hash.decode(errors="replace").strip()
+                    logger.error(f"openssl hash failed: {err_msg}")
+                    raise HTTPException(status_code=500, detail="Failed to hash system password.")
+                pwd_hash = stdout_hash.decode().strip()
+
+                # Save password hash persistently
+                await remount_rw()
+                try:
+                    hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+                    with open(hash_path, "w", encoding="utf-8") as f:
+                        f.write(pwd_hash)
+                    os.chmod(hash_path, 0o600)
+                except Exception as io_err:
+                    logger.error(f"Failed to write password hash to disk: {io_err}")
+                finally:
+                    await remount_ro()
+
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(f"Unexpected error running chpasswd: {exc}")
+                raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
+    else:
+        # Delete persistent password hash if SSH is disabled
+        await remount_rw()
+        try:
+            hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+            if os.path.exists(hash_path):
+                os.remove(hash_path)
+        except Exception as io_err:
+            logger.error(f"Failed to remove password hash: {io_err}")
+        finally:
+            await remount_ro()
 
     await set_ssh_status(ssh_enabled)
 

@@ -119,34 +119,36 @@ python mirrordash_core/main.py
 
 7. **Wayland First.** The system uses Wayland (`labwc`) as the display server on Debian Trixie. Always prioritize Wayland-compatible commands (e.g., `wlr-randr`) over legacy X11 commands (`xset`, `xrandr`) for display management logic.
 
+8. **Latest OS Assumption.** Always assume the Golden Image is created from the absolute latest version of Raspberry Pi OS Lite (64-bit) (based on Debian Trixie/Debian 13 or newer). Configure all scripting, system packages, cmdline.txt adjustments, and network commands accordingly.
+
 ### Frontend
 
-8. **No frameworks.** The mirror frontend is intentionally framework-free. Do not introduce React, Vue, Alpine, HTMX, or similar.
+9. **No frameworks.** The mirror frontend is intentionally framework-free. Do not introduce React, Vue, Alpine, HTMX, or similar.
 
-9. **No `document.write()` or `eval()`.**
+10. **No `document.write()` or `eval()`.**
 
-10. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
+11. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
 
-11. **WebSocket reconnection uses exponential backoff.** Do not replace with simple `setInterval`. The existing pattern in `index.html` is correct.
+12. **WebSocket reconnection uses exponential backoff.** Do not replace with simple `setInterval`. The existing pattern in `index.html` is correct.
 
-12. **Vector Iconography (Lucide).** Use Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`) instead of colored or multi-color emojis.
+13. **Vector Iconography (Lucide).** Use Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`) instead of colored or multi-color emojis.
 
-13. **Icon Re-Rendering.** When injecting HTML dynamically (e.g., updating modules via WebSockets or JS), you must trigger `lucide.createIcons()` after the DOM updates so the vector glyphs are rendered on the client side.
+14. **Icon Re-Rendering.** When injecting HTML dynamically (e.g., updating modules via WebSockets or JS), you must trigger `lucide.createIcons()` after the DOM updates so the vector glyphs are rendered on the client side.
 
-14. **Responsive Fluidity & Translation Safety.** All module templates/layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
+15. **Responsive Fluidity & Translation Safety.** All module templates/layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
 
 ### Git
  
-15. **Always commit with `--no-gpg-sign`** — GPG signing is disabled on this machine.
+16. **Always commit with `--no-gpg-sign`** — GPG signing is disabled on this machine.
     ```bash
     git commit --no-gpg-sign -m "feat: ..."
     ```
  
-16. **Follow conventional commits:** `feat:`, `fix:`, `refactor:`, `style:`, `docs:`, `chore:`.
+17. **Follow conventional commits:** `feat:`, `fix:`, `refactor:`, `style:`, `docs:`, `chore:`.
 
 ### Testing
 
-17. **Smart & Targeted Test Execution.**
+18. **Smart & Targeted Test Execution.**
     - **Required for Logic Changes**: Unit/integration tests in the `tests/` directory are mandatory for any backend/frontend code modifications, logic updates, or bug fixes.
     - **Bypass for Non-Logic Changes**: You MUST NOT run backend tests if modifications are strictly limited to documentation (e.g., `.md` files), inline code comments, pure styling (CSS), static assets, or templates with no execution logic.
     - **Targeted Test Runs**: During development, run only the relevant test file or specific test cases (e.g., `.venv/bin/pytest tests/test_event_bus.py` or `.venv/bin/pytest -k <test_name>`) instead of running the entire suite. Only run the full suite (`.venv/bin/pytest`) as a final validation step before completion.
@@ -154,25 +156,25 @@ python mirrordash_core/main.py
 
 ### General
 
-18. **Architectural Patterns & Refactoring.** Always follow well-known code architectural patterns and perform necessary refactoring to keep the codebase clean, modular, and well-formatted.
+19. **Architectural Patterns & Refactoring.** Always follow well-known code architectural patterns and perform necessary refactoring to keep the codebase clean, modular, and well-formatted.
 
-19. **Context Size Warnings.** Monitor and inform the user if the model context starts getting excessively large, so they are aware of potential token exhaustion or truncation limits.
+20. **Context Size Warnings.** Monitor and inform the user if the model context starts getting excessively large, so they are aware of potential token exhaustion or truncation limits.
 
-20. **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and accessibility requirements (such as high-contrast button readability) defined in `DESIGN.md`, `AGENTS.md`, and CSS files is mandatory when styling or modifying layouts/components.
+21. **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and accessibility requirements (such as high-contrast button readability) defined in `DESIGN.md`, `AGENTS.md`, and CSS files is mandatory when styling or modifying layouts/components.
 
-21. **Document all new features immediately.** Any new features, configurations, or design system classes must be documented across all relevant documentation files (`ARCHITECTURE.md`, `DESIGN.md`, `MODULE_GUIDE.md`, `AGENTS.md`, and `CHANGELOG.md`) immediately to prevent documentation drift.
+22. **Document all new features immediately.** Any new features, configurations, or design system classes must be documented across all relevant documentation files (`ARCHITECTURE.md`, `DESIGN.md`, `MODULE_GUIDE.md`, `AGENTS.md`, and `CHANGELOG.md`) immediately to prevent documentation drift.
 
-22. **Follow global configurations.** Always respect, load, and inherit settings defined under "global configuration" (such as language, timezone, time format, temperature/distance units, and coordinate location) when formatting, styling, or building logic for modules or core dashboard features.
+23. **Follow global configurations.** Always respect, load, and inherit settings defined under "global configuration" (such as language, timezone, time format, temperature/distance units, and coordinate location) when formatting, styling, or building logic for modules or core dashboard features.
 
-23. **Minimize dependency inflation and prefer robust standard libraries.** Prefer utilizing well-known, popular, and robust packages (e.g. `Babel` for localization, `pytest` for tests) to avoid reinventing the wheel for complex domain tasks. However, remain conservative—do not add dependencies for simple utilities that can be written in a few lines of clean, native code. Make well-considered dependency decisions.
+24. **Minimize dependency inflation and prefer robust standard libraries.** Prefer utilizing well-known, popular, and robust packages (e.g. `Babel` for localization, `pytest` for tests) to avoid reinventing the wheel for complex domain tasks. However, remain conservative—do not add dependencies for simple utilities that can be written in a few lines of clean, native code. Make well-considered dependency decisions.
 
-24. **Always use the mirrordash-cli scaffolder when creating new modules.** Never manually scaffold module directories from scratch. Always run the `mirrordash-cli create-module mirrordash-<name> --description "<desc>"` command to ensure a fully compatible packaging, template directory, and entry point layout structure is generated automatically.
+25. **Always use the mirrordash-cli scaffolder when creating new modules.** Never manually scaffold module directories from scratch. Always run the `mirrordash-cli create-module mirrordash-<name> --description "<desc>"` command to ensure a fully compatible packaging, template directory, and entry point layout structure is generated automatically.
 
-25. **Professional Grade IoT & Consumer Simplicity.** The system must operate with professional-grade IoT reliability, designed to run continuously for years without manual intervention, memory leaks, or filesystem corruption. Every user-facing interface, including the captive portal network setup wizard, must be designed with ultimate simplicity in mind, ensuring that non-technical users (such as your parents) can use and configure the device safely, intuitively, and without command-line access.
+26. **Professional Grade IoT & Consumer Simplicity.** The system must operate with professional-grade IoT reliability, designed to run continuously for years without manual intervention, memory leaks, or filesystem corruption. Every user-facing interface, including the captive portal network setup wizard, must be designed with ultimate simplicity in mind, ensuring that non-technical users (such as your parents) can use and configure the device safely, intuitively, and without command-line access.
 
-26. **Disk Space Boundary Monitoring.** The virtual environment `.venv` resides on the root filesystem (ext4) which is capped at 6GB in the golden image. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint). Always display a warning visual when remaining root partition free space drops below 500MB to avoid system crashes on OverlayFS.
+27. **Disk Space Boundary Monitoring.** The virtual environment `.venv` resides on the root filesystem (ext4) which is capped at 6GB in the golden image. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint). Always display a warning visual when remaining root partition free space drops below 500MB to avoid system crashes on OverlayFS.
 
-27. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) in the repository and group manual instructions into chained commands using `&&` to minimize copy-paste errors and user friction.
+28. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) in the repository and group manual instructions into chained commands using `&&` to minimize copy-paste errors and user friction.
 
 ---
 
@@ -274,6 +276,7 @@ The file `static/design.html` (served at `/design`) is a live component kitchen-
 
 | File | Update when... |
 |------|---------------|
+| `README.md` | Any high-level project goals, setup instructions, or repository layout changes |
 | `ARCHITECTURE.md` | A new architectural decision is made or an existing one changes |
 | `DESIGN.md` | Any CSS component is added, removed, or renamed in `style.css` |
 | `MODULE_GUIDE.md` (in `mirrordash-sdk` repo) | The **module developer API** changes — new injected helpers, lifecycle hooks, config schema format, or storage conventions. **Not** for documenting specific modules. |

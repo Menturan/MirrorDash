@@ -152,3 +152,98 @@ restartBtn.onclick = async () => {
         } catch (_) {}
     }, 1500);
 };
+
+async function initBootStatusAlert() {
+    const banner = document.getElementById('system-alert-banner');
+    if (!banner) return;
+    try {
+        const response = await fetch('/api/active-modules');
+        if (!response.ok) return;
+        const data = await response.json();
+        
+        if (data.boot_status === 'rollback' || data.boot_status === 'safe_mode') {
+            let title, iconClass, messageText, actionButtonHtml;
+            const isSafeMode = data.boot_status === 'safe_mode';
+            
+            if (isSafeMode) {
+                title = 'Safe Mode Active';
+                iconClass = 'fas fa-shield-alt';
+                messageText = 'MirrorDash has booted from the read-only Golden Copy (safe backup environment) because the primary virtual environment failed to launch. Custom modules and updates are currently disabled.';
+                actionButtonHtml = `<button id="rebuild-venv-btn" class="btn danger"><i class="fas fa-tools"></i> Rebuild Active Environment</button>`;
+            } else {
+                title = 'System Rollback Triggered';
+                iconClass = 'fas fa-history';
+                messageText = 'MirrorDash recovered from a critical startup crash by automatically rolling back the last update. Some of your recent changes may have been reverted to restore stability.';
+                actionButtonHtml = `<button id="rebuild-venv-btn" class="btn secondary"><i class="fas fa-tools"></i> Rebuild Active Environment</button>`;
+            }
+            
+            banner.className = `system-alert system-alert--${isSafeMode ? 'error' : 'warning'}`;
+            banner.innerHTML = `
+                <div class="system-alert-header">
+                    <i class="${iconClass}"></i>
+                    <h3 class="system-alert-title">${title}</h3>
+                </div>
+                <p class="system-alert-body">${messageText}</p>
+                <div class="system-alert-actions">
+                    ${actionButtonHtml}
+                </div>
+            `;
+            banner.style.display = 'flex';
+            
+            const rebuildBtn = document.getElementById('rebuild-venv-btn');
+            if (rebuildBtn) {
+                rebuildBtn.onclick = async () => {
+                    if (!confirm('Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes.')) {
+                        return;
+                    }
+                    rebuildBtn.disabled = true;
+                    rebuildBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Rebuilding...';
+                    
+                    try {
+                        const res = await fetch('/admin/rebuild-venv', {
+                            method: 'POST',
+                            headers: authHeaders()
+                        });
+                        
+                        if (res.ok) {
+                            showGlobal('Rebuild succeeded. Restarting system...', 'success');
+                            // Wait for restart and reload
+                            setTimeout(() => {
+                                const pollStart = Date.now();
+                                const poll = setInterval(async () => {
+                                    if (Date.now() - pollStart > 60000) {
+                                        clearInterval(poll);
+                                        showGlobal('Server did not respond after 60s.', 'error');
+                                        rebuildBtn.disabled = false;
+                                        rebuildBtn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
+                                        return;
+                                    }
+                                    try {
+                                        const r = await fetch('/health');
+                                        if (r.ok) {
+                                            clearInterval(poll);
+                                            window.location.reload();
+                                        }
+                                    } catch (_) {}
+                                }, 2000);
+                            }, 3000);
+                        } else {
+                            const err = await res.json();
+                            showGlobal('Rebuild failed: ' + (err.detail || 'Unknown error'), 'error');
+                            rebuildBtn.disabled = false;
+                            rebuildBtn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
+                        }
+                    } catch (e) {
+                        showGlobal('Network error during rebuild: ' + e.message, 'error');
+                        rebuildBtn.disabled = false;
+                        rebuildBtn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
+                    }
+                };
+            }
+        } else {
+            banner.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Failed to load boot status:', e);
+    }
+}

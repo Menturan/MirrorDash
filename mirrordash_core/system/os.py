@@ -146,3 +146,26 @@ async def apply_system_timezone(timezone: str) -> bool:
     except Exception as e:
         logger.warning(f"Failed to set system timezone to {timezone}: {e}")
         return False
+
+async def apply_system_password_hash(pwd_hash: str) -> bool:
+    """Apply system password hash for user 'pi' using chpasswd -e."""
+    logger.info("Applying system password hash...")
+    try:
+        chpasswd_input = f"pi:{pwd_hash}\n".encode()
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "chpasswd", "-e",
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await proc.communicate(input=chpasswd_input)
+        if proc.returncode != 0:
+            err_msg = stderr.decode(errors="replace").strip()
+            logger.error(f"chpasswd -e failed: {err_msg}")
+            return False
+        logger.info("System password hash applied successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Unexpected error running chpasswd -e: {e}")
+        return False
+

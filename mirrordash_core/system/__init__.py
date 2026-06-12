@@ -5,6 +5,7 @@ from mirrordash_core.system.os import (
     run_restart,
     reboot_system,
     apply_system_timezone,
+    apply_system_password_hash,
 )
 from mirrordash_core.system.display import (
     get_available_resolutions,
@@ -25,6 +26,7 @@ __all__ = [
     "run_restart",
     "reboot_system",
     "apply_system_timezone",
+    "apply_system_password_hash",
     "get_available_resolutions",
     "apply_system_settings",
     "set_screen_power",
@@ -33,3 +35,4 @@ __all__ = [
     "get_ssh_status",
     "set_ssh_status",
 ]
+

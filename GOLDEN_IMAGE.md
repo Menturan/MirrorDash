@@ -34,9 +34,9 @@ After selecting the OS and storage media in Raspberry Pi Imager, click **Next** 
 Before ejecting the SD card from your workstation and booting the Pi for the first time, you must prevent the automatic root partition expansion script from running. This leaves the remaining SD card space unallocated so you can easily create the persistent partition later:
 
 1. **Open cmdline.txt**:
-   With the SD card still inserted in your workstation, open the boot partition (labeled `boot/firmware` or `boot`) and locate `cmdline.txt`.
-2. **Disable the resize script**:
-   Delete `init=/usr/lib/raspi-config/init_resize.sh` from the single line of boot arguments in `cmdline.txt`. Save and close the file.
+   With the SD card still inserted in your workstation, open the boot partition (labeled `bootfs` or `boot`) and locate `cmdline.txt`.
+2. **Disable the resize script/parameter**:
+   Delete `init=/usr/lib/raspi-config/init_resize.sh` or the standalone parameter `resize` from the single line of boot arguments in `cmdline.txt`. Save and close the file.
 3. **Eject and insert**:
    Eject the SD card from your workstation, insert it into the Raspberry Pi, and power it on.
 
@@ -120,22 +120,102 @@ chmod +x /home/pi/.config/labwc/autostart
 
 ---
 
-## 2. Environment & Application Setup
+## 2. Storage Strategy & Directory Contract
 
-### 2.1 Install uv & Deploy Application
+To protect the physical SD card from high-frequency write cycles and ensure immunity to sudden power loss corruption, the filesystem operates in a strict hybrid mode. The SD card is partitioned into three regions:
 
-Initialize the deployment working directory, install `uv` (modern Python package manager), configure a standalone virtual environment locked to Python 3.14, and deploy the application package in a single command chain:
+| Partition | Mount | Filesystem | Purpose |
+|-----------|-------|------------|---------|
+| `mmcblk0p1` | `/boot/firmware` | FAT32 | Boot partition (kernel, firmware, config.txt) |
+| `mmcblk0p2` | `/` | ext4 | Root filesystem (protected by OverlayFS in production) |
+| `mmcblk0p3` | `/storage` | ext4 | **Persistent data partition** (writable, survives OverlayFS) |
+
+> [!IMPORTANT]
+> In Trixie, `raspi-config nonint enable_overlayfs` makes the **entire root filesystem read-only** with a tmpfs upper layer. All writes to `/` (including `/home`, `/etc`, `/var`) are absorbed by RAM and **lost on reboot**. User configuration, module data, and any state that must persist across reboots **must** reside on a separate physical partition that is not covered by the overlay.
+
+### 2.1 Expand Root & Create Persistent Partition
+
+Because the automatic partition expansion script was disabled in Section 1.3, your root partition (`/dev/mmcblk0p2`) starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories, run the unified command chain:
 
 ```bash
-# Install uv, source environment, and install mirrordash core
-curl -LsSf https://astral.sh/uv/install.sh | sh && \
-source $HOME/.local/bin/env && \
-mkdir -p /home/pi/mirrordash && cd /home/pi/mirrordash && \
-uv venv --python 3.14 && \
-uv pip install mirrordash
+# Expand root to 6GB, create partition 3, format it, and initialize directories
+sudo parted /dev/mmcblk0 resizepart 2 6GB && \
+sudo resize2fs /dev/mmcblk0p2 && \
+sudo parted -s /dev/mmcblk0 mkpart primary ext4 6GB 100% && \
+sudo mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 && \
+sudo mkdir -p /storage && \
+sudo mount /dev/mmcblk0p3 /storage && \
+sudo mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b && \
+sudo chown -R pi:pi /storage && \
+mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
 ```
 
-### 2.2 Passwordless Sudo for Application Commands
+### 2.2 Update `/etc/fstab` & Mount
+
+Append the storage layout mounts to `/etc/fstab` and mount all filesystems in one step:
+
+```bash
+# Append MirrorDash storage layout mounts to /etc/fstab
+sudo tee -a /etc/fstab << 'EOF'
+
+# --- MirrorDash Storage ---
+# Persistent data partition (survives OverlayFS)
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60  0  2
+
+# Bind-mount persistent data into the application's expected path
+/storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind  0  0
+
+# Volatile module cache in RAM (100 MB)
+tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
+EOF
+
+# Mount and check partition details
+sudo mount -a && df -h | grep -E "storage|mirrordash"
+```
+
+### 2.3 Logging
+
+Trixie configures `systemd-journald` as **volatile by default** — logs are stored only in RAM (`/run/log/journal`) and are lost on reboot. This is the desired behavior for a production appliance: zero SD card wear from logging, with no additional packages needed.
+
+If persistent logs are needed for debugging during development, they can be temporarily enabled via:
+
+```bash
+sudo raspi-config   # Advanced Options → Logging → Persistent
+```
+
+---
+
+## 3. Environment & Application Setup
+
+### 3.1 Install uv & Deploy Application
+
+Initialize the deployment working directory, install `uv` (modern Python package manager), configure the persistent A/B virtual environment layout, and deploy the application:
+
+```bash
+# 1. Install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh && \
+source $HOME/.local/bin/env
+
+# 2. Setup app directory
+mkdir -p /home/pi/mirrordash && cd /home/pi/mirrordash
+
+# 3. Setup symlinks to the persistent partition
+ln -sfT venv_a /storage/mirrordash/venv && \
+ln -sfT /storage/mirrordash/venv /home/pi/mirrordash/.venv
+
+# 4. Create base_venv (Golden Copy) and active venv_a
+uv venv --python 3.14 /storage/mirrordash/venv_a && \
+uv venv --python 3.14 base_venv
+
+# 5. Install mirrordash into both virtual environments
+.venv/bin/uv pip install -e . && \
+base_venv/bin/uv pip install -e .
+
+# 6. Copy boot launcher script
+cp scripts/launch.sh launch.sh && chmod +x launch.sh
+```
+
+### 3.2 Passwordless Sudo for Application Commands
 
 > [!IMPORTANT]
 > As of April 2026, Raspberry Pi OS Trixie **disables passwordless sudo by default**. The MirrorDash backend runs as the `pi` user and invokes `sudo` for system administration tasks (filesystem remounting, SSH control, timezone changes, network management, display backlight control). Without passwordless sudo for these specific commands, the application will **deadlock** waiting for a password prompt that never comes.
@@ -159,75 +239,6 @@ pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 EOF
 sudo chmod 440 /etc/sudoers.d/mirrordash
 sudo visudo -cf /etc/sudoers.d/mirrordash
-```
-
----
-
-## 3. Storage Strategy & Directory Contract
-
-To protect the physical SD card from high-frequency write cycles and ensure immunity to sudden power loss corruption, the filesystem operates in a strict hybrid mode. The SD card is partitioned into three regions:
-
-| Partition | Mount | Filesystem | Purpose |
-|-----------|-------|------------|---------|
-| `mmcblk0p1` | `/boot/firmware` | FAT32 | Boot partition (kernel, firmware, config.txt) |
-| `mmcblk0p2` | `/` | ext4 | Root filesystem (protected by OverlayFS in production) |
-| `mmcblk0p3` | `/storage` | ext4 | **Persistent data partition** (writable, survives OverlayFS) |
-
-> [!IMPORTANT]
-> In Trixie, `raspi-config nonint enable_overlayfs` makes the **entire root filesystem read-only** with a tmpfs upper layer. All writes to `/` (including `/home`, `/etc`, `/var`) are absorbed by RAM and **lost on reboot**. User configuration, module data, and any state that must persist across reboots **must** reside on a separate physical partition that is not covered by the overlay.
-
-### 3.1 Create the Persistent Data Partition
-
-### 3.1 Expand Root & Create Persistent Partition
-
-Because the automatic partition expansion script was disabled in Section 1.3, your root partition (`/dev/mmcblk0p2`) starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories, run the unified command chain:
-
-```bash
-# Expand root to 6GB, create partition 3, format it, and initialize directories
-sudo parted /dev/mmcblk0 resizepart 2 6GB && \
-sudo resize2fs /dev/mmcblk0p2 && \
-sudo parted -s /dev/mmcblk0 mkpart primary ext4 6GB 100% && \
-sudo mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 && \
-sudo mkdir -p /storage /storage/mirrordash/data && \
-mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
-```
-
-> [!TIP]
-> **Frozen System Immutability**: Keeping the Python virtual environment (`.venv`) and installed packages on the read-only root partition is a critical security design. It ensures that the core codebase is immune to runtime corruption, malware persistence, or accidental changes across reboots. 
-> 
-> By expanding the root partition to **6GB**, you allocate ample space (around 4.1GB of free space after standard packages) for future modules and large package dependencies (like NumPy, Pillow, or Home Assistant libraries). All high-volume user data (configs, module databases, and caches) resides on partition 3, preventing root disk space depletion.
-
-### 3.2 Update `/etc/fstab` & Mount
-
-Append the storage layout mounts to `/etc/fstab` and mount all filesystems in one step:
-
-```bash
-# Append MirrorDash storage layout mounts to /etc/fstab
-sudo tee -a /etc/fstab << 'EOF'
-
-# --- MirrorDash Storage ---
-# Persistent data partition (survives OverlayFS)
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60  0  2
-
-# Bind-mount persistent data into the application's expected path
-/storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind  0  0
-
-# Volatile module cache in RAM (100 MB)
-tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
-EOF
-
-# Mount and check partition details
-sudo mount -a && df -h | grep -E "storage|mirrordash"
-```
-
-### 3.4 Logging
-
-Trixie configures `systemd-journald` as **volatile by default** — logs are stored only in RAM (`/run/log/journal`) and are lost on reboot. This is the desired behavior for a production appliance: zero SD card wear from logging, with no additional packages needed.
-
-If persistent logs are needed for debugging during development, they can be temporarily enabled via:
-
-```bash
-sudo raspi-config   # Advanced Options → Logging → Persistent
 ```
 
 ---
@@ -352,7 +363,7 @@ Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/b
 Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
 Environment="WAYLAND_DISPLAY=wayland-1"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
-ExecStart=/home/pi/mirrordash/.venv/bin/uvicorn mirrordash_core.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/pi/mirrordash/launch.sh
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -443,13 +454,12 @@ This table documents which data survives a reboot under the OverlayFS-locked pro
 | Module persistent data | `~/.mirrordash/data/<module>/` | Persistent partition (bind mount) | ✅ Yes |
 | Module cache | `~/.mirrordash/cache/<module>/` | tmpfs (RAM) | ❌ No |
 | System logs | `/run/log/journal/` | RAM (volatile journald) | ❌ No |
-| Installed packages | `/home/pi/mirrordash/.venv/` | OverlayFS upper (RAM) | ❌ No |
-| SSH toggle state | `/etc/systemd/system/` | OverlayFS upper (RAM) | ❌ No |
-| System password | `/etc/shadow` | OverlayFS upper (RAM) | ❌ No |
-| Timezone | `/etc/localtime` | OverlayFS upper (RAM) | ❌ No |
+| Installed packages | `/storage/mirrordash/venv` | Persistent partition via symlink | ✅ Yes |
+| SSH toggle state | `/etc/systemd/system/` | Saved in `config.json` & re-applied at boot | ✅ Yes |
+| System password | `/etc/shadow` | Saved in `pi_password.hash` & re-applied at boot | ✅ Yes |
+| Timezone | `/etc/localtime` | Saved in `config.json` & re-applied at boot | ✅ Yes |
 
 > [!IMPORTANT]
-> **SSH, password, and timezone changes made via the admin UI are ephemeral.** They take effect immediately but revert on reboot. This is an intentional security property: even if an attacker enables SSH and sets a known password, a power cycle restores the locked-down state. For persistent SSH access during development, disable OverlayFS first via `sudo raspi-config`.
-
-> [!WARNING]
-> **Module installation and updates** (`uv pip install`) write to the venv directory on the OverlayFS upper layer. These changes are **lost on reboot**. To permanently install modules, temporarily disable OverlayFS, perform the installation, and re-enable it. A future release may automate this via the admin UI.
+> **A/B updates and settings persistence** are fully automated. SSH toggle states, the user password hash, and the selected timezone are persistently stored on the `/storage` partition and dynamically applied at boot by the `module_loader` system service.
+> 
+> **Failsafe Rollback System**: If an update or module installation corrupts the virtual environment and causes startup crashes, the launcher (`launch.sh`) automatically rolls back to the stable copy (`venv_old`) or boots from the read-only Golden Copy (`base_venv` in Safe Mode) and displays warning alerts in the Admin and Kiosk UIs.

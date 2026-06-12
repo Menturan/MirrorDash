@@ -2,7 +2,7 @@ import asyncio
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch, AsyncMock, ANY
+from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
 
 from mirrordash_core.app import app
 from mirrordash_core.api.admin import hash_password
@@ -344,25 +344,35 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True, "pi_password": "SecurePass1!"}
 
-    # Mock chpasswd subprocess success
-    mock_process = AsyncMock()
+    # Mock subprocesses success (first chpasswd, then openssl)
+    mock_process = MagicMock()
     mock_process.returncode = 0
-    mock_process.communicate.return_value = (b"", b"")
+    mock_process.communicate = AsyncMock(side_effect=[(b"", b""), (b"hashed_pass\n", b"")])
     mock_subproc.return_value = mock_process
 
-    response = client.post("/admin/system", json=payload, headers=headers)
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    with patch("builtins.open", mock_open()):
+        response = client.post("/admin/system", json=payload, headers=headers)
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"
 
-    # chpasswd must have been called with sudo
-    mock_subproc.assert_called_once_with(
+    # Verify both chpasswd and openssl were called
+    assert mock_subproc.call_count == 2
+    mock_subproc.assert_any_call(
         "sudo", "chpasswd",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    # Password must be passed via stdin in the format "pi:<password>\n"
-    mock_process.communicate.assert_called_once_with(input=b"pi:SecurePass1!\n")
+    mock_subproc.assert_any_call(
+        "openssl", "passwd", "-6", "-stdin",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    # Verify both communicates were called
+    assert mock_process.communicate.call_count == 2
+    mock_process.communicate.assert_any_call(input=b"pi:SecurePass1!\n")
+    mock_process.communicate.assert_any_call(input=b"SecurePass1!")
 
 
 @patch("mirrordash_core.api.admin.load_config")
@@ -574,4 +584,40 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
     assert data["free_bytes"] == 7000000000
     assert data["percent_used"] == 30.0
     mock_disk_usage.assert_called_once_with("/")
+
+
+@patch("mirrordash_core.api.admin.load_config")
+@patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.asyncio.create_task")
+@patch("mirrordash_core.api.admin.importlib.metadata.version", return_value="1.0.0")
+@patch("mirrordash_core.api.admin.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.revert_venv_next", new_callable=AsyncMock)
+def test_rebuild_venv_success(mock_revert, mock_commit, mock_prepare, mock_version,
+                               mock_create_task, mock_exec, mock_restart,
+                               mock_ro, mock_rw, mock_load, client):
+    """POST /admin/rebuild-venv succeeds, rebuilds venv, and triggers restart."""
+    mock_load.return_value = MOCK_CONFIG
+    mock_prepare.return_value = ("/storage/mirrordash/venv_a", "/storage/mirrordash/venv_b")
+
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+    mock_exec.return_value = mock_proc
+
+    headers = {"X-API-Key": "secret"}
+    response = client.post("/admin/rebuild-venv", headers=headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "success"
+    assert "rebuilt successfully" in data["message"]
+    mock_prepare.assert_awaited_once_with(force_clean=True)
+    mock_commit.assert_awaited_once_with("/storage/mirrordash/venv_a", "/storage/mirrordash/venv_b")
+    mock_rw.assert_awaited_once()
+    mock_ro.assert_awaited_once()
+    mock_create_task.assert_called_once()
+
 

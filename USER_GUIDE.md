@@ -39,7 +39,8 @@ The Admin Dashboard is organized into five main tabs:
 
 ### 4.1. Modules Tab
 This is where you manage the widgets displayed on your mirror.
-*   **Root Partition Storage (Virtual Env)**: Displays a real-time disk usage gauge showing the total, used, and free space on the system's root partition. Since modules and their dependencies are installed directly in the frozen environment, this gauge helps you monitor the 6GB boundary. A warning will appear if free space drops below 500MB.
+*   **Root Partition Storage (Virtual Env)**: Displays a real-time disk usage gauge showing the total, used, and free space on the system's root partition. Since modules and their dependencies are installed in the A/B virtual environments, this gauge helps you monitor the 6GB boundary. A warning will appear if free space drops below 500MB.
+*   **Failsafe Recovery & Rebuild**: If the system is running in rollback mode or Safe Mode due to a startup crash, a warning banner will be displayed at the top of the Admin dashboard. You can click the **Rebuild Active Environment** button to trigger a fresh rebuild of the virtual environment, reinstalling the core system and configured modules.
 *   **Active Modules**: Lists all currently running widgets. You can click **Configure** next to any active module to adjust its settings (e.g., changing refresh intervals, adding calendar URLs, or toggling headers).
 *   **Install New Modules**: Search the community module database. Click **Details** on any module to read its setup guide and view screenshots. Click **Install** to add it to your system.
 *   **Uninstalling**: If you no longer need a module, click **Uninstall** to cleanly remove it from the system and configuration.
@@ -141,8 +142,9 @@ MirrorDash is designed to be a plug-and-play appliance. If you move your mirror 
 
 To ensure 100% crash resilience and protect physical SD media from wear, MirrorDash runs on a locked read-only system (OverlayFS) with split directory lifecycles:
 
-*   **Persistent Configuration (`~/.mirrordash/data/`)**: All permanent files, user settings, databases, and authentication tokens are saved in the persistent sector.
-*   **Volatile Caching (`~/.mirrordash/cache/`)**: ephemerals, network logs, and downloaded icons live entirely in a RAM-disk buffer and are wiped cleanly when the system loses power.
+*   **Persistent Configuration & Virtual Environments (`/storage/mirrordash/`)**: All permanent files, user settings (including timezone, SSH daemon configurations, and password hashes), databases, authentication tokens, and the primary A/B virtual environments survive reboots on the writeable storage partition.
+*   **Volatile Caching (`~/.mirrordash/cache/`)**: Ephemeral files, network logs, and downloaded icons live entirely in a RAM-disk buffer and are wiped cleanly when the system loses power.
+*   **Failsafe Recovery**: If a software update causes a startup crash, the system automatically rolls back the symlink to the previous stable copy (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode) to keep the mirror online.
 
 You can safely pull the power plug at any time without risking database or partition corruption.
 

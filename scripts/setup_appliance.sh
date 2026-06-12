@@ -22,7 +22,8 @@ apt install -y --no-install-recommends \
     wlr-randr \
     git \
     plymouth \
-    plymouth-themes
+    plymouth-themes \
+    parted
 apt autoclean -y
 apt autoremove -y
 
@@ -60,30 +61,7 @@ EOF
 chmod +x "$PI_HOME/.config/labwc/autostart"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
-echo "=== 4. Installing uv & MirrorDash App ==="
-# Run uv install as the pi user
-sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
-sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "source \$HOME/.local/bin/env && mkdir -p \$HOME/mirrordash && cd \$HOME/mirrordash && uv venv --python 3.14 && uv pip install mirrordash"
-
-echo "=== 5. Setting up Passwordless Sudo ==="
-cat << 'EOF' > /etc/sudoers.d/mirrordash
-# MirrorDash application — scoped passwordless sudo
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,ro /
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
-pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
-pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
-pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
-pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
-EOF
-chmod 440 /etc/sudoers.d/mirrordash
-visudo -cf /etc/sudoers.d/mirrordash
-
-echo "=== 6. Expanding Partition & Setting up Persistent Storage ==="
+echo "=== 4. Expanding Partition & Setting up Persistent Storage ==="
 # Expand root partition (p2) to 6GB and resize filesystem
 parted /dev/mmcblk0 resizepart 2 6GB || true
 resize2fs /dev/mmcblk0p2 || true
@@ -95,6 +73,12 @@ mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 || true
 # Setup storage directory structures
 mkdir -p /storage
 mkdir -p /storage/mirrordash/data
+mkdir -p /storage/mirrordash/venv_a
+mkdir -p /storage/mirrordash/venv_b
+
+# Ensure correct permissions on storage
+chown -R "$PI_USER:$PI_USER" /storage
+
 mkdir -p "$PI_HOME/.mirrordash/cache"
 mkdir -p "$PI_HOME/.mirrordash/data"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.mirrordash"
@@ -117,6 +101,79 @@ fi
 
 # Try mounting new mounts
 mount -a || true
+
+echo "=== 5. Installing uv & MirrorDash App ==="
+# Run uv install as the pi user
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
+
+# Set up app directory and symlinks
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "mkdir -p \$HOME/mirrordash"
+
+# Copy the source files of the app if they aren't already there (assuming the script is run from inside the repo)
+if [ -d "mirrordash_core" ]; then
+  echo "Copying MirrorDash repository files to $PI_HOME/mirrordash..."
+  cp -r . "$PI_HOME/mirrordash/"
+  chown -R "$PI_USER:$PI_USER" "$PI_HOME/mirrordash"
+fi
+
+# Setup symlink structures
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "ln -sfT venv_a /storage/mirrordash/venv"
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "ln -sfT /storage/mirrordash/venv \$HOME/mirrordash/.venv"
+
+# Create base_venv (Golden Copy) and active venv_a
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "
+  source \$HOME/.local/bin/env
+  cd \$HOME/mirrordash
+  
+  echo 'Creating primary virtual environment in venv_a...'
+  uv venv --python 3.14 /storage/mirrordash/venv_a
+  
+  echo 'Creating golden backup virtual environment base_venv...'
+  uv venv --python 3.14 base_venv
+"
+
+# Install MirrorDash in both virtual environments
+sudo -u "$PI_USER" -i env HOME="$PI_HOME" bash -c "
+  source \$HOME/.local/bin/env
+  cd \$HOME/mirrordash
+  
+  echo 'Installing MirrorDash into primary virtual environment...'
+  .venv/bin/uv pip install -e .
+  
+  echo 'Installing MirrorDash into golden virtual environment...'
+  base_venv/bin/uv pip install -e .
+  
+  if [ -d 'modules/mirrordash-clock' ]; then
+    echo 'Installing mirrordash-clock module...'
+    .venv/bin/uv pip install -e modules/mirrordash-clock
+    base_venv/bin/uv pip install -e modules/mirrordash-clock
+  fi
+"
+
+# Copy launch script and make executable
+if [ -f "$PI_HOME/mirrordash/scripts/launch.sh" ]; then
+  cp "$PI_HOME/mirrordash/scripts/launch.sh" "$PI_HOME/mirrordash/launch.sh"
+  chmod +x "$PI_HOME/mirrordash/launch.sh"
+  chown "$PI_USER:$PI_USER" "$PI_HOME/mirrordash/launch.sh"
+fi
+
+echo "=== 6. Setting up Passwordless Sudo ==="
+cat << 'EOF' > /etc/sudoers.d/mirrordash
+# MirrorDash application — scoped passwordless sudo
+pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
+pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,ro /
+pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
+pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
+pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
+pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
+pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
+pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
+pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
+pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
+pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+EOF
+chmod 440 /etc/sudoers.d/mirrordash
+visudo -cf /etc/sudoers.d/mirrordash
 
 echo "=== 7. Enabling Watchdog & Optimizing Boot ==="
 # Watchdog RuntimeWatchdogSec=14s
@@ -141,7 +198,6 @@ if ! grep -q "console=tty3" /boot/firmware/cmdline.txt; then
 fi
 
 echo "=== 8. Configuring Plymouth Splash Screen ==="
-# Setup splash if present in the current folder, otherwise download or skip
 if [ -f "static/splash.png" ]; then
   cp static/splash.png /usr/share/plymouth/themes/pix/splash.png
 elif [ -f "$PI_HOME/mirrordash/static/splash.png" ]; then
@@ -213,7 +269,7 @@ Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/b
 Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
 Environment="WAYLAND_DISPLAY=wayland-1"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
-ExecStart=/home/pi/mirrordash/.venv/bin/uvicorn mirrordash_core.main:app --host 0.0.0.0 --port 8000
+ExecStart=/home/pi/mirrordash/launch.sh
 Restart=always
 RestartSec=3
 StandardOutput=journal

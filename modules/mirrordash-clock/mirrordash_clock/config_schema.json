@@ -12,19 +12,15 @@
             "type": "string",
             "default": "middle_center",
             "enum": [
-                "top_bar",
                 "top_left",
                 "top_center",
                 "top_right",
-                "upper_third",
                 "middle_left",
                 "middle_center",
                 "middle_right",
-                "lower_third",
                 "bottom_left",
                 "bottom_center",
-                "bottom_right",
-                "bottom_bar"
+                "bottom_right"
             ],
             "title": "Screen Position",
             "description": "Which section of the screen the clock is rendered in."

@@ -37,7 +37,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Eliminates the flash of a blank screen on startup/page refresh. It provides immediate, responsive feedback ("Loading Swedish Name Day...", "Loading Clock...") while the backend modules fetch remote API data or perform slow initialization loops.
 
 ## 9. WebSocket State Caching for Instant Updates
-* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws_manager.py](file:///home/menturan/repos/mirrordash/mirrordash_core/ws_manager.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
+* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws_manager.py](file:///home/menturan/repos/mymagicmirror/mirrordash_core/ws_manager.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
 * **Rationale**: Resolves the delay on page refresh where modules (especially those with long update intervals like the 60-second name day module or hourly updates) would remain as skeletons until their sleep intervals completed and they triggered a new broadcast. Now, refreshed screens load the last rendered frames instantly.
 
 ## 10. Carousel Groups for Layout Regions
@@ -71,5 +71,14 @@ This document records the core architectural decisions made during the design, d
 ## 17. Watchdog and Time Synchronization Boot Guard
 * **Decision**: Enabled the kernel hardware watchdog (`RuntimeWatchdogSec=14s` in `/etc/systemd/system.conf`) and modified the core systemd service file to require synchronization with network online and time wait-sync targets before startup.
 * **Rationale**: Ensures the system restarts automatically if a deadlock occurs, and prevents module SSL handshake failures at startup due to the Raspberry Pi's lack of a hardware RTC battery.
+
+## 18. Failsafe A/B Virtual Environment Updates
+* **Decision**: Redirected the virtual environment `.venv` from the read-only root partition to the persistent writeable `/storage` partition via a symlink. When updates or module installations/removals are performed, they are staged in a cloned alternative directory (`venv_a` or `venv_b`). Once successful, the symlink is atomically updated.
+* **Rationale**: Prevents package upgrades from bricking the system in the event of an update failure (network drops, syntax errors, or incompatible package versions).
+
+## 19. Boot Fallback Launcher and Settings Restoration
+* **Decision**: Implemented a boot launcher script (`launch.sh`) that monitors the startup lifespan of the application. If the primary virtual environment fails to boot successfully within 10 seconds, it automatically rolls back to the previous stable state (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode), alerting the user via UI status banners. Additionally, user configurations (SSH state, timezone, and shadow-crypt password hash) are programmatically re-applied on boot.
+* **Rationale**: Maintains a high standard of consumer appliance resilience and security under OverlayFS, ensuring the device remains accessible and self-healing.
+
 
 

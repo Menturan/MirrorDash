@@ -30,6 +30,7 @@
         </header>
 
         <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
+        <div id="system-alert-banner" class="system-alert" style="display: none;"></div>
 
         <!-- Page-Level Tabs -->
         <nav class="page-tabs" role="tablist">
@@ -121,6 +122,7 @@
         initPageTabs();
         initTabs();
         loadConfig();
+        initBootStatusAlert();
     </script>
 </body>
 </html>

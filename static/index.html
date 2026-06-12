@@ -226,6 +226,41 @@
             try {
                 const response = await fetch('/api/active-modules');
                 const data = await response.json();
+
+                // Check boot status and display alert card
+                if (data && (data.boot_status === 'rollback' || data.boot_status === 'safe_mode')) {
+                    const notifyContainer = document.getElementById('top_right');
+                    if (notifyContainer) {
+                        const alertDiv = document.createElement('div');
+                        alertDiv.className = 'card alert-callout';
+                        alertDiv.style.marginBottom = '1rem';
+                        alertDiv.style.borderColor = data.boot_status === 'safe_mode' ? 'var(--color-error)' : 'var(--color-status-warning)';
+                        
+                        let title, icon, msg;
+                        if (data.boot_status === 'safe_mode') {
+                            title = 'Safe Mode Active';
+                            icon = 'shield-alert';
+                            msg = 'Core system booted from Golden Copy. Custom modules are disabled.';
+                        } else {
+                            title = 'System Restored';
+                            icon = 'rotate-ccw';
+                            msg = 'Recovered from boot failure. Update automatically rolled back.';
+                        }
+                        
+                        alertDiv.innerHTML = `
+                            <div style="display:flex; gap:10px; align-items:center;">
+                                <i data-lucide="${icon}" style="width:20px; height:20px; color:${data.boot_status === 'safe_mode' ? 'var(--color-error)' : 'var(--color-status-warning)'};"></i>
+                                <h3 style="margin:0; font-size:1rem; font-weight:600; text-transform:uppercase; letter-spacing:0.05em;">${title}</h3>
+                            </div>
+                            <p style="margin:8px 0 0 0; font-size:0.875rem; color:var(--color-text-secondary); line-height:1.4;">${msg}</p>
+                        `;
+                        notifyContainer.insertBefore(alertDiv, notifyContainer.firstChild);
+                        if (window.lucide) {
+                            lucide.createIcons({ root: alertDiv });
+                        }
+                    }
+                }
+
                 if (data && data.modules) {
                     for (const mod of data.modules) {
                         const targetElement = document.getElementById(mod.position);

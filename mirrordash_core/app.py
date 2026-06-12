@@ -1,6 +1,7 @@
 # Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import os
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Depends, Header, HTTPException
@@ -157,7 +158,9 @@ async def get_active_modules() -> dict:
             "carousel_group": config.get("carousel_group"),
             "carousel_interval": config.get("carousel_interval", 15)
         })
-    return {"modules": modules_list}
+    # Read boot status from environment
+    boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")
+    return {"modules": modules_list, "boot_status": boot_status}
 
 # WebSocket communication endpoint
 @app.websocket("/ws")

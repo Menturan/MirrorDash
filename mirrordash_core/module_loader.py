@@ -5,6 +5,7 @@ import asyncio
 import logging
 import importlib.metadata
 import importlib.util
+import os
 from mirrordash_core.config import load_config, find_module_config, get_base_dir
 from mirrordash_core.ws_manager import manager
 from mirrordash_core.event_bus import event_bus
@@ -52,6 +53,9 @@ class ModuleLoader:
         # Apply system settings on startup (brightness, rotation, resolution, volume)
         try:
             system_cfg = config.get("system", {})
+            global_cfg = config.get("globals", {})
+
+            # Apply display and audio settings
             if system_cfg:
                 from mirrordash_core.system import apply_system_settings
                 asyncio.create_task(apply_system_settings(
@@ -60,6 +64,31 @@ class ModuleLoader:
                     system_cfg.get("brightness", 100),
                     system_cfg.get("volume", 80)
                 ))
+
+            # Apply timezone
+            timezone = global_cfg.get("timezone")
+            if timezone:
+                from mirrordash_core.system import apply_system_timezone
+                asyncio.create_task(apply_system_timezone(timezone))
+
+            # Apply SSH status
+            ssh_enabled = system_cfg.get("ssh")
+            if ssh_enabled is not None:
+                from mirrordash_core.system import set_ssh_status
+                asyncio.create_task(set_ssh_status(ssh_enabled))
+
+            # Apply persistent system password hash if present
+            hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+            if os.path.exists(hash_path):
+                try:
+                    with open(hash_path, "r", encoding="utf-8") as f:
+                        pwd_hash = f.read().strip()
+                    if pwd_hash:
+                        from mirrordash_core.system import apply_system_password_hash
+                        asyncio.create_task(apply_system_password_hash(pwd_hash))
+                except Exception as pwd_err:
+                    logger.warning(f"Failed to read/apply saved password hash: {pwd_err}")
+
         except Exception as e:
             logger.warning(f"Failed to apply system settings on startup: {e}")
 

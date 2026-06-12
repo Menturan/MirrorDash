@@ -175,3 +175,24 @@ async def test_set_ssh_status(mock_ro, mock_rw, mock_subproc):
     mock_rw.assert_called_once()
     mock_ro.assert_called_once()
     assert mock_subproc.call_count == 2
+
+
+@pytest.mark.asyncio
+@patch("asyncio.create_subprocess_exec")
+async def test_apply_system_password_hash(mock_subproc):
+    mock_proc = AsyncMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate.return_value = (b"", b"")
+    mock_subproc.return_value = mock_proc
+
+    from mirrordash_core.system.os import apply_system_password_hash
+    res = await apply_system_password_hash("somehash")
+    assert res is True
+    mock_subproc.assert_called_once_with(
+        "sudo", "chpasswd", "-e",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    mock_proc.communicate.assert_called_once_with(input=b"pi:somehash\n")
+
