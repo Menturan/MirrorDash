@@ -107,8 +107,9 @@ The primary goal is to maintain the utility of a physical mirror while overlayin
 
 **Key Stylistic Pillars:**
 - **Zero-Light Background:** Pure black surfaces ensure pixels are off, allowing the mirror's reflectivity to remain functional.
-- **Atmospheric Clarity:** Information is pushed to the periphery to preserve the center for physical reflection.
+- **Atmospheric Clarity:** Pushing information to the periphery preserves the center for physical reflection.
 - **Technical Precision:** Sharp lines, refined typography, and purposeful spacing evoke a sense of high-end aerospace or medical instrumentation.
+- **Passive Presentation:** The mirror display is a passive HUD, not an interactive interface. The mouse cursor is globally hidden (`cursor: none;`) to maintain a clean visual look.
 
 ## Colors
 
