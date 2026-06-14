@@ -1,4 +1,3 @@
-# Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
@@ -14,7 +13,7 @@ import urllib.request
 from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, Header
 from mirrordash_core.config import load_config, save_config, find_module_config
-from mirrordash_core.system import remount_ro, remount_rw, run_restart, get_available_resolutions, apply_system_settings, set_screen_power
+from mirrordash_core.system import remount_ro, remount_rw, run_restart, get_available_resolutions, apply_system_settings, set_screen_power, is_wifi_hotspot_active
 from mirrordash_core.module_loader import module_loader
 
 logger = logging.getLogger("mirrordash.core.api.admin")
@@ -161,7 +160,11 @@ async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> 
 async def get_auth_status() -> dict:
     config = load_config()
     setup_required = "admin_auth" not in config
-    return {"setup_required": setup_required}
+    hotspot_active = await is_wifi_hotspot_active()
+    return {
+        "setup_required": setup_required,
+        "wifi_hotspot_active": hotspot_active
+    }
 
 @router.post("/auth/setup")
 async def setup_auth(body: dict = Body(...)) -> dict:

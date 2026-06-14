@@ -1,4 +1,3 @@
-# Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
@@ -119,4 +118,19 @@ async def set_ssh_status(enabled: bool) -> bool:
     except Exception as e:
         logger.error(f"Failed to change SSH status: {e}")
         await remount_ro()
+        return False
+
+async def is_wifi_hotspot_active() -> bool:
+    """Check if the MirrorDash-Setup WiFi hotspot is currently active in NetworkManager."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, _ = await proc.communicate()
+        lines = stdout.decode("utf-8", errors="ignore").splitlines()
+        return "MirrorDash-Setup" in lines
+    except Exception as e:
+        logger.error(f"Failed to check if hotspot is active: {e}")
         return False

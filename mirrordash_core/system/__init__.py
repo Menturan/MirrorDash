@@ -17,6 +17,7 @@ from mirrordash_core.system.network import (
     connect_wifi,
     get_ssh_status,
     set_ssh_status,
+    is_wifi_hotspot_active,
 )
 
 __all__ = [
@@ -34,5 +35,6 @@ __all__ = [
     "connect_wifi",
     "get_ssh_status",
     "set_ssh_status",
+    "is_wifi_hotspot_active",
 ]
 
