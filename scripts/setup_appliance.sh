@@ -237,8 +237,8 @@ EOF
 }
 
 step_installing_packages() {
-  # 1. Prevent dpkg from installing documentation (saves disk space and prevents man-db updates)
-  echo "Configuring dpkg to exclude man pages, documentation, and info files..."
+  # 1. Prevent dpkg from installing documentation & locales (saves disk space and prevents man-db updates)
+  echo "Configuring dpkg to exclude man pages, documentation, locales, and info files..."
   mkdir -p /etc/dpkg/dpkg.cfg.d
   cat << 'EOF' > /etc/dpkg/dpkg.cfg.d/01_nodoc
 path-exclude /usr/share/doc/*
@@ -247,6 +247,7 @@ path-exclude /usr/share/groff/*
 path-exclude /usr/share/info/*
 path-exclude /usr/share/lintian/*
 path-exclude /usr/share/linda/*
+path-exclude /usr/share/locale/*
 EOF
 
   # 2. Divert mandb and update-initramfs to prevent redundant execution during package installation
@@ -277,10 +278,14 @@ EOF
       avahi-daemon \
       nginx \
       plymouth \
-      plymouth-themes \
       pix-plym-splash \
       parted \
       python3
+
+  # Purge unused audio/hardware daemons to save space and boot time
+  echo "Purging unused audio/hardware daemons (alsa-utils, triggerhappy)..."
+  eatmydata apt purge -y alsa-utils triggerhappy
+
   eatmydata apt autoclean -y
   eatmydata apt autoremove -y
 
