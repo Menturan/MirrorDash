@@ -1,6 +1,17 @@
-# MirrorDash Release Process
+# MirrorDash Release & Deployment Process
 
-This document outlines the professional release workflow for MirrorDash. Releases are automated via GitHub Actions, and packages are securely published to PyPI using OpenID Connect (OIDC) Trusted Publishing.
+This document outlines the release, testing, and deployment workflows for MirrorDash.
+
+> [!IMPORTANT]
+> **Core App Release vs. System OS Release: The Crucial Distinction**
+>
+> | Property | Core Application (`mirrordash`) | System OS Image (`mirrordash-os`) |
+> | :--- | :--- | :--- |
+> | **What it is** | The Python application running the FastAPI server and Admin dashboard. | The underlying operating system configuration, drivers, Wayland compositor, and system packages. |
+> | **When to release** | Whenever new features, layout changes, module upgrades, or Python bug fixes are merged. | Only when system packages (e.g. `nginx`, `plymouth`, `labwc`), hardware configurations, or network fallback scripts are modified. |
+> | **Release target** | Published to PyPI via automated GitHub Actions. | Compiled locally in QEMU and uploaded directly to GitHub Releases as a compressed `.img.gz` asset. |
+> | **Deployment method** | **Non-Destructive**: Triggered via the Admin Dashboard's "Updates" tab (uses A/B `venv` partition updates). | **Destructive**: Requires flashing the SD card. Backup settings first, flash, configure Wi-Fi, and restore settings. |
+> | **Risk level** | **Low**: Handled by the A/B virtual environment update system with automatic rollback to `venv_old` or Safe Mode. | **High**: Overwrites all card data. System must be re-provisioned via the Wi-Fi Captive Portal on first boot. |
 
 ## Release Guidelines
 
@@ -115,12 +126,54 @@ To thoroughly test the image before distribution:
 4. **Dashboard & Mirror Load**: Verify that the mirror loads the kiosk web page (`index.html`) correctly, displays the initial loading skeletons, transitions into active widgets when WebSocket communication is established, and runs stably.
 5. **Admin Access**: Ensure the admin dashboard (e.g. `http://mirrordash.local/admin` or `http://<IP>/admin`) is accessible and requires the correct API key.
 
-### 4. Direct Manual Distribution
-To share a pre-release version of the image with testers:
+### 4. Direct Distribution
+To share the compiled OS image:
 1. Generate a SHA256 checksum:
    ```bash
    sha256sum mirrordash-final.img.gz > mirrordash-final.img.gz.sha256
    ```
-2. Upload the `mirrordash-final.img.gz` and `mirrordash-final.img.gz.sha256` files directly to a cloud drive (e.g., Google Drive, Dropbox) or attach them manually as assets in a draft GitHub Release.
-3. Provide the tester with the SHA256 file so they can run `sha256sum -c mirrordash-final.img.gz.sha256` to confirm file integrity before flashing.
+2. Upload `mirrordash-final.img.gz` and `mirrordash-final.img.gz.sha256` directly as assets in your GitHub Release page.
+
+---
+
+## Client Update & Deployment Procedures
+
+Once a new release is available, follow these instructions to apply it to a running MirrorDash kiosk.
+
+### 1. Deploying a Core App Update (Non-Destructive)
+
+To upgrade the core application on active devices:
+
+#### Method A: Online Dashboard Update (Recommended)
+1. Open the **Admin Dashboard** (`http://mirrordash.local/admin`).
+2. Go to the **Updates** tab.
+3. Click **Update Core** to trigger the update. The system will download the new package from PyPI, stage it in the offline virtual environment (`venv_next`), commit the atomic A/B swap, and automatically restart.
+
+#### Method B: SSH Command Line Update (Failsafe/Manual)
+1. Access the device over SSH.
+2. Manually invoke `uv` to update the active virtual environment:
+   ```bash
+   sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv_a --upgrade mirrordash
+   ```
+3. Restart the background service:
+   ```bash
+   sudo reboot
+   ```
+
+### 2. Deploying a System OS Update (Destructive)
+
+To update the OS configuration on active devices, you must flash the new image. Since this overwrites all SD card contents, follow this backup-and-restore protocol:
+
+1. **Back up Configuration**:
+   * Navigate to the **Backup** tab in the existing Admin Dashboard.
+   * Click **Create Backup** to download the `mirrordash_backup.zip` file. This contains all layouts, timezones, Wi-Fi credentials, and settings.
+2. **Flash the SD Card**:
+   * Flash the new `mirrordash-final.img.gz` to the SD card using **Raspberry Pi Imager** or **BalenaEtcher**.
+3. **Provision Wi-Fi (Captive Portal)**:
+   * Insert the card and power on the Pi. The system will enter **Failsafe Captive Portal** mode within 30 seconds.
+   * Connect to the **`MirrorDash-Setup`** hotspot using password **`mirrordash`**.
+   * Navigate to `http://10.42.0.1/`, select your home network SSID, enter your password, and click **Connect & Reboot**.
+4. **Restore Configuration**:
+   * Once the mirror restarts, open the **Admin Dashboard** (`http://mirrordash.local/admin`).
+   * Go to the **Backup** tab, upload the backup `.zip` file, and restore it. The system will automatically restore your configuration and reboot to resume normal operation.
 
