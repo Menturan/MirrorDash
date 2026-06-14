@@ -7,9 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Core App
-- Added a local, high-contrast HTML loading screen (`loading.html`) styled after the Ethereal design system that loads instantly on startup and polls the FastAPI health check to redirect the browser when the app is online.
-
 ### System OS (Appliance)
 - Added standard SHA256 integrity verification for base Raspberry Pi OS Lite downloads in `build_image.sh`.
 - Added support for local development asset integration in `setup_appliance.sh` (copies `launch.sh`, `loading.html`, `splash.png`, `shutdown.png`, and `finalize_appliance.sh` from the `/opt/MirrorDash` repository folder if it exists, rather than always downloading from GitHub), ensuring local changes are correctly packaged into new Golden Images.
@@ -36,6 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected duplicate step numbers in `setup_appliance.sh` after introducing `nginx` setup.
 - Reordered appliance setup script execution steps to mount and format the persistent partition before setting up the virtual environments.
 - Updated golden image guide commands, chapters, and persistence grid to reflect the A/B virtual environment symlink mappings and settings restoration.
+
+## [0.2.3] - 2026-06-14
+
+### Core App
+- Added a local, high-contrast HTML loading screen (`loading.html`) styled after the Ethereal design system that loads instantly on startup and polls the FastAPI health check to redirect the browser when the app is online.
 
 ## [0.2.2] - 2026-06-12
 
@@ -83,7 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add section on common gotchas and best practices for module developers.
 - Add jinja2 to dependencies in pyproject.toml.
 
-[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/Menturan/MirrorDash/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/Menturan/MirrorDash/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/Menturan/MirrorDash/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/Menturan/MirrorDash/compare/v0.1.0...v0.2.0
