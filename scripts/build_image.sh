@@ -446,14 +446,21 @@ cleanup_and_unmount() {
 shrink_and_compress() {
     info "Shrinking and compressing the final image..."
     
-    # Remove any existing .gz image to avoid interactive overwrite prompt
-    rm -f "$BUILD_DIR/${FINAL_IMAGE}.gz"
+    # Remove any existing .gz image and checksum files
+    rm -f "$BUILD_DIR/${FINAL_IMAGE}.gz" "$BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
     
     # Run pishrink with -z on the final image. It will shrink in-place and then gzip it,
     # automatically appending .gz to the filename (resulting in mirrordash-final.img.gz)
     pishrink.sh -z "$BUILD_DIR/$FINAL_IMAGE"
     
+    info "Generating SHA256 checksum..."
+    (
+        cd "$BUILD_DIR"
+        sha256sum "${FINAL_IMAGE}.gz" > "${FINAL_IMAGE}.gz.sha256"
+    )
+    
     info "Build complete. Final image is at $BUILD_DIR/${FINAL_IMAGE}.gz"
+    info "SHA256 checksum generated at $BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
 }
 
 # --- Main Flow ---
