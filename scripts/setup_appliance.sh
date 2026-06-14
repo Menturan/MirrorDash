@@ -262,13 +262,20 @@ EOF
   apt update
   apt install -y --no-install-recommends eatmydata pigz
 
-  # 4. Enable pigz (multi-threaded gzip) in initramfs-tools configuration (retains high compression of gzip but uses all CPU threads)
-  if [ -f /etc/initramfs-tools/initramfs.conf ]; then
-    echo "Configuring initramfs to use multi-threaded pigz compression..."
-    sed -i 's/^COMPRESS=.*/COMPRESS=pigz/' /etc/initramfs-tools/initramfs.conf
+  # 4. Temporarily divert gzip to pigz to accelerate initramfs generation without kernel support warnings
+  if ! dpkg-divert --list | grep -q "/usr/bin/gzip"; then
+    echo "Temporarily diverting gzip to pigz..."
+    dpkg-divert --local --rename --add /usr/bin/gzip
+    ln -sf /usr/bin/pigz /usr/bin/gzip
   fi
 
-  # 5. Perform package upgrades and installation under eatmydata
+  # 5. Ensure initramfs is configured to use gzip compression (which we diverted to pigz)
+  if [ -f /etc/initramfs-tools/initramfs.conf ]; then
+    echo "Configuring initramfs to use standard gzip (diverted to pigz)..."
+    sed -i 's/^COMPRESS=.*/COMPRESS=gzip/' /etc/initramfs-tools/initramfs.conf
+  fi
+
+  # 6. Perform package upgrades and installation under eatmydata
   echo "Installing system packages using eatmydata..."
   eatmydata apt full-upgrade -y
   eatmydata apt install -y --no-install-recommends \
@@ -289,7 +296,7 @@ EOF
   eatmydata apt autoclean -y
   eatmydata apt autoremove -y
 
-  # 6. Restore mandb and update-initramfs and rebuild the initial ramdisk once
+  # 7. Restore mandb and update-initramfs and rebuild the initial ramdisk once
   echo "Restoring update-initramfs and regenerating initial ramdisk..."
   rm -f /usr/sbin/update-initramfs
   dpkg-divert --local --rename --remove /usr/sbin/update-initramfs
@@ -297,7 +304,15 @@ EOF
   rm -f /usr/bin/mandb
   dpkg-divert --local --rename --remove /usr/bin/mandb
 
+  # This will use the diverted gzip (pigz) multi-threaded compression
   update-initramfs -u -k all
+
+  # 8. Restore original gzip
+  if dpkg-divert --list | grep -q "/usr/bin/gzip"; then
+    echo "Restoring original gzip..."
+    rm -f /usr/bin/gzip
+    dpkg-divert --local --rename --remove /usr/bin/gzip
+  fi
 }
 
 step_setting_hostname() {

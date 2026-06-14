@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### System OS (Appliance)
+- Enabled host CPU extensions mapping in emulated QEMU environment by exporting `QEMU_CPU=max` in `build_image.sh`, accelerating compilation and package installation.
+- Fixed `pigz` initramfs warning (`W: pigz compression () not supported by kernel, using gzip`) by keeping standard `gzip` compression format in `/etc/initramfs-tools/initramfs.conf`.
+- Implemented fast multi-threaded ramdisk compression without warnings by using `dpkg-divert` to temporarily divert `/usr/bin/gzip` to `/usr/bin/pigz` during the package setup step in `setup_appliance.sh`.
 - Optimized final OS image footprint by skipping installation of extra Plymouth themes and purging `triggerhappy` (unused input daemon) and system-wide translation/locale files, while keeping Bluetooth and ALSA audio drivers intact.
 - Added execution timers to all 15 setup steps in `setup_appliance.sh` to trace durations of major installation tasks.
 - Optimized APT package installation in `setup_appliance.sh` to run under `eatmydata` (bypassing emulated fsync overhead), use multi-threaded `pigz` for initramfs compression (preserving maximum gzip density while utilizing all host cores), exclude package documentation files (saving crucial rootfs disk space), and divert `update-initramfs` and `mandb` triggers to run only once at the end of the installation process.

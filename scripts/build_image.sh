@@ -4,6 +4,9 @@
 
 set -e
 
+# Enable host CPU extensions in emulated QEMU environment for faster compilation/runs
+export QEMU_CPU=max
+
 # --- Configuration ---
 RPI_OS_URL_BASE="https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
