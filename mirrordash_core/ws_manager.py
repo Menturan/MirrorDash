@@ -1,4 +1,3 @@
-# Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import logging

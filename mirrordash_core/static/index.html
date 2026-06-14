@@ -328,35 +328,51 @@
             }
         }
 
-        async function checkSetupRequired() {
+        async function checkSystemOverlayPrompts() {
             try {
                 const res = await fetch('/admin/auth/status');
                 const data = await res.json();
                 const prompt = document.getElementById('setup-prompt');
                 if (!prompt) return;
-                if (data.setup_required) {
+
+                const promptTitle = prompt.querySelector('h1');
+                const promptText = prompt.querySelector('p');
+                const promptUrl = prompt.querySelector('div');
+                const promptSubtext = prompt.querySelector('p:last-of-type');
+                const iconContainer = prompt.querySelector('div:first-of-type');
+
+                let showPrompt = false;
+
+                if (data.wifi_hotspot_active) {
+                    showPrompt = true;
+                    if (promptTitle) promptTitle.textContent = "WiFi Setup Mode";
+                    if (promptText) promptText.textContent = "Your mirror is offline. Connect your phone or computer to the WiFi network below to configure a connection:";
+                    if (promptUrl) promptUrl.innerHTML = `<span style="color:var(--color-text-secondary);font-size:0.875rem;">SSID:</span> MirrorDash-Setup<br><span style="color:var(--color-text-secondary);font-size:0.875rem;">URL:</span> http://10.42.0.1:8000/wifi-setup`;
+                    if (promptSubtext) promptSubtext.textContent = "Hotspot password: mirrordash. Open this URL in your browser to select your home Wi-Fi network.";
+                    if (iconContainer) iconContainer.innerHTML = `<i data-lucide="wifi" style="width:48px;height:48px;stroke-width:1px;color:var(--color-high-contrast);"></i>`;
+                } else if (data.setup_required) {
+                    showPrompt = true;
+                    if (promptTitle) promptTitle.textContent = "Welcome to MirrorDash";
+                    if (promptText) promptText.textContent = "Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.";
+                    if (promptUrl) promptUrl.textContent = "mirrordash.local/admin";
+                    if (promptSubtext) promptSubtext.textContent = "Set an admin password to secure your mirror and configure modules. This message will disappear automatically once setup is complete.";
+                    if (iconContainer) iconContainer.innerHTML = `<i data-lucide="monitor-smartphone" style="width:48px;height:48px;stroke-width:1px;color:var(--color-high-contrast);"></i>`;
+                }
+
+                if (showPrompt) {
                     prompt.style.display = 'flex';
-                    // Trigger fade-in on next frame
                     requestAnimationFrame(() => requestAnimationFrame(() => { prompt.style.opacity = '1'; }));
                     if (window.lucide) lucide.createIcons({ root: prompt });
-                    // Poll until password is set, then fade out
-                    const poll = setInterval(async () => {
-                        try {
-                            const r = await fetch('/admin/auth/status');
-                            const d = await r.json();
-                            if (!d.setup_required) {
-                                clearInterval(poll);
-                                prompt.style.opacity = '0';
-                                setTimeout(() => { prompt.style.display = 'none'; }, 700);
-                            }
-                        } catch (_) {}
-                    }, 10000);
+                } else {
+                    prompt.style.opacity = '0';
+                    setTimeout(() => { prompt.style.display = 'none'; }, 700);
                 }
             } catch (_) {}
         }
 
         loadActiveModules();
-        checkSetupRequired();
+        checkSystemOverlayPrompts();
+        setInterval(checkSystemOverlayPrompts, 10000);
         connect();
     </script>
     <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>

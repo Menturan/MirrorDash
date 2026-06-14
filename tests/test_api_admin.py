@@ -39,13 +39,15 @@ def client():
 @patch("mirrordash_core.api.admin.save_config")
 @patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
-def test_auth_status_setup_required(mock_ro, mock_rw, mock_save, mock_load, client):
+@patch("mirrordash_core.api.admin.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_auth_status_setup_required(mock_hotspot, mock_ro, mock_rw, mock_save, mock_load, client):
     # Setup not complete: "admin_auth" not in config
     mock_load.return_value = {}
+    mock_hotspot.return_value = True
     
     response = client.get("/admin/auth/status")
     assert response.status_code == 200
-    assert response.json() == {"setup_required": True}
+    assert response.json() == {"setup_required": True, "wifi_hotspot_active": True}
 
 @patch("mirrordash_core.api.admin.load_config")
 @patch("mirrordash_core.api.admin.save_config")
