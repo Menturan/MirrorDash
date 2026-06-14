@@ -548,7 +548,7 @@ async def check_core_update() -> dict:
     """
     # Resolve the currently installed version
     current_version = "unknown"
-    for pkg_name in ("mirrordash-core", "mirrordash_core"):
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
         try:
             current_version = importlib.metadata.version(pkg_name)
             break
@@ -557,7 +557,7 @@ async def check_core_update() -> dict:
 
     # Fetch latest version from PyPI without blocking the event loop
     def _fetch_pypi_version() -> str:
-        url = "https://pypi.org/pypi/mirrordash-core/json"
+        url = "https://pypi.org/pypi/mirrordash/json"
         try:
             with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
                 data = json.loads(resp.read())
@@ -598,7 +598,7 @@ async def update_core() -> dict:
     """
     # Capture current version for logging / potential rollback reference
     current_version = "unknown"
-    for pkg_name in ("mirrordash-core", "mirrordash_core"):
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
         try:
             current_version = importlib.metadata.version(pkg_name)
             break
@@ -612,9 +612,9 @@ async def update_core() -> dict:
 
     await remount_rw()
     try:
-        logger.info(f"Upgrading mirrordash-core (current version: {current_version})")
+        logger.info(f"Upgrading mirrordash (current version: {current_version})")
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "install", "--upgrade", "mirrordash-core",
+            "uv", "pip", "install", "--upgrade", "mirrordash",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env,
@@ -623,12 +623,12 @@ async def update_core() -> dict:
 
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")
-            logger.error(f"mirrordash-core upgrade failed: {err_msg}")
+            logger.error(f"mirrordash upgrade failed: {err_msg}")
             if swap_info:
                 await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
 
-        logger.info("mirrordash-core upgraded successfully. Restarting server...")
+        logger.info("mirrordash upgraded successfully. Restarting server...")
         if swap_info:
             await commit_venv_next(*swap_info)
         asyncio.create_task(run_restart())
@@ -666,20 +666,20 @@ async def rebuild_venv() -> dict:
 
     await remount_rw()
     try:
-        # 1. Install mirrordash-core
+        # 1. Install mirrordash
         current_version = "unknown"
-        for pkg_name in ("mirrordash-core", "mirrordash_core"):
+        for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
             try:
                 current_version = importlib.metadata.version(pkg_name)
                 break
             except importlib.metadata.PackageNotFoundError:
                 continue
 
-        logger.info(f"Rebuilding venv: installing mirrordash-core (version: {current_version})")
+        logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
 
-        install_target = "mirrordash-core"
+        install_target = "mirrordash"
         if current_version != "unknown":
-            install_target = f"mirrordash-core=={current_version}"
+            install_target = f"mirrordash=={current_version}"
 
         proc = await asyncio.create_subprocess_exec(
             "uv", "pip", "install", install_target,
@@ -690,7 +690,7 @@ async def rebuild_venv() -> dict:
         stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
             err_msg = stderr.decode(errors="replace")
-            logger.error(f"Failed to install mirrordash-core: {err_msg}")
+            logger.error(f"Failed to install mirrordash: {err_msg}")
             await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Failed to install core: {err_msg}")
 

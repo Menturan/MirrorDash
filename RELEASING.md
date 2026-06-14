@@ -36,8 +36,8 @@ This document outlines the release, testing, and deployment workflows for Mirror
 | Tag | Target | Triggers PyPI? | Release Asset |
 | :--- | :--- | :--- | :--- |
 | `v0.2.4` | Core Python Application | Yes | Python package on PyPI |
-| `v0.2.4-os1` | First OS Image for `0.2.4` | No | `mirrordash-final.img.gz` |
-| `v0.2.4-os2` | Second OS Image for `0.2.4` | No | Updated `mirrordash-final.img.gz` |
+| `v0.2.4-os1` | First OS Image for `0.2.4` | No | `mirrordash-os-v0.2.4.img.gz` (or `mirrordash-final.img.gz`) |
+| `v0.2.4-os2` | Second OS Image for `0.2.4` | No | Updated `mirrordash-os-v0.2.4.img.gz` (or `mirrordash-final.img.gz`) |
 
 ---
 
@@ -109,17 +109,19 @@ Run the automated image builder script on a Linux workstation with root privileg
 ```bash
 sudo bash scripts/build_image.sh
 ```
-This generates a compressed production image file: `build_workspace/mirrordash-final.img.gz`.
+This script reads the version from `pyproject.toml` and generates a compressed production image file: `build_workspace/mirrordash-os-vX.Y.Z.img.gz` (e.g., `mirrordash-os-v0.2.3.img.gz`). 
+
+*Note: If you are extracting a golden image from a live SD card using `scripts/extract_golden_image.sh`, the output file will be named `mirrordash-final.img.gz` instead.*
 
 ### 2. Flashing the Image
 You can write the compressed image directly to an SD card (or USB drive) without extracting it first:
 * **Raspberry Pi Imager**:
   1. Click **Choose OS**.
   2. Scroll to the bottom and select **Use custom**.
-  3. Select your `mirrordash-final.img.gz` file.
+  3. Select your `mirrordash-os-vX.Y.Z.img.gz` (or `mirrordash-final.img.gz`) file.
   4. Select your target storage drive and click **Next**.
 * **BalenaEtcher**:
-  1. Select **Flash from file** and choose `mirrordash-final.img.gz`.
+  1. Select **Flash from file** and choose the `.img.gz` file.
   2. Select your target storage drive and click **Flash!**.
 
 ### 3. Verification & Testing Checklist
@@ -138,9 +140,9 @@ To thoroughly test the image before distribution:
 To share the compiled OS image:
 1. Generate a SHA256 checksum:
    ```bash
-   sha256sum mirrordash-final.img.gz > mirrordash-final.img.gz.sha256
+   sha256sum mirrordash-os-vX.Y.Z.img.gz > mirrordash-os-vX.Y.Z.img.gz.sha256
    ```
-2. Upload `mirrordash-final.img.gz` and `mirrordash-final.img.gz.sha256` directly as assets in your GitHub Release page.
+2. Upload the `mirrordash-os-vX.Y.Z.img.gz` (or `mirrordash-final.img.gz`) and its `.sha256` checksum directly as assets in your GitHub Release page.
 
 ---
 
@@ -161,7 +163,7 @@ To upgrade the core application on active devices:
 1. Access the device over SSH.
 2. Manually invoke `uv` to update the active virtual environment:
    ```bash
-   sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv_a --upgrade mirrordash
+   sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv --upgrade mirrordash
    ```
 3. Restart the background service:
    ```bash
@@ -176,7 +178,7 @@ To update the OS configuration on active devices, you must flash the new image. 
    * Navigate to the **Backup** tab in the existing Admin Dashboard.
    * Click **Create Backup** to download the `mirrordash_backup.zip` file. This contains all layouts, timezones, Wi-Fi credentials, and settings.
 2. **Flash the SD Card**:
-   * Flash the new `mirrordash-final.img.gz` to the SD card using **Raspberry Pi Imager** or **BalenaEtcher**.
+   * Flash the new `mirrordash-os-vX.Y.Z.img.gz` (or `mirrordash-final.img.gz`) to the SD card using **Raspberry Pi Imager** or **BalenaEtcher**.
 3. **Provision Wi-Fi (Captive Portal)**:
    * Insert the card and power on the Pi. The system will enter **Failsafe Captive Portal** mode within 30 seconds.
    * Connect to the **`MirrorDash-Setup`** hotspot using password **`mirrordash`**.
