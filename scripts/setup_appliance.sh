@@ -232,9 +232,40 @@ EOF
 }
 
 step_installing_packages() {
+  # 1. Prevent dpkg from installing documentation (saves disk space and prevents man-db updates)
+  echo "Configuring dpkg to exclude man pages, documentation, and info files..."
+  mkdir -p /etc/dpkg/dpkg.cfg.d
+  cat << 'EOF' > /etc/dpkg/dpkg.cfg.d/01_nodoc
+path-exclude /usr/share/doc/*
+path-exclude /usr/share/man/*
+path-exclude /usr/share/groff/*
+path-exclude /usr/share/info/*
+path-exclude /usr/share/lintian/*
+path-exclude /usr/share/linda/*
+EOF
+
+  # 2. Divert mandb and update-initramfs to prevent redundant execution during package installation
+  echo "Temporarily diverting mandb and update-initramfs to speed up package installation..."
+  dpkg-divert --local --rename --add /usr/bin/mandb
+  ln -sf /bin/true /usr/bin/mandb
+  dpkg-divert --local --rename --add /usr/sbin/update-initramfs
+  ln -sf /bin/true /usr/sbin/update-initramfs
+
+  # 3. Install eatmydata (bypass fsync) and pigz (multi-threaded gzip)
+  echo "Installing eatmydata and pigz to accelerate setup..."
   apt update
-  apt full-upgrade -y
-  apt install -y --no-install-recommends \
+  apt install -y --no-install-recommends eatmydata pigz
+
+  # 4. Enable pigz (multi-threaded gzip) in initramfs-tools configuration (retains high compression of gzip but uses all CPU threads)
+  if [ -f /etc/initramfs-tools/initramfs.conf ]; then
+    echo "Configuring initramfs to use multi-threaded pigz compression..."
+    sed -i 's/^COMPRESS=.*/COMPRESS=pigz/' /etc/initramfs-tools/initramfs.conf
+  fi
+
+  # 5. Perform package upgrades and installation under eatmydata
+  echo "Installing system packages using eatmydata..."
+  eatmydata apt full-upgrade -y
+  eatmydata apt install -y --no-install-recommends \
       labwc \
       chromium \
       wlr-randr \
@@ -245,8 +276,18 @@ step_installing_packages() {
       pix-plym-splash \
       parted \
       python3
-  apt autoclean -y
-  apt autoremove -y
+  eatmydata apt autoclean -y
+  eatmydata apt autoremove -y
+
+  # 6. Restore mandb and update-initramfs and rebuild the initial ramdisk once
+  echo "Restoring update-initramfs and regenerating initial ramdisk..."
+  rm -f /usr/sbin/update-initramfs
+  dpkg-divert --local --rename --remove /usr/sbin/update-initramfs
+  
+  rm -f /usr/bin/mandb
+  dpkg-divert --local --rename --remove /usr/bin/mandb
+
+  update-initramfs -u -k all
 }
 
 step_setting_hostname() {
