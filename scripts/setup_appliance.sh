@@ -725,6 +725,8 @@ step_system_cleanup() {
 
 # --- Execution ---
 
+START_TIME_TOTAL=$SECONDS
+
 run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent Storage" step_expanding_partition
 run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
 run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
@@ -741,8 +743,13 @@ run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_sy
 run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
 run_step "15" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 
+END_TIME_TOTAL=$SECONDS
+DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))
+minutes=$((DURATION_TOTAL / 60))
+seconds=$((DURATION_TOTAL % 60))
+
 echo "=========================================================="
-echo " MirrorDash setup successfully completed!"
+echo " MirrorDash setup successfully completed in ${minutes}m ${seconds}s!"
 echo " Recommended: Reboot the Raspberry Pi to test components."
 echo " Run: sudo reboot"
 echo "=========================================================="

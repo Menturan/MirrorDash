@@ -464,6 +464,7 @@ shrink_and_compress() {
 }
 
 # --- Main Flow ---
+START_TIME_TOTAL=$SECONDS
 check_dependencies
 
 # Use a trap to ensure cleanup happens even if an error occurs during preparation/mount
@@ -482,3 +483,9 @@ trap - EXIT
 cleanup_and_unmount
 
 run_timed_step "Shrink and Compress Image" shrink_and_compress
+
+END_TIME_TOTAL=$SECONDS
+DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))
+minutes=$((DURATION_TOTAL / 60))
+seconds=$((DURATION_TOTAL % 60))
+info "Build script completed in ${minutes}m ${seconds}s."
