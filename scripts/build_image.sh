@@ -47,7 +47,7 @@ run_timed_step() {
 
 check_dependencies() {
     info "Checking host dependencies..."
-    local deps=("qemu-aarch64-static" "parted" "xz" "losetup" "truncate" "e2fsck" "resize2fs" "curl" "grep" "wget" "sha256sum")
+    local deps=("qemu-aarch64-static" "parted" "xz" "losetup" "truncate" "e2fsck" "resize2fs" "curl" "grep" "wget" "sha256sum" "pigz")
     local missing=()
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
@@ -166,16 +166,20 @@ mount_image() {
     info "Mounting image filesystems..."
     mkdir -p "$MOUNT_DIR"
 
-    mount "${LOOP_DEV}p2" "$MOUNT_DIR"
-    mount "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
+    mount -o noatime,commit=600 "${LOOP_DEV}p2" "$MOUNT_DIR"
+    mount -o noatime "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
     mkdir -p "$MOUNT_DIR/storage"
-    mount "${LOOP_DEV}p3" "$MOUNT_DIR/storage"
+    mount -o noatime,commit=600 "${LOOP_DEV}p3" "$MOUNT_DIR/storage"
 
     info "Binding host virtual filesystems..."
     mount --bind /dev "$MOUNT_DIR/dev"
     mount --bind /sys "$MOUNT_DIR/sys"
     mount --bind /proc "$MOUNT_DIR/proc"
     mount --bind /dev/pts "$MOUNT_DIR/dev/pts"
+
+    info "Mounting tmpfs for faster QEMU execution..."
+    mount -t tmpfs -o size=2G tmpfs "$MOUNT_DIR/tmp"
+    mount -t tmpfs -o size=100M tmpfs "$MOUNT_DIR/run"
 }
 
 setup_qemu_chroot() {
@@ -270,7 +274,11 @@ local_mount_root()
 }
 INITSCRIPT
     chmod +x /etc/initramfs-tools/scripts/overlay
+    
+    # QEMU-user lacks full thread/mmap support for pigz, causing kernel warnings. Force standard gzip temporarily.
+    echo "COMPRESS=gzip" > /etc/initramfs-tools/conf.d/qemu-compress.conf
     update-initramfs -u -k all
+    rm -f /etc/initramfs-tools/conf.d/qemu-compress.conf
     if ! grep -q "boot=overlay" /boot/firmware/cmdline.txt ; then
         sed -i 's/^/boot=overlay /' /boot/firmware/cmdline.txt
     fi
@@ -430,6 +438,8 @@ cleanup_and_unmount() {
         fi
         
         info "Unmounting filesystems..."
+        safe_umount "$MOUNT_DIR/tmp"
+        safe_umount "$MOUNT_DIR/run"
         safe_umount "$MOUNT_DIR/dev/pts"
         safe_umount "$MOUNT_DIR/dev"
         safe_umount "$MOUNT_DIR/sys"
