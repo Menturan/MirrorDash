@@ -88,9 +88,14 @@ run_step() {
   fi
   
   echo "=== $step_num. $step_desc ==="
+  local start_time=$SECONDS
   "$@"
+  local end_time=$SECONDS
+  local duration=$((end_time - start_time))
+  local minutes=$((duration / 60))
+  local seconds=$((duration % 60))
   mark_step_completed "$step_name"
-  echo ">>> Step $step_num completed."
+  echo ">>> Step $step_num completed in ${minutes}m ${seconds}s."
   echo ""
 }
 

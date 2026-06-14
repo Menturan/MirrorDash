@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### System OS (Appliance)
+- Added execution timers to all 15 setup steps in `setup_appliance.sh` to trace durations of major installation tasks.
 - Optimized APT package installation in `setup_appliance.sh` to run under `eatmydata` (bypassing emulated fsync overhead), use multi-threaded `pigz` for initramfs compression (preserving maximum gzip density while utilizing all host cores), exclude package documentation files (saving crucial rootfs disk space), and divert `update-initramfs` and `mandb` triggers to run only once at the end of the installation process.
 - Added standard SHA256 integrity verification for base Raspberry Pi OS Lite downloads in `build_image.sh`.
 - Added support for local development asset integration in `setup_appliance.sh` (copies `launch.sh`, `loading.html`, `splash.png`, `shutdown.png`, and `finalize_appliance.sh` from the `/opt/MirrorDash` repository folder if it exists, rather than always downloading from GitHub), ensuring local changes are correctly packaged into new Golden Images.
