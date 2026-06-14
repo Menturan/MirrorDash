@@ -17,6 +17,8 @@ jobs:
     permissions:
       # This permission is required for trusted publishing (OIDC)
       id-token: write
+    # Skip publishing to PyPI for OS-only releases (tags containing '-os')
+    if: startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-os')
 
     steps:
       - name: Checkout repository

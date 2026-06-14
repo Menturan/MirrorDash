@@ -146,6 +146,8 @@ python mirrordash_core/main.py
  
 17. **Follow conventional commits:** `feat:`, `fix:`, `refactor:`, `style:`, `docs:`, `chore:`.
 
+17a. **Do not commit downloaded developer tools.** When downloading binaries or helper tools during development (e.g., `shellcheck`), always download them to a temporary directory outside the git repository (e.g., `/tmp` or the agent's scratch space) to prevent them from being accidentally tracked or committed.
+
 ### Testing
 
 18. **Smart & Targeted Test Execution.**

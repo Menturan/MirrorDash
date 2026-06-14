@@ -10,6 +10,15 @@ This document outlines the professional release workflow for MirrorDash. Release
   - `minor` (e.g. `0.2.x` -> `0.3.0`) for new, backward-compatible features.
   - `major` (e.g. `0.x.x` -> `1.0.0`) for API-breaking changes.
 - **Do Not Manually Tag Locally**: Let the GitHub Release interface create the git tag. This ensures that the GitHub Release, git tag, and PyPI package version are always perfectly aligned.
+- **Release Tag Naming Conventions**:
+  * **Core App Releases**: Tagged as `vX.Y.Z` (e.g., `v0.2.4`). Triggers the GitHub Action to build and publish to PyPI.
+  * **OS Image Releases**: Tagged as `vX.Y.Z-osN` (e.g., `v0.2.4-os1`). Bypasses PyPI publishing, letting you attach the built `.img.gz` asset directly to the GitHub release page.
+
+| Tag | Target | Triggers PyPI? | Release Asset |
+| :--- | :--- | :--- | :--- |
+| `v0.2.4` | Core Python Application | Yes | Python package on PyPI |
+| `v0.2.4-os1` | First OS Image for `0.2.4` | No | `mirrordash-final.img.gz` |
+| `v0.2.4-os2` | Second OS Image for `0.2.4` | No | Updated `mirrordash-final.img.gz` |
 
 ---
 
@@ -69,4 +78,49 @@ permissions:
   id-token: write
 ```
 This is configured to match the registered **Trusted Publisher** on the PyPI dashboard under the `pypi` environment. This secures our publishing pipeline against credential leaks.
+
+---
+
+## OS Image Release & Testing (Manual)
+
+Before automating the OS image compilation and hosting, perform manual builds and sanity-testing using the workflow below.
+
+### 1. Build the OS Image
+Run the automated image builder script on a Linux workstation with root privileges:
+```bash
+sudo bash scripts/build_image.sh
+```
+This generates a compressed production image file: `build_workspace/mirrordash-final.img.gz`.
+
+### 2. Flashing the Image
+You can write the compressed image directly to an SD card (or USB drive) without extracting it first:
+* **Raspberry Pi Imager**:
+  1. Click **Choose OS**.
+  2. Scroll to the bottom and select **Use custom**.
+  3. Select your `mirrordash-final.img.gz` file.
+  4. Select your target storage drive and click **Next**.
+* **BalenaEtcher**:
+  1. Select **Flash from file** and choose `mirrordash-final.img.gz`.
+  2. Select your target storage drive and click **Flash!**.
+
+### 3. Verification & Testing Checklist
+To thoroughly test the image before distribution:
+1. **Boot Splash & Plymouth**: Insert the SD card into a Raspberry Pi and power it on. Ensure that the customized Plymouth boot splash screen appears and that no systemd status messages, log lines, or login prompts flicker onto the screen.
+2. **Invisible Mouse Cursor**: Once the Wayland desktop (`labwc`) starts, connect a USB mouse and move it around. Verify that the cursor remains completely invisible on the kiosk display.
+3. **Failsafe Captive Portal**:
+   * Power on the Pi in an environment *without* an active/configured Ethernet connection or saved WiFi network.
+   * Verify that within 30 seconds, the device activates the `MirrorDash Setup` fallback Access Point.
+   * Connect to the AP from a phone or computer, visit the captive portal page (`http://10.42.0.1/wifi-setup`), enter local WiFi credentials, and submit.
+   * Verify that the system remounts successfully, saves the profiles, and reboots.
+4. **Dashboard & Mirror Load**: Verify that the mirror loads the kiosk web page (`index.html`) correctly, displays the initial loading skeletons, transitions into active widgets when WebSocket communication is established, and runs stably.
+5. **Admin Access**: Ensure the admin dashboard (e.g. `http://mirrordash.local/admin` or `http://<IP>/admin`) is accessible and requires the correct API key.
+
+### 4. Direct Manual Distribution
+To share a pre-release version of the image with testers:
+1. Generate a SHA256 checksum:
+   ```bash
+   sha256sum mirrordash-final.img.gz > mirrordash-final.img.gz.sha256
+   ```
+2. Upload the `mirrordash-final.img.gz` and `mirrordash-final.img.gz.sha256` files directly to a cloud drive (e.g., Google Drive, Dropbox) or attach them manually as assets in a draft GitHub Release.
+3. Provide the tester with the SHA256 file so they can run `sha256sum -c mirrordash-final.img.gz.sha256` to confirm file integrity before flashing.
 

@@ -7,6 +7,27 @@ This guide details the step-by-step procedure to build, configure, harden, and c
 
 ---
 
+## Automated Build Pipeline (Recommended)
+
+You can build the complete, production-ready, locked SD card image from scratch on a Linux workstation without ever needing a physical Raspberry Pi. The automated build script downloads the latest base OS, resizes partitions, uses QEMU to emulate the ARM environment, runs the complete configuration, and shrinks the final image.
+
+Run the build script on your Debian/Ubuntu workstation. You can optionally provide an output directory as an argument if you want to build on a larger external drive:
+
+```bash
+sudo bash scripts/build_image.sh [/path/to/large/drive]
+```
+
+**Requirements:**
+- A Debian/Ubuntu Linux workstation.
+- Host dependencies: `qemu-user-static`, `parted`, `xz-utils`, `curl`, `wget`, `e2fsprogs`, `coreutils`, `sha256sum`.
+- Root (`sudo`) privileges to mount loop devices and chroot.
+
+The script will automatically generate a compressed, deployment-ready `mirrordash-final.img.gz` in the provided output directory (or a local `build_workspace/` directory by default).
+
+If you use the automated build pipeline, you do **not** need to follow the manual steps below. The manual steps are provided for reference, debugging, and alternative hardware configurations.
+
+---
+
 ## 1. Operating System Initialization
 
 ### 1.1 Flash OS
@@ -43,18 +64,33 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 3. **Eject and insert**:
    Eject the SD card from your workstation, insert it into the Raspberry Pi, and power it on.
 
+> [!TIP]
+> **Fast-Track Scripted Setup (Recommended)**:
+> You can configure the entire appliance automatically in a single command (which runs all configuration steps from Section 1.4 through Section 6 inclusive). Ensure your Pi is connected to the internet, and run:
+> ```bash
+> curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/setup_appliance.sh | sudo bash
+> ```
+> After the script finishes, you can reboot the Pi to verify the system, then skip directly to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)**.
+
 ### 1.4 First Boot: Expand Root & Create Persistent Partition
 
-Because the automatic partition expansion script was disabled in Section 1.3, your root partition (`/dev/mmcblk0p2`) starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories, run the unified command chain:
+Because the automatic partition expansion script was disabled in Section 1.3, your root partition starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories dynamically on any boot drive (SD card, USB SSD, or NVMe), run the unified command chain:
 
 ```bash
-# Expand root to 6GB, create partition 3, format it, and initialize directories
-printf "Yes\nIgnore\n" | sudo parted /dev/mmcblk0 ---pretend-input-tty resizepart 2 6GB && \
-sudo resize2fs /dev/mmcblk0p2 && \
-printf "Ignore\n" | sudo parted /dev/mmcblk0 ---pretend-input-tty mkpart primary ext4 6GB 100% && \
-sudo mkfs.ext4 -F -L mirrordash-data /dev/mmcblk0p3 && \
+# 1. Identify the system block device and partitions dynamically
+ROOT_PART=$(findmnt -n -o SOURCE /)
+ROOT_DISK=$(echo "$ROOT_PART" | sed 's/p[0-9]\+$//; s/[0-9]\+$//')
+if [[ "$ROOT_DISK" =~ [0-9]$ ]]; then PART_SUFFIX="p"; else PART_SUFFIX=""; fi
+DATA_PART="${ROOT_DISK}${PART_SUFFIX}3"
+ROOT_PART_NAME="${ROOT_DISK}${PART_SUFFIX}2"
+
+# 2. Expand root to 6GB, create partition 3, format it, and initialize directories
+printf "Yes\nIgnore\n" | sudo parted "$ROOT_DISK" ---pretend-input-tty resizepart 2 6GB && \
+sudo resize2fs "$ROOT_PART_NAME" && \
+printf "Ignore\n" | sudo parted "$ROOT_DISK" ---pretend-input-tty mkpart primary ext4 6GB 100% && \
+sudo mkfs.ext4 -F -L mirrordash-data "$DATA_PART" && \
 sudo mkdir -p /storage && \
-sudo mount /dev/mmcblk0p3 /storage && \
+sudo mount "$DATA_PART" /storage && \
 sudo mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b && \
 sudo chown -R pi:pi /storage && \
 mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
@@ -89,14 +125,6 @@ sudo mount -a && df -h | grep -E "storage|mirrordash"
 
 With the disk space expanded and the persistent storage mounted, you can safely update the system, install dependencies, and configure the services.
 
-> [!TIP]
-> **Fast-Track Scripted Setup (Recommended)**:
-> You can configure the entire appliance automatically in a single command (which runs Steps 1.4 through 6 inclusive). Ensure your Pi is connected to the internet, and run:
-> ```bash
-> curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/setup_appliance.sh | sudo bash
-> ```
-> After the script finishes, you can reboot the Pi to verify the system, then skip directly to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)**.
-
 ### 2.1 Update & Install Packages
 
 If you prefer to perform the setup manually step-by-step, run the unified system update and installation chain:
@@ -111,7 +139,9 @@ sudo apt install -y --no-install-recommends \
     nginx \
     plymouth \
     plymouth-themes \
-    pix-plym-splash && \
+    pix-plym-splash \
+    parted \
+    python3 && \
 sudo apt autoclean -y && sudo apt autoremove -y
 ```
 
@@ -127,6 +157,8 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
 | `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. |
 | `pix-plym-splash` | The Raspberry Pi-specific "pix" desktop Plymouth theme package required for the customized startup splash screen. |
+| `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
+| `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
 
 > [!NOTE]
 > **NetworkManager** is the default network backend on Trixie — no separate install is needed. **log2ram** is not installed because Trixie configures `systemd-journald` as **volatile by default** (logs go to RAM and are lost on reboot), which already eliminates the primary SD card write source.
@@ -190,21 +222,51 @@ sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
 
 ### 2.4 Console Auto-Login & Kiosk Autostart Setup
 
-Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, and create the labwc compositor auto-start layout file in one step:
+Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, globally disable the mouse cursor in standard system themes, and create the labwc compositor auto-start layout file:
 
 ```bash
 # 1. Enable console auto-login B2
 sudo raspi-config nonint do_boot_behaviour B2
 
-# 2. Append auto-launch hook for Wayland on tty1 login
+# 2. Silence tty1 console getty auto-login prompt and banner messages
+if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
+  sudo sed -i 's/--autologin/--noissue --skip-login --autologin/g' /etc/systemd/system/getty@tty1.service.d/autologin.conf
+fi
+
+# 3. Silence shell login banners (MOTD and Last login text)
+touch /home/pi/.hushlogin
+
+# 4. Append auto-launch hook for Wayland on tty1 login
 if ! grep -q "exec labwc" /home/pi/.bash_profile 2>/dev/null; then
   echo '[[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]] && exec labwc' >> /home/pi/.bash_profile
 fi
 
-# 3. Create labwc configuration folder and autostart kiosk rules
+# 5. Create a local transparent cursor theme for the kiosk user to hide the mouse cursor
+mkdir -p /home/pi/.local/share/icons/invisible/cursors
+
+# Create index.theme so applications recognize it as a valid theme
+cat << 'EOF' > /home/pi/.local/share/icons/invisible/index.theme
+[Icon Theme]
+Name=invisible
+Comment=Invisible cursor theme
+EOF
+
+# Write a valid, 32x32 transparent XCursor file
+python3 -c "import struct; data = struct.pack('<4sIII', b'Xcur', 16, 0x00010000, 1) + struct.pack('<III', 0xfffd0002, 32, 28) + struct.pack('<IIIIIIIII', 36, 0xfffd0002, 32, 1, 32, 32, 0, 0, 0) + b'\x00'*(32*32*4); open('/home/pi/.local/share/icons/invisible/cursors/default', 'wb').write(data)"
+ln -sf default /home/pi/.local/share/icons/invisible/cursors/left_ptr
+ln -sf default /home/pi/.local/share/icons/invisible/cursors/pointer
+chown -R pi:pi /home/pi/.local
+
+# 6. Configure labwc to use the invisible cursor theme
 mkdir -p /home/pi/.config/labwc
+echo "XCURSOR_THEME=invisible" > /home/pi/.config/labwc/environment
+
+# 7. Create labwc configuration folder and autostart kiosk rules
 cat << 'EOF' > /home/pi/.config/labwc/autostart
 # --- MirrorDash Kiosk Autostart ---
+
+# Hide mouse cursor natively at Wayland startup
+labwc-msg HideCursor 2>/dev/null || true
 
 # Prevent Chromium "didn't shut down correctly" restore prompt after power loss
 sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromium/'Local State' 2>/dev/null
@@ -219,6 +281,7 @@ while true; do
   START_TIME=$(date +%s)
   
   # Launch Chromium in kiosk mode with native Wayland rendering and touch/gesture hardening
+  # Opens the local loading.html instantly and checks for FastAPI server status
   chromium \
       --kiosk \
       --ozone-platform=wayland \
@@ -231,7 +294,7 @@ while true; do
       --disable-pinch \
       --overscroll-history-navigation=0 \
       --disable-dev-tools \
-      http://localhost:8000
+      file:///home/pi/mirrordash/loading.html
       
   EXIT_CODE=$?
   END_TIME=$(date +%s)
@@ -310,18 +373,23 @@ ln -sfT venv_a /storage/mirrordash/venv && \
 ln -sfT /storage/mirrordash/venv /home/pi/mirrordash/.venv
 
 # 4. Create base_venv (Golden Copy) and active venv_a
-uv venv --python 3.14 /storage/mirrordash/venv_a && \
-uv venv --python 3.14 /home/pi/mirrordash/base_venv
+uv venv --allow-existing --python 3.14 /storage/mirrordash/venv_a && \
+uv venv --allow-existing --python 3.14 /home/pi/mirrordash/base_venv
 
 # 5. Install mirrordash from PyPI into both virtual environments
 # Note: uv is a standalone binary at ~/.local/bin/uv — it is NOT inside the venv.
 uv pip install --python .venv mirrordash && \
 uv pip install --python /home/pi/mirrordash/base_venv mirrordash
 
-# 6. Download the boot launcher script directly from GitHub
+# 6. Download the auxiliary scripts and HTML assets directly from GitHub
 curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh \
     -o /home/pi/mirrordash/launch.sh && \
-chmod +x /home/pi/mirrordash/launch.sh
+chmod +x /home/pi/mirrordash/launch.sh && \
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/loading.html \
+    -o /home/pi/mirrordash/loading.html
+
+# 7. Ensure correct file ownership
+sudo chown -R pi:pi /home/pi/mirrordash
 ```
 
 ### 3.2 Passwordless Sudo for Application Commands
@@ -373,17 +441,24 @@ EOF
 
 # 3. Silence kernel log prints and redirect console to tty3 in cmdline.txt
 sudo sed -i 's/console=tty1/console=tty3/g' /boot/firmware/cmdline.txt
-for opt in "loglevel=3" "quiet" "splash" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles"; do
+for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles" "logo.nologo"; do
   if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
     sudo sed -i "s/$/ $opt/" /boot/firmware/cmdline.txt
   fi
 done
 
-# 4. Download MirrorDash Plymouth splash asset, rebuild initramfs, and enable NTP sync guard
+# 4. Download MirrorDash Plymouth splash assets, disable theme status messages, patch for separate shutdown splash, rebuild initramfs, and enable NTP sync guard
 # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot.
 sudo mkdir -p /usr/share/plymouth/themes/pix && \
-curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png \
+curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png \
     | sudo tee /usr/share/plymouth/themes/pix/splash.png > /dev/null && \
+curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/shutdown.png \
+    | sudo tee /usr/share/plymouth/themes/pix/shutdown.png > /dev/null && \
+( [ ! -f /usr/share/plymouth/themes/pix/pix.script ] || ( \
+  sudo sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/pix/pix.script && \
+  sudo sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/pix/pix.script && \
+  sudo sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/pix/pix.script \
+) ) && \
 sudo plymouth-set-default-theme --rebuild-initrd pix && \
 sudo systemctl enable systemd-time-wait-sync.service
 ```
@@ -425,10 +500,18 @@ for i in {1..30}; do
 done
 
 logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Switching to setup hotspot..."
-sudo nmcli device disconnect "$INTERFACE" 2>/dev/null || true
-sudo nmcli device wifi hotspot ifname "$INTERFACE" ssid "$SSID" password "$PASSWORD"
+# Purge any existing MirrorDash-Setup profiles
+sudo nmcli connection delete "$SSID" 2>/dev/null || true
 
-if [ $? -eq 0 ]; then
+# Add and configure a custom hotspot profile with PMF disabled to avoid Broadcom firmware bugs
+sudo nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
+sudo nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
+sudo nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
+sudo nmcli connection modify "$SSID" wifi-sec.pmf 1
+sudo nmcli connection modify "$SSID" ipv4.method shared
+
+# Attempt to bring the connection up
+if sudo nmcli connection up "$SSID"; then
     logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
 else
     logger -t mirrordash-wifi "Failed to start hotspot."
@@ -466,8 +549,7 @@ Create the primary background service manager unit and enable it to run at syste
 sudo tee /etc/systemd/system/mirrordash.service << 'EOF'
 [Unit]
 Description=MirrorDash Core App Backend
-After=network-online.target systemd-time-wait-sync.service
-Wants=network-online.target systemd-time-wait-sync.service
+After=network.target
 RequiresMountsFor=/home/pi/.mirrordash/data
 
 [Service]
@@ -504,7 +586,44 @@ To finalize the Golden Image deployment, the environment must be stripped of dev
 > [!WARNING]
 > Ensure **all** configurations, packages, system services, and baseline settings are fully tested **before** executing this section. Once OverlayFS is enabled, the root filesystem is permanently read-only (disable via `raspi-config` to make further changes).
 
-### 7.1 Pre-Lock Verification
+### 7.1 Fast-Track Finalization Script (Recommended)
+
+To verify the setup, purge development artifacts and Wi-Fi profiles, lock the root filesystem with OverlayFS, and power down the appliance in a single robust step, run the unified MirrorDash finalization utility.
+
+Depending on how you are currently connected to the Pi, select one of the following methods:
+
+#### Method A: If connected directly (via keyboard & monitor on tty2)
+Run the script interactively. It will verify your services, present a warning, and request confirmation before proceeding. You can execute the script directly from GitHub on the fly:
+```bash
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/finalize_appliance.sh | sudo bash
+```
+
+> [!TIP]
+> If you used the automated setup script (`setup_appliance.sh`), the utility is already pre-installed locally. You can alternatively run it with:
+> ```bash
+> sudo mirrordash-finalize.sh
+> ```
+
+#### Method B: If connected remotely (via SSH)
+Because purging the Wi-Fi credentials will immediately disconnect your SSH session and terminate standard shell commands, you **must** run the script in a detached background unit using `systemd-run` and pass the `-y`/`--yes` argument to bypass interactive prompts.
+
+You can download and run the script on the fly from GitHub:
+```bash
+curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/finalize_appliance.sh -o /tmp/finalize.sh && \
+chmod +x /tmp/finalize.sh && \
+sudo systemd-run --description="MirrorDash Finalize" /tmp/finalize.sh -y
+```
+
+> [!TIP]
+> If you used the automated setup script (`setup_appliance.sh`), the utility is already pre-installed locally. You can alternatively run:
+> ```bash
+> sudo systemd-run --description="MirrorDash Finalize" mirrordash-finalize.sh -y
+> ```
+
+> [!NOTE]
+> Since the finalization script automatically handles verification, system cleanup, Wi-Fi purging, OverlayFS locking, and powering down the Pi, you can skip the manual steps in **[Section 7.2](#72-pre-lock-verification-manual)** and **[Section 7.3](#73-lock-root--finalize-manual)** and proceed directly to **[Section 7.4: Clone & Shrink the Image (Workstation)](#74-clone--shrink-the-image-workstation)**.
+
+### 7.2 Pre-Lock Verification (Manual)
 
 Verify that all critical services are functional and the persistent partition is mounted:
 
@@ -523,50 +642,59 @@ sudo systemctl is-enabled mirrordash-wifi-fallback.service
 # Verify time-sync service is enabled
 sudo systemctl is-enabled systemd-time-wait-sync.service
 
-# Verify sudoers configuration
+# Verify sudoers configuration (should not prompt for a password)
 sudo -n mount -o remount,rw /   # Should succeed without password prompt
-sudo -n mount -o remount,ro /
+sudo -n mount -o remount,ro /   # May fail with "mount point is busy" on a live system, but must not prompt for a password
 ```
 
-### 7.2 Lock Root & Finalize
+### 7.3 Lock Root & Finalize (Manual)
 
-Purge your development WiFi connection profile, disable the SSH service, set the default base system timezone to UTC, enable OverlayFS, and power down the Pi in one clean execution sequence:
+Perform a final system cleanup (prune package caches, clear temporary files, truncate logs, and strip command history), purge your development Wi-Fi connection profiles, disable the SSH service, set the default base system timezone to UTC, enable OverlayFS, and power down the Pi in one clean execution sequence:
 
 ```bash
-# 1. Clean up local testing networks
-sudo nmcli connection delete "YourTestingWiFiSSID" 2>/dev/null || true
+# 1. Perform final system cleanup and package pruning
+sudo apt-get clean && \
+sudo apt-get autoremove -y && \
+sudo rm -rf /tmp/* /var/tmp/* /root/.cache /home/pi/.cache && \
+sudo find /var/log -type f -exec truncate -s 0 {} \; && \
+sudo journalctl --vacuum-time=1s 2>/dev/null || true && \
+rm -f ~/.bash_history && history -c
 
-# 2. Disable SSH, set system timezone, enable OverlayFS, and poweroff
+# 2. Disable SSH and set default system timezone to UTC
 sudo systemctl disable ssh && \
-sudo timedatectl set-timezone UTC && \
+sudo timedatectl set-timezone UTC
+
+# 3. Clean up all wireless networks failsafely, enable OverlayFS, and power down
+# Note: These commands are chained with '&&' in a single sequence so they run to completion even after your Wi-Fi/SSH connection drops.
+for uuid in $(nmcli --fields UUID,TYPE connection show | awk '$2 ~ /wifi|802-11-wireless/ {print $1}'); do sudo nmcli connection delete "$uuid" 2>/dev/null || true; done && \
+sudo rm -rf /etc/NetworkManager/system-connections/* && \
 sudo raspi-config nonint enable_overlayfs && \
 sudo poweroff
 ```
 
-### 7.3 Clone & Shrink the Image (Workstation)
+---
 
-Insert the SD card into a Linux workstation, extract the raw block image using `dd`, and minimize it using `pishrink.sh` in one step:
+### 7.4 Clone & Shrink the Image (Workstation)
 
-> [!CAUTION]
-> **Identify your SD card device carefully before running `dd`.** Running `dd` on the wrong device will irrecoverably overwrite that disk. Verify your SD card's device path first with `lsblk` or `sudo fdisk -l` and substitute `/dev/sdX` below with the correct device (e.g. `/dev/sdb`). **Never use `/dev/sda`** unless you are absolutely certain that is your SD card and not your system drive.
+Insert the SD card of the finalized MirrorDash appliance into a Linux workstation, and run the failsafe extraction script to clone, shrink, and compress the image:
 
-> [!IMPORTANT]
-> **Do NOT use PiShrink's `-a` (auto-expand) flag.** The `-a` flag does not exist in standard PiShrink releases. More critically, PiShrink targets the **last partition** of the image for shrinking — which is our `/storage` partition (`mmcblk0p3`), not the rootfs. Using auto-expand logic on our custom 3-partition layout will attempt to resize the wrong partition and **corrupt the image**. Always use `-z` only (gzip compression, no auto-expand). Our partitions are already sized correctly and require no expansion on first boot.
+> [!TIP]
+> The MirrorDash repository includes a wrapper script `scripts/extract_golden_image.sh` that scans connected block devices, identifies the MirrorDash SD card by its label (`mirrordash-data`), prints device details, and prompts for confirmation to prevent accidental drive overwrites.
+
+Run the extraction script on your workstation (you can optionally pass an output directory as an argument to write files to a drive with more space, or leave it blank to be prompted interactively):
 
 ```bash
-# 0. Identify the correct device — substitute /dev/sdX with your actual SD card device
-lsblk
-
-# Extract the image
-sudo dd if=/dev/sdX of=mirrordash-raw.img bs=4M status=progress
-
-# Download PiShrink, shrink only the rootfs, and compress
-# -z: gzip compress the output. Do NOT add -a (auto-expand): our 3-partition layout
-# is already correctly sized and PiShrink would target the wrong (last) partition.
-wget -N https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh && \
-chmod +x pishrink.sh && \
-sudo ./pishrink.sh -z mirrordash-raw.img mirrordash-final.img
+# Run the extraction wrapper script as root (optionally passing output path)
+sudo bash scripts/extract_golden_image.sh [/path/to/large/drive]
 ```
+
+The script will automatically:
+1. Scan and detect the correct SD card block device node.
+2. Confirm the selection with you interactively to avoid wiping your workstation drives.
+3. Perform a safe raw block extraction (`dd`) into a temporary file `mirrordash-raw.img`.
+4. Download the latest `pishrink.sh` utility.
+5. Shrink partition 3 (`mirrordash-data`) to its minimum size and truncate the image.
+6. Gzip-compress the final image into `mirrordash-final.img.gz`.
 
 The compiled `mirrordash-final.img.gz` is a fully optimized, failsafe, locked golden image ready for deployment.
 
