@@ -2,6 +2,28 @@
 
 This document records the core architectural decisions made during the design, development, and refinement of the MirrorDash codebase.
 
+## Table of Contents
+
+- [1. Peripheral Modular Grid Layout](#1-peripheral-modular-grid-layout)
+- [2. Server-Side Rendering (SSR) via Jinja2 & WebSocket Push](#2-server-side-rendering-ssr-via-jinja2--websocket-push)
+- [3. Dynamic Module Discovery via Python Entry Points](#3-dynamic-module-discovery-via-python-entry-points)
+- [4. Config-Driven Lifespan & Hot Reloading](#4-config-driven-lifespan--hot-reloading)
+- [5. OverlayFS and Hardware Remounting Integration](#5-overlayfs-and-hardware-remounting-integration)
+- [6. Hybrid Template Loader Resolution](#6-hybrid-template-loader-resolution)
+- [7. Scope Isolation for Dynamic Module Helpers](#7-scope-isolation-for-dynamic-module-helpers)
+- [8. Skeletal Loading UI & Transition Flow](#8-skeletal-loading-ui--transition-flow)
+- [9. WebSocket State Caching for Instant Updates](#9-websocket-state-caching-for-instant-updates)
+- [10. Carousel Groups for Layout Regions](#10-carousel-groups-for-layout-regions)
+- [11. Display Power Automation Strategies](#11-display-power-automation-strategies)
+- [12. Unified Multi-Provider Weather Data Model](#12-unified-multi-provider-weather-data-model)
+- [13. SMHI API Response Structure](#13-smhi-api-response-structure)
+- [14. Persistent Config and Modules Relocation for PyPI Packages](#14-persistent-config-and-modules-relocation-for-pypi-packages)
+- [15. Primary Persistent Storage Path (Directory Contract)](#15-primary-persistent-storage-path-directory-contract)
+- [16. WiFi Fallback / Captive Portal State Machine](#16-wifi-fallback--captive-portal-state-machine)
+- [17. Watchdog and Time Synchronization Boot Guard](#17-watchdog-and-time-synchronization-boot-guard)
+- [18. Failsafe A/B Virtual Environment Updates](#18-failsafe-ab-virtual-environment-updates)
+- [19. Boot Fallback Launcher and Settings Restoration](#19-boot-fallback-launcher-and-settings-restoration)
+
 ---
 
 ## 1. Peripheral Modular Grid Layout

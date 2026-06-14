@@ -2,6 +2,18 @@
 
 Welcome to MirrorDash! This guide is designed for end-users and mirror administrators to help you set up, customize, and manage your smart mirror display. You do **not** need to be a programmer or software developer to follow this guide.
 
+## Table of Contents
+
+- [1. What is MirrorDash?](#1-what-is-mirrordash)
+- [2. Accessing the System](#2-accessing-the-system)
+- [3. Initial Setup & Security](#3-initial-setup--security)
+- [4. Using the Admin Dashboard](#4-using-the-admin-dashboard)
+- [5. Screen Layout & Module Stacking](#5-screen-layout--module-stacking)
+- [6. Setting Up Carousels (Switching Modules)](#6-setting-up-carousels-switching-modules)
+- [7. Troubleshooting FAQ](#7-troubleshooting-faq)
+- [8. Network Setup (WiFi Captive Portal)](#8-network-setup-wifi-captive-portal)
+- [9. Failsafe Operation & SD Card Preservation](#9-failsafe-operation--sd-card-preservation)
+
 ---
 
 ## 1. What is MirrorDash?

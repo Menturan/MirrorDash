@@ -13,6 +13,14 @@ This document outlines the release, testing, and deployment workflows for Mirror
 > | **Deployment method** | **Non-Destructive**: Triggered via the Admin Dashboard's "Updates" tab (uses A/B `venv` partition updates). | **Destructive**: Requires flashing the SD card. Backup settings first, flash, configure Wi-Fi, and restore settings. |
 > | **Risk level** | **Low**: Handled by the A/B virtual environment update system with automatic rollback to `venv_old` or Safe Mode. | **High**: Overwrites all card data. System must be re-provisioned via the Wi-Fi Captive Portal on first boot. |
 
+## Table of Contents
+
+- [Release Guidelines](#release-guidelines)
+- [Step-by-Step Release Flow](#step-by-step-release-flow)
+- [Architecture & Infrastructure Behind Releases](#architecture--infrastructure-behind-releases)
+- [OS Image Release & Testing (Manual)](#os-image-release--testing-manual)
+- [Client Update & Deployment Procedures](#client-update--deployment-procedures)
+
 ## Release Guidelines
 
 - **Only Release Stable Code**: Ensure all tests pass successfully before releasing.

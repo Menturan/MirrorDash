@@ -5,6 +5,20 @@ This file provides AI coding agents with everything they need to work effectivel
 > [!IMPORTANT]
 > **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and aesthetic/contrast guidelines is critical. See `DESIGN.md` and `mirrordash_core/static/style.css` for details.
 
+## Table of Contents
+
+- [Project Overview](#project-overview)
+- [Repository Layout](#repository-layout)
+- [Tech Stack](#tech-stack)
+- [Running Locally](#running-locally)
+- [Critical Coding Rules](#critical-coding-rules)
+- [Architecture Patterns](#architecture-patterns)
+- [Adding a New Module](#adding-a-new-module)
+- [Modifying Core Behaviour](#modifying-core-behaviour)
+- [Design System Explorer](#design-system-explorer)
+- [Documentation Files to Keep Updated](#documentation-files-to-keep-updated)
+- [Common Pitfalls](#common-pitfalls)
+
 ---
 
 ## Project Overview
@@ -188,6 +202,8 @@ python mirrordash_core/main.py
 30. **Documentation ↔ Script Synchronization.** Documentation files that describe setup procedures (e.g. `GOLDEN_IMAGE.md`) and their corresponding automation scripts (e.g. `scripts/setup_appliance.sh`, `scripts/launch.sh`) are **two representations of the same truth**. When modifying commands, package names, paths, flags, or procedures in one, you **must** immediately update the other to match. Never leave them out of sync.
 
     This principle applies universally across the entire project: any documentation file that describes behavior, configuration, APIs, or procedures must stay in sync with the code, scripts, templates, or config files that implement it. Examples include `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, `ARCHITECTURE.md` ↔ actual code patterns, and module `README.md` files ↔ module source code.
+
+31. **Maintain Table of Contents (TOC) in Markdown Files.** Always add and update a Table of Contents (TOC) at the top of `.md` files if there are more than 3 level-2 (`##`) headings (or major sections).
 
 ---
 

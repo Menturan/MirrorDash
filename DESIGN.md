@@ -97,7 +97,17 @@ spacing:
   widget-gap: 30px
   internal-padding: 16px
   label-gap: 8px
----
+
+## Table of Contents
+
+- [Brand & Style](#brand--style)
+- [Colors](#colors)
+- [Typography](#typography)
+- [Layout & Spacing](#layout--spacing)
+- [Elevation & Depth](#elevation--depth)
+- [Shapes](#shapes)
+- [Components](#components)
+- [Iconography](#iconography)
 
 ## Brand & Style
 

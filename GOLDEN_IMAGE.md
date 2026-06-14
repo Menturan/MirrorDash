@@ -5,6 +5,18 @@ This guide details the step-by-step procedure to build, configure, harden, and c
 > [!IMPORTANT]
 > This guide targets **Raspberry Pi OS Lite (64-bit)** based on **Debian Trixie** (Debian 13). Trixie introduced significant changes from Bookworm: Wayland/labwc replaces X11/Openbox as the default display stack, NetworkManager with Netplan replaces dhcpcd, cloud-init replaces firstrun.sh, systemd-journald is volatile by default, and passwordless sudo is disabled by default. Every section of this document accounts for these changes.
 
+## Table of Contents
+
+- [Automated Build Pipeline (Recommended)](#automated-build-pipeline-recommended)
+- [1. Operating System Initialization](#1-operating-system-initialization)
+- [2. System Configuration & Package Installation](#2-system-configuration--package-installation)
+- [3. Environment & Application Setup](#3-environment--application-setup)
+- [4. Hardware Hardening & Boot Splashes](#4-hardware-hardening--boot-splashes)
+- [5. Captive Portal (WiFi-Fallback State Machine)](#5-captive-portal-wifi-fallback-state-machine)
+- [6. MirrorDash Core Service Daemon](#6-mirrordash-core-service-daemon)
+- [7. Failsafe Locking (OverlayFS) & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)
+- [Appendix A: Persistence Model](#appendix-a-persistence-model)
+
 ---
 
 ## Automated Build Pipeline (Recommended)
