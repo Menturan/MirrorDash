@@ -282,9 +282,9 @@ EOF
       parted \
       python3
 
-  # Purge unused audio/hardware daemons to save space and boot time
-  echo "Purging unused audio/hardware daemons (alsa-utils, triggerhappy)..."
-  eatmydata apt purge -y alsa-utils triggerhappy
+  # Purge unused hardware daemons to save space and boot time
+  echo "Purging unused hardware daemons (triggerhappy)..."
+  eatmydata apt purge -y triggerhappy
 
   eatmydata apt autoclean -y
   eatmydata apt autoremove -y
