@@ -23,3 +23,8 @@ Thumbs.db
 .antigravitycli/
 .kilo/
 
+# MirrorDash image building artifacts
+pishrink.sh
+*.img
+*.img.gz
+
