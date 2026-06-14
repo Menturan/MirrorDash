@@ -1,5 +1,4 @@
 #!/bin/bash
-# Required Notice: Copyright (C) 2026 Jonas Öhlander (https://github.com/Menturan/MirrorDash)
 # MirrorDash Boot Fallback Launcher
 # Manages starting uvicorn, detecting boot crashes, and executing rollbacks.
 
@@ -7,7 +6,7 @@ VENV_LINK="/storage/mirrordash/venv"
 GOLDEN_VENV="/home/pi/mirrordash/base_venv"
 APP_DIR="/home/pi/mirrordash"
 
-cd "$APP_DIR"
+cd "$APP_DIR" || exit 1
 
 # Ensure we have a boot status env var (defaults to normal)
 export MIRRORDASH_BOOT_STATUS="${MIRRORDASH_BOOT_STATUS:-normal}"
