@@ -43,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Corrected duplicate step numbers in `setup_appliance.sh` after introducing `nginx` setup.
 - Reordered appliance setup script execution steps to mount and format the persistent partition before setting up the virtual environments.
 - Updated golden image guide commands, chapters, and persistence grid to reflect the A/B virtual environment symlink mappings and settings restoration.
+- Symlinked `/etc/NetworkManager/system-connections` to `/storage/mirrordash/system-connections` in both `setup_appliance.sh` and `build_image.sh` so WiFi credentials survive OverlayFS reboots.
+- Updated `GOLDEN_IMAGE.md` build pipeline documentation to reflect the QEMU-based offline image construction workflow.
+- Bumped CI GitHub Actions Python runtime from 3.12 to 3.14 in `publish.yml`.
+
+### Core App
+- Rewrote `wifi_setup.html` as a fully self-contained offline page: replaced Lucide CDN icons with inline SVGs and removed Google Fonts dependencies, fixing blank-screen rendering in captive portal AP mode.
+- Pre-AP scan cache in `mirrordash-wifi-check.sh`: scans for nearby networks and persists results to `/var/lib/mirrordash-wifi-scan.cache` before entering hotspot mode.
+- `scan_wifi_networks()` now falls back to the pre-AP cached scan when `nmcli` fails under active AP mode, ensuring the captive portal always shows available networks.
+- `connect_wifi()` tears down the `MirrorDash-Setup` AP profile before connecting the client network, fixing silent connection failures.
+- Added `ensure_nm_wifi_persistence()` helper for idempotent migration of NetworkManager profiles to persistent storage on OverlayFS devices.
+- Added tests for WiFi scan cache fallback, AP teardown during connect, and offline captive portal rendering.
 
 ## [0.2.3] - 2026-06-14
 
