@@ -7,7 +7,8 @@
         </div>
         <div class="info-alert-content">
             <strong>Security Notice:</strong> Dashboard credentials are excluded from backups. Importing a backup will preserve your current active admin login password.<br>
-            <strong>Storage Policy:</strong> Backups contain configuration files (`config.json`), local custom module code, and persistent databases (`data_dir`). Transient caches (`cache_dir`) are excluded.
+            <strong>Storage Policy:</strong> Backups contain configuration files (`config.json`), local custom module code, and persistent databases (`data_dir`). Transient caches (`cache_dir`) are excluded.<br>
+            <strong>WiFi Credentials:</strong> WiFi network passwords are intentionally excluded to keep backups free of sensitive network data. After restoring a backup, you may need to reconnect via the setup wizard if your mirror lost its network configuration.
         </div>
     </div>
 
