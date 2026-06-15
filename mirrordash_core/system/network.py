@@ -159,7 +159,7 @@ async def get_ssh_status() -> bool:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await proc.communicate()
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
         return stdout.decode().strip() == "active"
     except Exception:
         return False
@@ -197,9 +197,12 @@ async def is_wifi_hotspot_active() -> bool:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, _ = await proc.communicate()
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
         lines = stdout.decode("utf-8", errors="ignore").splitlines()
         return "MirrorDash-Setup" in lines
+    except asyncio.TimeoutError:
+        logger.error("Timed out checking WiFi hotspot status (10s)")
+        return False
     except Exception as e:
         logger.error(f"Failed to check if hotspot is active: {e}")
         return False
