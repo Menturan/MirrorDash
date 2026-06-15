@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.2.4] - 2026-06-15
 
+### Core App
+- Rewrote `wifi_setup.html` as a fully self-contained offline page: replaced Lucide CDN icons with inline SVGs and removed Google Fonts dependencies, fixing blank-screen rendering in captive portal AP mode.
+- Pre-AP scan cache in `mirrordash-wifi-check.sh`: scans for nearby networks and persists results to `/var/lib/mirrordash-wifi-scan.cache` before entering hotspot mode.
+- `scan_wifi_networks()` now falls back to the pre-AP cached scan when `nmcli` fails under active AP mode, ensuring the captive portal always shows available networks.
+- `connect_wifi()` tears down the `MirrorDash-Setup` AP profile before connecting the client network, fixing silent connection failures.
+- Added `ensure_nm_wifi_persistence()` helper for idempotent migration of NetworkManager profiles to persistent storage on OverlayFS devices.
+- Made `loading.html` fully offline-capable by removing Google Fonts CDN dependency and using a system font stack.
+- Added boot status awareness to `loading.html`: reads `boot_status` from `/health` endpoint and shows contextual messages during A/B rollback ("Recovering from update... please wait") and Safe Mode ("Running in safe mode... please wait").
+- Added tests for WiFi scan cache fallback, AP teardown during connect, and offline captive portal rendering.
+- Noted WiFi credential exclusion on the admin backup page to inform users that network passwords are not included in backup archives.
+
+## [Unreleased]
+
 ### System OS (Appliance)
 - Enabled host CPU extensions mapping in emulated QEMU environment by exporting `QEMU_CPU=max` in `build_image.sh`, accelerating compilation and package installation.
 - Fixed `pigz` initramfs warning (`W: pigz compression () not supported by kernel, using gzip`) by keeping standard `gzip` compression format in `/etc/initramfs-tools/initramfs.conf`.
