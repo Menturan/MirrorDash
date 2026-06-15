@@ -189,26 +189,19 @@ python mirrordash_core/main.py
 
 27. **Disk Space Boundary Monitoring.** The virtual environment `.venv` resides on the root filesystem (ext4) which is capped at 6GB in the golden image. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint). Always display a warning visual when remaining root partition free space drops below 500MB to avoid system crashes on OverlayFS.
 
-28. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) in the repository and group manual instructions into chained commands using `&&` to minimize copy-paste errors and user friction.
+28. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) and chain manual command segments using `&&` to minimize copy-paste errors and user friction.
 
-29. **Golden Image is a Production IoT Environment.** `GOLDEN_IMAGE.md` and all associated setup scripts (`scripts/setup_appliance.sh`, `scripts/launch.sh`) must be authored with the same rigour as a professional, high-grade IoT production system. Concretely this means:
-   - **No source code on the device.** Install the application from PyPI; fetch only the specific assets needed (e.g. `launch.sh`, splash image) via `curl`. Never clone the development repository onto a production appliance.
-   - **No development artifacts.** No editable installs (`-e`), no test dependencies, no debug flags, no `print()` tracing left in production paths.
-   - **No leftover secrets.** Development WiFi credentials, SSH keys, and test API keys must be purged before image finalization (Section 7).
-   - **Assume zero human intervention after deployment.** Every failure mode must be handled automatically (watchdog, rollback, captive portal fallback). Never design a recovery path that requires SSH or physical access.
-   - **Treat every instruction as executed by a non-expert.** Commands must be unambiguous, safe by default, and include guards (e.g. `lsblk` before `dd`, `visudo -c` after sudoers edits).
+29. **Golden Image is a Production IoT Environment.** `GOLDEN_IMAGE.md` and all associated setup scripts must be authored with the same rigour as a professional, high-grade IoT production system. No source code on the device, no editable installs, no debug flags, no leftover dev credentials. Assume zero human intervention after deployment. Treat every instruction as executed by a non-expert.
 
-30. **Documentation ↔ Script Synchronization.** Documentation files that describe setup procedures (e.g. `GOLDEN_IMAGE.md`) and their corresponding automation scripts (e.g. `scripts/setup_appliance.sh`, `scripts/launch.sh`) are **two representations of the same truth**. When modifying commands, package names, paths, flags, or procedures in one, you **must** immediately update the other to match. Never leave them out of sync.
+30. **Documentation ↔ Script Synchronization.** Documentation files and their corresponding automation scripts are **two representations of the same truth**. When modifying one, you must immediately update the other. This applies universally: `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, `ARCHITECTURE.md` ↔ actual code patterns, module `README.md` ↔ module source.
 
-    This principle applies universally across the entire project: any documentation file that describes behavior, configuration, APIs, or procedures must stay in sync with the code, scripts, templates, or config files that implement it. Examples include `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, `ARCHITECTURE.md` ↔ actual code patterns, and module `README.md` files ↔ module source code.
-
-32. **Dual-Artifact Release Model.** This project produces two independent artifacts from the same repository:
+31. **Dual-Artifact Release Model.** This project produces two independent artifacts from the same repository:
    - **Core App** (`mirrordash` Python package) → published to PyPI automatically via GitHub Actions OIDC Trusted Publishing when a `vX.Y.Z` tag is pushed. Version is defined in `pyproject.toml`.
    - **System OS Image** (`mirrordash-os-vX.Y.Z.img.gz`) → built manually via `scripts/build_image.sh` and published as a GitHub Release asset. Tagged separately as `vX.Y.Z-osN`.
    
    These artifacts are released on different schedules. The Core App can ship without the System OS image, and vice versa. When updating `CHANGELOG.md`, entries under a versioned `[X.Y.Z]` section must only contain changes that ship in that specific artifact. System OS appliance changes must remain under `[Unreleased]` until the golden image is tested and released. Never mix System OS entries into a Core App version block.
 
-33. **Maintain Table of Contents (TOC) in Markdown Files.** Always add and update a Table of Contents (TOC) at the top of `.md` files if there are more than 3 level-2 (`##`) headings (or major sections).
+32. **Maintain Table of Contents (TOC) in Markdown Files.** Always add and update a Table of Contents (TOC) at the top of `.md` files if there are more than 3 level-2 (`##`) headings (or major sections).
 
 ---
 
@@ -269,11 +262,10 @@ mirrordash-cli create-module mirrordash-my-widget --description "My widget"
 
 ### Next Steps:
 ```bash
-# Install the module in editable mode
+# 3. Install the module in editable mode
 uv pip install -e ./modules/mirrordash-my-widget
 
-# 4. Enable in config.json
-# Add entry under "modules" with "position", "enabled", "interval"
+# 4. Enable in config.json — add entry under "modules" with "position", "enabled", "interval"
 
 # 5. Restart server
 ```
@@ -320,36 +312,3 @@ The file `mirrordash_core/static/design.html` (served at `/design`) is a live co
 | `AGENTS.md` | New coding rules, patterns, or constraints are established |
 | `CHANGELOG.md` | Any notable feature, bug fix, or codebase change is committed |
 | `RELEASING.md` | The release workflow, OIDC configurations, or pre-release checklists change |
-
----
-
-## Architecture Patterns
-| Pitfall | Correct approach |
-|---------|-----------------|
-| Writing CSS in `style.css` for a specific module | Put it in the module's `<style>` tag in its template |
-| Using `time.sleep()` in an async module | Use `await asyncio.sleep()` |
-| Blocking HTTP calls in `run_loop` | Wrap in `asyncio.to_thread()` |
-| Defining a nested `def` in a loop without a factory | Use a factory function to capture scope |
-| Using `float` or `int` for pixel values in Jinja2 templates | Format explicitly: `{{ value | int }}px` |
-| Adding module-specific documentation to `DESIGN.md` | Keep `DESIGN.md` design-system-only; module docs go in the module's own `README.md` |
-| Adding module-specific documentation to `MODULE_GUIDE.md` | `MODULE_GUIDE.md` (in `mirrordash-sdk` repo) covers the module developer API only (helpers, lifecycle, schema format); module-specific config, providers, and API key instructions go in the module's own `README.md` |
-| Committing without `--no-gpg-sign` | Always use `git commit --no-gpg-sign` |
-| Using colored emojis in widgets or notifications | Use Lucide outline icons (`data-lucide="icon-name"`) with `1.5px` stroke width. |
-| Expecting icons to render automatically in dynamic templates | Invoke `lucide.createIcons()` after dynamically injecting markup. |
-| Putting borders around modules/widgets | Keep background transparent and avoid borders to respect the grid-less HUD aesthetic. |
-| Committing new features/fixes without tests, or running the full test suite for minor/non-logic changes | Write/run tests under `tests/` for logic changes, run targeted test files (`.venv/bin/pytest tests/test_x.py`) during development, and bypass test runs entirely for documentation, comments, CSS, or markup-only templates. |
-| Allowing technical debt or architectural drift | Follow standard design patterns and refactor code to maintain clarity and structure. |
-| Ignoring large context size until limits are breached | Monitor token counts and alert the user when the model context size starts getting too large. |
-| Writing washed-out, low-contrast, or hard-to-read buttons and UI text | Ensure proper high-contrast ratios and strictly adhere to design-system variables and visual rules. |
-| Leaving new features or config options undocumented | Always update `ARCHITECTURE.md`, `DESIGN.md`, `MODULE_GUIDE.md` (in `mirrordash-sdk` repo), `AGENTS.md`, and `CHANGELOG.md` when introducing new features. |
-| Ignoring user's preferred global settings (e.g., time_format, language, units) | Always check and respect configuration settings from the "globals" block instead of assuming browser locale or hardcoding defaults. |
-| Reinventing complex standard logic or unnecessarily bloating package dependencies | Look for well-known, popular, and robust libraries for complex tasks, but avoid importing external packages for simple utility code that can be natively written. |
-| Creating a new module manually from scratch | Always use the standalone `mirrordash-cli create-module` scaffolder command to generate a fully compliant module structure. |
-| Hardcoding fixed widths for columns or lists in module templates | Design layouts to be fully responsive. Other languages (like Swedish or German) can have words that are much longer than English. Use flexbox/grid and truncation (`text-overflow: ellipsis`) instead. |
-| Leaving root partition boundaries unmonitored during package installation | Expose and show root partition disk usage metrics, warning users if free space drops below 500MB on the 6GB partition. |
-| Writing instructions with dozens of manual copy-paste commands | Provide automated scripts (like `scripts/setup_appliance.sh`) and chain manual command segments using `&&`. |
-| Treating the golden image setup like a development environment | The golden image is a professional IoT production environment. No `git clone`, no editable installs, no debug flags, no leftover dev credentials. Install from PyPI; fetch only needed assets via `curl`. |
-| Updating documentation without updating the corresponding code/scripts (or vice versa) | Documentation and its implementation are two representations of the same truth. Always update both simultaneously — e.g. `GOLDEN_IMAGE.md` ↔ `setup_appliance.sh`, `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, module `README.md` ↔ module source. |
-
-
-
