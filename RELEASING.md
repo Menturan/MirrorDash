@@ -22,6 +22,7 @@ This document outlines the release, testing, and deployment workflows for Mirror
 - [Track 2: System OS Image Release](#track-2-system-os-image-release)
 - [Architecture & Infrastructure Behind Releases](#architecture--infrastructure-behind-releases)
 - [Client Update & Deployment Procedures](#client-update--deployment-procedures)
+- [Manual Reference (Legacy)](#manual-reference-legacy)
 
 ---
 
@@ -57,43 +58,39 @@ MirrorDash produces **two independent artifacts** from the same repository. They
 
 For Python package changes: new features, bug fixes, module updates, admin dashboard changes, API changes.
 
-### 1. Pre-Release Checklist
-1. Ensure you are on the `master` branch and have pulled the latest changes:
-   ```bash
-   git checkout master
-   git pull origin master
-   ```
-2. Run the test suite to verify everything is passing:
-   ```bash
-   .venv/bin/pytest
-   ```
-3. Update the version number in [pyproject.toml](file:///home/menturan/repos/mymagicmirror/pyproject.toml):
-   ```toml
-   [project]
-   version = "X.Y.Z" # Replace X.Y.Z with your new version (e.g. 0.2.1)
-   ```
-4. Update the [CHANGELOG.md](file:///home/menturan/repos/mymagicmirror/CHANGELOG.md):
-   - Move Core App entries under `[Unreleased]` → new `## [X.Y.Z] - YYYY-MM-DD` section
-   - Leave System OS entries under `[Unreleased]` (they ship separately)
-   - Update the comparison links at the bottom
+### 1. Pre-Release (Automated)
 
-### 2. Commit and Push
+Use the release helper script to run tests, bump the version, reorganize the CHANGELOG, and push:
+
 ```bash
-git add pyproject.toml CHANGELOG.md
-git commit --no-gpg-sign -m "chore: bump version to X.Y.Z"
-git push origin master
+python3 scripts/release_core.py 0.2.5
 ```
 
-### 3. Create the GitHub Release
+The script will:
+1. Validate the SemVer version argument
+2. Ensure you are on `master` and pull latest
+3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
+4. Bump `version` in `pyproject.toml`
+5. Reorganize `CHANGELOG.md` (Core App entries → `[0.2.5]`, System OS stays under `[Unreleased]`)
+6. Commit and push to `origin/master`
+
+> [!NOTE]
+> The script does **not** write CHANGELOG entries — someone must have already added them under `[Unreleased]` before running it. It only reorganizes existing entries into the correct versioned section.
+
+### 2. Create the GitHub Release
+
 1. Navigate to **Releases** → **Draft a new release**.
-2. Choose a tag `vX.Y.Z` → **Create new tag on publish**.
-3. Title matches the tag (e.g. `v0.2.4`).
+2. Choose a tag `v0.2.5` → **Create new tag on publish**.
+3. Title matches the tag (e.g. `v0.2.5`).
 4. Click **Publish release**.
 
-### 4. Verification
+### 3. Verification
+
 The **Publish to PyPI** workflow runs automatically:
 1. Go to the **Actions** tab and monitor the workflow.
 2. Verify the package appears on [PyPI](https://pypi.org/project/mirrordash/).
+
+If you need to perform these steps manually instead of using the script, see the [manual reference](#manual-reference-track-1-core-app).
 
 ---
 
@@ -104,27 +101,33 @@ For OS-level changes: new system packages, Plymouth themes, labwc config, networ
 > [!IMPORTANT]
 > **Prerequisite**: The Core App `vX.Y.Z` release should already exist. The OS image tracks the Core App version (e.g. `v0.2.4-os1` is the first OS image for Core App `v0.2.4`).
 
-### 1. Update CHANGELOG.md
-Before creating the release, organize the changelog:
+### 1. Pre-Release (Automated)
 
-1. Move System OS entries from `[Unreleased]` → a new `## [X.Y.Z-osN] - YYYY-MM-DD` section
-2. Core App entries for the same version stay in `[X.Y.Z]` (they were already moved during Track 1)
-3. Update comparison links at the bottom
+Use the release helper script to run tests, reorganize the CHANGELOG, and push:
 
-### 2. Commit and Push
 ```bash
-git add CHANGELOG.md
-git commit --no-gpg-sign -m "chore: organize CHANGELOG for vX.Y.Z-osN OS image release"
-git push origin master
+python3 scripts/release_os.py 0.2.4-os1
 ```
 
-### 3. Create the GitHub Release
+The script will:
+1. Validate the `X.Y.Z-osN` version argument
+2. Ensure you are on `master` and pull latest
+3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
+4. Reorganize `CHANGELOG.md` (System OS entries → `[0.2.4-os1]`, Core App stays in `[0.2.4]`)
+5. Commit and push to `origin/master`
+
+> [!NOTE]
+> The script does **not** write CHANGELOG entries — someone must have already added them under `[Unreleased]` before running it. It only moves existing entries to the correct versioned section.
+
+### 2. Create the GitHub Release
+
 1. Navigate to **Releases** → **Draft a new release**.
-2. Choose a tag `vX.Y.Z-os1` (first OS image for this version) → **Create new tag on publish**.
+2. Choose a tag `v0.2.4-os1` (first OS image for this version) → **Create new tag on publish**.
 3. Title matches the tag (e.g. `v0.2.4-os1`).
 4. Click **Publish release**.
 
-### 4. Automated Build & Upload
+### 3. Automated Build & Upload
+
 The **Build OS Image** workflow triggers automatically on `ubuntu-24.04-arm64`:
 
 1. **Free disk space** (`EisBear/free-disk-space-ubuntu-runners@v1`)
@@ -136,7 +139,7 @@ The **Build OS Image** workflow triggers automatically on `ubuntu-24.04-arm64`:
 > [!TIP]
 > Monitor the workflow in the **Actions** tab. Build time is typically 15–30 minutes.
 
-### 5. Verification & Testing Checklist
+### 4. Verification & Testing Checklist
 
 Download the image from the GitHub Release and test on real hardware:
 
@@ -149,7 +152,7 @@ Download the image from the GitHub Release and test on real hardware:
 4. **Dashboard & Mirror Load**: `index.html` loads, skeletons appear, WebSocket connects, widgets render.
 5. **Admin Access**: Dashboard reachable at `http://mirrordash.local/admin`, requires API key.
 
-### 6. Rebuilding a Failed Image
+### 5. Rebuilding a Failed Image
 
 If the workflow fails (runner issues, network timeouts):
 1. Delete the failed GitHub Release (or just the tag).
@@ -179,6 +182,46 @@ The OS image is built on `ubuntu-24.04-arm64` GitHub Actions runners — real AR
 - Downloads `pishrink.sh` at runtime
 
 This eliminates the QEMU-related initramfs corruption, white-screen boot issues, and pigz warnings that plagued the previous x86_64 + QEMU build pipeline.
+
+---
+
+## Manual Reference (Legacy)
+
+If you need to perform release steps without the automation scripts (e.g. debugging, offline environment), the manual procedures below mirror what the scripts do.
+
+### Track 1: Core App (Manual)
+
+1. **Pre-Release Checklist**:
+   - Ensure you are on `master` and up to date
+   - Run `.venv/bin/pytest` — all tests must pass
+   - Bump `version` in `pyproject.toml`
+   - Move Core App entries under `[Unreleased]` → new `## [X.Y.Z] - YYYY-MM-DD` section
+   - Leave System OS entries under `[Unreleased]`
+   - Update comparison links at the bottom of CHANGELOG.md
+
+2. **Commit and Push**:
+   ```bash
+   git add pyproject.toml CHANGELOG.md
+   git commit --no-gpg-sign -m "chore: bump version to X.Y.Z"
+   git push origin master
+   ```
+
+3. Create the GitHub Release (tag `vX.Y.Z`) and verify PyPI publish.
+
+### Track 2: System OS Image (Manual)
+
+1. **Update CHANGELOG.md**:
+   - Move System OS entries from `[Unreleased]` → new `## [X.Y.Z-osN] - YYYY-MM-DD` section
+   - Core App entries stay in `[X.Y.Z]`
+
+2. **Commit and Push**:
+   ```bash
+   git add CHANGELOG.md
+   git commit --no-gpg-sign -m "chore: organize CHANGELOG for vX.Y.Z-osN OS image release"
+   git push origin master
+   ```
+
+3. Create the GitHub Release (tag `vX.Y.Z-os1`) — the automated ARM build workflow will handle the rest.
 
 ---
 
