@@ -82,7 +82,7 @@ download_base_image() {
         # Get the latest directory (ignoring header rows, etc.)
         local LATEST_DIR
         LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
-        
+
         if [ -z "$LATEST_DIR" ]; then
             error_exit "Could not determine latest Raspberry Pi OS directory."
         fi
@@ -120,7 +120,7 @@ download_base_image() {
         else
             info "Decompressed image already exists."
         fi
-        
+
         # We will work on a copy to preserve the pristine downloaded image
         cp "$IMAGE_FILE" "$FINAL_IMAGE"
     )
@@ -129,7 +129,7 @@ download_base_image() {
 resize_partition() {
     info "Expanding image file to add 6GB headroom..."
     local img_path="$BUILD_DIR/$FINAL_IMAGE"
-    
+
     truncate -s +6G "$img_path"
 
     info "Resizing partition table..."
@@ -157,7 +157,7 @@ resize_partition() {
     info "Resizing ext4 filesystem on ${LOOP_DEV}p2..."
     e2fsck -f -y "${LOOP_DEV}p2"
     resize2fs "${LOOP_DEV}p2"
-    
+
     info "Creating ext4 filesystem on ${LOOP_DEV}p3..."
     mkfs.ext4 -F -L mirrordash-data "${LOOP_DEV}p3"
 }
@@ -185,7 +185,7 @@ mount_image() {
 setup_qemu_chroot() {
     info "Setting up QEMU emulation in chroot..."
     cp /usr/bin/qemu-aarch64-static "$MOUNT_DIR/usr/bin/"
-    
+
     # Backup original resolv.conf and setup robust DNS
     if [ -e "$MOUNT_DIR/etc/resolv.conf" ] || [ -L "$MOUNT_DIR/etc/resolv.conf" ]; then
         mv "$MOUNT_DIR/etc/resolv.conf" "$MOUNT_DIR/etc/resolv.conf.bak"
@@ -274,7 +274,7 @@ local_mount_root()
 }
 INITSCRIPT
     chmod +x /etc/initramfs-tools/scripts/overlay
-    
+
     # QEMU-user lacks full thread/mmap support for pigz, causing kernel warnings. Force standard gzip temporarily.
     echo "COMPRESS=gzip" > /etc/initramfs-tools/conf.d/qemu-compress.conf
     update-initramfs -u -k all
@@ -295,10 +295,10 @@ EOF
 
 setup_storage_offline() {
     info "Performing offline storage setup (bypassing step 1)..."
-    
+
     info "Ensuring 'pi' user exists in chroot..."
     chroot "$MOUNT_DIR" /bin/bash -c "if ! id pi &>/dev/null; then useradd -m -s /bin/bash -G sudo,video,render,plugdev,games,users,input,netdev,gpio,i2c,spi pi && echo 'pi:raspberry' | chpasswd; fi"
-    
+
     mkdir -p "$MOUNT_DIR/storage/mirrordash/data" "$MOUNT_DIR/storage/mirrordash/venv_a" "$MOUNT_DIR/storage/mirrordash/venv_b"
     chroot "$MOUNT_DIR" /bin/bash -c "chown -R pi:pi /storage"
 
@@ -318,6 +318,17 @@ LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60,nofail,x-syste
 # Volatile module cache in RAM (100 MB)
 tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
 EOF
+    fi
+
+    # Route NetworkManager WiFi profiles to the persistent partition so they survive OverlayFS reboots
+    if [ ! -L "$MOUNT_DIR/etc/NetworkManager/system-connections" ]; then
+      if [ -d "$MOUNT_DIR/etc/NetworkManager/system-connections" ]; then
+        mkdir -p "$MOUNT_DIR/storage/mirrordash/system-connections"
+        cp -a "$MOUNT_DIR/etc/NetworkManager/system-connections/"* "$MOUNT_DIR/storage/mirrordash/system-connections/" 2>/dev/null || true
+        rm -rf "$MOUNT_DIR/etc/NetworkManager/system-connections"
+      fi
+      mkdir -p "$MOUNT_DIR/storage/mirrordash/system-connections"
+      ln -s /storage/mirrordash/system-connections "$MOUNT_DIR/etc/NetworkManager/system-connections"
     fi
 
     # Create the systemd service file
@@ -407,11 +418,11 @@ run_appliance_setup() {
     mkdir -p "$MOUNT_DIR/opt/MirrorDash"
     # Copy repository to chroot, excluding build_workspace, hidden items, and other build directories
     find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "build_*" -not -name "$(basename "$BUILD_DIR")" -exec cp -r -t "$MOUNT_DIR/opt/MirrorDash/" {} +
-    
+
     info "Executing setup_appliance.sh inside chroot..."
     # Export NONINTERACTIVE=1 to handle any possible prompts
     chroot "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && export NONINTERACTIVE=1 && bash ./setup_appliance.sh"
-    
+
     info "Executing finalize_appliance.sh inside chroot..."
     # Disable poweroff in the installed finalize script so we can catch actual failures without the chroot exiting
     sed -i 's/^poweroff/#poweroff disabled in chroot/g' "$MOUNT_DIR/usr/local/bin/mirrordash-finalize.sh"
@@ -429,14 +440,14 @@ cleanup_and_unmount() {
         rm -f "$MOUNT_DIR/usr/local/bin/uname"
         rm -f "$MOUNT_DIR/usr/local/bin/raspi-config"
         rm -rf "$MOUNT_DIR/opt/MirrorDash"
-        
+
         # Restore original resolv.conf
         if [ -e "$MOUNT_DIR/etc/resolv.conf.bak" ] || [ -L "$MOUNT_DIR/etc/resolv.conf.bak" ]; then
             mv "$MOUNT_DIR/etc/resolv.conf.bak" "$MOUNT_DIR/etc/resolv.conf"
         elif [ -e "$MOUNT_DIR/etc/resolv.conf" ] || [ -L "$MOUNT_DIR/etc/resolv.conf" ]; then
             rm -f "$MOUNT_DIR/etc/resolv.conf"
         fi
-        
+
         info "Unmounting filesystems..."
         safe_umount "$MOUNT_DIR/tmp"
         safe_umount "$MOUNT_DIR/run"
@@ -458,20 +469,20 @@ cleanup_and_unmount() {
 
 shrink_and_compress() {
     info "Shrinking and compressing the final image..."
-    
+
     # Remove any existing .gz image and checksum files
     rm -f "$BUILD_DIR/${FINAL_IMAGE}.gz" "$BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
-    
+
     # Run pishrink with -z on the final image. It will shrink in-place and then gzip it,
     # automatically appending .gz to the filename (resulting in mirrordash-final.img.gz)
     pishrink.sh -z "$BUILD_DIR/$FINAL_IMAGE"
-    
+
     info "Generating SHA256 checksum..."
     (
         cd "$BUILD_DIR"
         sha256sum "${FINAL_IMAGE}.gz" > "${FINAL_IMAGE}.gz.sha256"
     )
-    
+
     info "Build complete. Final image is at $BUILD_DIR/${FINAL_IMAGE}.gz"
     info "SHA256 checksum generated at $BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
 }

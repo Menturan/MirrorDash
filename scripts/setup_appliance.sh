@@ -160,6 +160,18 @@ EOF
   # Mount all fstab entries (bind mounts, tmpfs)
   mount -a
 
+  # Route NetworkManager WiFi profiles to the persistent partition so they survive OverlayFS reboots
+  if [ ! -L /etc/NetworkManager/system-connections ]; then
+    if [ -d /etc/NetworkManager/system-connections ]; then
+      mkdir -p /storage/mirrordash/system-connections
+      cp -a /etc/NetworkManager/system-connections/* /storage/mirrordash/system-connections/ 2>/dev/null || true
+      rm -rf /etc/NetworkManager/system-connections
+    fi
+    mkdir -p /storage/mirrordash/system-connections
+    chown -R "$PI_USER:$PI_USER" /storage/mirrordash/system-connections
+    ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
+  fi
+
   # Create the storage auto-expand script (runs on next boots)
   cat << 'EOF' > /usr/local/bin/mirrordash-expand.sh
 #!/bin/bash
@@ -627,10 +639,10 @@ step_wifi_captive_portal() {
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 PASSWORD="mirrordash"
+CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
 for i in {1..30}; do
-    # Check if the system has any default gateway (Ethernet or configured Wi-Fi)
     if ip route show | grep -q "^default"; then
         logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
         exit 0
@@ -638,18 +650,24 @@ for i in {1..30}; do
     sleep 1
 done
 
-logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Switching to setup hotspot..."
+logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
+
+# Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
+SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
+echo "$SCAN_RESULT" > "$CACHE_FILE"
+chmod 644 "$CACHE_FILE"
+logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
+
 # Purge any existing MirrorDash-Setup profiles
 nmcli connection delete "$SSID" 2>/dev/null || true
 
-# Add and configure a custom hotspot profile with PMF disabled to avoid Broadcom firmware bugs
+# Add and configure the AP hotspot
 nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
 nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
 nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
 nmcli connection modify "$SSID" wifi-sec.pmf 1
 nmcli connection modify "$SSID" ipv4.method shared
 
-# Attempt to bring the connection up
 if nmcli connection up "$SSID"; then
     logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
 else

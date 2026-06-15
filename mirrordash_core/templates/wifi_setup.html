@@ -6,9 +6,6 @@
     <title>MirrorDash - WiFi Configuration</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fira+Code&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/admin.css">
     <style>
         body {
@@ -73,7 +70,7 @@
         .status-box.success { display: flex; align-items: center; gap: 8px; background: rgba(160, 255, 186, 0.08); border: 1px solid var(--success-color); color: var(--success-color); }
         .status-box.error { display: flex; align-items: center; gap: 8px; background: rgba(255, 180, 171, 0.08); border: 1px solid var(--error-color); color: var(--error-color); }
         
-        input[type="password"] {
+        input[type="password"], input[type="text"] {
             width: 100%;
             background: rgba(0, 0, 0, 0.4);
             border: 1px solid var(--card-border);
@@ -84,8 +81,9 @@
             font-size: 0.9rem;
             outline: none;
             transition: border-color 0.2s;
+            box-sizing: border-box;
         }
-        input[type="password"]:focus-visible {
+        input[type="password"]:focus-visible, input[type="text"]:focus-visible {
             border-color: var(--accent-color);
             outline: 2px solid var(--accent-color);
             outline-offset: 2px;
@@ -96,7 +94,7 @@
     <div class="admin-container">
         <div class="card setup-card">
             <div class="setup-header">
-                <i data-lucide="wifi"></i>
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" x2="12.01" y1="20" y2="20"/></svg>
                 <h1>WiFi Setup</h1>
                 <p>Configure the network connection for your MirrorDash display.</p>
             </div>
@@ -109,7 +107,7 @@
                             <option value="">Scanning for networks...</option>
                         </select>
                         <button type="button" id="scan-btn" class="btn secondary btn-icon" onclick="scanNetworks()" title="Scan again">
-                            <i data-lucide="refresh-cw"></i>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
                         </button>
                     </div>
                     <div id="manual-container" style="display: none;">
@@ -158,11 +156,7 @@
         </div>
     </div>
 
-    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>
     <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
-
         let manualMode = false;
         let setupRequired = true;
         
@@ -204,7 +198,6 @@
             select.innerHTML = '<option value="">Scanning for networks...</option>';
             scanBtn.disabled = true;
             
-            // Add a small rotation animation class to the icon
             const icon = scanBtn.querySelector("svg");
             if (icon) icon.style.animation = "spin 1s linear infinite";
             
@@ -254,8 +247,6 @@
             const password = document.getElementById("password").value;
             const timezone = document.getElementById("timezone").value;
             
-            const statusBox = document.getElementById("status-box");
-            const statusMessage = document.getElementById("status-message");
             const submitBtn = document.getElementById("submit-btn");
             
             if (!ssid) {
@@ -289,7 +280,6 @@
                     submitBtn.disabled = false;
                 } else if (data.status === "success") {
                     showStatus(data.message, "success");
-                    // Disable all form controls during reboot countdown
                     document.getElementById("wifi-form").querySelectorAll("input, select, button").forEach(el => el.disabled = true);
                 } else {
                     showStatus(data.message || "Failed to connect to network.", "error");
