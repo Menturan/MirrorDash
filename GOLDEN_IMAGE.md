@@ -21,22 +21,42 @@ This guide details the step-by-step procedure to build, configure, harden, and c
 
 ## Automated Build Pipeline (Recommended)
 
-You can build the complete, production-ready, locked SD card image from scratch on a Linux workstation without ever needing a physical Raspberry Pi. The automated build script downloads the latest base OS, resizes partitions, uses QEMU to emulate the ARM environment, runs the complete configuration, and shrinks the final image.
+The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions whenever a tag matching `v*-os*` (e.g. `v0.2.4-os1`) is pushed. This eliminates QEMU emulation bugs and produces a locked, compressed `.img.gz` ready for flashing.
 
-Run the build script on your Debian/Ubuntu workstation. You can optionally provide an output directory as an argument if you want to build on a larger external drive:
+### Triggering a Build
+
+1. Ensure the Core App version is already bumped and the `vX.Y.Z` release exists (the OS image tracks the Core App version).
+2. Create a new GitHub Release with a tag like `v0.2.4-os1`.
+3. The **Build OS Image** workflow starts automatically on `ubuntu-24.04-arm64` runners.
+
+### What the Workflow Does
+
+1. **Free disk space** on the runner (`EisBear/free-disk-space-ubuntu-runners@v1`).
+2. **Checkout** the repository.
+3. **Install minimal dependencies**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, plus `pishrink.sh`.
+4. **Run `scripts/build_image.sh`** natively on ARM — no emulation. Produces `build_workspace/mirrordash-os-vX.Y.Z.img.gz` + `.sha256`.
+5. **Upload** both files as GitHub Release assets.
+
+### Requirements
+
+- A GitHub repository with Actions enabled.
+- The `build-os-image.yml` workflow file present in `.github/workflows/`.
+- No local workstation dependencies needed — everything runs in the cloud.
+
+If you use the automated build pipeline, you do **not** need to follow the manual steps below. The manual steps are provided for reference, debugging, and offline builds on native ARM workstations.
+
+### Offline / Local Build (Native ARM Only)
+
+On a native ARM workstation (e.g. a Raspberry Pi or Ubuntu ARM server), you can also run the build script directly:
 
 ```bash
 sudo bash scripts/build_image.sh [/path/to/large/drive]
 ```
 
-**Requirements:**
-- A Debian/Ubuntu Linux workstation.
-- Host dependencies: `qemu-user-static`, `parted`, `xz-utils`, `curl`, `wget`, `e2fsprogs`, `coreutils`, `sha256sum`.
-- Root (`sudo`) privileges to mount loop devices and chroot.
-
-The script will automatically generate a compressed, deployment-ready `mirrordash-final.img.gz` in the provided output directory (or a local `build_workspace/` directory by default).
-
-If you use the automated build pipeline, you do **not** need to follow the manual steps below. The manual steps are provided for reference, debugging, and alternative hardware configurations.
+**Requirements for local builds:**
+- ARM Linux workstation (aarch64). QEMU emulation is no longer supported.
+- Host dependencies: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`.
+- Root (`sudo`) privileges to mount loop devices.
 
 ---
 
