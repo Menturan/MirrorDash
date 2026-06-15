@@ -40,18 +40,33 @@ def parse_unreleased(content: str) -> tuple[list[str], list[str]]:
     return system_os, core_app
 
 
-def update_comparison_links(content: str, new_version: str, prev_version: str) -> str:
+def update_comparison_links(content: str, new_version: str, prev_version: str, is_os: bool = False) -> str:
     """Update the [Unreleased] comparison link and add the new version link."""
-    # Update [Unreleased] to point at the new version
-    content = re.sub(
-        r"(\[Unreleased\]: https://.*?compare/)(.*?)(\.\.\.HEAD)",
-        lambda m: f"{m.group(1)}{new_version}...HEAD",
-        content,
-        count=1,
-    )
+    # For OS releases, [Unreleased] link should point to the latest Core App version (not the OS version)
+    # For Core releases, it should point to the new Core version
+    if is_os:
+        # OS release: [Unreleased] should point to the Core version this OS is based on
+        content = re.sub(
+            r"(\[Unreleased\]: https://.*?compare/)(.*?)\.\.\.HEAD",
+            f"\\1v{prev_version}...HEAD",
+            content,
+            count=1,
+        )
+    else:
+        # Core release: update [Unreleased] to point to the new version
+        content = re.sub(
+            r"(\[Unreleased\]: https://.*?compare/)(.*?)\.\.\.HEAD",
+            lambda m: f"{m.group(1)}v{new_version}...HEAD",
+            content,
+            count=1,
+        )
     # Add new version comparison link after the [Unreleased] line
     base_url = "https://github.com/Menturan/MirrorDash/compare"
-    new_link = f"[{new_version}]: {base_url}/{prev_version}...{new_version}\n"
+    # OS versions compare against Core version, Core versions compare against previous Core with 'v' prefix
+    if is_os:
+        new_link = f"[{new_version}]: {base_url}/v{prev_version}...{new_version}\n"
+    else:
+        new_link = f"[{new_version}]: {base_url}/v{prev_version}...v{new_version}\n"
     # Insert right after the [Unreleased] link line
     content = re.sub(
         r"(\[Unreleased\]: .*?\.\.\.HEAD\n)",
@@ -87,12 +102,13 @@ def main() -> None:
             print("Error: No Core App entries found under [Unreleased]")
             sys.exit(1)
 
-        # Build the new [X.Y.Z] section with only Core App items
+        # Build the new section with both subsections (OS is empty for core releases)
         new_section = f"\n## [{version}] - {today}\n\n### Core App\n"
         new_section += "\n".join(sorted(set(core_app))) + "\n"
+        new_section += "\n### System OS (Appliance)\n"
 
-        # Rebuild [Unreleased] with only remaining items (System OS)
-        remaining = f"## [Unreleased]\n\n### System OS (Appliance)\n"
+        # Rebuild [Unreleased] with both subsections (OS stays, Core is now empty)
+        remaining = f"## [Unreleased]\n\n### Core App\n\n### System OS (Appliance)\n"
         if system_os:
             remaining += "\n".join(sorted(set(system_os))) + "\n"
 
@@ -104,12 +120,15 @@ def main() -> None:
             print("Error: No System OS entries found under [Unreleased]")
             sys.exit(1)
 
-        new_section = f"\n## [{version}] - {today}\n\n### System OS (Appliance)\n"
+        new_section = f"\n## [{version}] - {today}\n\n### Core App\n"
+        new_section += "\n### System OS (Appliance)\n"
         new_section += "\n".join(sorted(set(system_os))) + "\n"
 
+        # Rebuild [Unreleased] with both subsections (Core stays, OS is now empty)
         remaining = f"## [Unreleased]\n\n### Core App\n"
         if core_app:
             remaining += "\n".join(sorted(set(core_app))) + "\n"
+        remaining += "\n### System OS (Appliance)\n"
 
         # For OS releases, find the Core App version to link against
         prev_version_match = re.search(r"## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}", content)
@@ -123,18 +142,17 @@ def main() -> None:
         flags=re.DOTALL,
     )
 
-    # Insert the new version section after [Unreleased]
+    # Insert the new version section BEFORE [Unreleased] so latest release is at the top
     insert_anchor = "## [Unreleased]\n"
     idx = content.find(insert_anchor)
     if idx == -1:
         print("Error: Could not locate [Unreleased] section")
         sys.exit(1)
 
-    idx = content.find("\n", idx + len(insert_anchor)) + 1
-    content = content[:idx] + new_section + content[idx:]
+    content = content[:idx] + new_section + "\n" + content[idx:]
 
     # Update comparison links
-    content = update_comparison_links(content, version, prev_version)
+    content = update_comparison_links(content, version, prev_version, is_os=(track == "os"))
 
     with open(changelog_path, "w") as f:
         f.write(content)
