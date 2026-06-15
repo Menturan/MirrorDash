@@ -17,7 +17,6 @@ This file provides AI coding agents with everything they need to work effectivel
 - [Modifying Core Behaviour](#modifying-core-behaviour)
 - [Design System Explorer](#design-system-explorer)
 - [Documentation Files to Keep Updated](#documentation-files-to-keep-updated)
-- [Common Pitfalls](#common-pitfalls)
 
 ---
 
@@ -324,8 +323,7 @@ The file `mirrordash_core/static/design.html` (served at `/design`) is a live co
 
 ---
 
-## Common Pitfalls
- 
+## Architecture Patterns
 | Pitfall | Correct approach |
 |---------|-----------------|
 | Writing CSS in `style.css` for a specific module | Put it in the module's `<style>` tag in its template |
