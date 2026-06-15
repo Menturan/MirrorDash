@@ -7,7 +7,9 @@ This guide details the step-by-step procedure to build, configure, harden, and c
 
 ## Table of Contents
 
-- [Automated Build Pipeline (Recommended)](#automated-build-pipeline-recommended)
+- [Build Tracks: Automated vs Manual](#build-tracks-automated-vs-manual)
+- [Track A: Automated Build (Recommended)](#track-a-automated-build-recommended)
+- [Track B: Manual Build (Reference Guide)](#track-b-manual-build-reference-guide)
 - [1. Operating System Initialization](#1-operating-system-initialization)
 - [2. System Configuration & Package Installation](#2-system-configuration--package-installation)
 - [3. Environment & Application Setup](#3-environment--application-setup)
@@ -19,7 +21,24 @@ This guide details the step-by-step procedure to build, configure, harden, and c
 
 ---
 
-## Automated Build Pipeline (Recommended)
+## Build Tracks: Automated vs Manual
+
+This document provides **two build tracks** for producing the MirrorDash Golden Image:
+
+| | **Track A: Automated** | **Track B: Manual** |
+|:---|:---|:---|
+| **What it is** | GitHub Actions workflow building on real ARM64 hardware | Step-by-step guide for building directly on a Pi or ARM workstation |
+| **When to use** | **Primary/release path** — every OS image release should use this | **Reference and fallback** — for offline builds, debugging, or understanding the internals |
+| **QEMU** | Not used (real ARM runners) | Not used (native ARM only) |
+| **Output** | `.img.gz` + `.sha256` uploaded as GitHub Release assets | `.img.gz` on local disk, ready for flashing |
+| **Start here** | [Track A ↓](#track-a-automated-build-recommended) | [Track B ↓](#track-b-manual-build-reference-guide) |
+
+> [!TIP]
+> **For releases and production builds, use Track A (Automated).** Track B exists so you can inspect exactly what the automated pipeline does under the hood, build offline without GitHub, or debug image issues by understanding each step individually.
+
+---
+
+## Track A: Automated Build (Recommended)
 
 The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions whenever a tag matching `v*-os*` (e.g. `v0.2.4-os1`) is pushed. This eliminates QEMU emulation bugs and produces a locked, compressed `.img.gz` ready for flashing.
 
@@ -43,20 +62,31 @@ The complete production-ready SD card image is built automatically on real ARM h
 - The `build-os-image.yml` workflow file present in `.github/workflows/`.
 - No local workstation dependencies needed — everything runs in the cloud.
 
-If you use the automated build pipeline, you do **not** need to follow the manual steps below. The manual steps are provided for reference, debugging, and offline builds on native ARM workstations.
+---
 
-### Offline / Local Build (Native ARM Only)
+## Track B: Manual Build (Reference Guide)
 
-On a native ARM workstation (e.g. a Raspberry Pi or Ubuntu ARM server), you can also run the build script directly:
+The sections below (1–7) document the full manual build process for building the image directly on ARM hardware. Use this track when:
+
+- Building offline (no GitHub access)
+- Debugging image issues step-by-step
+- Understanding what the automated pipeline does internally
+
+> [!IMPORTANT]
+> **QEMU emulation is no longer supported.** These manual steps require a native ARM workstation (e.g. Raspberry Pi running Ubuntu, or an Ubuntu ARM server). Do not attempt on x86_64.
+
+### Prerequisites for Manual Build
 
 ```bash
 sudo bash scripts/build_image.sh [/path/to/large/drive]
 ```
 
-**Requirements for local builds:**
-- ARM Linux workstation (aarch64). QEMU emulation is no longer supported.
-- Host dependencies: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`.
-- Root (`sudo`) privileges to mount loop devices.
+**Requirements:**
+- ARM Linux workstation (aarch64)
+- Host dependencies: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`
+- Root (`sudo`) privileges to mount loop devices
+
+The script runs `setup_appliance.sh` inside the mounted image to apply all the steps documented in Sections 1–6 automatically. Proceed to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)** after the script completes, or read the manual sections below to understand each step in detail.
 
 ---
 
