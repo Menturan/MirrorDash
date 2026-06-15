@@ -85,9 +85,15 @@ def test_wifi_scan_fallback_to_cache(mock_subprocess, mock_cache, client):
 
 
 @patch("mirrordash_core.system.network._load_cached_scan")
-def test_wifi_scan_no_cache_returns_empty(mock_cache, client):
+@patch("mirrordash_core.system.network.asyncio.create_subprocess_exec")
+def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
     """When nmcli fails and there is no cache file, return an empty list."""
     mock_cache.return_value = []
+    mock_proc = AsyncMock()
+    mock_proc.communicate = AsyncMock(return_value=(b"", b"device not ready"))
+    mock_proc.returncode = 1
+    mock_subprocess.return_value = mock_proc
+
     import asyncio
 
     coro = scan_wifi_networks()
