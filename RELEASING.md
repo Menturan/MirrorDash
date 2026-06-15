@@ -9,7 +9,7 @@ This document outlines the release, testing, and deployment workflows for Mirror
 > | :--- | :--- | :--- |
 > | **What it is** | The Python application running the FastAPI server and Admin dashboard. | The underlying operating system configuration, drivers, Wayland compositor, and system packages. |
 > | **When to release** | Whenever new features, layout changes, module upgrades, or Python bug fixes are merged. | Only when system packages (e.g. `nginx`, `plymouth`, `labwc`), hardware configurations, or network fallback scripts are modified. |
-> | **Release target** | Published to PyPI via automated GitHub Actions. | Compiled locally in QEMU and uploaded directly to GitHub Releases as a compressed `.img.gz` asset. |
+> | **Release target** | Published to PyPI via automated GitHub Actions. | Built on GitHub Actions `ubuntu-24.04-arm64` runners (real ARM hardware, no emulation) and attached directly to the GitHub Release. |
 > | **Deployment method** | **Non-Destructive**: Triggered via the Admin Dashboard's "Updates" tab (uses A/B `venv` partition updates). | **Destructive**: Requires flashing the SD card. Backup settings first, flash, configure Wi-Fi, and restore settings. |
 > | **Risk level** | **Low**: Handled by the A/B virtual environment update system with automatic rollback to `venv_old` or Safe Mode. | **High**: Overwrites all card data. System must be re-provisioned via the Wi-Fi Captive Portal on first boot. |
 
@@ -100,20 +100,40 @@ This is configured to match the registered **Trusted Publisher** on the PyPI das
 
 ---
 
-## OS Image Release & Testing (Manual)
+## OS Image Release & Testing (Automated via GitHub Actions)
 
-Before automating the OS image compilation and hosting, perform manual builds and sanity-testing using the workflow below.
+The OS image is built automatically on real ARM hardware (`ubuntu-24.04-arm64` runners) when you push a tag matching `v*-os*`.
 
-### 1. Build the OS Image
-Run the automated image builder script on a Linux workstation with root privileges:
-```bash
-sudo bash scripts/build_image.sh
-```
-This script reads the version from `pyproject.toml` and generates a compressed production image file: `build_workspace/mirrordash-os-vX.Y.Z.img.gz` (e.g., `mirrordash-os-v0.2.3.img.gz`). 
+### 1. Tag and Release
 
-*Note: If you are extracting a golden image from a live SD card using `scripts/extract_golden_image.sh`, the output file will be named `mirrordash-final.img.gz` instead.*
+1. Ensure the version in `pyproject.toml` is already bumped (the Core App `vX.Y.Z` tag should already exist).
+2. Create a new release on GitHub with a tag like `v0.2.4-os1`.
+3. The `Build OS Image` workflow triggers automatically.
 
-### 2. Flashing the Image
+### 2. Workflow Steps
+
+The workflow (`build-os-image.yml`) does the following:
+1. **Free disk space** on the runner using `EisBear/free-disk-space-ubuntu-runners@v1`.
+2. **Checkout** the repository.
+3. **Install minimal deps**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, plus `pishrink.sh`.
+4. **Run `scripts/build_image.sh`** (native ARM, no QEMU) — produces `build_workspace/mirrordash-os-vX.Y.Z.img.gz` + `.sha256`.
+5. **Upload** both files as GitHub Release assets.
+
+### 3. Verification & Testing Checklist
+
+After the workflow completes, download the image from the GitHub Release and test on real hardware:
+1. **Boot Splash & Plymouth**: Insert the SD card into a Raspberry Pi and power it on. Ensure that the customized Plymouth boot splash screen appears and that no systemd status messages, log lines, or login prompts flicker onto the screen.
+2. **Invisible Mouse Cursor**: Once the Wayland desktop (`labwc`) starts, connect a USB mouse and move it around. Verify that the cursor remains completely invisible on the kiosk display.
+3. **Failsafe Captive Portal**:
+    * Power on the Pi in an environment *without* an active/configured Ethernet connection or saved WiFi network.
+    * Verify that within 30 seconds, the device activates the `MirrorDash Setup` fallback Access Point.
+    * Connect to the AP from a phone or computer, visit the captive portal page (`http://10.42.0.1/wifi-setup`), enter local WiFi credentials, and submit.
+    * Verify that the system remounts successfully, saves the profiles, and reboots.
+4. **Dashboard & Mirror Load**: Verify that the mirror loads the kiosk web page (`index.html`) correctly, displays the initial loading skeletons, transitions into active widgets when WebSocket communication is established, and runs stably.
+5. **Admin Access**: Ensure the admin dashboard (e.g. `http://mirrordash.local/admin` or `http://<IP>/admin`) is accessible and requires the correct API key.
+
+### 4. Flashing the Image
+
 You can write the compressed image directly to an SD card (or USB drive) without extracting it first:
 * **Raspberry Pi Imager**:
   1. Click **Choose OS**.
@@ -124,25 +144,9 @@ You can write the compressed image directly to an SD card (or USB drive) without
   1. Select **Flash from file** and choose the `.img.gz` file.
   2. Select your target storage drive and click **Flash!**.
 
-### 3. Verification & Testing Checklist
-To thoroughly test the image before distribution:
-1. **Boot Splash & Plymouth**: Insert the SD card into a Raspberry Pi and power it on. Ensure that the customized Plymouth boot splash screen appears and that no systemd status messages, log lines, or login prompts flicker onto the screen.
-2. **Invisible Mouse Cursor**: Once the Wayland desktop (`labwc`) starts, connect a USB mouse and move it around. Verify that the cursor remains completely invisible on the kiosk display.
-3. **Failsafe Captive Portal**:
-   * Power on the Pi in an environment *without* an active/configured Ethernet connection or saved WiFi network.
-   * Verify that within 30 seconds, the device activates the `MirrorDash Setup` fallback Access Point.
-   * Connect to the AP from a phone or computer, visit the captive portal page (`http://10.42.0.1/wifi-setup`), enter local WiFi credentials, and submit.
-   * Verify that the system remounts successfully, saves the profiles, and reboots.
-4. **Dashboard & Mirror Load**: Verify that the mirror loads the kiosk web page (`index.html`) correctly, displays the initial loading skeletons, transitions into active widgets when WebSocket communication is established, and runs stably.
-5. **Admin Access**: Ensure the admin dashboard (e.g. `http://mirrordash.local/admin` or `http://<IP>/admin`) is accessible and requires the correct API key.
+### 5. Rebuilding a Failed Image
 
-### 4. Direct Distribution
-To share the compiled OS image:
-1. Generate a SHA256 checksum:
-   ```bash
-   sha256sum mirrordash-os-vX.Y.Z.img.gz > mirrordash-os-vX.Y.Z.img.gz.sha256
-   ```
-2. Upload the `mirrordash-os-vX.Y.Z.img.gz` (or `mirrordash-final.img.gz`) and its `.sha256` checksum directly as assets in your GitHub Release page.
+If the workflow fails (runner issues, network timeouts), simply delete the `vX.Y.Z-os1` release and recreate the tag — a new workflow run will start automatically.
 
 ---
 

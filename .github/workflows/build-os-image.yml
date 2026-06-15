@@ -1,0 +1,58 @@
+name: Build OS Image
+
+on:
+  push:
+    tags:
+      - 'v*-os*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-os-image:
+    name: Build and upload OS image
+    runs-on: ubuntu-24.04-arm64
+
+    steps:
+      - name: Free Disk Space (Critical for OS builds!)
+        uses: EisBear/free-disk-space-ubuntu-runners@v1
+        with:
+          remove-dotnet: true
+          remove-swift: true
+          remove-android: true
+          remove-haskell: true
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            parted \
+            xz-utils \
+            e2fsprogs \
+            pigz \
+            wget \
+            curl
+          sudo wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
+          sudo chmod +x /usr/local/bin/pishrink.sh
+
+      - name: Build OS image
+        run: sudo bash scripts/build_image.sh
+
+      - name: Upload image and checksum
+        run: |
+          IMAGE=$(ls build_workspace/*.img.gz | head -n 1)
+          CHECKSUM="${IMAGE}.sha256"
+          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
+          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
+
+      - name: Attach assets to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.IMAGE }}
+            ${{ env.CHECKSUM }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

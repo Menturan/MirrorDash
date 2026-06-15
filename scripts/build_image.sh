@@ -1,11 +1,8 @@
 #!/bin/bash
 # Automated Golden Image Builder for MirrorDash
-# Run this on a Debian/Ubuntu Linux workstation to build the image from scratch.
+# Builds on native ARM (GitHub Actions ubuntu-24.04-arm64) or any Debian/Ubuntu ARM workstation.
 
 set -e
-
-# Enable host CPU extensions in emulated QEMU environment for faster compilation/runs
-export QEMU_CPU=max
 
 # --- Configuration ---
 RPI_OS_URL_BASE="https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
@@ -47,7 +44,7 @@ run_timed_step() {
 
 check_dependencies() {
     info "Checking host dependencies..."
-    local deps=("qemu-aarch64-static" "parted" "xz" "losetup" "truncate" "e2fsck" "resize2fs" "curl" "grep" "wget" "sha256sum" "pigz")
+    local deps=("parted" "xz" "losetup" "e2fsck" "resize2fs" "curl" "grep" "wget" "sha256sum" "pigz")
     local missing=()
     for dep in "${deps[@]}"; do
         if ! command -v "$dep" &>/dev/null; then
@@ -56,7 +53,7 @@ check_dependencies() {
     done
 
     if [ ${#missing[@]} -gt 0 ]; then
-        error_exit "Missing dependencies: ${missing[*]}. Please install them (e.g., sudo apt install qemu-user-static parted xz-utils kpartx curl wget e2fsprogs coreutils)."
+        error_exit "Missing dependencies: ${missing[*]}. Please install them (e.g., sudo apt install parted xz-utils e2fsprogs pigz curl wget)."
     fi
 
     if [ "$EUID" -ne 0 ]; then
@@ -79,7 +76,6 @@ download_base_image() {
     (
         cd "$BUILD_DIR"
 
-        # Get the latest directory (ignoring header rows, etc.)
         local LATEST_DIR
         LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
 
@@ -121,7 +117,6 @@ download_base_image() {
             info "Decompressed image already exists."
         fi
 
-        # We will work on a copy to preserve the pristine downloaded image
         cp "$IMAGE_FILE" "$FINAL_IMAGE"
     )
 }
@@ -142,7 +137,6 @@ resize_partition() {
         error_exit "Failed to create loop device."
     fi
 
-    # Give system a moment to create partition devices
     partprobe "$LOOP_DEV" || true
     local max_wait=10
     local wait_count=0
@@ -171,84 +165,20 @@ mount_image() {
     mkdir -p "$MOUNT_DIR/storage"
     mount -o noatime,commit=600 "${LOOP_DEV}p3" "$MOUNT_DIR/storage"
 
-    info "Binding host virtual filesystems..."
+    info "Binding host virtual filesystems for appliance setup..."
     mount --bind /dev "$MOUNT_DIR/dev"
     mount --bind /sys "$MOUNT_DIR/sys"
     mount --bind /proc "$MOUNT_DIR/proc"
     mount --bind /dev/pts "$MOUNT_DIR/dev/pts"
-
-    info "Mounting tmpfs for faster QEMU execution..."
-    mount -t tmpfs -o size=2G tmpfs "$MOUNT_DIR/tmp"
-    mount -t tmpfs -o size=100M tmpfs "$MOUNT_DIR/run"
 }
 
-setup_qemu_chroot() {
-    info "Setting up QEMU emulation in chroot..."
-    cp /usr/bin/qemu-aarch64-static "$MOUNT_DIR/usr/bin/"
+enable_overlayfs() {
+    info "Configuring OverlayFS in image..."
+    # Ensure initramfs scripts directory exists
+    mkdir -p "$MOUNT_DIR/etc/initramfs-tools/scripts"
 
-    # Backup original resolv.conf and setup robust DNS
-    if [ -e "$MOUNT_DIR/etc/resolv.conf" ] || [ -L "$MOUNT_DIR/etc/resolv.conf" ]; then
-        mv "$MOUNT_DIR/etc/resolv.conf" "$MOUNT_DIR/etc/resolv.conf.bak"
-    fi
-    echo "nameserver 1.1.1.1" > "$MOUNT_DIR/etc/resolv.conf"
-    echo "nameserver 8.8.8.8" >> "$MOUNT_DIR/etc/resolv.conf"
-
-    # Setup systemctl wrapper for chroot
-    cat << 'EOF' > "$MOUNT_DIR/usr/local/sbin/systemctl"
-#!/bin/bash
-if [[ "$1" == "start" || "$1" == "stop" || "$1" == "restart" || "$1" == "reload" || "$1" == "daemon-reload" || "$1" == "is-enabled" || "$1" == "daemon-reexec" ]]; then
-    if [[ "$1" == "is-enabled" ]]; then
-        # For chroot, returning 0 fakes it as enabled
-        exit 0
-    fi
-    echo "Ignoring systemctl $1 in chroot."
-    exit 0
-fi
-exec /bin/systemctl "$@"
-EOF
-    chmod +x "$MOUNT_DIR/usr/local/sbin/systemctl"
-
-    # Setup hostnamectl wrapper
-    cat << 'EOF' > "$MOUNT_DIR/usr/local/bin/hostnamectl"
-#!/bin/bash
-if [[ "$1" == "set-hostname" ]]; then
-    echo "$2" > /etc/hostname
-    exit 0
-fi
-exit 0
-EOF
-    chmod +x "$MOUNT_DIR/usr/local/bin/hostnamectl"
-
-    # Setup timedatectl wrapper
-    cat << 'EOF' > "$MOUNT_DIR/usr/local/bin/timedatectl"
-#!/bin/bash
-if [[ "$1" == "set-timezone" ]]; then
-    ln -sf "/usr/share/zoneinfo/$2" /etc/localtime
-    echo "$2" > /etc/timezone
-    exit 0
-fi
-exit 0
-EOF
-    chmod +x "$MOUNT_DIR/usr/local/bin/timedatectl"
-
-    # Setup uname wrapper to fake Pi kernel version
-    cat << 'EOF' > "$MOUNT_DIR/usr/local/bin/uname"
-#!/bin/bash
-if [[ "$1" == "-r" ]]; then
-    ls -1 /lib/modules | grep -v 'extramodules' | tail -n 1
-    exit 0
-fi
-exec /bin/uname "$@"
-EOF
-    chmod +x "$MOUNT_DIR/usr/local/bin/uname"
-
-    # Setup raspi-config wrapper for portable overlayfs
-    cat << 'EOF' > "$MOUNT_DIR/usr/local/bin/raspi-config"
-#!/bin/bash
-if [[ "$2" == "enable_overlayfs" ]]; then
-    echo "Faking overlayfs setup for multi-kernel portability..."
-    mkdir -p /etc/initramfs-tools/scripts
-    cat > /etc/initramfs-tools/scripts/overlay << 'INITSCRIPT'
+    # Write the overlay mount script
+    cat > "$MOUNT_DIR/etc/initramfs-tools/scripts/overlay" << 'INITSCRIPT'
 # Local filesystem mounting                     -*- shell-script -*-
 . /scripts/local
 local_mount_root()
@@ -273,30 +203,25 @@ local_mount_root()
         mount -t overlay -o lowerdir=/lower,upperdir=/upper/data,workdir=/upper/work overlay ${rootmnt}
 }
 INITSCRIPT
-    chmod +x /etc/initramfs-tools/scripts/overlay
+    chmod +x "$MOUNT_DIR/etc/initramfs-tools/scripts/overlay"
 
-    # QEMU-user lacks full thread/mmap support for pigz, causing kernel warnings. Force standard gzip temporarily.
-    echo "COMPRESS=gzip" > /etc/initramfs-tools/conf.d/qemu-compress.conf
-    update-initramfs -u -k all
-    rm -f /etc/initramfs-tools/conf.d/qemu-compress.conf
-    if ! grep -q "boot=overlay" /boot/firmware/cmdline.txt ; then
-        sed -i 's/^/boot=overlay /' /boot/firmware/cmdline.txt
+    # Rebuild initramfs natively (ARM, no QEMU — pigz works correctly)
+    chroot "$MOUNT_DIR" /bin/bash -c "update-initramfs -u -k all"
+
+    # Enable overlay boot parameters
+    if ! grep -q "boot=overlay" "$MOUNT_DIR/boot/firmware/cmdline.txt" ; then
+        sed -i 's/^/boot=overlay /' "$MOUNT_DIR/boot/firmware/cmdline.txt"
     fi
-    sed -i -e "s/\(.*\/boot.*\)defaults\(.*\)/\1defaults,ro\2/" /etc/fstab
-    if ! grep -q "auto_initramfs=1" /boot/firmware/config.txt ; then
-        echo "auto_initramfs=1" >> /boot/firmware/config.txt
+    sed -i -e "s/\(.*\/boot.*\)defaults\(.*\)/\1defaults,ro\2/" "$MOUNT_DIR/etc/fstab"
+    if ! grep -q "auto_initramfs=1" "$MOUNT_DIR/boot/firmware/config.txt" ; then
+        echo "auto_initramfs=1" >> "$MOUNT_DIR/boot/firmware/config.txt"
     fi
-    exit 0
-fi
-exec /usr/bin/raspi-config "$@"
-EOF
-    chmod +x "$MOUNT_DIR/usr/local/bin/raspi-config"
 }
 
 setup_storage_offline() {
     info "Performing offline storage setup (bypassing step 1)..."
 
-    info "Ensuring 'pi' user exists in chroot..."
+    info "Ensuring 'pi' user exists in image..."
     chroot "$MOUNT_DIR" /bin/bash -c "if ! id pi &>/dev/null; then useradd -m -s /bin/bash -G sudo,video,render,plugdev,games,users,input,netdev,gpio,i2c,spi pi && echo 'pi:raspberry' | chpasswd; fi"
 
     mkdir -p "$MOUNT_DIR/storage/mirrordash/data" "$MOUNT_DIR/storage/mirrordash/venv_a" "$MOUNT_DIR/storage/mirrordash/venv_b"
@@ -397,7 +322,7 @@ echo "Storage partition expansion complete."
 EOF
     chmod +x "$MOUNT_DIR/usr/local/bin/mirrordash-expand.sh"
 
-    # Enable service via chroot
+    # Enable service via chroot (creates symlinks, does not require systemd to be running)
     chroot "$MOUNT_DIR" /bin/bash -c "systemctl enable mirrordash-expand.service"
 
     # Mark the expanding_partition step as complete so setup_appliance skips it
@@ -414,43 +339,25 @@ safe_umount() {
 }
 
 run_appliance_setup() {
-    info "Copying repository to chroot..."
+    info "Copying repository to image..."
     mkdir -p "$MOUNT_DIR/opt/MirrorDash"
-    # Copy repository to chroot, excluding build_workspace, hidden items, and other build directories
     find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "build_*" -not -name "$(basename "$BUILD_DIR")" -exec cp -r -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
-    info "Executing setup_appliance.sh inside chroot..."
-    # Export NONINTERACTIVE=1 to handle any possible prompts
+    info "Executing setup_appliance.sh inside image..."
     chroot "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && export NONINTERACTIVE=1 && bash ./setup_appliance.sh"
 
-    info "Executing finalize_appliance.sh inside chroot..."
-    # Disable poweroff in the installed finalize script so we can catch actual failures without the chroot exiting
-    sed -i 's/^poweroff/#poweroff disabled in chroot/g' "$MOUNT_DIR/usr/local/bin/mirrordash-finalize.sh"
+    info "Executing finalize_appliance.sh inside image..."
+    sed -i 's/^poweroff/#poweroff disabled in build/g' "$MOUNT_DIR/usr/local/bin/mirrordash-finalize.sh"
     chroot "$MOUNT_DIR" /bin/bash -c "mirrordash-finalize.sh --yes"
 }
 
 cleanup_and_unmount() {
     set +e
-    info "Cleaning up chroot environment..."
+    info "Cleaning up..."
     if [ -n "$MOUNT_DIR" ] && [ "$MOUNT_DIR" != "/" ] && [ -d "$MOUNT_DIR" ]; then
-        rm -f "$MOUNT_DIR/usr/bin/qemu-aarch64-static"
-        rm -f "$MOUNT_DIR/usr/local/sbin/systemctl"
-        rm -f "$MOUNT_DIR/usr/local/bin/hostnamectl"
-        rm -f "$MOUNT_DIR/usr/local/bin/timedatectl"
-        rm -f "$MOUNT_DIR/usr/local/bin/uname"
-        rm -f "$MOUNT_DIR/usr/local/bin/raspi-config"
         rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
-        # Restore original resolv.conf
-        if [ -e "$MOUNT_DIR/etc/resolv.conf.bak" ] || [ -L "$MOUNT_DIR/etc/resolv.conf.bak" ]; then
-            mv "$MOUNT_DIR/etc/resolv.conf.bak" "$MOUNT_DIR/etc/resolv.conf"
-        elif [ -e "$MOUNT_DIR/etc/resolv.conf" ] || [ -L "$MOUNT_DIR/etc/resolv.conf" ]; then
-            rm -f "$MOUNT_DIR/etc/resolv.conf"
-        fi
-
         info "Unmounting filesystems..."
-        safe_umount "$MOUNT_DIR/tmp"
-        safe_umount "$MOUNT_DIR/run"
         safe_umount "$MOUNT_DIR/dev/pts"
         safe_umount "$MOUNT_DIR/dev"
         safe_umount "$MOUNT_DIR/sys"
@@ -470,11 +377,8 @@ cleanup_and_unmount() {
 shrink_and_compress() {
     info "Shrinking and compressing the final image..."
 
-    # Remove any existing .gz image and checksum files
     rm -f "$BUILD_DIR/${FINAL_IMAGE}.gz" "$BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
 
-    # Run pishrink with -z on the final image. It will shrink in-place and then gzip it,
-    # automatically appending .gz to the filename (resulting in mirrordash-final.img.gz)
     pishrink.sh -z "$BUILD_DIR/$FINAL_IMAGE"
 
     info "Generating SHA256 checksum..."
@@ -491,18 +395,16 @@ shrink_and_compress() {
 START_TIME_TOTAL=$SECONDS
 check_dependencies
 
-# Use a trap to ensure cleanup happens even if an error occurs during preparation/mount
 trap cleanup_and_unmount EXIT
 
 run_timed_step "Download PiShrink" download_pishrink
 run_timed_step "Download Base Image" download_base_image
 run_timed_step "Resize Partition" resize_partition
 run_timed_step "Mount Image" mount_image
-run_timed_step "Setup QEMU Chroot" setup_qemu_chroot
+run_timed_step "Enable OverlayFS" enable_overlayfs
 run_timed_step "Setup Storage Offline" setup_storage_offline
 run_timed_step "Run Appliance Setup" run_appliance_setup
 
-# Disable trap and call explicit cleanup
 trap - EXIT
 cleanup_and_unmount
 
