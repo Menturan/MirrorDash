@@ -203,7 +203,13 @@ python mirrordash_core/main.py
 
     This principle applies universally across the entire project: any documentation file that describes behavior, configuration, APIs, or procedures must stay in sync with the code, scripts, templates, or config files that implement it. Examples include `DESIGN.md` ↔ `style.css`, `USER_GUIDE.md` ↔ admin UI code, `ARCHITECTURE.md` ↔ actual code patterns, and module `README.md` files ↔ module source code.
 
-31. **Maintain Table of Contents (TOC) in Markdown Files.** Always add and update a Table of Contents (TOC) at the top of `.md` files if there are more than 3 level-2 (`##`) headings (or major sections).
+32. **Dual-Artifact Release Model.** This project produces two independent artifacts from the same repository:
+   - **Core App** (`mirrordash` Python package) → published to PyPI automatically via GitHub Actions OIDC Trusted Publishing when a `vX.Y.Z` tag is pushed. Version is defined in `pyproject.toml`.
+   - **System OS Image** (`mirrordash-os-vX.Y.Z.img.gz`) → built manually via `scripts/build_image.sh` and published as a GitHub Release asset. Tagged separately as `vX.Y.Z-osN`.
+   
+   These artifacts are released on different schedules. The Core App can ship without the System OS image, and vice versa. When updating `CHANGELOG.md`, entries under a versioned `[X.Y.Z]` section must only contain changes that ship in that specific artifact. System OS appliance changes must remain under `[Unreleased]` until the golden image is tested and released. Never mix System OS entries into a Core App version block.
+
+33. **Maintain Table of Contents (TOC) in Markdown Files.** Always add and update a Table of Contents (TOC) at the top of `.md` files if there are more than 3 level-2 (`##`) headings (or major sections).
 
 ---
 
