@@ -13,7 +13,13 @@ from datetime import date
 
 def parse_unreleased(content: str) -> tuple[list[str], list[str]]:
     """Extract System OS and Core App bullet items from the [Unreleased] section."""
-    unreleased_match = re.search(r"## \[Unreleased\](.*?)(?=\n## \[)", content, re.DOTALL)
+    # Match [Unreleased] block: either followed by another ## [X.Y.Z] section,
+    # or followed by comparison links at the bottom, or end of string
+    unreleased_match = re.search(
+        r"## \[Unreleased\](.*?)(?=\n\[Unreleased\]:|\Z)",
+        content,
+        re.DOTALL,
+    )
     if not unreleased_match:
         return [], []
 
@@ -111,7 +117,7 @@ def main() -> None:
 
     # Replace the entire [Unreleased] block
     content = re.sub(
-        r"## \[Unreleased\].*?(?=\n## \[)",
+        r"## \[Unreleased\].*?(?=\n\[Unreleased\]:|\Z)",
         remaining.rstrip("\n"),
         content,
         flags=re.DOTALL,
