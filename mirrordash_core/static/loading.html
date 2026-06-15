@@ -4,9 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MirrorDash Setup</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;300;400;600&display=swap" rel="stylesheet">
     <style>
         * {
             box-sizing: border-box;
@@ -20,7 +17,7 @@
             padding: 0;
             background-color: #000000;
             color: #ffffff;
-            font-family: 'Inter', sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -118,10 +115,10 @@
             <path d="M25 75V25L50 50L75 25V75" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
             <path d="M25 75V25L50 50L75 25V75" stroke="#FFFFFF" stroke-width="0.8" fill="none" opacity="0.25" transform="translate(2.5, 2.5)"/>
         </svg>
-        
+
         <div class="brand">MirrorDash</div>
-        <div class="status">Connecting to core service...</div>
-        
+        <div class="status" id="status-text">Connecting to core service...</div>
+
         <!-- Precision loader bar -->
         <div class="loader-bar">
             <div class="loader-progress"></div>
@@ -132,12 +129,29 @@
         const HEALTH_URL = 'http://localhost:8000/health';
         const TARGET_URL = 'http://localhost:8000';
 
+        const STATUS_MESSAGES = {
+            'normal': 'Connecting to core service...',
+            'rollback': 'Recovering from update... please wait',
+            'safe_mode': 'Running in safe mode... please wait',
+        };
+
+        function getStatusMessage(bootStatus) {
+            return STATUS_MESSAGES[bootStatus] || STATUS_MESSAGES['normal'];
+        }
+
         async function checkHealth() {
             try {
                 const response = await fetch(HEALTH_URL);
                 if (response.ok) {
-                    // Redirect immediately to the core app
-                    window.location.replace(TARGET_URL);
+                    const data = await response.json().catch(function() { return {}; });
+                    const bootStatus = (data && data.boot_status) || 'normal';
+                    const statusEl = document.getElementById('status-text');
+                    if (statusEl) {
+                        statusEl.textContent = getStatusMessage(bootStatus);
+                    }
+                    setTimeout(function() {
+                        window.location.replace(TARGET_URL);
+                    }, 400);
                     return;
                 }
             } catch (error) {

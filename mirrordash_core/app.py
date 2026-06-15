@@ -135,7 +135,7 @@ async def get_design() -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "modules": list(module_loader.tasks.keys())}
+    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")}
 
 @app.get("/api/active-modules")
 async def get_active_modules() -> dict:
