@@ -73,7 +73,7 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 |-------|-----------|
 | Backend | Python 3.14, FastAPI, Uvicorn |
 | Package Management | `uv` (not pip directly) |
-| Frontend | Vanilla HTML5, CSS Grid, Vanilla JS (no frameworks) |
+| Frontend | Vanilla HTML5, CSS Grid, Vanilla JS (frameworks require justification) |
 | Templating | Jinja2 (server-side, rendered per module) |
 | Real-time | WebSockets (one persistent connection per browser client) |
 | Module System | Python `importlib.metadata` entry points (`mirrordash.modules` group) |
