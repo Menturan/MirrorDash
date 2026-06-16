@@ -11,7 +11,7 @@ permissions:
 jobs:
   build-os-image:
     name: Build and upload OS image
-    runs-on: ubuntu-24.04-arm64
+    runs-on: ubuntu-24.04-arm
 
     steps:
       - name: Free Disk Space (Critical for OS builds!)
