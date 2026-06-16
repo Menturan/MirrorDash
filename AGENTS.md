@@ -140,7 +140,7 @@ python mirrordash_core/main.py
 
 ### Frontend
 
-9. **No frameworks.** The mirror frontend is intentionally framework-free. Do not introduce React, Vue, Alpine, HTMX, or similar.
+9. **Conservative framework adoption.** The mirror frontend uses vanilla HTML, CSS, and JavaScript by default. Introducing frameworks (React, Vue, Alpine, HTMX, etc.) should be avoided unless there is a compelling justification that vanilla JS cannot solve. If a framework is deemed necessary, consult with the maintainers first and document the rationale in `ARCHITECTURE.md`.
 
 10. **No `document.write()` or `eval()`.**
 
