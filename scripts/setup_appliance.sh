@@ -74,7 +74,7 @@ run_step() {
   local step_name="$2"
   local step_desc="$3"
   shift 3
-  
+
   if is_step_completed "$step_name"; then
     echo "=== Skipping Step $step_num: $step_desc (Already Completed) ==="
     # Run critical side-effects for skipped steps
@@ -86,7 +86,7 @@ run_step() {
     fi
     return 0
   fi
-  
+
   echo "=== $step_num. $step_desc ==="
   local start_time=$SECONDS
   "$@"
@@ -114,12 +114,12 @@ step_expanding_partition() {
   # Expand root partition (p2) to 6GB and resize filesystem if p3/data partition doesn't exist
   if [ ! -b "$DATA_PART" ]; then
     printf "Yes\nIgnore\n" | parted "$ROOT_DISK" ---pretend-input-tty resizepart 2 6GB
-    
+
     # Force kernel to sync partition table changes before resizing filesystem
     partprobe "$ROOT_DISK" || true
     udevadm settle || true
     sleep 2
-    
+
     resize2fs "$ROOT_PART_NAME"
 
     # Create data partition (p3), format it
@@ -249,7 +249,6 @@ EOF
 }
 
 step_installing_packages() {
-  # 1. Prevent dpkg from installing documentation & locales (saves disk space and prevents man-db updates)
   echo "Configuring dpkg to exclude man pages, documentation, locales, and info files..."
   mkdir -p /etc/dpkg/dpkg.cfg.d
   cat << 'EOF' > /etc/dpkg/dpkg.cfg.d/01_nodoc
@@ -260,6 +259,14 @@ path-exclude /usr/share/info/*
 path-exclude /usr/share/lintian/*
 path-exclude /usr/share/linda/*
 path-exclude /usr/share/locale/*
+EOF
+
+  echo "Configuring APT to skip recommended and suggested packages..."
+  mkdir -p /etc/apt/apt.conf.d
+  cat << 'EOF' > /etc/apt/apt.conf.d/01_nodoc
+  APT::Install-Recommends "false";
+  APT::Install-Suggests "false";
+  Get::Install-Recommends "false";
 EOF
 
   # 2. Divert mandb and update-initramfs to prevent redundant execution during package installation
@@ -287,7 +294,8 @@ EOF
   eatmydata apt full-upgrade -y
   eatmydata apt install -y --no-install-recommends \
       labwc \
-      chromium \
+      seatd \
+      cog \
       wlr-randr \
       avahi-daemon \
       nginx \
@@ -303,23 +311,34 @@ EOF
   eatmydata apt autoclean -y
   eatmydata apt autoremove -y
 
-  # 6. Restore mandb and update-initramfs and rebuild the initial ramdisk once
-  echo "Restoring update-initramfs and regenerating initial ramdisk..."
-  rm -f /usr/sbin/update-initramfs
-  dpkg-divert --local --rename --remove /usr/sbin/update-initramfs
-  
+# --- INITRAMFS CLOUD FIX ---
+  echo "Disabling initramfs (Breaks when built in GitHub CI due to missing SD hardware)..."
+
+  rm -f /usr/sbin/update-initramfs || true
+  dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
+
+  if [ -f /boot/firmware/config.txt ]; then
+    echo "Commenting out auto_initramfs in config.txt..."
+    sed -i 's/^auto_initramfs=1/#auto_initramfs=1/g' /boot/firmware/config.txt
+  else
+    echo "WARNING: /boot/firmware/config.txt not found! Could not disable initramfs."
+  fi
+  # ---------------------------
+
   rm -f /usr/bin/mandb
   dpkg-divert --local --rename --remove /usr/bin/mandb
 
-  # This will automatically use pigz under the hood since it's installed
-  update-initramfs -u -k all
+  PI_KERNEL=$(ls /lib/modules | grep -E 'v8|rpi' | tail -n 1)
+  echo "Force building initramfs for Raspberry Pi kernel: $PI_KERNEL. This might work..."
+  update-initramfs -c -k "$PI_KERNEL"
+
+  rm -f /etc/apt/apt.conf.d/01_nodoc
 }
 
 step_setting_hostname() {
-  hostnamectl set-hostname mirrordash
+  echo "mirrordash" > /etc/hostname
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
   systemctl enable avahi-daemon
-  systemctl start avahi-daemon
 }
 
 step_configuring_nginx() {
@@ -351,11 +370,39 @@ EOF
   ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
   nginx -t
   systemctl enable nginx
-  systemctl restart nginx
 }
 
 step_configuring_console_login() {
-  raspi-config nonint do_boot_behaviour B2
+  echo "Manually configuring tty1 autologin for user 'pi'..."
+  # 1. Tvinga systemet att boota i konsolläge (Motsvarar: systemctl set-default multi-user.target)
+    ln -fs /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+
+    # 2. Aktivera getty-tjänsten på tty1 (Motsvarar: systemctl enable getty@tty1.service)
+    mkdir -p /etc/systemd/system/getty.target.wants
+    ln -fs /lib/systemd/system/getty@.service /etc/systemd/system/getty.target.wants/getty@tty1.service
+
+    # Skapa systemd-mappen för inloggningen
+  mkdir -p /etc/systemd/system/getty@tty1.service.d
+
+  cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
+  [Service]
+  ExecStart=
+  ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
+EOF
+
+  # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
+  touch "$PI_HOME/.hushlogin"
+  chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
+
+  echo "Provisioning headless user for Debian Trixie first-boot..."
+  # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
+  echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
+
+  # Force Raspberry Pi to ignore initramfs because cloud built initramfs often gets corrupt
+  echo "Disabling initramfs in config.txt to prevent cloud-build kernel panics..."
+  if [ -f /boot/firmware/config.txt ]; then
+    sed -i 's/^auto_initramfs=1/#auto_initramfs=1/g' /boot/firmware/config.txt
+  fi
 
   # Silence the tty1 autologin prompt and login banners
   if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
@@ -385,7 +432,7 @@ EOF
   # Create a custom invisible cursor theme for the kiosk user to hide the mouse cursor safely
   echo "Setting up local transparent cursor theme (invisible)..."
   mkdir -p "$PI_HOME/.local/share/icons/invisible/cursors"
-  
+
   # Create index.theme so applications recognize it as a valid theme
   cat << 'EOF' > "$PI_HOME/.local/share/icons/invisible/index.theme"
 [Icon Theme]
@@ -395,7 +442,7 @@ EOF
 
   # Write a valid, 32x32 transparent XCursor file
   python3 -c "import struct; data = struct.pack('<4sIII', b'Xcur', 16, 0x00010000, 1) + struct.pack('<III', 0xfffd0002, 32, 28) + struct.pack('<IIIIIIIII', 36, 0xfffd0002, 32, 1, 32, 32, 0, 0, 0) + b'\x00'*(32*32*4); open('$PI_HOME/.local/share/icons/invisible/cursors/default', 'wb').write(data)"
-  
+
   # Create standard cursor symlinks pointing to the transparent default cursor
   ln -sf default "$PI_HOME/.local/share/icons/invisible/cursors/left_ptr"
   ln -sf default "$PI_HOME/.local/share/icons/invisible/cursors/pointer"
@@ -408,15 +455,6 @@ EOF
 
   # Create labwc autostart
   cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
-# --- MirrorDash Kiosk Autostart ---
-
-# Hide mouse cursor natively at Wayland startup
-labwc-msg HideCursor 2>/dev/null || true
-
-# Prevent Chromium "didn't shut down correctly" restore prompt after power loss
-sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromium/'Local State' 2>/dev/null
-sed -i 's/"exit_type":"[^"]\+"/\"exit_type\":\"Normal\"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
-
 # Kiosk Browser Crash Supervisor Loop
 CRASH_COUNTER=0
 MAX_CRASHES=5
@@ -424,37 +462,24 @@ THRESHOLD_SECS=10
 
 while true; do
   START_TIME=$(date +%s)
-  
-  # Launch Chromium in kiosk mode with native Wayland rendering and touch/gesture hardening
-  # Opens the local loading.html instantly and checks for FastAPI server status
-  chromium \
-      --kiosk \
-      --ozone-platform=wayland \
-      --noerrdialogs \
-      --disable-infobars \
-      --no-first-run \
-      --disable-session-crashed-bubble \
-      --disable-features=TranslateUI \
-      --enable-features=OverlayScrollbar \
-      --disable-pinch \
-      --overscroll-history-navigation=0 \
-      --disable-dev-tools \
-      file:///home/pi/mirrordash/loading.html
-      
+
+  # Launch Cog (WebKit) in native Wayland kiosk mode
+  cog file:///home/pi/mirrordash/loading.html
+
   EXIT_CODE=$?
   END_TIME=$(date +%s)
   DURATION=$((END_TIME - START_TIME))
-  
+
   if [ "$DURATION" -lt "$THRESHOLD_SECS" ]; then
     CRASH_COUNTER=$((CRASH_COUNTER + 1))
-    echo "Chromium crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
+    echo "Cog crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
   else
     CRASH_COUNTER=0
   fi
-  
+
   if [ "$CRASH_COUNTER" -ge "$MAX_CRASHES" ]; then
-    echo "Chromium crash loop detected! Launching diagnostic fallback..." >&2
-    
+    echo "Browser crash loop detected! Launching diagnostic fallback..." >&2
+
     cat << 'ERR_EOF' > /tmp/kiosk_error.html
 <!DOCTYPE html>
 <html>
@@ -467,15 +492,15 @@ while true; do
 </head>
 <body>
     <h1>Kiosk Display Error</h1>
-    <p>The kiosk browser crashed repeatedly. Please restart the device or contact support.</p>
+    <p>The interface renderer crashed repeatedly. Please restart the device or contact support.</p>
 </body>
 </html>
 ERR_EOF
-    
-    chromium --kiosk --ozone-platform=wayland file:///tmp/kiosk_error.html
+
+    cog file:///tmp/kiosk_error.html
     while true; do sleep 3600; done
   fi
-  
+
   SLEEP_TIME=$((CRASH_COUNTER * 2))
   [ "$SLEEP_TIME" -eq 0 ] && SLEEP_TIME=1
   sleep "$SLEEP_TIME"
@@ -734,12 +759,35 @@ step_finalize_script() {
 
 step_system_cleanup() {
   echo "Pruning package manager caches..."
+  apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools
   apt-get clean
   apt-get autoremove -y
+
+  echo "Purging heavy international fonts..."
+  apt-get purge -y "fonts-noto-cjk*" "fonts-noto-core*" "fonts-kacst*" "fonts-tlwg*" "fonts-nanum*"
+  apt-get autoremove -y
+
+  echo "Removing heavy UI assets..."
+  rm -rf /usr/share/icons/Adwaita
+  rm -rf /usr/share/icons/hicolor
+  rm -rf /usr/share/backgrounds/*
+  rm -rf /usr/share/doc/*
+  rm -rf /usr/share/man/*
 
   echo "Pruning temporary directories and system caches..."
   rm -rf /tmp/* /var/tmp/*
   rm -rf /root/.cache /home/pi/.cache
+  rm -rf /var/lib/apt/lists/*
+  rm -rf /home/pi/.local/share/uv/cache
+  rm -rf /root/.local/share/uv/cache
+
+  echo "Purging unnecessary firmware..."
+  rm -rf /lib/firmware/amdgpu
+  rm -rf /lib/firmware/radeon
+  rm -rf /lib/firmware/nvidia
+  rm -rf /lib/firmware/intel
+  rm -rf /lib/firmware/mellanox
+  rm -rf /lib/firmware/iwlwifi*
 
   echo "Truncating system logs and journals..."
   find /var/log -type f -exec truncate -s 0 {} \;
@@ -747,8 +795,8 @@ step_system_cleanup() {
 
   echo "Clearing bash and execution histories..."
   rm -f /root/.bash_history /home/pi/.bash_history
+  history -c 2>/dev/null || true
 }
-
 # --- Execution ---
 
 START_TIME_TOTAL=$SECONDS

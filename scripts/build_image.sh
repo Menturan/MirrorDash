@@ -71,50 +71,73 @@ download_pishrink() {
 
 download_base_image() {
     info "Fetching latest Raspberry Pi OS Lite (64-bit) URL..."
-    mkdir -p "$BUILD_DIR"
+
+    local DOWNLOADS_DIR="$BUILD_DIR/downloads"
+    mkdir -p "$DOWNLOADS_DIR"
+
+    local LATEST_DIR
+    LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
+
+    if [ -z "$LATEST_DIR" ]; then
+        error_exit "Could not determine latest Raspberry Pi OS directory."
+    fi
+
+    local LATEST_URL="${RPI_OS_URL_BASE}${LATEST_DIR}/"
+    local IMAGE_NAME
+    IMAGE_NAME=$(curl -sSL "$LATEST_URL" | grep -oP 'href="\K\d{4}-\d{2}-\d{2}-raspios-[^"]+\.img\.xz' | head -n 1)
+
+    if [ -z "$IMAGE_NAME" ]; then
+        error_exit "Could not find .img.xz file in $LATEST_URL"
+    fi
+
+    local DOWNLOAD_URL="${LATEST_URL}${IMAGE_NAME}"
+    local IMAGE_FILE="${IMAGE_NAME%.xz}"
+
+    (
+        cd "$DOWNLOADS_DIR"
+
+        local NEED_DOWNLOAD=true
+        if [ -f "$IMAGE_NAME" ]; then
+            info "Found cached base image: $IMAGE_NAME. Verifying checksum..."
+            rm -f "${IMAGE_NAME}.sha256"
+            wget -q "${DOWNLOAD_URL}.sha256"
+
+            if sha256sum -c "${IMAGE_NAME}.sha256" &>/dev/null; then
+                info "Cached image is valid! Skipping download step."
+                NEED_DOWNLOAD=false
+            else
+                info "Cached image is corrupted or outdated. Redownloading..."
+                rm -f "$IMAGE_NAME"
+            fi
+        fi
+
+        if [ "$NEED_DOWNLOAD" = true ]; then
+            info "Downloading $DOWNLOAD_URL (will resume if partial)..."
+            wget -c "$DOWNLOAD_URL"
+
+            info "Downloading checksum..."
+            rm -f "${IMAGE_NAME}.sha256"
+            wget -q "${DOWNLOAD_URL}.sha256"
+
+            info "Verifying SHA256 checksum..."
+            if ! sha256sum -c "${IMAGE_NAME}.sha256" &>/dev/null; then
+                echo "Checksum verification failed! Deleting corrupted download..."
+                rm -f "$IMAGE_NAME" "${IMAGE_NAME}.sha256"
+                error_exit "SHA256 checksum verification failed for $IMAGE_NAME"
+            fi
+            info "SHA256 checksum verification passed."
+        fi
+    )
 
     (
         cd "$BUILD_DIR"
-
-        local LATEST_DIR
-        LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
-
-        if [ -z "$LATEST_DIR" ]; then
-            error_exit "Could not determine latest Raspberry Pi OS directory."
-        fi
-
-        local LATEST_URL="${RPI_OS_URL_BASE}${LATEST_DIR}/"
-        local IMAGE_NAME
-        IMAGE_NAME=$(curl -sSL "$LATEST_URL" | grep -oP 'href="\K\d{4}-\d{2}-\d{2}-raspios-[^"]+\.img\.xz' | head -n 1)
-
-        if [ -z "$IMAGE_NAME" ]; then
-            error_exit "Could not find .img.xz file in $LATEST_URL"
-        fi
-
-        local DOWNLOAD_URL="${LATEST_URL}${IMAGE_NAME}"
-        info "Downloading $DOWNLOAD_URL (will resume if partial)..."
-        wget -c "$DOWNLOAD_URL"
-
-        info "Downloading checksum..."
-        rm -f "${IMAGE_NAME}.sha256"
-        wget -q "${DOWNLOAD_URL}.sha256"
-
-        info "Verifying SHA256 checksum..."
-        if ! sha256sum -c "${IMAGE_NAME}.sha256" &>/dev/null; then
-            echo "Checksum verification failed! Deleting corrupted download..."
-            rm -f "$IMAGE_NAME" "${IMAGE_NAME}.sha256"
-            error_exit "SHA256 checksum verification failed for $IMAGE_NAME"
-        fi
-        info "SHA256 checksum verification passed."
-
-        info "Decompressing image..."
-        IMAGE_FILE="${IMAGE_NAME%.xz}"
         if [ ! -f "$IMAGE_FILE" ]; then
+            info "Decompressing image from downloads folder..."
             rm -f "${IMAGE_FILE}.tmp"
-            xz -d -c "$IMAGE_NAME" > "${IMAGE_FILE}.tmp"
+            xz -d -c "downloads/$IMAGE_NAME" > "${IMAGE_FILE}.tmp"
             mv "${IMAGE_FILE}.tmp" "$IMAGE_FILE"
         else
-            info "Decompressed image already exists."
+            info "Decompressed image already exists in workspace."
         fi
 
         cp "$IMAGE_FILE" "$FINAL_IMAGE"
@@ -132,6 +155,7 @@ resize_partition() {
     parted -s "$img_path" mkpart primary ext4 6GB 100%
 
     info "Setting up loop device..."
+    # -P gör att Linux automatiskt hittar och skapar p1, p2 och p3 åt oss
     LOOP_DEV=$(losetup -Pf --show "$img_path")
     if [ -z "$LOOP_DEV" ]; then
         error_exit "Failed to create loop device."
@@ -160,6 +184,7 @@ mount_image() {
     info "Mounting image filesystems..."
     mkdir -p "$MOUNT_DIR"
 
+    # Vi använder bara de färdiga loop-partitionerna direkt, helt utan krångel
     mount -o noatime,commit=600 "${LOOP_DEV}p2" "$MOUNT_DIR"
     mount -o noatime "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
     mkdir -p "$MOUNT_DIR/storage"
@@ -367,7 +392,10 @@ cleanup_and_unmount() {
         safe_umount "$MOUNT_DIR"
     fi
 
+    # Koppla bort loop-enheten i slutet av hela skriptet
     if [ -n "$LOOP_DEV" ]; then
+        info "Running zerofree on Root partition to maximize XZ compression..."
+        zerofree -v "${LOOP_DEV}p2" || true
         info "Detaching loop device..."
         losetup -d "$LOOP_DEV"
     fi
@@ -377,18 +405,24 @@ cleanup_and_unmount() {
 shrink_and_compress() {
     info "Shrinking and compressing the final image..."
 
-    rm -f "$BUILD_DIR/${FINAL_IMAGE}.gz" "$BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
+    rm -f "$BUILD_DIR/${FINAL_IMAGE}.xz" "$BUILD_DIR/${FINAL_IMAGE}.xz.sha256"
 
-    pishrink.sh -z "$BUILD_DIR/$FINAL_IMAGE"
+    # Kör PiShrink UTAN -z. Vi vill bara krympa partitionen, inte komprimera än.
+    pishrink.sh "$BUILD_DIR/$FINAL_IMAGE"
+
+    info "Compressing with XZ (using all 4 CPU cores)..."
+    # -T0 säger åt xz att använda alla processorkärnor för maximal hastighet
+    # -6 ger en optimal balans mellan extrem komprimering och tidsåtgång
+    xz -T0 -6 "$BUILD_DIR/$FINAL_IMAGE"
 
     info "Generating SHA256 checksum..."
     (
         cd "$BUILD_DIR"
-        sha256sum "${FINAL_IMAGE}.gz" > "${FINAL_IMAGE}.gz.sha256"
+        sha256sum "${FINAL_IMAGE}.xz" > "${FINAL_IMAGE}.xz.sha256"
     )
 
-    info "Build complete. Final image is at $BUILD_DIR/${FINAL_IMAGE}.gz"
-    info "SHA256 checksum generated at $BUILD_DIR/${FINAL_IMAGE}.gz.sha256"
+    info "Build complete. Final image is at $BUILD_DIR/${FINAL_IMAGE}.xz"
+    info "SHA256 checksum generated at $BUILD_DIR/${FINAL_IMAGE}.xz.sha256"
 }
 
 # --- Main Flow ---

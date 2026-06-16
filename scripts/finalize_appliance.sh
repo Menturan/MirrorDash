@@ -53,21 +53,11 @@ fi
 
 # --- 2. System Cleanup & UTC Config ---
 echo "Setting system timezone to UTC..."
-timedatectl set-timezone UTC
+echo "UTC" > /etc/timezone
+ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 
 echo "Disabling SSH service..."
 systemctl disable ssh
-
-echo "Cleaning package caches and log files..."
-apt-get clean
-apt-get autoremove -y
-rm -rf /tmp/* /var/tmp/* /root/.cache /home/pi/.cache
-find /var/log -type f -exec truncate -s 0 {} \;
-journalctl --vacuum-time=1s 2>/dev/null || true
-
-echo "Clearing bash execution history..."
-rm -f /root/.bash_history /home/pi/.bash_history
-history -c 2>/dev/null || true
 
 # --- 3. Failsafe Wi-Fi Credentials Purge ---
 echo "Purging all configured Wi-Fi networks and secrets..."
