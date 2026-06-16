@@ -1,0 +1,32 @@
+variables:
+  GIT_STRATEGY: clone
+  # Increase if builds fail due to space
+  CI_DEBUG_TRACE: "false"
+
+build-os-image:
+  stage: build
+  image: ubuntu:24.04
+
+  tags:
+    - saas-linux-small-arm64     # Free tier ARM64 runner
+
+  script:
+    - apt-get update -qq
+    - apt-get install -y --no-install-recommends
+      parted xz-utils e2fsprogs pigz wget curl git make
+
+    # Your custom tools / pishrink
+    - wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
+    - chmod +x /usr/local/bin/pishrink.sh
+
+    - echo "Starting build..."
+    - bash scripts/build_image.sh
+
+  artifacts:
+    paths:
+      - build_workspace/*.img.gz
+      - build_workspace/*.img.gz.sha256
+    expire_in: 7 days
+
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v.*-os.*$/

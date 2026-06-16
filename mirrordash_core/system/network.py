@@ -191,21 +191,27 @@ async def set_ssh_status(enabled: bool) -> bool:
 
 async def is_wifi_hotspot_active() -> bool:
     """Check if the MirrorDash-Setup WiFi hotspot is currently active in NetworkManager."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-        lines = stdout.decode("utf-8", errors="ignore").splitlines()
-        return "MirrorDash-Setup" in lines
-    except asyncio.TimeoutError:
-        logger.error("Timed out checking WiFi hotspot status (10s)")
-        return False
-    except Exception as e:
-        logger.error(f"Failed to check if hotspot is active: {e}")
-        return False
+    # Fast path: read active connections without sudo (no TTY needed)
+    for cmd in (
+        ["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
+        ["sudo", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
+    ):
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2)
+            if proc.returncode == 0:
+                lines = stdout.decode("utf-8", errors="ignore").splitlines()
+                return "MirrorDash-Setup" in lines
+        except asyncio.TimeoutError:
+            continue
+        except Exception:
+            continue
+    logger.error("Timed out or failed checking WiFi hotspot status")
+    return False
 
 
 async def _teardown_captive_ap() -> None:
