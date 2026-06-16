@@ -13,11 +13,19 @@ build-os-image:
   script:
     - apt-get update -qq
     - apt-get install -y --no-install-recommends
-      parted xz-utils e2fsprogs pigz wget curl git make
+      parted xz-utils e2fsprogs pigz wget curl git make ca-certificates
 
     # Your custom tools / pishrink
-    - wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
-    - chmod +x /usr/local/bin/pishrink.sh
+    # Better download with retry + fallback
+    - |
+      echo "Downloading pishrink.sh..."
+      for i in {1..5}; do
+        wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh && break
+        echo "Attempt $i failed, retrying in 3s..."
+        sleep 3
+      done
+      [ -f /usr/local/bin/pishrink.sh ] || { echo "Failed to download pishrink.sh"; exit 1; }
+      chmod +x /usr/local/bin/pishrink.sh
 
     - echo "Starting build..."
     - bash scripts/build_image.sh
