@@ -99,6 +99,10 @@ python mirrordash_core/main.py
 
 ## Critical Coding Rules
 
+### General
+
+0. **Always consider the development environment.** Local dev machines run on amd64 with a regular terminal — not on the production Pi. Code must work in both contexts: subprocess calls may prompt for `sudo` passwords (no TTY available in background processes), CDNs are blocked or cached differently offline, services like NetworkManager or systemd may not be running locally. Avoid hardcoding production-only paths or assumptions.
+
 ### Python
 
 1. **No late-binding closures in loops.** Any nested function (`def`) defined inside a `for` loop that closes over a loop variable MUST use a factory function to capture the value immediately. This is a known bug pattern in this codebase.
