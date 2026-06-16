@@ -28,7 +28,7 @@ build-os-image:
       chmod +x /usr/local/bin/pishrink.sh
 
     - echo "Starting build..."
-    - bash scripts/build_image.sh
+    - sudo bash scripts/build_image.sh
 
   artifacts:
     paths:
