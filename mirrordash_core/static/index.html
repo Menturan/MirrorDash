@@ -405,10 +405,10 @@
                 if (!prompt) return;
 
                 const promptTitle = prompt.querySelector('h1');
-                const promptText = prompt.querySelector('p');
-                const promptUrl = prompt.querySelector('div');
+                const promptText = prompt.querySelector('p:first-of-type');
+                const promptUrl = prompt.querySelector('div[style*="surface-container"]');
                 const promptSubtext = prompt.querySelector('p:last-of-type');
-                const iconContainer = prompt.querySelector('div:first-of-type');
+                const iconContainer = prompt.querySelector('div[style*="max-width"] > div:first-of-type');
 
                 let showPrompt = false;
 
