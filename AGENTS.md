@@ -48,6 +48,8 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 │   │   ├── index.html      # Mirror display (the kiosk page)
 │   │   ├── design.html     # Design System Explorer (served at /design)
 │   │   ├── admin_js/       # Admin dashboard split JavaScript files
+│   │   ├── js/             # Kiosk frontend ES modules
+│   │   │   └── kiosk/      # WebSocket, module rendering, Web Components
 │   │   ├── style.css       # Global Ethereal Design System CSS
 │   │   └── admin.css       # Styles specific to the admin dashboard
 │   └── templates/          # Jinja2 templates (rendered server-side)
