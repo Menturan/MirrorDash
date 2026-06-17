@@ -57,7 +57,7 @@ class SetupPrompt extends HTMLElement {
                     color: var(--color-high-contrast, #ffffff);
                     margin-bottom: 0.75rem;
                 }
-                p {
+                .main-text {
                     font-size: 0.9375rem;
                     color: var(--color-standard-gray, #999999);
                     line-height: 1.6;
