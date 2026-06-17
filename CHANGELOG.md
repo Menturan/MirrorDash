@@ -84,6 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Relaxed frontend framework rule from "forbidden" to "conservative adoption" in AGENTS.md. Frameworks require justification but are no longer categorically banned.
 - Refactored `index.html` into modular ES files under `static/js/kiosk/`. Split into `design-tokens.js`, `setup-prompt.js` (Web Component), and `core.js`.
 - Moved Lucide library from CDN to local `static/js/lucide.min.js` for offline reliability.
+- Added integration tests for kiosk JS modular structure.
 
 ### System OS (Appliance)
 
