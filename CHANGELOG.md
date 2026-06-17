@@ -82,6 +82,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Core App
 - Relaxed frontend framework rule from "forbidden" to "conservative adoption" in AGENTS.md. Frameworks require justification but are no longer categorically banned.
+- Refactored `index.html` into modular ES files under `static/js/kiosk/`. Split into `design-tokens.js`, `setup-prompt.js` (Web Component), and `core.js`.
+- Moved Lucide library from CDN to local `static/js/lucide.min.js` for offline reliability.
 
 ### System OS (Appliance)
 
