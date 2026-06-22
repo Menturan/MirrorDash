@@ -149,6 +149,11 @@ The layout follows a **Peripheral Modular Grid**. Content is strictly prohibited
 - **Modular Rhythm:** A `30px` vertical gap is maintained between stacked widgets. 
 - **Center Void:** The horizontal and vertical center of the screen should remain unoccupied unless a temporary modal alert is triggered.
 - **Responsive Fluidity:** All module layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
+- **Flexbox Layout Utilities**: To make module styling easy and uniform without requiring custom CSS, the core design system defines four standard helper classes:
+  - `.flex-row`: Horizontally aligns items, centers them vertically, and applies a standard `8px` gap.
+  - `.flex-row-between`: Horizontal row stretching to `100%` width with space-between distribution.
+  - `.flex-column`: Stacks items vertically with a standard `8px` gap.
+  - `.flex-center`: Centers elements vertically and horizontally.
 
 ## Elevation & Depth
 

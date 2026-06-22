@@ -599,6 +599,14 @@ body, html {
 }
 
 /* ============================================================
+   Layout Utility Classes (Flexbox helpers for module developers)
+   ============================================================ */
+.flex-row { display: flex; align-items: center; gap: 8px; }
+.flex-row-between { display: flex; align-items: center; justify-content: space-between; width: 100%; }
+.flex-column { display: flex; flex-direction: column; gap: 8px; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+
+/* ============================================================
    Lucide SVG Icon styling
    ============================================================ */
 svg.lucide, .lucide {

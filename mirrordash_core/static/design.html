@@ -570,6 +570,63 @@
 }</code></pre>
                     </div>
                 </div>
+
+                <!-- Flexbox Alignment Utilities -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Flexbox Alignment Helpers (.flex-row, .flex-column, .flex-row-between, .flex-center)</span>
+                        <span class="component-tag">Zero-CSS Layout utilities</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column" style="background: #111; gap: 2rem;">
+                        <!-- Row Helper -->
+                        <div style="width: 100%;">
+                            <div class="body-sm text-secondary" style="margin-bottom: 8px;">Horizontal Row (.flex-row) — aligns items and adds a standard gap:</div>
+                            <div class="flex-row" style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px; display: inline-flex;">
+                                <i data-lucide="sun" class="text-primary"></i>
+                                <span class="body-base text-primary" style="font-weight: 500;">22°C</span>
+                                <span class="body-sm text-secondary">Sunny</span>
+                            </div>
+                        </div>
+
+                        <!-- Row-Between Helper -->
+                        <div style="width: 320px;">
+                            <div class="body-sm text-secondary" style="margin-bottom: 8px;">Space Between (.flex-row-between) — labels left, values right:</div>
+                            <div class="flex-row-between" style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px;">
+                                <span class="body-sm text-secondary">Sensor status</span>
+                                <span class="body-sm text-primary" style="font-weight: 600;">Online</span>
+                            </div>
+                        </div>
+
+                        <!-- Column Helper -->
+                        <div style="width: 320px;">
+                            <div class="body-sm text-secondary" style="margin-bottom: 8px;">Vertical Column (.flex-column) — stacks elements vertically:</div>
+                            <div class="flex-column" style="background: rgba(255,255,255,0.02); padding: 8px; border-radius: 4px;">
+                                <span class="body-base text-primary" style="font-weight: 500;">Stockholm</span>
+                                <span class="body-sm text-secondary">Heavy rain starting in 10 min</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;!-- Horizontal Row with Icon alignment --&gt;
+&lt;div class="flex-row"&gt;
+    &lt;i data-lucide="sun" class="text-primary"&gt;&lt;/i&gt;
+    &lt;span class="body-base text-primary"&gt;22°C&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;!-- Space-Between row (left label, right value) --&gt;
+&lt;div class="flex-row-between"&gt;
+    &lt;span class="text-secondary"&gt;Status&lt;/span&gt;
+    &lt;span class="text-primary"&gt;Online&lt;/span&gt;
+&lt;/div&gt;
+
+&lt;!-- Vertical Stack --&gt;
+&lt;div class="flex-column"&gt;
+    &lt;span class="body-base text-primary"&gt;Title&lt;/span&gt;
+    &lt;span class="body-sm text-secondary"&gt;Subtitle description...&lt;/span&gt;
+&lt;/div&gt;</code></pre>
+                    </div>
+                </div>
             </section>
 
 
