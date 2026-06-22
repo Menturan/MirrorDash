@@ -214,7 +214,7 @@ python mirrordash_core/main.py
 
 31. **Dual-Artifact Release Model.** This project produces two independent artifacts from the same repository:
    - **Core App** (`mirrordash` Python package) → published to PyPI automatically via GitHub Actions OIDC Trusted Publishing when a `vX.Y.Z` tag is pushed. Version is defined in `pyproject.toml`.
-   - **System OS Image** (`mirrordash-os-vX.Y.Z.img.gz`) → built manually via `scripts/build_image.sh` and published as a GitHub Release asset. Tagged separately as `vX.Y.Z-osN`.
+   - **System OS Image** (`mirrordash-os-vX.Y.Z.img.gz`) → built manually via `scripts/build_image.sh` and published as a GitHub Release asset. Tagged separately as `vX.Y.Z-osN`. The version must strictly target the active Core App version (`X.Y.Z` from `pyproject.toml`) and only increment the build suffix (`-osN`) to maintain dual-artifact alignment.
    
    These artifacts are released on different schedules. The Core App can ship without the System OS image, and vice versa. When updating `CHANGELOG.md`, entries under a versioned `[X.Y.Z]` section must only contain changes that ship in that specific artifact. System OS appliance changes must remain under `[Unreleased]` until the golden image is tested and released. Never mix System OS entries into a Core App version block.
 

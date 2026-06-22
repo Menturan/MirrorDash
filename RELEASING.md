@@ -63,8 +63,11 @@ For Python package changes: new features, bug fixes, module updates, admin dashb
 Use the release helper script to run tests, bump the version, reorganize the CHANGELOG, and push:
 
 ```bash
-python3 scripts/release_core.py 0.2.5
+python3 scripts/release_core.py [version]
 ```
+
+> [!TIP]
+> **Interactive Wizard**: If you run `python3 scripts/release_core.py` with no version argument, it starts an interactive CLI wizard that parses the current version from `pyproject.toml` and guides you to select a **bugfix (patch)**, **minor**, **major**, or **prerelease** bump (with custom or standard `alpha`/`beta`/`rc` suffix selection). If the current version is already a prerelease (e.g. `0.2.5-rc1`), it offers to automatically increment it to the next prerelease build (`0.2.5-rc2`).
 
 The script will:
 1. Validate the SemVer version argument
@@ -106,8 +109,11 @@ For OS-level changes: new system packages, Plymouth themes, labwc config, networ
 Use the release helper script to run tests, reorganize the CHANGELOG, and push:
 
 ```bash
-python3 scripts/release_os.py 0.2.4-os1
+python3 scripts/release_os.py [version]
 ```
+
+> [!TIP]
+> **Interactive Wizard**: If you run `python3 scripts/release_os.py` with no version argument, it starts an interactive CLI wizard. To adhere to the dual-artifact model, the script automatically reads the active Core App version from `pyproject.toml` and scans `CHANGELOG.md` to recommend the next OS build number for that specific core version (e.g. `X.Y.Z-os1` or `X.Y.Z-os(N+1)`). You can select the recommended version or enter a custom build suffix for the active core base.
 
 The script will:
 1. Validate the `X.Y.Z-osN` version argument
