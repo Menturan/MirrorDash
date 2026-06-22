@@ -46,8 +46,10 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 │   │   ├── admin_shared.py # Shared Jinja2Templates and auth helpers
 │   │   ├── admin_auth.py   # Auth routes (setup, status)
 │   │   ├── admin_config.py # Config REST and HTMX panel endpoints
-│   │   ├── admin_system.py # System REST/HTMX endpoints & A/B updates
-│   │   ├── admin_modules.py# Module scanning, CRUD, and panel forms
+│   │   ├── admin_system.py # System REST API endpoints & A/B updates
+│   │   ├── admin_system_panels.py # System HTMX panel rendering endpoints
+│   │   ├── admin_modules.py# Module scanning & REST API endpoints
+│   │   ├── admin_modules_panels.py # Modules HTMX panel rendering endpoints
 │   │   ├── admin_backup.py # HTMX-specific backup panel routes
 │   │   ├── admin_logs.py   # Logs REST and HTMX log viewer routes
 │   │   └── backup.py       # Backup/restore REST API

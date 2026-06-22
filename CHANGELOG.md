@@ -85,6 +85,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `index.html` into modular ES files under `static/js/kiosk/`. Split into `design-tokens.js`, `setup-prompt.js` (Web Component), and `core.js`.
 - Moved Lucide library from CDN to local `static/js/lucide.min.js` for offline reliability.
 - Added integration tests for kiosk JS modular structure.
+- Split `admin_modules.py` and `admin_system.py` into separate JSON REST API endpoints and HTMX panel-rendering endpoints (`admin_modules_panels.py` and `admin_system_panels.py` respectively) to reduce monolithic file complexity.
 
 ### System OS (Appliance)
 

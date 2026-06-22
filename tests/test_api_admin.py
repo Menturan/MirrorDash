@@ -630,7 +630,7 @@ def test_rebuild_venv_success(mock_revert, mock_commit, mock_prepare, mock_versi
     mock_create_task.assert_called_once()
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.api.admin_system_panels.load_config")
 @patch("mirrordash_core.api.admin_system.get_available_resolutions", new_callable=AsyncMock)
 def test_get_panel_system(mock_res, mock_load, client):
     mock_load.return_value = MOCK_CONFIG

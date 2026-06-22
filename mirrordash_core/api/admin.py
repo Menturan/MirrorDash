@@ -14,7 +14,9 @@ from mirrordash_core.api import (
     admin_config,
     admin_logs,
     admin_modules,
+    admin_modules_panels,
     admin_system,
+    admin_system_panels,
 )
 
 router = APIRouter(prefix="/admin")
@@ -23,6 +25,8 @@ router = APIRouter(prefix="/admin")
 router.include_router(admin_auth.router)
 router.include_router(admin_config.router)
 router.include_router(admin_modules.router)
+router.include_router(admin_modules_panels.router)
 router.include_router(admin_system.router)
+router.include_router(admin_system_panels.router)
 router.include_router(admin_backup.router)
 router.include_router(admin_logs.router)
