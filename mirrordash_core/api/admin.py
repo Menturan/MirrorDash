@@ -1896,9 +1896,48 @@ async def get_logs_viewer(type: str = "system", lines: int = 100, module: str | 
 
 @router.get("/panels/system", dependencies=[Depends(require_api_key)])
 async def get_panel_system(request: Request):
+    config = load_config()
+    globals_cfg = config.get("globals", {})
+    time_format = globals_cfg.get("time_format", "24h")
+    
     settings_data = await get_system_settings()
     settings = settings_data.get("settings", {})
     resolutions = settings_data.get("resolutions", [])
+    
+    # Parse current active times
+    display_control = settings.get("display_control", {})
+    interval = display_control.get("interval", {"start": "07:00", "end": "22:00"})
+    start_time_str = interval.get("start", "07:00")
+    end_time_str = interval.get("end", "22:00")
+    
+    # Helper to parse 24h string to (hour, minute, ampm)
+    def parse_time_to_format(time_str: str, fmt: str):
+        try:
+            h_str, m_str = time_str.split(":")
+            h = int(h_str)
+            m = int(m_str)
+        except Exception:
+            h, m = 7, 0
+            
+        if fmt == "12h":
+            ampm = "PM" if h >= 12 else "AM"
+            h_12 = h % 12
+            if h_12 == 0:
+                h_12 = 12
+            return h_12, m, ampm
+        else:
+            return h, m, None
+            
+    start_h, start_m, start_ampm = parse_time_to_format(start_time_str, time_format)
+    end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
+    
+    # Hours list
+    if time_format == "12h":
+        hours_list = list(range(1, 13))
+    else:
+        hours_list = list(range(0, 24))
+        
+    minutes_list = list(range(0, 60))
     
     current_version = "unknown"
     for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
@@ -1914,7 +1953,16 @@ async def get_panel_system(request: Request):
         context={
             "settings": settings,
             "resolutions": resolutions,
-            "current_version": current_version
+            "current_version": current_version,
+            "time_format": time_format,
+            "start_h": start_h,
+            "start_m": start_m,
+            "start_ampm": start_ampm,
+            "end_h": end_h,
+            "end_m": end_m,
+            "end_ampm": end_ampm,
+            "hours_list": hours_list,
+            "minutes_list": minutes_list
         }
     )
 
@@ -1935,13 +1983,40 @@ async def save_system_settings_route(request: Request):
     from mirrordash_core.api.form_generator import parse_flat_form_data
     parsed = parse_flat_form_data(flat_data)
     
+    # Format times back to HH:MM strings expected by update_system_settings
+    display_control = parsed.get("display_control", {})
+    interval = display_control.get("interval", {})
+    if "start_h" in interval and "start_m" in interval:
+        h = int(interval["start_h"])
+        m = interval["start_m"]
+        ampm = interval.get("start_ampm")
+        if ampm:
+            if ampm == "PM" and h != 12:
+                h += 12
+            elif ampm == "AM" and h == 12:
+                h = 0
+        display_control["interval"] = {
+            "start": f"{h:02d}:{m}"
+        }
+    if "end_h" in interval and "end_m" in interval:
+        h = int(interval["end_h"])
+        m = interval["end_m"]
+        ampm = interval.get("end_ampm")
+        if ampm:
+            if ampm == "PM" and h != 12:
+                h += 12
+            elif ampm == "AM" and h == 12:
+                h = 0
+        if "interval" not in display_control:
+            display_control["interval"] = {}
+        display_control["interval"]["end"] = f"{h:02d}:{m}"
+        
     try:
         parsed["brightness"] = int(parsed.get("brightness", 100))
         parsed["volume"] = int(parsed.get("volume", 80))
     except (ValueError, TypeError):
         raise HTTPException(status_code=400, detail="Brightness and volume must be integers")
         
-    display_control = parsed.get("display_control", {})
     if "pir" in display_control:
         pir = display_control["pir"]
         try:
@@ -2048,11 +2123,102 @@ async def trigger_system_update():
 
 @router.get("/panels/backup", dependencies=[Depends(require_api_key)])
 async def get_panel_backup(request: Request):
+    from mirrordash_core.api.backup import list_backups
+    data = await list_backups()
+    backups = data.get("backups", [])
+    
+    # Process backup list for formatting
+    processed_backups = []
+    for backup in backups:
+        from datetime import datetime
+        created_at_formatted = backup["created_at"]
+        try:
+            dt = datetime.fromisoformat(backup["created_at"])
+            created_at_formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+        
+        size_formatted = f"{backup['size_bytes'] / 1024:.1f} KB"
+        
+        processed_backups.append({
+            "filename": backup["filename"],
+            "created_at_formatted": created_at_formatted,
+            "size_formatted": size_formatted,
+            "encrypted": backup["encrypted"]
+        })
+        
     return templates.TemplateResponse(
         request=request,
         name="admin_backup.html",
-        context={}
+        context={
+            "backups": processed_backups
+        }
     )
+
+
+@router.get("/panels/backup/list", dependencies=[Depends(require_api_key)])
+async def get_panel_backups_list(request: Request):
+    from mirrordash_core.api.backup import list_backups
+    data = await list_backups()
+    backups = data.get("backups", [])
+    if not backups:
+        return HTMLResponse(content='<tr><td colspan="5" style="text-align: center; color: #999;">No backups saved.</td></tr>')
+        
+    rows = []
+    for backup in backups:
+        from datetime import datetime
+        created_at_formatted = backup["created_at"]
+        try:
+            dt = datetime.fromisoformat(backup["created_at"])
+            created_at_formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
+        except Exception:
+            pass
+            
+        size_formatted = f"{backup['size_bytes'] / 1024:.1f} KB"
+        is_enc_badge = (
+            '<span class="status-badge" style="background-color: #ffb300; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;"><i class="fas fa-lock"></i> Yes</span>'
+            if backup["encrypted"]
+            else '<span style="color: #666;"><i class="fas fa-unlock"></i> No</span>'
+        )
+        
+        rows.append(f"""
+            <tr>
+                <td><strong>{backup['filename']}</strong></td>
+                <td>{created_at_formatted}</td>
+                <td>{size_formatted}</td>
+                <td>{is_enc_badge}</td>
+                <td style="text-align: right;">
+                    <a class="btn secondary btn-sm" href="/admin/backup/download/{backup['filename']}" download title="Download file"><i class="fas fa-download"></i></a>
+                    <button class="btn primary btn-sm"
+                            hx-post="/admin/panels/backup/validate-local"
+                            hx-vals='{{"filename": "{backup['filename']}"}}'
+                            hx-target="#backup-upload-target"
+                            hx-swap="innerHTML"
+                            title="Restore from local">
+                        <i class="fas fa-undo"></i> Restore
+                    </button>
+                    <button class="btn btn-sm" style="background-color: #ff3333; color: white;"
+                            hx-post="/admin/panels/backup/delete/{backup['filename']}"
+                            hx-confirm="Are you sure you want to delete backup {backup['filename']}?"
+                            hx-target="closest tr"
+                            hx-swap="outerHTML"
+                            title="Delete">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </td>
+            </tr>
+        """)
+    return HTMLResponse(content="\n".join(rows))
+
+
+@router.post("/panels/backup/delete/{filename}", dependencies=[Depends(require_api_key)])
+async def delete_panel_backup_route(filename: str):
+    from mirrordash_core.api.backup import delete_backup
+    try:
+        await delete_backup(filename=filename)
+        return HTMLResponse(content="")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/panels/backup/upload", dependencies=[Depends(require_api_key)])
@@ -2207,9 +2373,9 @@ async def restore_panel_backup(
         logger.error(f"Restoration failed: {e}")
         return HTMLResponse(content=f'<div class="alert alert--error">Restoration failed: {str(e)}</div>')
 
-
 @router.post("/panels/backup/create", dependencies=[Depends(require_api_key)])
 async def create_panel_backup(request: Request):
+    from mirrordash_core.api.backup import create_backup
     form_data = await request.form()
     encrypt = form_data.get("encrypt") == "true"
     password = form_data.get("password")

@@ -623,3 +623,54 @@ def test_rebuild_venv_success(mock_revert, mock_commit, mock_prepare, mock_versi
     mock_create_task.assert_called_once()
 
 
+@patch("mirrordash_core.api.admin.load_config")
+@patch("mirrordash_core.api.admin.get_available_resolutions", new_callable=AsyncMock)
+def test_get_panel_system(mock_res, mock_load, client):
+    mock_load.return_value = MOCK_CONFIG
+    mock_res.return_value = ["1920x1080"]
+    headers = {"X-API-Key": "secret"}
+    
+    response = client.get("/admin/panels/system", headers=headers)
+    assert response.status_code == 200
+    assert "System Settings" in response.text
+    assert "sys-rotation" in response.text
+
+
+@patch("mirrordash_core.api.admin.load_config")
+@patch("mirrordash_core.api.admin.save_config")
+@patch("mirrordash_core.api.admin.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
+def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_ro, mock_rw, mock_apply, mock_save, mock_load, client):
+    mock_load.return_value = MOCK_CONFIG.copy()
+    headers = {"X-API-Key": "secret"}
+    
+    # Send flat data with start_h/start_m/end_h/end_m
+    form_data = {
+        "brightness": "70",
+        "volume": "60",
+        "rotation": "left",
+        "resolution": "auto",
+        "ssh": "false",
+        "display_control[mode]": "interval",
+        "display_control[interval][start_h]": "8",
+        "display_control[interval][start_m]": "15",
+        "display_control[interval][end_h]": "22",
+        "display_control[interval][end_m]": "45"
+    }
+    
+    response = client.post("/admin/panels/system/save", data=form_data, headers=headers)
+    assert response.status_code == 200
+    assert "System settings applied successfully" in response.text
+    
+    mock_save.assert_called_once()
+    saved_cfg = mock_save.call_args[0][0]
+    assert saved_cfg["system"]["brightness"] == 70
+    assert saved_cfg["system"]["volume"] == 60
+    assert saved_cfg["system"]["rotation"] == "left"
+    assert saved_cfg["system"]["display_control"]["interval"]["start"] == "08:15"
+    assert saved_cfg["system"]["display_control"]["interval"]["end"] == "22:45"
+
+
+

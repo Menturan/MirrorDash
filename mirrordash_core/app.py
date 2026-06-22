@@ -135,7 +135,19 @@ async def post_wifi_setup(body: dict) -> dict:
 
 @app.get("/admin")
 async def get_admin(request: Request):
-    return templates.TemplateResponse(request=request, name="admin.html")
+    from mirrordash_core.api.admin import get_panel_config
+    config_panel_response = await get_panel_config(request=request)
+    config_panel_html = config_panel_response.body.decode("utf-8")
+    boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")
+    return templates.TemplateResponse(
+        request=request,
+        name="admin.html",
+        context={
+            "config_panel_html": config_panel_html,
+            "boot_status": boot_status
+        }
+    )
+
 
 @app.get("/design")
 async def get_design() -> FileResponse:
