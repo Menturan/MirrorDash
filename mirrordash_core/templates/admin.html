@@ -20,83 +20,71 @@
     <div class="admin-container">
         <header>
             <h1><i class="fas fa-cog" aria-hidden="true"></i> MirrorDash Admin</h1>
-            <button id="restart-btn" class="btn danger" aria-label="Restart system">
+            <button id="restart-btn" class="btn danger" aria-label="Restart system" onclick="triggerRestart()">
                 <i class="fas fa-power-off" aria-hidden="true"></i> Restart
             </button>
         </header>
 
         <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
-        <div id="system-alert-banner" class="system-alert" style="display: none;"></div>
+        
+        {% if boot_status == "safe_mode" or boot_status == "rollback" %}
+        <div id="system-alert-banner" class="system-alert {% if boot_status == 'safe_mode' %}system-alert--error{% else %}system-alert--warning{% endif %}" style="display: flex;">
+            <div class="system-alert-header">
+                <i class="{% if boot_status == 'safe_mode' %}fas fa-shield-alt{% else %}fas fa-history{% endif %}"></i>
+                <h3 class="system-alert-title">{% if boot_status == 'safe_mode' %}Safe Mode Active{% else %}System Rollback Triggered{% endif %}</h3>
+            </div>
+            <p class="system-alert-body">
+                {% if boot_status == 'safe_mode' %}
+                MirrorDash has booted from the read-only Golden Copy (safe backup environment) because the primary virtual environment failed to launch. Custom modules and updates are currently disabled.
+                {% else %}
+                MirrorDash recovered from a critical startup crash by automatically rolling back the last update. Some of your recent changes may have been reverted to restore stability.
+                {% endif %}
+            </p>
+            <div class="system-alert-actions">
+                <button id="rebuild-venv-btn" class="btn {% if boot_status == 'safe_mode' %}danger{% else %}secondary{% endif %}"
+                        hx-post="/admin/rebuild-venv"
+                        hx-confirm="Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes."
+                        hx-swap="none"
+                        onclick="this.disabled = true; this.innerHTML = '<i class=&quot;fas fa-spinner fa-spin&quot;></i> Rebuilding...';">
+                    <i class="fas fa-tools"></i> Rebuild Active Environment
+                </button>
+            </div>
+        </div>
+        {% endif %}
 
         <!-- Page-Level Tabs -->
         <nav class="page-tabs" role="tablist">
-            <button class="page-tab-btn active" id="page-tab-config" role="tab" aria-selected="true" aria-controls="page-panel-config">
+            <button class="page-tab-btn active" id="page-tab-config" role="tab" aria-selected="true" aria-controls="tab-content"
+                    hx-get="/admin/panels/config" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
                 <i class="fas fa-sliders-h"></i> Configuration
             </button>
-            <button class="page-tab-btn" id="page-tab-modules" role="tab" aria-selected="false" aria-controls="page-panel-modules">
-                <i class="fas fa-puzzle-piece"></i> Modules <span id="updates-count-badge" class="count-badge" style="display: none;">0</span>
+            <button class="page-tab-btn" id="page-tab-modules" role="tab" aria-selected="false" aria-controls="tab-content"
+                    hx-get="/admin/panels/modules" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                <i class="fas fa-puzzle-piece"></i> Modules
             </button>
-            <button class="page-tab-btn" id="page-tab-logs" role="tab" aria-selected="false" aria-controls="page-panel-logs">
+            <button class="page-tab-btn" id="page-tab-logs" role="tab" aria-selected="false" aria-controls="tab-content"
+                    hx-get="/admin/panels/logs" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
                 <i class="fas fa-file-alt"></i> Logs
             </button>
-            <button class="page-tab-btn" id="page-tab-backup" role="tab" aria-selected="false" aria-controls="page-panel-backup">
+            <button class="page-tab-btn" id="page-tab-backup" role="tab" aria-selected="false" aria-controls="tab-content"
+                    hx-get="/admin/panels/backup" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
                 <i class="fas fa-hdd"></i> Backup & Restore
             </button>
-            <button class="page-tab-btn" id="page-tab-system" role="tab" aria-selected="false" aria-controls="page-panel-system">
+            <button class="page-tab-btn" id="page-tab-system" role="tab" aria-selected="false" aria-controls="tab-content"
+                    hx-get="/admin/panels/system" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
                 <i class="fas fa-desktop"></i> System Settings
             </button>
         </nav>
 
-        <div class="page-panels">
-            {% include "admin_config.html" %}
-            {% include "admin_modules.html" %}
-            {% include "admin_logs.html" %}
-            {% include "admin_backup.html" %}
-            {% include "admin_system.html" %}
+        <div class="page-panels" id="tab-content">
+            {{ config_panel_html | safe }}
         </div>
     </div>
 
     <!-- Release Notes Modal Overlay -->
-    <div id="notes-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display: none;">
-        <div class="modal-content">
-            <header class="modal-header">
-                <div>
-                    <h2 id="modal-title"><i class="fas fa-file-alt"></i> Release Notes</h2>
-                    <span id="modal-subtitle" class="modal-subtitle"></span>
-                </div>
-                <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal">
-                    <i class="fas fa-times"></i>
-                </button>
-            </header>
-            <div id="modal-body" class="modal-body"></div>
-            <footer class="modal-footer">
-                <button id="modal-update-btn" class="btn primary">
-                    <i class="fas fa-arrow-alt-circle-up"></i> Update Now
-                </button>
-                <button id="modal-cancel-btn" class="btn secondary">Close</button>
-            </footer>
-        </div>
-    </div>
-
-    <!-- Password Prompt Modal Overlay -->
-    <div id="backup-password-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="pwd-modal-title" style="display: none;">
-        <div class="modal-content modal-sm">
-            <header class="modal-header">
-                <div>
-                    <h2 id="pwd-modal-title"><i class="fas fa-lock"></i> Encrypted Backup</h2>
-                </div>
-            </header>
-            <div class="modal-body">
-                <p>This backup file is encrypted. Please enter the password to decrypt and validate it:</p>
-                <div class="form-group" style="margin-top: 1rem;">
-                    <input type="password" id="modal-backup-password" class="form-control" placeholder="Enter password">
-                    <div id="modal-backup-password-error" class="error-text" style="color: #ff6666; margin-top: 0.5rem; display: none;"></div>
-                </div>
-            </div>
-            <footer class="modal-footer">
-                <button id="modal-backup-pwd-submit-btn" class="btn primary">Verify Password</button>
-                <button id="modal-backup-pwd-cancel-btn" class="btn secondary">Cancel</button>
-            </footer>
+    <div id="notes-modal" class="modal-overlay" role="dialog" aria-modal="true" style="display: none;">
+        <div class="modal-content" id="notes-modal-content-container">
+            <!-- Populated via HTMX -->
         </div>
     </div>
 
@@ -104,21 +92,244 @@
         <p style="color:white;text-align:center;padding:2rem;">JavaScript is required for the admin interface.</p>
     </noscript>
 
-    <!-- Client-Side Scripts -->
-    <script src="/static/admin_js/core.js"></script>
-    <script src="/static/admin_js/config.js"></script>
-    <script src="/static/admin_js/system.js"></script>
-    <script src="/static/admin_js/logs.js"></script>
-    <script src="/static/admin_js/modules.js"></script>
-    <script src="/static/admin_js/backup.js"></script>
-    
-    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js"></script>
+    <!-- Load local HTMX library -->
+    <script src="/static/js/htmx.min.js"></script>
+    <script src="/static/js/lucide.min.js"></script>
     <script>
-        // Start initialization
-        initPageTabs();
-        initTabs();
-        loadConfig();
-        initBootStatusAlert();
+        let currentApiKey = localStorage.getItem('mirrordash_api_key') || localStorage.getItem('mymm_api_key') || '';
+
+        function showGlobal(msg, type = 'info') {
+            const globalStatus = document.getElementById('global-status');
+            if (!globalStatus) return;
+            globalStatus.textContent = msg;
+            globalStatus.className = `alert alert--${type}`;
+            globalStatus.hidden = false;
+            setTimeout(() => { globalStatus.hidden = true; }, 5000);
+        }
+
+        async function checkAuthStatus() {
+            try {
+                const res = await fetch('/admin/auth/status');
+                if (!res.ok) throw new Error('Failed to fetch auth status');
+                const data = await res.json();
+                
+                if (data.setup_required) {
+                    const pwd = prompt('Welcome! Please create an admin password for MirrorDash (at least 4 characters):');
+                    if (!pwd || pwd.length < 4) {
+                        alert('Password must be at least 4 characters. Reload to try again.');
+                        return false;
+                    }
+                    const setupRes = await fetch('/admin/auth/setup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password: pwd })
+                    });
+                    
+                    if (setupRes.ok) {
+                        currentApiKey = pwd;
+                        localStorage.setItem('mirrordash_api_key', currentApiKey);
+                        showGlobal('Password set successfully.', 'success');
+                        return true;
+                    } else {
+                        const errData = await setupRes.json();
+                        alert('Failed to set password: ' + (errData.detail || 'Unknown error'));
+                        return false;
+                    }
+                } else {
+                    if (!currentApiKey) {
+                        const pwd = prompt('Enter MirrorDash admin password:');
+                        if (!pwd) return false;
+                        currentApiKey = pwd;
+                        localStorage.setItem('mirrordash_api_key', currentApiKey);
+                        window.location.reload();
+                    }
+                    return true;
+                }
+            } catch (err) {
+                showGlobal('Auth check failed: ' + err.message, 'error');
+                return false;
+            }
+        }
+
+        function setActiveTab(btn) {
+            document.querySelectorAll('.page-tab-btn').forEach(b => {
+                const active = b === btn;
+                b.classList.toggle('active', active);
+                b.setAttribute('aria-selected', active ? 'true' : 'false');
+            });
+        }
+
+        async function triggerRestart() {
+            if (!confirm('Are you sure you want to restart the system?')) return;
+            const btn = document.getElementById('restart-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting…';
+            try {
+                const res = await fetch('/admin/restart', { method: 'POST', headers: { 'X-API-Key': currentApiKey } });
+                if (!res.ok) {
+                    showGlobal('Restart request failed.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                    return;
+                }
+            } catch (_) {}
+            showGlobal('Restarting… waiting for server to come back online.', 'info');
+            const pollStart = Date.now();
+            const poll = setInterval(async () => {
+                if (Date.now() - pollStart > 30000) {
+                    clearInterval(poll);
+                    showGlobal('Server did not respond after 30s.', 'error');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                    return;
+                }
+                try {
+                    const r = await fetch('/health');
+                    if (r.ok) {
+                        clearInterval(poll);
+                        window.location.reload();
+                    }
+                } catch (_) {}
+            }, 1500);
+        }
+
+        document.body.addEventListener('htmx:configRequest', (event) => {
+            event.detail.headers['X-API-Key'] = currentApiKey;
+        });
+
+        document.body.addEventListener('htmx:responseError', (event) => {
+            if (event.detail.xhr.status === 401 || event.detail.xhr.status === 403) {
+                localStorage.removeItem('mirrordash_api_key');
+                currentApiKey = '';
+                alert('Authentication failed. Please reload the page to authenticate.');
+                window.location.reload();
+            }
+        });
+
+        document.body.addEventListener('htmx:afterSwap', (event) => {
+            triggerLucide();
+        });
+
+        function triggerLucide() {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        function closeReleaseNotesModal() {
+            const modal = document.getElementById('notes-modal');
+            modal.classList.remove('open');
+            setTimeout(() => { modal.style.display = 'none'; }, 250);
+        }
+
+        function renderNotesMarkdown() {
+            const sourceEl = document.getElementById('notes-markdown-source');
+            const targetEl = document.getElementById('notes-rendered-content');
+            if (sourceEl && targetEl && window.marked && window.DOMPurify) {
+                targetEl.innerHTML = DOMPurify.sanitize(marked.parse(sourceEl.value));
+            } else if (sourceEl && targetEl) {
+                targetEl.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${sourceEl.value}</pre>`;
+            }
+        }
+
+        function selectSubFieldColor(btn, inputId, value) {
+            const inputEl = document.getElementById(inputId);
+            if (inputEl) {
+                inputEl.value = value;
+            }
+            const cardEl = btn.closest('.array-item-card');
+            const swatches = cardEl.querySelectorAll('.color-swatch-btn');
+            swatches.forEach(sw => {
+                const isSelected = sw === btn;
+                sw.classList.toggle('active', isSelected);
+                sw.style.border = isSelected ? '2px solid white' : '1px solid #52525b';
+                sw.style.transform = isSelected ? 'scale(1.15)' : 'none';
+                sw.style.boxShadow = isSelected ? '0 0 8px white' : 'none';
+            });
+        }
+
+        function selectSubFieldIcon(btn, inputId, value) {
+            const inputEl = document.getElementById(inputId);
+            if (inputEl) {
+                inputEl.value = value;
+            }
+            const cardEl = btn.closest('.array-item-card');
+            const btns = cardEl.querySelectorAll('.icon-picker-btn');
+            btns.forEach(b => {
+                const isSelected = b === btn;
+                b.classList.toggle('active', isSelected);
+                b.style.background = isSelected ? '#3f3f46' : '#09090b';
+                b.style.border = isSelected ? '1px solid white' : '1px solid #27272a';
+                b.style.color = isSelected ? 'white' : '#a1a1aa';
+            });
+        }
+
+        function updateSwatchSelection(input) {
+            const cardEl = input.closest('.array-item-card');
+            const swatches = cardEl.querySelectorAll('.color-swatch-btn');
+            swatches.forEach(sw => {
+                const isSelected = sw.title.toLowerCase() === input.value.toLowerCase() || sw.getAttribute('onclick').includes(input.value);
+                sw.classList.toggle('active', isSelected);
+                sw.style.border = isSelected ? '2px solid white' : '1px solid #52525b';
+                sw.style.transform = isSelected ? 'scale(1.15)' : 'none';
+                sw.style.boxShadow = isSelected ? '0 0 8px white' : 'none';
+            });
+        }
+
+        function updateIconSelection(input) {
+            const cardEl = input.closest('.array-item-card');
+            const btns = cardEl.querySelectorAll('.icon-picker-btn');
+            btns.forEach(b => {
+                const isSelected = b.title.toLowerCase() === input.value.toLowerCase();
+                b.classList.toggle('active', isSelected);
+                b.style.background = isSelected ? '#3f3f46' : '#09090b';
+                b.style.border = isSelected ? '1px solid white' : '1px solid #27272a';
+                b.style.color = isSelected ? 'white' : '#a1a1aa';
+            });
+        }
+
+        document.body.addEventListener('htmx:afterRequest', (event) => {
+            if (event.detail.pathInfo.requestPath === '/admin/rebuild-venv') {
+                const btn = document.getElementById('rebuild-venv-btn');
+                if (event.detail.successful) {
+                    showGlobal('Rebuild succeeded. Restarting system...', 'success');
+                    setTimeout(() => {
+                        const pollStart = Date.now();
+                        const poll = setInterval(async () => {
+                            if (Date.now() - pollStart > 60000) {
+                                clearInterval(poll);
+                                showGlobal('Server did not respond after 60s.', 'error');
+                                if (btn) {
+                                    btn.disabled = false;
+                                    btn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
+                                }
+                                return;
+                            }
+                            try {
+                                const r = await fetch('/health');
+                                if (r.ok) {
+                                    clearInterval(poll);
+                                    window.location.reload();
+                                }
+                            } catch (_) {}
+                        }, 2000);
+                    }, 3000);
+                } else {
+                    showGlobal('Rebuild failed.', 'error');
+                    if (btn) {
+                        btn.disabled = false;
+                        btn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
+                    }
+                }
+            }
+        });
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            const authed = await checkAuthStatus();
+            if (authed) {
+                triggerLucide();
+            }
+        });
     </script>
 </body>
 </html>
