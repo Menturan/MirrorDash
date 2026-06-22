@@ -125,8 +125,8 @@ class SetupPrompt extends HTMLElement {
             }
             title.textContent = 'WiFi Setup Mode';
             mainText.textContent = 'Your mirror is offline. Connect your phone or computer to the WiFi network below to configure a connection:';
-            urlBox.innerHTML = `<span style="color:var(--color-standard-gray,#999);font-size:0.875rem;">SSID:</span> MirrorDash-Setup<br><span style="color:var(--color-standard-gray,#999);font-size:0.875rem;">URL:</span> http://10.42.0.1:8000/wifi-setup`;
-            subtext.textContent = 'Hotspot password: mirrordash. Open this URL in your browser to select your home Wi-Fi network.';
+            urlBox.innerHTML = `<span style="color:var(--color-standard-gray,#999);font-size:0.875rem;">SSID:</span> MirrorDash-Setup<br><span style="color:var(--color-standard-gray,#999);font-size:0.875rem;">PASSWORD:</span> mirrordash<br><br><span style="color:var(--color-standard-gray,#999);font-size:0.875rem;">URL:</span> http://10.42.0.1:8000/wifi-setup`;
+            subtext.textContent = 'Open this URL in your browser to select your home Wi-Fi network.';
         } else if (data.setup_required) {
             showPrompt = true;
             const currentIcon = iconContainer.querySelector('i, svg');
