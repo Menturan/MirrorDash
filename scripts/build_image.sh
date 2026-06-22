@@ -439,6 +439,15 @@ run_timed_step "Enable OverlayFS" enable_overlayfs
 run_timed_step "Setup Storage Offline" setup_storage_offline
 run_timed_step "Run Appliance Setup" run_appliance_setup
 
+# --- Post-setup OverlayFS fixup ---
+# setup_appliance.sh comments out auto_initramfs=1 as a CI safety measure
+# (to prevent apt triggers from rebuilding initramfs without SD hardware).
+# The initramfs image itself was already correctly built by enable_overlayfs()
+# above, so we just need to re-enable the config.txt flag so the Pi firmware
+# loads it on boot.
+info "Re-enabling auto_initramfs in config.txt (post-setup fixup)..."
+sed -i 's/^#auto_initramfs=1/auto_initramfs=1/g' "$MOUNT_DIR/boot/firmware/config.txt"
+
 trap - EXIT
 cleanup_and_unmount
 

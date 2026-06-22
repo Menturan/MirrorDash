@@ -382,12 +382,12 @@ step_configuring_console_login() {
     ln -fs /lib/systemd/system/getty@.service /etc/systemd/system/getty.target.wants/getty@tty1.service
 
     # Skapa systemd-mappen för inloggningen
-  mkdir -p /etc/systemd/system/getty@tty1.service.d
+    mkdir -p /etc/systemd/system/getty@tty1.service.d
 
   cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
-  [Service]
-  ExecStart=
-  ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
 EOF
 
   # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
