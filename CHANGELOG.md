@@ -78,31 +78,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### System OS (Appliance)
 
+
+## [0.3.0] - 2026-06-23
+
+### Core App
+- Added a form generator utility and integrated local `htmx.min.js` to ensure the dashboard is fully offline-capable.
+- Added dynamic background scanning of PyPI simple index for community modules starting with `mirrordash-`.
+- Added integration tests for kiosk JS modular structure.
+- Created guided version bumping wizards in `release_core.py` and `release_os.py` for automated SemVer/OS release management.
+- Fixed layout, reset-style text color visibility, and backdrop-filter issues in kiosk prompts on WebKit/Cog browser.
+- Migrated all admin dashboard panels to HTMX for a dynamic, single-page application experience.
+- Moved Lucide library from CDN to local `static/js/lucide.min.js` for offline reliability.
+- Preserved active page tabs in the admin panel across page reloads using URL hash tracking.
+- Refactored `index.html` into modular ES files under `static/js/kiosk/`. Split into `design-tokens.js`, `setup-prompt.js` (Web Component), and `core.js`.
+- Relaxed frontend framework rule from "forbidden" to "conservative adoption" in AGENTS.md. Frameworks require justification but are no longer categorically banned.
+- Self-hosted the Inter variable font for offline kiosk reliability, replacing the Google Fonts CDN dependency.
+- Simplified setup prompts on the kiosk screen by serving static HTML prompt pages (`wifi_prompt.html` and `admin_prompt.html`) directly from the backend, replacing the complex dynamic Web Component and polling logic.
+- Split `admin_modules.py` and `admin_system.py` into separate JSON REST API endpoints and HTMX panel-rendering endpoints (`admin_modules_panels.py` and `admin_system_panels.py` respectively) to reduce monolithic file complexity.
+- Split monolithic `admin.py` into modular domain-specific sub-routers (`admin_auth.py`, `admin_config.py`, `admin_system.py`, etc.).
+
+### System OS (Appliance)
+
 ## [Unreleased]
 
 ### Core App
-- Relaxed frontend framework rule from "forbidden" to "conservative adoption" in AGENTS.md. Frameworks require justification but are no longer categorically banned.
-- Refactored `index.html` into modular ES files under `static/js/kiosk/`. Split into `design-tokens.js`, `setup-prompt.js` (Web Component), and `core.js`.
-- Moved Lucide library from CDN to local `static/js/lucide.min.js` for offline reliability.
-- Added integration tests for kiosk JS modular structure.
-- Split `admin_modules.py` and `admin_system.py` into separate JSON REST API endpoints and HTMX panel-rendering endpoints (`admin_modules_panels.py` and `admin_system_panels.py` respectively) to reduce monolithic file complexity.
-- Migrated all admin dashboard panels to HTMX for a dynamic, single-page application experience.
-- Split monolithic `admin.py` into modular domain-specific sub-routers (`admin_auth.py`, `admin_config.py`, `admin_system.py`, etc.).
-- Preserved active page tabs in the admin panel across page reloads using URL hash tracking.
-- Added a form generator utility and integrated local `htmx.min.js` to ensure the dashboard is fully offline-capable.
-- Added dynamic background scanning of PyPI simple index for community modules starting with `mirrordash-`.
-- Simplified setup prompts on the kiosk screen by serving static HTML prompt pages (`wifi_prompt.html` and `admin_prompt.html`) directly from the backend, replacing the complex dynamic Web Component and polling logic.
-- Self-hosted the Inter variable font for offline kiosk reliability, replacing the Google Fonts CDN dependency.
-- Fixed layout, reset-style text color visibility, and backdrop-filter issues in kiosk prompts on WebKit/Cog browser.
-- Created guided version bumping wizards in `release_core.py` and `release_os.py` for automated SemVer/OS release management.
 
 ### System OS (Appliance)
-- Migrated default kiosk browser engine from Chromium to Cog (WebKit) on Wayland for a lighter, kiosk-optimized display footprint.
 - Added Getty auto-login configuration fix for auto-launching kiosk on system boot.
-- Re-enabled automatic initramfs rebuild configurations in production image pipelines to ensure boot reliability.
 - Fixed various automated system image build issues during offline QEMU runs.
-
-[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.2.4-os1...HEAD
+- Migrated default kiosk browser engine from Chromium to Cog (WebKit) on Wayland for a lighter, kiosk-optimized display footprint.
+- Re-enabled automatic initramfs rebuild configurations in production image pipelines to ensure boot reliability.
+[Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Menturan/MirrorDash/compare/v0.2.4...v0.3.0
 [0.2.4-os1]: https://github.com/Menturan/MirrorDash/compare/v0.2.4...0.2.4-os1
 [0.2.4]: https://github.com/Menturan/MirrorDash/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/Menturan/MirrorDash/compare/v0.2.2...v0.2.3
