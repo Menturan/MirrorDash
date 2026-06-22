@@ -1096,16 +1096,114 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
         return {"logs": "System log fetching failed. Systemd journalctl is not available, and /var/log/syslog is unreadable."}
 
 
+DISCOVERED_COMMUNITY_MODULES = [
+    {
+        "name": "mirrordash-clock",
+        "title": "Clock Widget",
+        "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
+    }
+]
+_scan_task = None
+
+async def run_pypi_modules_scan():
+    """Periodically scan PyPI simple index for mirrordash-* packages."""
+    global DISCOVERED_COMMUNITY_MODULES
+    import gzip
+    while True:
+        try:
+            logger.info("Scanning PyPI for mirrordash-* community modules...")
+            loop = asyncio.get_running_loop()
+            
+            def _fetch_simple_index():
+                url = "https://pypi.org/simple/"
+                req = urllib.request.Request(
+                    url, 
+                    headers={"User-Agent": "MirrorDash/1.0", "Accept-Encoding": "gzip"}
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        content = resp.read()
+                        if resp.info().get("Content-Encoding") == "gzip":
+                            content = gzip.decompress(content)
+                        return content.decode("utf-8")
+                except Exception as e:
+                    logger.error(f"Failed to fetch PyPI simple index: {e}")
+                    return ""
+
+            html = await loop.run_in_executor(None, _fetch_simple_index)
+            if html:
+                # Find all package names starting with mirrordash-
+                # Exclude mirrordash-core and mirrordash itself
+                names = re.findall(r'<a href=\"/simple/(mirrordash-[^\"]+)/\">', html)
+                names = sorted(list(set(n for n in names if n != "mirrordash" and n != "mirrordash-core")))
+                
+                # Fetch metadata for each discovered package
+                scanned_modules = []
+                for name in names:
+                    def _fetch_meta():
+                        url = f"https://pypi.org/pypi/{name}/json"
+                        req = urllib.request.Request(url, headers={"User-Agent": "MirrorDash/1.0"})
+                        try:
+                            with urllib.request.urlopen(req, timeout=5) as resp:
+                                return json.loads(resp.read().decode("utf-8"))
+                        except Exception:
+                            return None
+                    
+                    meta = await loop.run_in_executor(None, _fetch_meta)
+                    if meta:
+                        info = meta.get("info", {})
+                        scanned_modules.append({
+                            "name": name,
+                            "title": info.get("name", name).replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                            "description": info.get("summary") or "No description available."
+                        })
+                    else:
+                        scanned_modules.append({
+                            "name": name,
+                            "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                            "description": "No description available."
+                        })
+                
+                # Ensure clock is always included as fallback/pre-packaged
+                scanned_names = {m["name"] for m in scanned_modules}
+                if "mirrordash-clock" not in scanned_names:
+                    scanned_modules.insert(0, {
+                        "name": "mirrordash-clock",
+                        "title": "Clock Widget",
+                        "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
+                    })
+                
+                DISCOVERED_COMMUNITY_MODULES = scanned_modules
+                logger.info(f"PyPI scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
+            
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Error scanning PyPI for modules: {e}", exc_info=True)
+            
+        # Run scan every 12 hours
+        await asyncio.sleep(43200)
+
+def start_community_modules_scan():
+    global _scan_task
+    import sys
+    if "pytest" in sys.modules:
+        return
+    if _scan_task is None:
+        _scan_task = asyncio.create_task(run_pypi_modules_scan())
+
+def stop_community_modules_scan():
+    global _scan_task
+    if _scan_task is not None:
+        _scan_task.cancel()
+        _scan_task = None
+
+
 @router.get("/community-modules", dependencies=[Depends(require_api_key)])
 async def list_community_modules() -> list[dict]:
     """Return a list of popular discoverable community modules on PyPI."""
-    return [
-        {
-            "name": "mirrordash-clock",
-            "title": "Clock Widget",
-            "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
-        }
-    ]
+    global DISCOVERED_COMMUNITY_MODULES
+    return DISCOVERED_COMMUNITY_MODULES
 
 
 @router.get("/globals-schema", dependencies=[Depends(require_api_key)])
