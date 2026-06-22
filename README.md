@@ -38,7 +38,8 @@ While smart mirrors and screens have existed for years, they are notoriously dif
 Under the hood, MirrorDash is a production-grade IoT platform optimized for the Raspberry Pi running in full-screen kiosk mode.
 
 * **🐍 Backend**: FastAPI (Python 3.14) driving a high-performance, asynchronous event loop. Communication with the frontend is handled via real-time WebSockets with local frame caching for instant layout rendering on client connect.
-* **🎨 Frontend**: Zero-framework vanilla HTML5, CSS Grid/Flexbox, and native JavaScript. No React, Vue, or heavy build steps—meaning near-zero CPU and memory footprint on the Pi.
+* **🎨 Frontend & Styling**: Zero-framework vanilla HTML5, CSS Grid/Flexbox, and native JavaScript.
+* **✨ Live Design Explorer**: Served at `http://localhost:8000/design` when running the application. It acts as a live interactive kitchen-sink containing styling tokens, typography examples, and copy-pasteable layout/component markups matching the Ethereal Design System.
 * **🔒 OS Hardening**: Configured to run on a read-only OverlayFS root filesystem (Debian 13 Trixie). Dynamic configs and data are written exclusively to a persistent user partition, preventing SD card corruption from frequent write cycles.
 * **🏗️ Decoupled Architecture**: Widgets are fully isolated, pip-installable Python packages discovered at runtime via metadata entry points.
 
