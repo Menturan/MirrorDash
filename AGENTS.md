@@ -42,7 +42,14 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 │   ├── system.py           # System controls (remount, brightness, rotation)
 │   ├── display_power.py    # Screen power manager daemon (schedule/PIR/button)
 │   ├── api/
-│   │   ├── admin.py        # Admin REST API (requires X-API-Key header)
+│   │   ├── admin.py        # Admin router aggregator & public API re-exporter
+│   │   ├── admin_shared.py # Shared Jinja2Templates and auth helpers
+│   │   ├── admin_auth.py   # Auth routes (setup, status)
+│   │   ├── admin_config.py # Config REST and HTMX panel endpoints
+│   │   ├── admin_system.py # System REST/HTMX endpoints & A/B updates
+│   │   ├── admin_modules.py# Module scanning, CRUD, and panel forms
+│   │   ├── admin_backup.py # HTMX-specific backup panel routes
+│   │   ├── admin_logs.py   # Logs REST and HTMX log viewer routes
 │   │   └── backup.py       # Backup/restore REST API
 │   ├── static/             # Static files served at /static/*
 │   │   ├── index.html      # Mirror display (the kiosk page)
@@ -292,7 +299,7 @@ When modifying `mirrordash_core/`:
 
 - **`module_loader.py`:** Any new function defined inside `start_modules()` loop — check for closure bugs. Use factories.
 - **`ws_manager.py`:** Frame cache (`latest_messages`) only stores messages with both `"module"` and `"html"` keys. `clear_cache()` is called on `stop_modules()`.
-- **`app.py`:** Public routes go directly on `app`. Admin routes go in `mirrordash_core/api/admin.py` and `mirrordash_core/api/backup.py` with the `require_api_key` dependency.
+- **`app.py`:** Public routes go directly on `app`. Admin routes go in `mirrordash_core/api/` sub-routers (`admin_auth.py`, `admin_system.py`, etc.) and `mirrordash_core/api/backup.py` with the `require_api_key` dependency.
 
 ---
 

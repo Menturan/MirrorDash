@@ -39,11 +39,11 @@ def test_time_in_range_invalid():
     # Should default to True on parse error to avoid locking screen permanently
     assert manager._is_time_in_range("invalid", "22:00", time(8, 0)) is True
 
-@patch("mirrordash_core.api.admin.load_config")
-@patch("mirrordash_core.api.admin.save_config")
-@patch("mirrordash_core.api.admin.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.api.admin_system.save_config")
+@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock)
 def test_system_settings_display_control_validation(mock_ro, mock_rw, mock_apply, mock_save, mock_load, client):
     mock_load.return_value = {
         "admin_auth": {"hash": "dummy", "salt": "dummy"}

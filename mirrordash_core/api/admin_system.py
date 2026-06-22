@@ -1,0 +1,767 @@
+# Licensed under the PolyForm Noncommercial License 1.0.0.
+
+import asyncio
+import importlib.metadata
+import json
+import logging
+import os
+import re
+import urllib.request
+from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
+
+from mirrordash_core.api.admin_shared import require_api_key, templates
+from mirrordash_core.config import load_config, save_config
+from mirrordash_core.system import (
+    apply_system_settings,
+    get_available_resolutions,
+    remount_ro,
+    remount_rw,
+    run_restart,
+    set_screen_power,
+)
+
+logger = logging.getLogger("mirrordash.core.api.admin_system")
+
+router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Virtual Environment A/B Swapping Helpers
+# ---------------------------------------------------------------------------
+
+def get_venv_paths():
+    """Get venv paths: (venv_link, active_path, next_path).
+    Returns None if not running on a system with /storage/mirrordash.
+    """
+    from pathlib import Path
+    storage_dir = Path("/storage/mirrordash")
+    if not storage_dir.exists():
+        return None
+    venv_link = storage_dir / "venv"
+    venv_a = storage_dir / "venv_a"
+    venv_b = storage_dir / "venv_b"
+    active_path = venv_a
+    next_path = venv_b
+    if venv_link.exists() and venv_link.is_symlink():
+        try:
+            target = os.readlink(str(venv_link))
+            if "venv_b" in target:
+                active_path = venv_b
+                next_path = venv_a
+        except Exception:
+            pass
+    return venv_link, active_path, next_path
+
+
+async def prepare_venv_next(force_clean: bool = False):
+    """Clone active venv to next venv and point symlink to next.
+    If force_clean is True, starts with a completely clean virtual environment.
+    Returns (active_path, next_path) or None.
+    """
+    import shutil
+    from pathlib import Path
+    paths = get_venv_paths()
+    if not paths:
+        return None
+    venv_link, active_path, next_path = paths
+    logger.info(f"Preparing A/B swap: Active={active_path.name}, Next={next_path.name}, Clean={force_clean}")
+    try:
+        if next_path.exists():
+            shutil.rmtree(next_path)
+        if active_path.exists() and not force_clean:
+            shutil.copytree(active_path, next_path, symlinks=True)
+        else:
+            next_path.parent.mkdir(parents=True, exist_ok=True)
+            proc = await asyncio.create_subprocess_exec(
+                "uv", "venv", "--python", "3.14", str(next_path),
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            await proc.communicate()
+    except Exception as e:
+        logger.error(f"Failed to clone/create virtual environment: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
+
+    # Point symlink to next_path
+    tmp_link = venv_link.parent / "venv_tmp"
+    if tmp_link.exists() or tmp_link.is_symlink():
+        tmp_link.unlink()
+    try:
+        os.symlink(next_path.name, tmp_link)
+        os.replace(tmp_link, venv_link)
+    except Exception as e:
+        logger.error(f"Failed to swap symlink: {e}")
+        if next_path.exists():
+            shutil.rmtree(next_path)
+        raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
+    return active_path, next_path
+
+
+async def commit_venv_next(active_path, next_path):
+    """Confirm the swap, moving the old active path to venv_old."""
+    import shutil
+    venv_old = active_path.parent / "venv_old"
+    logger.info(f"Committing A/B swap: {next_path.name} is now active.")
+    try:
+        if venv_old.exists():
+            shutil.rmtree(venv_old)
+        if active_path.exists():
+            os.rename(active_path, venv_old)
+    except Exception as e:
+        logger.warning(f"Failed to move active venv to venv_old: {e}")
+
+
+async def revert_venv_next(active_path, next_path):
+    """Cancel the swap, reverting the symlink and wiping next_path."""
+    import shutil
+    paths = get_venv_paths()
+    if not paths:
+        return
+    venv_link = paths[0]
+    logger.warning(f"Reverting A/B swap to: {active_path.name}")
+    tmp_link = venv_link.parent / "venv_tmp"
+    try:
+        if tmp_link.exists() or tmp_link.is_symlink():
+            tmp_link.unlink()
+        os.symlink(active_path.name, tmp_link)
+        os.replace(tmp_link, venv_link)
+        if next_path.exists():
+            shutil.rmtree(next_path)
+    except Exception as e:
+        logger.error(f"Failed to revert symlink: {e}")
+
+
+# ---------------------------------------------------------------------------
+# REST Endpoints
+# ---------------------------------------------------------------------------
+
+@router.post("/restart", dependencies=[Depends(require_api_key)])
+async def restart_system() -> dict:
+    logger.info("System restart requested by admin client.")
+    asyncio.create_task(run_restart())
+    return {"status": "success", "message": "Restarting..."}
+
+
+@router.get("/core-update-check", dependencies=[Depends(require_api_key)])
+async def check_core_update() -> dict:
+    """Check PyPI for a newer release of mirrordash-core.
+
+    Returns the currently installed version, the latest version on PyPI,
+    and a boolean indicating whether an update is available.
+    """
+    # Resolve the currently installed version
+    current_version = "unknown"
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+        try:
+            current_version = importlib.metadata.version(pkg_name)
+            break
+        except importlib.metadata.PackageNotFoundError:
+            continue
+
+    # Fetch latest version from PyPI without blocking the event loop
+    def _fetch_pypi_version() -> str:
+        url = "https://pypi.org/pypi/mirrordash/json"
+        try:
+            with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
+                data = json.loads(resp.read())
+            return data["info"]["version"]
+        except Exception as exc:
+            raise RuntimeError(f"PyPI request failed: {exc}") from exc
+
+    try:
+        latest_version = await asyncio.to_thread(_fetch_pypi_version)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    def _parse_version(v: str) -> tuple:
+        """Return a comparable tuple for a PEP-440-style version string."""
+        try:
+            return tuple(int(x) for x in v.split(".")[:3])
+        except ValueError:
+            return (0,)
+
+    update_available = (
+        current_version != "unknown"
+        and _parse_version(latest_version) > _parse_version(current_version)
+    )
+
+    return {
+        "current_version": current_version,
+        "latest_version": latest_version,
+        "update_available": update_available,
+    }
+
+
+@router.post("/core-update", dependencies=[Depends(require_api_key)])
+async def update_core() -> dict:
+    """Upgrade mirrordash-core to the latest version from PyPI.
+
+    Uses the same remount-rw / remount-ro guard as the module upgrade endpoint,
+    then triggers a server restart on success.
+    """
+    # Capture current version for logging / potential rollback reference
+    current_version = "unknown"
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+        try:
+            current_version = importlib.metadata.version(pkg_name)
+            break
+        except importlib.metadata.PackageNotFoundError:
+            continue
+
+    swap_info = await prepare_venv_next()
+    safe_env = {k: v for k, v in os.environ.items() if k in (
+        "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
+    )}
+
+    await remount_rw()
+    try:
+        logger.info(f"Upgrading mirrordash (current version: {current_version})")
+        proc = await asyncio.create_subprocess_exec(
+            "uv", "pip", "install", "--upgrade", "mirrordash",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=safe_env,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            err_msg = stderr.decode(errors="replace")
+            logger.error(f"mirrordash upgrade failed: {err_msg}")
+            if swap_info:
+                await revert_venv_next(*swap_info)
+            raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
+
+        logger.info("mirrordash upgraded successfully. Restarting server...")
+        if swap_info:
+            await commit_venv_next(*swap_info)
+        asyncio.create_task(run_restart())
+        return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
+    except Exception as e:
+        if swap_info:
+            await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
+    finally:
+        await remount_ro()
+
+
+@router.post("/rebuild-venv", dependencies=[Depends(require_api_key)])
+async def rebuild_venv() -> dict:
+    """Wipe the current A/B virtual environment and rebuild it from scratch.
+
+    Installs the core package and all local/configured modules, then restarts.
+    """
+    logger.info("Starting fresh rebuild of the virtual environment...")
+
+    swap_info = await prepare_venv_next(force_clean=True)
+    if not swap_info:
+        raise HTTPException(
+            status_code=500,
+            detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash)."
+        )
+
+    active_path, next_path = swap_info
+
+    safe_env = {k: v for k, v in os.environ.items() if k in (
+        "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
+    )}
+
+    await remount_rw()
+    try:
+        # 1. Install mirrordash
+        current_version = "unknown"
+        for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+            try:
+                current_version = importlib.metadata.version(pkg_name)
+                break
+            except importlib.metadata.PackageNotFoundError:
+                continue
+
+        logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
+
+        install_target = "mirrordash"
+        if current_version != "unknown":
+            install_target = f"mirrordash=={current_version}"
+
+        proc = await asyncio.create_subprocess_exec(
+            "uv", "pip", "install", install_target,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=safe_env,
+        )
+        stdout, stderr = await proc.communicate()
+        if proc.returncode != 0:
+            err_msg = stderr.decode(errors="replace")
+            logger.error(f"Failed to install mirrordash: {err_msg}")
+            await revert_venv_next(*swap_info)
+            raise HTTPException(status_code=500, detail=f"Failed to install core: {err_msg}")
+
+        # 2. Find and install local modules
+        from pathlib import Path
+        from mirrordash_core.config import get_base_dir
+        base_dir = get_base_dir()
+        modules_dir = Path(base_dir) / "modules"
+        local_module_names = []
+        if modules_dir.exists() and modules_dir.is_dir():
+            for folder in modules_dir.iterdir():
+                if folder.is_dir() and (folder / "pyproject.toml").exists():
+                    logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
+                    proc_local = await asyncio.create_subprocess_exec(
+                        "uv", "pip", "install", "-e", str(folder),
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                        env=safe_env,
+                    )
+                    await proc_local.communicate()
+                    local_module_names.append(folder.name)
+
+        # 3. Find and install configured PyPI modules
+        config = load_config()
+        configured_modules = config.get("modules", {})
+        for mod_name in configured_modules.keys():
+            if mod_name not in local_module_names and mod_name != "mirrordash-clock":
+                logger.info(f"Rebuilding venv: installing configured PyPI module {mod_name}")
+                proc_pypi = await asyncio.create_subprocess_exec(
+                    "uv", "pip", "install", mod_name,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                    env=safe_env,
+                )
+                await proc_pypi.communicate()
+
+        logger.info("Fresh venv rebuild completed successfully. Committing swap and restarting...")
+        await commit_venv_next(*swap_info)
+        asyncio.create_task(run_restart())
+        return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
+    except Exception as e:
+        await revert_venv_next(*swap_info)
+        if isinstance(e, HTTPException):
+            raise
+        raise HTTPException(status_code=500, detail=f"Rebuild failed: {e}")
+    finally:
+        await remount_ro()
+
+
+@router.get("/disk-usage", dependencies=[Depends(require_api_key)])
+async def get_disk_usage() -> dict:
+    """Get root partition disk space usage."""
+    import shutil
+    try:
+        total, used, free = shutil.disk_usage("/")
+        percent = round((used / total) * 100, 1) if total > 0 else 0.0
+        return {
+            "total_bytes": total,
+            "used_bytes": used,
+            "free_bytes": free,
+            "percent_used": percent
+        }
+    except Exception as e:
+        logger.error(f"Failed to retrieve disk usage: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {str(e)}")
+
+
+@router.get("/system", dependencies=[Depends(require_api_key)])
+async def get_system_settings() -> dict:
+    config = load_config()
+    system_cfg = config.get("system", {})
+    resolutions = await get_available_resolutions()
+    from mirrordash_core.system import get_ssh_status
+    ssh_active = await get_ssh_status()
+    return {
+        "settings": {
+            "rotation": system_cfg.get("rotation", "normal"),
+            "resolution": system_cfg.get("resolution", "auto"),
+            "brightness": system_cfg.get("brightness", 100),
+            "volume": system_cfg.get("volume", 80),
+            "ssh": ssh_active,
+            "display_control": system_cfg.get("display_control", {
+                "mode": "manual",
+                "interval": {"start": "07:00", "end": "22:00"},
+                "pir": {"pin": 18, "timeout_minutes": 5},
+                "button": {"pin": 23}
+            })
+        },
+        "resolutions": resolutions
+    }
+
+
+@router.post("/system", dependencies=[Depends(require_api_key)])
+async def update_system_settings(settings: dict = Body(...)) -> dict:
+    config = load_config()
+    system_cfg = config.setdefault("system", {})
+
+    rotation = settings.get("rotation", "normal")
+    resolution = settings.get("resolution", "auto")
+    brightness = settings.get("brightness", 100)
+    volume = settings.get("volume", 80)
+    ssh_enabled = settings.get("ssh", True)
+    display_control = settings.get("display_control", {})
+
+    # Validation
+    if rotation not in ("normal", "left", "right", "inverted"):
+        raise HTTPException(status_code=400, detail="Invalid rotation value")
+    if not isinstance(brightness, int) or brightness < 10 or brightness > 100:
+        raise HTTPException(status_code=400, detail="Brightness must be between 10 and 100")
+    if not isinstance(volume, int) or volume < 0 or volume > 100:
+        raise HTTPException(status_code=400, detail="Volume must be between 0 and 100")
+
+    mode = display_control.get("mode", "manual")
+    if mode not in ("manual", "interval", "pir", "button"):
+        raise HTTPException(status_code=400, detail="Invalid display power mode")
+
+    if mode == "interval":
+        interval = display_control.get("interval", {})
+        start = interval.get("start", "07:00")
+        end = interval.get("end", "22:00")
+        if not re.match(r"^\d{2}:\d{2}$", start) or not re.match(r"^\d{2}:\d{2}$", end):
+            raise HTTPException(status_code=400, detail="Invalid interval time format (HH:MM)")
+    elif mode == "pir":
+        pir = display_control.get("pir", {})
+        pin = pir.get("pin", 18)
+        timeout = pir.get("timeout_minutes", 5)
+        if not isinstance(pin, int) or pin < 1 or pin > 40:
+            raise HTTPException(status_code=400, detail="Invalid PIR GPIO pin")
+        if not isinstance(timeout, int) or timeout < 1:
+            raise HTTPException(status_code=400, detail="Invalid PIR timeout")
+    elif mode == "button":
+        btn = display_control.get("button", {})
+        pin = btn.get("pin", 23)
+        if not isinstance(pin, int) or pin < 1 or pin > 40:
+            raise HTTPException(status_code=400, detail="Invalid Button GPIO pin")
+
+    system_cfg["rotation"] = rotation
+    system_cfg["resolution"] = resolution
+    system_cfg["brightness"] = brightness
+    system_cfg["volume"] = volume
+    system_cfg["display_control"] = display_control
+    system_cfg["ssh"] = ssh_enabled
+
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+
+    # Apply SSH state; if enabling SSH, require and apply new password for pi user
+    from mirrordash_core.system import set_ssh_status, get_ssh_status
+    current_ssh_active = await get_ssh_status()
+    if ssh_enabled:
+        if not current_ssh_active:
+            pi_password = settings.get("pi_password")
+            if not pi_password or len(pi_password) < 8:
+                raise HTTPException(
+                    status_code=400,
+                    detail="A password of at least 8 characters is required to enable SSH."
+                )
+            # Update the pi user's password using chpasswd
+            try:
+                chpasswd_input = f"pi:{pi_password}\n".encode()
+                proc = await asyncio.create_subprocess_exec(
+                    "sudo", "chpasswd",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, stderr = await proc.communicate(input=chpasswd_input)
+                if proc.returncode != 0:
+                    err_msg = stderr.decode(errors="replace").strip()
+                    logger.error(f"chpasswd failed: {err_msg}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to update system password: {err_msg}"
+                    )
+                logger.info("Password for user 'pi' updated successfully.")
+
+                # Generate secure SHA-512 crypt hash using openssl
+                proc_hash = await asyncio.create_subprocess_exec(
+                    "openssl", "passwd", "-6", "-stdin",
+                    stdin=asyncio.subprocess.PIPE,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                stdout_hash, stderr_hash = await proc_hash.communicate(input=pi_password.encode())
+                if proc_hash.returncode != 0:
+                    err_msg = stderr_hash.decode(errors="replace").strip()
+                    logger.error(f"openssl hash failed: {err_msg}")
+                    raise HTTPException(status_code=500, detail="Failed to hash system password.")
+                pwd_hash = stdout_hash.decode().strip()
+
+                # Save password hash persistently
+                await remount_rw()
+                try:
+                    hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+                    with open(hash_path, "w", encoding="utf-8") as f:
+                        f.write(pwd_hash)
+                    os.chmod(hash_path, 0o600)
+                except Exception as io_err:
+                    logger.error(f"Failed to write password hash to disk: {io_err}")
+                finally:
+                    await remount_ro()
+
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.error(f"Unexpected error running chpasswd: {exc}")
+                raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
+    else:
+        # Delete persistent password hash if SSH is disabled
+        await remount_rw()
+        try:
+            hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+            if os.path.exists(hash_path):
+                os.remove(hash_path)
+        except Exception as io_err:
+            logger.error(f"Failed to remove password hash: {io_err}")
+        finally:
+            await remount_ro()
+
+    await set_ssh_status(ssh_enabled)
+
+    # Queue settings to apply asynchronously
+    asyncio.create_task(apply_system_settings(rotation, resolution, brightness, volume))
+
+    return {"status": "success", "message": "System settings saved and applied successfully"}
+
+
+@router.post("/screen")
+async def update_screen_state(body: dict = Body(...)) -> dict:
+    state = body.get("state")
+    if state not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="Invalid state value. Must be 'on' or 'off'")
+
+    from mirrordash_core.display_power import display_power_manager
+    asyncio.create_task(display_power_manager.set_state(state == "on"))
+
+    return {"status": "success", "message": f"Screen power command to turn '{state}' queued successfully"}
+
+
+# ---------------------------------------------------------------------------
+# HTMX Panel Endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/panels/system", dependencies=[Depends(require_api_key)])
+async def get_panel_system(request: Request):
+    config = load_config()
+    globals_cfg = config.get("globals", {})
+    time_format = globals_cfg.get("time_format", "24h")
+
+    settings_data = await get_system_settings()
+    settings = settings_data.get("settings", {})
+    resolutions = settings_data.get("resolutions", [])
+
+    # Parse current active times
+    display_control = settings.get("display_control", {})
+    interval = display_control.get("interval", {"start": "07:00", "end": "22:00"})
+    start_time_str = interval.get("start", "07:00")
+    end_time_str = interval.get("end", "22:00")
+
+    # Helper to parse 24h string to (hour, minute, ampm)
+    def parse_time_to_format(time_str: str, fmt: str):
+        try:
+            h_str, m_str = time_str.split(":")
+            h = int(h_str)
+            m = int(m_str)
+        except Exception:
+            h, m = 7, 0
+
+        if fmt == "12h":
+            ampm = "PM" if h >= 12 else "AM"
+            h_12 = h % 12
+            if h_12 == 0:
+                h_12 = 12
+            return h_12, m, ampm
+        else:
+            return h, m, None
+
+    start_h, start_m, start_ampm = parse_time_to_format(start_time_str, time_format)
+    end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
+
+    # Hours list
+    if time_format == "12h":
+        hours_list = list(range(1, 13))
+    else:
+        hours_list = list(range(0, 24))
+
+    minutes_list = list(range(0, 60))
+
+    current_version = "unknown"
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+        try:
+            current_version = importlib.metadata.version(pkg_name)
+            break
+        except importlib.metadata.PackageNotFoundError:
+            continue
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_system.html",
+        context={
+            "settings": settings,
+            "resolutions": resolutions,
+            "current_version": current_version,
+            "time_format": time_format,
+            "start_h": start_h,
+            "start_m": start_m,
+            "start_ampm": start_ampm,
+            "end_h": end_h,
+            "end_m": end_m,
+            "end_ampm": end_ampm,
+            "hours_list": hours_list,
+            "minutes_list": minutes_list
+        }
+    )
+
+
+@router.post("/panels/system/save", dependencies=[Depends(require_api_key)])
+async def save_system_settings_route(request: Request):
+    form_data = await request.form()
+    flat_data = {}
+    for k, v in form_data.multi_items():
+        if k in flat_data:
+            if isinstance(flat_data[k], list):
+                flat_data[k].append(v)
+            else:
+                flat_data[k] = [flat_data[k], v]
+        else:
+            flat_data[k] = v
+
+    from mirrordash_core.api.form_generator import parse_flat_form_data
+    parsed = parse_flat_form_data(flat_data)
+
+    # Format times back to HH:MM strings expected by update_system_settings
+    display_control = parsed.get("display_control", {})
+    interval = display_control.get("interval", {})
+    if "start_h" in interval and "start_m" in interval:
+        h = int(interval["start_h"])
+        m = interval["start_m"]
+        ampm = interval.get("start_ampm")
+        if ampm:
+            if ampm == "PM" and h != 12:
+                h += 12
+            elif ampm == "AM" and h == 12:
+                h = 0
+        display_control["interval"] = {
+            "start": f"{h:02d}:{m}"
+        }
+    if "end_h" in interval and "end_m" in interval:
+        h = int(interval["end_h"])
+        m = interval["end_m"]
+        ampm = interval.get("end_ampm")
+        if ampm:
+            if ampm == "PM" and h != 12:
+                h += 12
+            elif ampm == "AM" and h == 12:
+                h = 0
+        if "interval" not in display_control:
+            display_control["interval"] = {}
+        display_control["interval"]["end"] = f"{h:02d}:{m}"
+
+    try:
+        parsed["brightness"] = int(parsed.get("brightness", 100))
+        parsed["volume"] = int(parsed.get("volume", 80))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Brightness and volume must be integers")
+
+    if "pir" in display_control:
+        pir = display_control["pir"]
+        try:
+            pir["pin"] = int(pir.get("pin", 18))
+            pir["timeout_minutes"] = int(pir.get("timeout_minutes", 5))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="PIR pin and timeout must be integers")
+    if "button" in display_control:
+        btn = display_control["button"]
+        try:
+            btn["pin"] = int(btn.get("pin", 23))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Button pin must be an integer")
+
+    res = await update_system_settings(settings=parsed)
+
+    return HTMLResponse(content=f"""
+        <div class="alert alert--success">System settings applied successfully.</div>
+        <script>
+            showGlobal('System settings applied successfully.', 'success');
+        </script>
+    """)
+
+
+@router.post("/panels/system/screen", dependencies=[Depends(require_api_key)])
+async def post_panel_screen(request: Request):
+    form_data = await request.form()
+    state = form_data.get("state")
+    if state not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="Invalid state")
+
+    from mirrordash_core.display_power import display_power_manager
+    asyncio.create_task(display_power_manager.set_state(state == "on"))
+
+    return HTMLResponse(content=f"""
+        <div class="alert alert--success">Screen turned {state.upper()} successfully.</div>
+        <script>
+            showGlobal('Screen turned {state.upper()} successfully.', 'success');
+        </script>
+    """)
+
+
+@router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])
+async def get_system_update_check():
+    try:
+        data = await check_core_update()
+    except Exception as e:
+        return HTMLResponse(content=f'<div class="status-msg error" style="margin-top: 10px;">Failed to check for updates: {str(e)}</div>')
+
+    current = data.get("current_version", "—")
+    latest = data.get("latest_version", "—")
+    avail = data.get("update_available", False)
+
+    if avail:
+        return HTMLResponse(content=f"""
+            <div style="margin-top: 10px; padding: 10px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;">
+                <p style="margin: 0; color: #10b981;"><strong>Update available!</strong> New version v{latest} is available (currently installed: v{current}).</p>
+                <button type="button" 
+                        class="btn primary btn-sm" 
+                        style="margin-top: 10px;"
+                        hx-post="/admin/panels/system/update-trigger"
+                        hx-target="#core-update-result"
+                        hx-swap="innerHTML"
+                        hx-confirm="Are you sure you want to upgrade MirrorDash Core to v{latest}? The system will reboot afterwards."
+                        onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Upgrading...';">
+                    Upgrade to v{latest} Now
+                </button>
+            </div>
+        """)
+    else:
+        return HTMLResponse(content=f'<div style="margin-top: 10px; color: var(--text-muted);">Your system is up-to-date (v{current}).</div>')
+
+
+@router.post("/panels/system/update-trigger", dependencies=[Depends(require_api_key)])
+async def trigger_system_update():
+    try:
+        res = await update_core()
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success" style="margin-top: 10px;">Upgrade initiated successfully. System is restarting. Please wait...</div>
+            <script>
+                showGlobal('Upgrade initiated. Restarting system...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        return HTMLResponse(content=f'<div class="status-msg error" style="margin-top: 10px;">Upgrade failed: {str(e)}</div>')

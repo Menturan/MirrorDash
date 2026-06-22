@@ -19,9 +19,15 @@ MOCK_CONFIG = {
 def client():
     return TestClient(app)
 
-@patch("mirrordash_core.api.admin.load_config")
-@patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
+@pytest.fixture(autouse=True)
+def mock_admin_shared_load_config():
+    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG):
+        yield
+
+
+@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.remount_ro", new_callable=AsyncMock)
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
 def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):
@@ -50,9 +56,9 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock
     # Verify both commands were run
     assert mock_exec.call_count == 2
 
-@patch("mirrordash_core.api.admin.load_config")
-@patch("mirrordash_core.api.admin.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.remount_ro", new_callable=AsyncMock)
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
 def test_failsafe_update_rollback(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):

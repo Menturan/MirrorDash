@@ -23,7 +23,7 @@ MOCK_CONFIG = {
 
 @pytest.fixture(autouse=True)
 def mock_load_save_config():
-    with patch("mirrordash_core.api.admin.load_config", return_value=MOCK_CONFIG), \
+    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG), \
          patch("mirrordash_core.api.backup.load_config", return_value=MOCK_CONFIG), \
          patch("mirrordash_core.api.backup.save_config") as mock_save:
         yield mock_save
