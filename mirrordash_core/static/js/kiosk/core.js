@@ -141,7 +141,7 @@ function connect() {
         }
 
         const shadow = moduleDiv.shadowRoot || moduleDiv.attachShadow({ mode: 'open' });
-        shadow.innerHTML = DESIGN_TOKENS_CSS + data.html;
+        shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}</style>` + data.html;
         if (window.lucide) {
             lucide.createIcons({ root: shadow });
         }
