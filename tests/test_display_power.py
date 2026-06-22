@@ -44,7 +44,11 @@ def test_time_in_range_invalid():
 @patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock)
-def test_system_settings_display_control_validation(mock_ro, mock_rw, mock_apply, mock_save, mock_load, client):
+@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+def test_system_settings_display_control_validation(
+    mock_get_ssh, mock_set_ssh, mock_ro, mock_rw, mock_apply, mock_save, mock_load, client
+):
     mock_load.return_value = {
         "admin_auth": {"hash": "dummy", "salt": "dummy"}
     }
