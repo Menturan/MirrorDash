@@ -11,10 +11,17 @@ import hashlib
 import binascii
 import urllib.request
 from typing import Annotated
-from fastapi import APIRouter, Body, Depends, HTTPException, Header
+from fastapi import APIRouter, Body, Depends, HTTPException, Header, Request, Form, UploadFile, File
+from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from mirrordash_core.config import load_config, save_config, find_module_config
 from mirrordash_core.system import remount_ro, remount_rw, run_restart, get_available_resolutions, apply_system_settings, set_screen_power, is_wifi_hotspot_active
 from mirrordash_core.module_loader import module_loader
+
+PACKAGE_DIR = Path(__file__).parent.parent.resolve()
+templates = Jinja2Templates(directory=str(PACKAGE_DIR / "templates"))
+
 
 logger = logging.getLogger("mirrordash.core.api.admin")
 
@@ -1180,4 +1187,1056 @@ async def get_globals_schema() -> dict:
             }
         }
     }
+
+
+# ---------------------------------------------------------------------------
+# HTMX Panel Handlers
+# ---------------------------------------------------------------------------
+
+def render_validation_summary(filename: str, manifest: dict, password: str = "", is_local: bool = False) -> str:
+    modules = manifest.get("modules", [])
+    modules_list_items = []
+    for mod in modules:
+        package_name = mod.get("package_name")
+        version = mod.get("version")
+        mod_type = mod.get("type", "pypi")
+        type_badge = '<span style="color: #66ff66;">[Local Source]</span>' if mod_type == "local" else '<span style="color: #66b3ff;">[PyPI Package]</span>'
+        modules_list_items.append(f"<li><strong>{package_name}</strong> (v{version}) - {type_badge}</li>")
+        
+    modules_list_html = "\n".join(modules_list_items)
+    password_input = f'<input type="hidden" name="password" value="{password}">' if password else ''
+    
+    return f"""
+    <section class="card" id="backup-validation-panel">
+        <h2><i class="fas fa-clipboard-check"></i> Verify Import Contents</h2>
+        <div class="validation-summary">
+            <div class="validation-stat">
+                <span class="label">Manifest Version:</span>
+                <span class="value">{manifest.get('backup_version', '1.0')}</span>
+            </div>
+            <div class="validation-stat">
+                <span class="label">Backup Timestamp:</span>
+                <span class="value">{manifest.get('timestamp', '-')}</span>
+            </div>
+            <div class="validation-stat">
+                <span class="label">Modules Included:</span>
+                <span class="value">{len(modules)}</span>
+            </div>
+        </div>
+        <div class="validation-modules-list" style="margin-top: 1rem;">
+            <h4>Restored Modules Listing:</h4>
+            <ul>
+                {modules_list_html}
+            </ul>
+        </div>
+        <div class="validation-actions" style="margin-top: 1.5rem; display: flex; gap: 10px;">
+            <form hx-post="/admin/panels/backup/restore" 
+                  hx-target="#backup-validation-panel" 
+                  hx-swap="outerHTML"
+                  onclick="this.querySelector('button').disabled = true; this.querySelector('span').innerText = 'Restoring...';">
+                <input type="hidden" name="filename" value="{filename}">
+                <input type="hidden" name="is_local" value="{"true" if is_local else "false"}">
+                {password_input}
+                <button type="submit" class="btn primary">
+                    <i class="fas fa-exclamation-triangle"></i> <span>Start Restoration</span>
+                </button>
+            </form>
+            <button type="button" class="btn secondary" onclick="document.getElementById('backup-validation-panel').remove()">
+                Cancel
+            </button>
+        </div>
+    </section>
+    """
+
+
+def render_password_prompt(filename: str, is_local: bool) -> str:
+    action_url = "/admin/panels/backup/validate-password"
+    is_local_input = f'<input type="hidden" name="is_local" value="{"true" if is_local else "false"}">'
+    return f"""
+    <section class="card" id="backup-password-prompt-panel" style="margin-top: 1rem;">
+        <h2><i class="fas fa-lock"></i> Encrypted Backup</h2>
+        <p>This backup file is encrypted. Please enter the password to decrypt and validate it:</p>
+        <form hx-post="{action_url}" hx-target="#backup-upload-target" hx-swap="innerHTML" style="margin-top: 1rem;">
+            <input type="hidden" name="filename" value="{filename}">
+            {is_local_input}
+            <div class="form-group">
+                <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+            </div>
+            <div style="margin-top: 1rem; display: flex; gap: 10px;">
+                <button type="submit" class="btn primary">Verify Password</button>
+                <button type="button" class="btn secondary" onclick="document.getElementById('backup-password-prompt-panel').remove()">Cancel</button>
+            </div>
+        </form>
+    </section>
+    """
+
+
+@router.get("/panels/config", dependencies=[Depends(require_api_key)])
+async def get_panel_config(request: Request):
+    config = load_config()
+    globals_schema = await get_globals_schema()
+    globals_data = config.get("globals", {})
+    
+    from mirrordash_core.api.form_generator import render_schema_form
+    visual_form_html = render_schema_form(globals_schema, globals_data, "globals")
+    raw_json_str = json.dumps(globals_data, indent=2)
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_config.html",
+        context={
+            "visual_form_html": visual_form_html,
+            "raw_json_str": raw_json_str
+        }
+    )
+
+
+@router.post("/panels/config/save-visual", dependencies=[Depends(require_api_key)])
+async def save_panel_config_visual(request: Request):
+    form_data = await request.form()
+    flat_data = {}
+    for k, v in form_data.multi_items():
+        if k in flat_data:
+            if isinstance(flat_data[k], list):
+                flat_data[k].append(v)
+            else:
+                flat_data[k] = [flat_data[k], v]
+        else:
+            flat_data[k] = v
+            
+    from mirrordash_core.api.form_generator import parse_flat_form_data, cast_values_by_schema
+    parsed = parse_flat_form_data(flat_data)
+    
+    globals_data = parsed.get("globals", {})
+    globals_schema = await get_globals_schema()
+    globals_data = cast_values_by_schema(globals_data, globals_schema)
+    
+    config = load_config()
+    config["globals"] = globals_data
+    
+    try:
+        validate_config(config)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+        
+    await module_loader.reload_modules()
+    
+    raw_json_str = json.dumps(globals_data, indent=2).replace("`", "\\`").replace("${", "\\${")
+    
+    response = HTMLResponse(content=f"""
+        <div class="alert alert--success">Global settings saved successfully.</div>
+        <script>
+            showGlobal('Global settings saved successfully.', 'success');
+            const editor = document.getElementById('config-editor');
+            if (editor) editor.value = `{raw_json_str}`;
+        </script>
+    """)
+    return response
+
+
+@router.post("/panels/config/save-raw", dependencies=[Depends(require_api_key)])
+async def save_panel_config_raw(request: Request):
+    form_data = await request.form()
+    raw_json = form_data.get("raw_json", "").strip()
+    
+    try:
+        globals_data = json.loads(raw_json)
+    except json.JSONDecodeError as e:
+        return HTMLResponse(content=f'<div class="alert alert--error">Invalid JSON: {str(e)}</div>')
+        
+    config = load_config()
+    config["globals"] = globals_data
+    
+    try:
+        validate_config(config)
+    except ValueError as e:
+        return HTMLResponse(content=f'<div class="alert alert--error">Validation failed: {str(e)}</div>')
+        
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+        
+    await module_loader.reload_modules()
+    
+    globals_schema = await get_globals_schema()
+    from mirrordash_core.api.form_generator import render_schema_form
+    visual_form_html = render_schema_form(globals_schema, globals_data, "globals")
+    
+    escaped_html = visual_form_html.replace("`", "\\`").replace("${", "\\${")
+    
+    response = HTMLResponse(content=f"""
+        <div class="alert alert--success">Global settings saved successfully.</div>
+        <script>
+            showGlobal('Global settings saved successfully.', 'success');
+            const container = document.getElementById('visual-form-container');
+            if (container) container.innerHTML = `{escaped_html}`;
+            triggerLucide();
+        </script>
+    """)
+    return response
+
+
+@router.get("/panels/config/add-array-item", dependencies=[Depends(require_api_key)])
+async def add_array_item_route(
+    name_prefix: str,
+    array_key: str,
+    index: int,
+    item_title: str
+):
+    sub_properties = {}
+    if name_prefix == "globals":
+        schema = await get_globals_schema()
+        sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
+    elif name_prefix.startswith("modules["):
+        match = re.match(r"^modules\[([^\]]+)\]", name_prefix)
+        if match:
+            module_name = match.group(1)
+            import importlib.metadata
+            eps_dict = {}
+            for ep in importlib.metadata.entry_points(group='mymm.modules'):
+                eps_dict[ep.name] = ep
+            for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+                eps_dict[ep.name] = ep
+            ep = eps_dict.get(module_name) or eps_dict.get(module_name.replace("-", "_"))
+            if ep:
+                try:
+                    plugin_class = ep.load()
+                    schema = get_module_schema(plugin_class)
+                    if schema:
+                        sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
+                except Exception:
+                    pass
+                    
+    from mirrordash_core.api.form_generator import render_array_item
+    html = render_array_item(
+        name_prefix=name_prefix,
+        array_key=array_key,
+        sub_properties=sub_properties,
+        index=index,
+        item_val={},
+        item_title=item_title
+    )
+    return HTMLResponse(content=html)
+
+
+@router.get("/panels/modules", dependencies=[Depends(require_api_key)])
+async def get_panel_modules(request: Request):
+    installed = await list_modules()
+    installed_modules = installed.get("modules", {})
+    
+    query = request.query_params.get("query", "").strip().lower()
+    if query:
+        filtered_installed = {}
+        for name, meta in installed_modules.items():
+            title = meta.get("schema", {}).get("title", name).lower()
+            if query in name.lower() or query in title:
+                filtered_installed[name] = meta
+        installed_modules = filtered_installed
+        
+    community = await list_community_modules()
+    
+    discoverable = []
+    for m in community:
+        name = m.get("name")
+        if name not in installed_modules:
+            title = m.get("title", "")
+            description = m.get("description", "")
+            if not query or (query in name.lower() or query in title.lower() or query in description.lower()):
+                discoverable.append(m)
+                
+    disk_usage = await get_disk_usage()
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_modules.html",
+        context={
+            "installed_modules": installed_modules,
+            "discoverable_modules": discoverable,
+            "disk_usage": disk_usage,
+            "query": query
+        }
+    )
+
+
+@router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
+async def get_module_config_form(module_name: str):
+    import importlib.metadata
+    eps_dict = {}
+    for ep in importlib.metadata.entry_points(group='mymm.modules'):
+        eps_dict[ep.name] = ep
+    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+        eps_dict[ep.name] = ep
+        
+    ep = eps_dict.get(module_name)
+    if not ep:
+        raise HTTPException(status_code=404, detail="Module not found")
+        
+    schema = None
+    try:
+        plugin_class = ep.load()
+        schema = get_module_schema(plugin_class)
+    except Exception as e:
+        logger.warning(f"Could not load schema for '{module_name}': {e}")
+        
+    if not schema:
+        schema = {
+            "title": module_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+            "properties": {
+                "enabled": {"type": "boolean", "default": True, "title": "Enabled"},
+                "position": {
+                    "type": "string",
+                    "default": "middle_center",
+                    "enum": ["top_left", "top_right", "middle_center", "bottom_left", "bottom_right"],
+                    "title": "Screen Position"
+                }
+            }
+        }
+        
+    if "properties" not in schema:
+        schema["properties"] = {}
+    if "enabled" not in schema["properties"]:
+        schema["properties"]["enabled"] = {"type": "boolean", "default": True, "title": "Enabled", "description": "Enable or disable this module."}
+    if "position" not in schema["properties"]:
+        schema["properties"]["position"] = {
+            "type": "string",
+            "default": "middle_center",
+            "enum": [
+                "top_bar", "top_left", "top_center", "top_right", "upper_third", 
+                "middle_left", "middle_center", "middle_right", "lower_third", 
+                "bottom_left", "bottom_center", "bottom_right", "bottom_bar"
+            ],
+            "title": "Screen Position"
+        }
+        
+    config = load_config()
+    modules_config = config.get("modules", {})
+    cfg_key, module_cfg = find_module_config(modules_config, module_name)
+    if module_cfg is None:
+        module_cfg = {}
+        
+    from mirrordash_core.api.form_generator import render_schema_form
+    name_prefix = f"modules[{cfg_key or module_name.replace('_', '-')}]"
+    form_html = render_schema_form(schema, module_cfg, name_prefix)
+    
+    save_url = f"/admin/panels/modules/config/{module_name}/save"
+    remove_url = f"/admin/panels/modules/config/{module_name}/remove"
+    
+    return HTMLResponse(content=f"""
+        <form hx-post="{save_url}" hx-target="#global-status" hx-swap="innerHTML" style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a;">
+            <h4 style="margin: 0 0 15px 0; color: white; font-size: 1rem;"><i class="fas fa-sliders-h" style="margin-right: 6px; color: var(--accent-color);"></i>Configuration Parameters</h4>
+            {form_html}
+            
+            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" class="btn danger btn-sm"
+                        hx-post="{remove_url}"
+                        hx-target="#global-status"
+                        hx-confirm="Are you sure you want to deactivate and remove this module from the mirror screen?">
+                    <i class="fas fa-times"></i> Remove from Mirror
+                </button>
+                <button type="submit" class="btn primary btn-sm">
+                    <i class="fas fa-save"></i> Save Configuration
+                </button>
+            </div>
+        </form>
+        <script>triggerLucide();</script>
+    """)
+
+
+@router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
+async def save_module_config_route(module_name: str, request: Request):
+    form_data = await request.form()
+    flat_data = {}
+    for k, v in form_data.multi_items():
+        if k in flat_data:
+            if isinstance(flat_data[k], list):
+                flat_data[k].append(v)
+            else:
+                flat_data[k] = [flat_data[k], v]
+        else:
+            flat_data[k] = v
+            
+    from mirrordash_core.api.form_generator import parse_flat_form_data, cast_values_by_schema
+    parsed = parse_flat_form_data(flat_data)
+    
+    modules_dict = parsed.get("modules", {})
+    if not modules_dict:
+        raise HTTPException(status_code=400, detail="Invalid form data structure")
+        
+    cfg_key = list(modules_dict.keys())[0]
+    module_cfg = modules_dict[cfg_key]
+    
+    import importlib.metadata
+    eps_dict = {}
+    for ep in importlib.metadata.entry_points(group='mymm.modules'):
+        eps_dict[ep.name] = ep
+    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+        eps_dict[ep.name] = ep
+    ep = eps_dict.get(module_name)
+    schema = None
+    if ep:
+        try:
+            plugin_class = ep.load()
+            schema = get_module_schema(plugin_class)
+        except Exception:
+            pass
+            
+    if schema:
+        module_cfg = cast_values_by_schema(module_cfg, schema)
+        
+    config = load_config()
+    if "modules" not in config:
+        config["modules"] = {}
+        
+    config["modules"][cfg_key] = module_cfg
+    
+    try:
+        validate_config(config)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+        
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+        
+    await module_loader.reload_modules()
+    
+    response = HTMLResponse(content=f"""
+        <div class="alert alert--success">Module configuration saved successfully.</div>
+        <script>
+            showGlobal('Module configuration saved successfully.', 'success');
+            htmx.trigger("#installed-modules-container", "refreshModules");
+        </script>
+    """)
+    return response
+
+
+@router.post("/panels/modules/config/{module_name}/remove", dependencies=[Depends(require_api_key)])
+async def remove_module_config_route(module_name: str):
+    config = load_config()
+    modules_config = config.get("modules", {})
+    cfg_key, _ = find_module_config(modules_config, module_name)
+    
+    if cfg_key in modules_config:
+        del modules_config[cfg_key]
+        
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+        
+    await module_loader.reload_modules()
+    
+    response = HTMLResponse(content=f"""
+        <div class="alert alert--success">Module removed from mirror display.</div>
+        <script>
+            showGlobal('Module removed from mirror display.', 'success');
+            htmx.trigger("#installed-modules-container", "refreshModules");
+        </script>
+    """)
+    return response
+
+
+@router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
+async def check_module_update_route(module_name: str):
+    import importlib.metadata
+    eps_dict = {}
+    for ep in importlib.metadata.entry_points(group='mymm.modules'):
+        eps_dict[ep.name] = ep
+    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+        eps_dict[ep.name] = ep
+        
+    ep = eps_dict.get(module_name)
+    if not ep:
+        return HTMLResponse(content="")
+        
+    package_name = ep.dist.name if ep.dist else module_name
+    current_version = ep.dist.version if ep.dist else "0.0.0"
+    
+    def _fetch_pypi_info() -> dict | None:
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+            
+    pypi_data = await asyncio.to_thread(_fetch_pypi_info)
+    if not pypi_data:
+        return HTMLResponse(content="")
+        
+    latest_version = pypi_data.get("info", {}).get("version", current_version)
+    
+    def _parse_version(v: str) -> tuple:
+        try:
+            return tuple(int(x) for x in v.split(".")[:3])
+        except ValueError:
+            return (0,)
+            
+    is_newer = _parse_version(latest_version) > _parse_version(current_version)
+    
+    if is_newer:
+        return HTMLResponse(content=f"""
+            <div id="update-badge-{module_name}" hx-swap-oob="true">
+                <span class="status-badge update-avail" style="margin-left: 8px;">Update Available (v{latest_version})</span>
+            </div>
+            <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
+                <button class="btn secondary btn-sm"
+                        hx-get="/admin/panels/modules/notes/{module_name}"
+                        hx-target="#notes-modal-content-container"
+                        onclick="document.getElementById('notes-modal').style.display='flex'; document.getElementById('notes-modal').classList.add('open');">
+                    <i class="fas fa-file-alt"></i> Notes
+                </button>
+                <button class="btn primary btn-sm"
+                        hx-post="/admin/panels/modules/upgrade"
+                        hx-vals='{{"package_name": "{package_name}"}}'
+                        hx-target="#global-status"
+                        hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?">
+                    <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
+                </button>
+            </div>
+        """)
+    else:
+        return HTMLResponse(content="")
+
+
+@router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
+async def get_module_notes(module_name: str):
+    import importlib.metadata
+    eps_dict = {}
+    for ep in importlib.metadata.entry_points(group='mymm.modules'):
+        eps_dict[ep.name] = ep
+    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+        eps_dict[ep.name] = ep
+        
+    ep = eps_dict.get(module_name)
+    if not ep:
+        return HTMLResponse(content="Module not found.")
+        
+    package_name = ep.dist.name if ep.dist else module_name
+    
+    def _fetch_pypi_info() -> dict | None:
+        url = f"https://pypi.org/pypi/{package_name}/json"
+        try:
+            with urllib.request.urlopen(url, timeout=3) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception:
+            return None
+            
+    pypi_data = await asyncio.to_thread(_fetch_pypi_info)
+    if not pypi_data:
+        return HTMLResponse(content="Failed to fetch release notes from PyPI.")
+        
+    info = pypi_data.get("info", {})
+    description = info.get("description", "No release notes available.")
+    latest_version = info.get("version", "0.0.0")
+    
+    return HTMLResponse(content=f"""
+        <header class="modal-header">
+            <div>
+                <h2 id="modal-title"><i class="fas fa-file-alt"></i> {info.get('summary', module_name)} Release Notes</h2>
+                <span id="modal-subtitle" class="modal-subtitle">{package_name} v{latest_version}</span>
+            </div>
+            <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal" onclick="closeReleaseNotesModal()">
+                <i class="fas fa-times"></i>
+            </button>
+        </header>
+        <div id="modal-body" class="modal-body">
+            <textarea id="notes-markdown-source" style="display:none;">{description}</textarea>
+            <div id="notes-rendered-content">Rendering...</div>
+        </div>
+        <footer class="modal-footer">
+            <button id="modal-update-btn" class="btn primary"
+                    hx-post="/admin/panels/modules/upgrade"
+                    hx-vals='{{"package_name": "{package_name}"}}'
+                    hx-target="#global-status"
+                    hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?"
+                    onclick="closeReleaseNotesModal()">
+                <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
+            </button>
+            <button class="btn secondary" onclick="closeReleaseNotesModal()">Close</button>
+        </footer>
+        <script>
+            renderNotesMarkdown();
+        </script>
+    """)
+
+
+@router.post("/panels/modules/install", dependencies=[Depends(require_api_key)])
+async def install_panel_module(package_name: str = Form(...)):
+    try:
+        res = await install_module(package_name=package_name)
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success">Successfully installed {package_name}! System is restarting...</div>
+            <script>
+                showGlobal('Successfully installed {package_name}. Restarting...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        err_detail = e.detail if hasattr(e, "detail") else str(e)
+        return HTMLResponse(content=f'<div class="alert alert--error">Installation failed: {err_detail}</div>')
+
+
+@router.post("/panels/modules/uninstall", dependencies=[Depends(require_api_key)])
+async def uninstall_panel_module(package_name: str = Form(...)):
+    try:
+        res = await uninstall_module(package_name=package_name)
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success">Successfully uninstalled {package_name}! System is restarting...</div>
+            <script>
+                showGlobal('Successfully uninstalled {package_name}. Restarting...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        err_detail = e.detail if hasattr(e, "detail") else str(e)
+        return HTMLResponse(content=f'<div class="alert alert--error">Uninstall failed: {err_detail}</div>')
+
+
+@router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
+async def upgrade_panel_module(package_name: str = Form(...)):
+    try:
+        res = await update_module(package_name=package_name)
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success">Successfully upgraded {package_name}! System is restarting...</div>
+            <script>
+                showGlobal('Successfully upgraded {package_name}. Restarting...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        err_detail = e.detail if hasattr(e, "detail") else str(e)
+        return HTMLResponse(content=f'<div class="alert alert--error">Upgrade failed: {err_detail}</div>')
+
+
+@router.get("/panels/logs", dependencies=[Depends(require_api_key)])
+async def get_panel_logs(request: Request):
+    log_data = await get_logs(type="system", lines=100)
+    logs_content = log_data.get("logs", "No logs found.")
+    
+    modules_list = []
+    for name in module_loader.instances.keys():
+        modules_list.append(name)
+        
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_logs.html",
+        context={
+            "logs_content": logs_content,
+            "modules_list": modules_list
+        }
+    )
+
+
+@router.get("/panels/logs/viewer", dependencies=[Depends(require_api_key)])
+async def get_logs_viewer(type: str = "system", lines: int = 100, module: str | None = None):
+    log_data = await get_logs(type=type, lines=lines, module=module)
+    logs_content = log_data.get("logs", "No logs found.")
+    return HTMLResponse(content=logs_content)
+
+
+@router.get("/panels/system", dependencies=[Depends(require_api_key)])
+async def get_panel_system(request: Request):
+    settings_data = await get_system_settings()
+    settings = settings_data.get("settings", {})
+    resolutions = settings_data.get("resolutions", [])
+    
+    current_version = "unknown"
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+        try:
+            current_version = importlib.metadata.version(pkg_name)
+            break
+        except importlib.metadata.PackageNotFoundError:
+            continue
+            
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_system.html",
+        context={
+            "settings": settings,
+            "resolutions": resolutions,
+            "current_version": current_version
+        }
+    )
+
+
+@router.post("/panels/system/save", dependencies=[Depends(require_api_key)])
+async def save_system_settings_route(request: Request):
+    form_data = await request.form()
+    flat_data = {}
+    for k, v in form_data.multi_items():
+        if k in flat_data:
+            if isinstance(flat_data[k], list):
+                flat_data[k].append(v)
+            else:
+                flat_data[k] = [flat_data[k], v]
+        else:
+            flat_data[k] = v
+            
+    from mirrordash_core.api.form_generator import parse_flat_form_data
+    parsed = parse_flat_form_data(flat_data)
+    
+    try:
+        parsed["brightness"] = int(parsed.get("brightness", 100))
+        parsed["volume"] = int(parsed.get("volume", 80))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Brightness and volume must be integers")
+        
+    display_control = parsed.get("display_control", {})
+    if "pir" in display_control:
+        pir = display_control["pir"]
+        try:
+            pir["pin"] = int(pir.get("pin", 18))
+            pir["timeout_minutes"] = int(pir.get("timeout_minutes", 5))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="PIR pin and timeout must be integers")
+    if "button" in display_control:
+        btn = display_control["button"]
+        try:
+            btn["pin"] = int(btn.get("pin", 23))
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Button pin must be an integer")
+            
+    res = await update_system_settings(settings=parsed)
+    
+    return HTMLResponse(content=f"""
+        <div class="alert alert--success">System settings applied successfully.</div>
+        <script>
+            showGlobal('System settings applied successfully.', 'success');
+        </script>
+    """)
+
+
+@router.post("/panels/system/screen", dependencies=[Depends(require_api_key)])
+async def post_panel_screen(request: Request):
+    form_data = await request.form()
+    state = form_data.get("state")
+    if state not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="Invalid state")
+        
+    from mirrordash_core.display_power import display_power_manager
+    asyncio.create_task(display_power_manager.set_state(state == "on"))
+    
+    return HTMLResponse(content=f"""
+        <div class="alert alert--success">Screen turned {state.upper()} successfully.</div>
+        <script>
+            showGlobal('Screen turned {state.upper()} successfully.', 'success');
+        </script>
+    """)
+
+
+@router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])
+async def get_system_update_check():
+    try:
+        data = await check_core_update()
+    except Exception as e:
+        return HTMLResponse(content=f'<div class="status-msg error" style="margin-top: 10px;">Failed to check for updates: {str(e)}</div>')
+        
+    current = data.get("current_version", "—")
+    latest = data.get("latest_version", "—")
+    avail = data.get("update_available", False)
+    
+    if avail:
+        return HTMLResponse(content=f"""
+            <div style="margin-top: 10px; padding: 10px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;">
+                <p style="margin: 0; color: #10b981;"><strong>Update available!</strong> New version v{latest} is available (currently installed: v{current}).</p>
+                <button type="button" 
+                        class="btn primary btn-sm" 
+                        style="margin-top: 10px;"
+                        hx-post="/admin/panels/system/update-trigger"
+                        hx-target="#core-update-result"
+                        hx-swap="innerHTML"
+                        hx-confirm="Are you sure you want to upgrade MirrorDash Core to v{latest}? The system will reboot afterwards."
+                        onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Upgrading...';">
+                    Upgrade to v{latest} Now
+                </button>
+            </div>
+        """)
+    else:
+        return HTMLResponse(content=f'<div style="margin-top: 10px; color: var(--text-muted);">Your system is up-to-date (v{current}).</div>')
+
+
+@router.post("/panels/system/update-trigger", dependencies=[Depends(require_api_key)])
+async def trigger_system_update():
+    try:
+        res = await update_core()
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success" style="margin-top: 10px;">Upgrade initiated successfully. System is restarting. Please wait...</div>
+            <script>
+                showGlobal('Upgrade initiated. Restarting system...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        return HTMLResponse(content=f'<div class="status-msg error" style="margin-top: 10px;">Upgrade failed: {str(e)}</div>')
+
+
+@router.get("/panels/backup", dependencies=[Depends(require_api_key)])
+async def get_panel_backup(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_backup.html",
+        context={}
+    )
+
+
+@router.post("/panels/backup/upload", dependencies=[Depends(require_api_key)])
+async def upload_panel_backup(request: Request, file: UploadFile = File(...)):
+    import shutil
+    import zipfile
+    import json
+    from mirrordash_core.api.backup import BACKUPS_DIR, remount_rw, remount_ro
+    
+    if not file.filename.endswith(".mirror"):
+        return HTMLResponse(content='<div class="alert alert--error">Invalid file type. File must have .mirror extension.</div>')
+        
+    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+    await remount_rw()
+    try:
+        with open(temp_upload_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        is_encrypted = False
+        try:
+            with zipfile.ZipFile(temp_upload_path) as zf:
+                zf.read("backup_manifest.json")
+        except RuntimeError as e:
+            if "encrypted" in str(e).lower():
+                is_encrypted = True
+            else:
+                raise
+        except Exception as e:
+            logger.error(f"Failed to read uploaded file: {e}")
+            return HTMLResponse(content='<div class="alert alert--error">Invalid or corrupt backup archive.</div>')
+            
+        if is_encrypted:
+            return HTMLResponse(content=render_password_prompt(file.filename, is_local=False))
+            
+        with zipfile.ZipFile(temp_upload_path) as zf:
+            manifest_bytes = zf.read("backup_manifest.json")
+            manifest = json.loads(manifest_bytes.decode('utf-8'))
+            
+        return HTMLResponse(content=render_validation_summary(file.filename, manifest, is_local=False))
+    finally:
+        await remount_ro()
+
+
+@router.post("/panels/backup/validate-local", dependencies=[Depends(require_api_key)])
+async def validate_panel_backup_local(filename: str = Form(...)):
+    import shutil
+    import zipfile
+    import json
+    from mirrordash_core.api.backup import BACKUPS_DIR, remount_rw, remount_ro
+    
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return HTMLResponse(content='<div class="alert alert--error">Invalid filename.</div>')
+        
+    file_path = os.path.join(BACKUPS_DIR, filename)
+    if not os.path.exists(file_path):
+        return HTMLResponse(content='<div class="alert alert--error">Backup file not found.</div>')
+        
+    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+    await remount_rw()
+    try:
+        shutil.copy(file_path, temp_upload_path)
+    finally:
+        await remount_ro()
+        
+    is_encrypted = False
+    try:
+        with zipfile.ZipFile(temp_upload_path) as zf:
+            zf.read("backup_manifest.json")
+    except RuntimeError as e:
+        if "encrypted" in str(e).lower():
+            is_encrypted = True
+        else:
+            raise
+            
+    if is_encrypted:
+        return HTMLResponse(content=render_password_prompt(filename, is_local=True))
+        
+    try:
+        with zipfile.ZipFile(temp_upload_path) as zf:
+            manifest_bytes = zf.read("backup_manifest.json")
+            manifest = json.loads(manifest_bytes.decode('utf-8'))
+        return HTMLResponse(content=render_validation_summary(filename, manifest, is_local=True))
+    except Exception as e:
+        logger.error(f"Error validating local backup: {e}")
+        return HTMLResponse(content='<div class="alert alert--error">Corrupt backup file.</div>')
+
+
+@router.post("/panels/backup/validate-password", dependencies=[Depends(require_api_key)])
+async def validate_panel_backup_password(
+    filename: str = Form(...),
+    password: str = Form(...),
+    is_local: bool = Form(...)
+):
+    import zipfile
+    import json
+    from mirrordash_core.api.backup import BACKUPS_DIR
+    
+    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+    if not os.path.exists(temp_upload_path):
+        return HTMLResponse(content='<div class="alert alert--error">No uploaded backup found to validate.</div>')
+        
+    try:
+        with zipfile.ZipFile(temp_upload_path) as zf:
+            zf.setpassword(password.encode('utf-8'))
+            manifest_bytes = zf.read("backup_manifest.json")
+            manifest = json.loads(manifest_bytes.decode('utf-8'))
+            
+        return HTMLResponse(content=render_validation_summary(filename, manifest, password, is_local))
+    except RuntimeError:
+        prompt_html = render_password_prompt(filename, is_local)
+        error_msg = '<div class="alert alert--error" style="margin-bottom: 1rem;">Invalid backup password.</div>'
+        return HTMLResponse(content=error_msg + prompt_html)
+    except Exception as e:
+        logger.error(f"Error validating password: {e}")
+        return HTMLResponse(content='<div class="alert alert--error">Corrupt backup file.</div>')
+
+
+@router.post("/panels/backup/restore", dependencies=[Depends(require_api_key)])
+async def restore_panel_backup(
+    filename: str = Form(...),
+    password: str | None = Form(default=None),
+    is_local: bool = Form(default=False)
+):
+    from mirrordash_core.api.backup import restore_backup
+    
+    try:
+        res = await restore_backup(password=password)
+        return HTMLResponse(content=f"""
+            <div class="alert alert--success">Backup restored successfully! System is restarting...</div>
+            <script>
+                showGlobal('Backup restored successfully! Restarting...', 'success');
+                setTimeout(() => {{
+                    const pollStart = Date.now();
+                    const poll = setInterval(async () => {{
+                        if (Date.now() - pollStart > 60000) {{
+                            clearInterval(poll);
+                            showGlobal('Server did not respond after 60s.', 'error');
+                            return;
+                        }}
+                        try {{
+                            const r = await fetch('/health');
+                            if (r.ok) {{
+                                clearInterval(poll);
+                                window.location.reload();
+                            }}
+                        }} catch (_) {{}}
+                    }}, 2000);
+                }}, 3000);
+            </script>
+        """)
+    except Exception as e:
+        logger.error(f"Restoration failed: {e}")
+        return HTMLResponse(content=f'<div class="alert alert--error">Restoration failed: {str(e)}</div>')
+
+
+@router.post("/panels/backup/create", dependencies=[Depends(require_api_key)])
+async def create_panel_backup(request: Request):
+    form_data = await request.form()
+    encrypt = form_data.get("encrypt") == "true"
+    password = form_data.get("password")
+    
+    if encrypt and (not password or len(password) < 4):
+        return HTMLResponse(content="""
+            <div class="alert alert--error">Password must be at least 4 characters for encryption.</div>
+            <script>
+                showGlobal('Password must be at least 4 characters for encryption.', 'error');
+            </script>
+        """)
+        
+    payload = {}
+    if encrypt:
+        payload["password"] = password
+        
+    res = await create_backup(payload=payload)
+    filename = res.get("filename")
+    
+    return HTMLResponse(content=f"""
+        <div class="alert alert--success">Backup {filename} generated successfully.</div>
+        <script>
+            showGlobal('Backup generated successfully.', 'success');
+            htmx.trigger("#backups-list-tbody", "refreshBackups");
+            const pwdInput = document.getElementById('backup-password');
+            if (pwdInput) pwdInput.value = '';
+        </script>
+    """)
+
 
