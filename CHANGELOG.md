@@ -98,7 +98,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### System OS (Appliance)
 
-## [Unreleased]
+
+## [0.3.0-os1] - 2026-06-23
 
 ### Core App
 
@@ -108,7 +109,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Migrated default kiosk browser engine from Chromium to Cog (WebKit) on Wayland for a lighter, kiosk-optimized display footprint.
 - Re-enabled automatic initramfs rebuild configurations in production image pipelines to ensure boot reliability.
 
+## [Unreleased]
+
+### Core App
+
+### System OS (Appliance)
 [Unreleased]: https://github.com/Menturan/MirrorDash/compare/v0.3.0...HEAD
+[0.3.0-os1]: https://github.com/Menturan/MirrorDash/compare/v0.3.0...0.3.0-os1
 [0.3.0]: https://github.com/Menturan/MirrorDash/compare/v0.2.4...v0.3.0
 [0.2.4-os1]: https://github.com/Menturan/MirrorDash/compare/v0.2.4...0.2.4-os1
 [0.2.4]: https://github.com/Menturan/MirrorDash/compare/v0.2.3...v0.2.4
