@@ -1104,31 +1104,6 @@ async def list_community_modules() -> list[dict]:
             "name": "mirrordash-clock",
             "title": "Clock Widget",
             "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
-        },
-        {
-            "name": "mirrordash-namnsdag",
-            "title": "Swedish Namnsdag",
-            "description": "Displays daily Swedish name days matching Swedish almanac registries."
-        },
-        {
-            "name": "mirrordash-calendar",
-            "title": "Detailed Calendar agenda",
-            "description": "Supports standard iCalendar (.ics) subscriptions from Google, iCloud, or Outlook."
-        },
-        {
-            "name": "mirrordash-weather",
-            "title": "Weather Forecast",
-            "description": "Displays real-time localized weather telemetry and barometric symbols."
-        },
-        {
-            "name": "mirrordash-homeassistant",
-            "title": "Home Assistant Integration",
-            "description": "Displays real-time smart home sensor telemetry and device state tracking."
-        },
-        {
-            "name": "mirrordash-news",
-            "title": "News Feed RSS Reader",
-            "description": "Cycles headlines from clean RSS feeds to keep you informed."
         }
     ]
 
