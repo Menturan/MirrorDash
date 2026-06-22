@@ -61,14 +61,90 @@ def commit_and_push(version):
     print("  Committed and pushed to origin/master.")
 
 
+def get_current_os_version():
+    try:
+        with open("CHANGELOG.md", "r") as f:
+            content = f.read()
+        match = re.search(r"## \[(\d+\.\d+\.\d+-os\d+)\]", content)
+        if match:
+            return match.group(1)
+    except Exception:
+        pass
+    # Fallback to checking the current core version + os1
+    try:
+        with open("pyproject.toml", "r") as f:
+            content = f.read()
+        match = re.search(r'^version = "(.*?)"', content, re.MULTILINE)
+        if match:
+            return f"{match.group(1)}-os1"
+    except Exception:
+        pass
+    return "0.1.0-os1"
+
+
+def prompt_os_version_wizard(current_os_version):
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)-os(\d+)$", current_os_version)
+    if not match:
+        print(f"Error parsing current OS version '{current_os_version}' as X.Y.Z-osN.")
+        sys.exit(1)
+        
+    major, minor, patch, os_build = match.groups()
+    major = int(major)
+    minor = int(minor)
+    patch = int(patch)
+    os_build = int(os_build)
+    
+    next_os_inc = f"{major}.{minor}.{patch}-os{os_build + 1}"
+    next_patch = f"{major}.{minor}.{patch + 1}-os1"
+    next_minor = f"{major}.{minor + 1}.0-os1"
+    next_major = f"{major + 1}.0.0-os1"
+    
+    print(f"Current OS version: {current_os_version}")
+    print("Select target release type:")
+    print(f"  1. bugfix (OS build increment) -> {next_os_inc}")
+    print(f"  2. bugfix (new core base)      -> {next_patch}")
+    print(f"  3. minor  (new core base)      -> {next_minor}")
+    print(f"  4. major  (new core base)      -> {next_major}")
+    print("  5. custom version")
+    
+    while True:
+        try:
+            choice = input("Enter choice (1-5): ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print("\nAborted.")
+            sys.exit(1)
+            
+        if choice == "1":
+            return next_os_inc
+        elif choice == "2":
+            return next_patch
+        elif choice == "3":
+            return next_minor
+        elif choice == "4":
+            return next_major
+        elif choice == "5":
+            try:
+                custom = input("Enter custom version (X.Y.Z-osN): ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nAborted.")
+                sys.exit(1)
+            return custom
+        else:
+            print("Invalid choice, please select 1-5.")
+
+
 def main():
-    if len(sys.argv) != 2:
-        print("Usage: release_os.py <version>")
+    if len(sys.argv) == 2:
+        VERSION = sys.argv[1]
+    elif len(sys.argv) == 1:
+        current_version = get_current_os_version()
+        VERSION = prompt_os_version_wizard(current_version)
+    else:
+        print("Usage: release_os.py [version]")
         print("  version: SemVer with -osN suffix, e.g. 0.2.4-os1")
         print("\nExample:\n  python3 scripts/release_os.py 0.2.4-os1")
         sys.exit(1)
 
-    VERSION = sys.argv[1]
     validate_version(VERSION)
 
     repos_dir = subprocess.run(
