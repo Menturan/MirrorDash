@@ -4,9 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ethereal Mirror — Design Explorer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100;200;300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/style.css">
     <style>
         /* Design System Explorer Overrides (avoiding breaking index.html fixed display) */
@@ -253,6 +251,34 @@
         .skeleton-simulator-container {
             width: 320px;
         }
+
+        /* Mini-grid display for layout section */
+        .mini-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 8px;
+            width: 100%;
+            max-width: 480px;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--color-dimmed-charcoal);
+            padding: 12px;
+            border-radius: 4px;
+        }
+        .mini-grid__cell {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px dashed rgba(255, 255, 255, 0.15);
+            padding: 12px 6px;
+            text-align: center;
+            font-size: 11px;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--color-standard-gray);
+            border-radius: 2px;
+        }
+        .mini-grid__cell--center {
+            border: 1px solid rgba(255, 180, 171, 0.2);
+            color: var(--color-error);
+            background: rgba(255, 180, 171, 0.02);
+        }
     </style>
 </head>
 <body>
@@ -267,6 +293,7 @@
                 <a href="#typography" class="explorer-nav-item">Typography</a>
                 <a href="#palette" class="explorer-nav-item">Color Palette</a>
                 <a href="#colors" class="explorer-nav-item">Text Utilities</a>
+                <a href="#layout" class="explorer-nav-item">Layout & Grid</a>
                 <a href="#icons" class="explorer-nav-item">Iconography</a>
                 <a href="#containers" class="explorer-nav-item">Containers & Glow</a>
                 <a href="#components" class="explorer-nav-item">UI Components</a>
@@ -504,6 +531,48 @@
             </section>
 
 
+            <!-- SECTION: Layout & Grid -->
+            <section id="layout" class="explorer-section">
+                <h2 class="explorer-section-title">Layout & Grid Regions</h2>
+                <p class="explorer-section-desc">
+                    The mirror viewport layout is constrained to a 3x3 peripheral grid. To preserve the functionality of the mirror reflection, content must remain at the edges, keeping the center empty unless displaying temporary modal alerts.
+                </p>
+
+                <!-- Grid Visualizer -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Valid Grid Regions (9 Positions)</span>
+                        <span class="component-tag">Peripheral Modular Grid</span>
+                    </div>
+                    <div class="component-body">
+                        <div class="mini-grid">
+                            <div class="mini-grid__cell">top_left</div>
+                            <div class="mini-grid__cell">top_center</div>
+                            <div class="mini-grid__cell">top_right</div>
+                            <div class="mini-grid__cell">middle_left</div>
+                            <div class="mini-grid__cell mini-grid__cell--center">middle_center</div>
+                            <div class="mini-grid__cell">middle_right</div>
+                            <div class="mini-grid__cell">bottom_left</div>
+                            <div class="mini-grid__cell">bottom_center</div>
+                            <div class="mini-grid__cell">bottom_right</div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;!-- Module position configuration in config.json --&gt;
+{
+  "modules": {
+    "mirrordash-clock": {
+      "position": "top_left",
+      "enabled": true
+    }
+  }
+}</code></pre>
+                    </div>
+                </div>
+            </section>
+
+
             <!-- SECTION: Iconography -->
             <section id="icons" class="explorer-section">
                 <h2 class="explorer-section-title">Iconography</h2>
@@ -734,18 +803,18 @@
                 <!-- Notification Card -->
                 <div class="component-card">
                     <div class="component-meta">
-                        <span class="component-name">Notification Card ([data-module] pattern)</span>
-                        <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 4px | Padding: 16px</span>
+                        <span class="component-name">Notification Card (.notification-card)</span>
+                        <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 16px (1rem) | Padding: 16px</span>
                     </div>
                     <div class="component-body" style="background: #000;">
-                        <div data-module="notification-demo" style="width: 320px;">
+                        <div class="notification-card" data-module="notification-demo" style="width: 320px;">
                             <div class="body-sm text-primary" style="font-weight: 500; margin-bottom: 4px;">System Update Available</div>
                             <div class="body-sm text-secondary">Version 2.4.1 is ready to install. The mirror will restart automatically.</div>
                         </div>
                     </div>
                     <div class="code-container">
                         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-                        <pre><code>&lt;div data-module="notification"&gt;
+                        <pre><code>&lt;div class="notification-card" data-module="notification"&gt;
     &lt;div class="body-sm text-primary"&gt;System Update Available&lt;/div&gt;
     &lt;div class="body-sm text-secondary"&gt;Details here.&lt;/div&gt;
 &lt;/div&gt;</code></pre>
@@ -830,6 +899,45 @@
                     <div class="code-container">
                         <button class="copy-btn" onclick="copyCode(this)">Copy</button>
                         <pre><code>&lt;hr class="separator-hr"&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Carousel Containers -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Carousel Containers (.carousel-group-container)</span>
+                        <span class="component-tag">Cross-fading overlapping slides</span>
+                    </div>
+                    <div class="demo-control-bar">
+                        <span class="demo-label">Simulator:</span>
+                        <button class="btn-action btn-active" onclick="cycleDemoCarousel()">Cycle Carousel</button>
+                    </div>
+                    <div class="component-body" style="background: #111;">
+                        <div style="width: 320px;">
+                            <div class="carousel-group-container" id="demo-carousel">
+                                <div class="carousel-slide carousel-active" data-module="weather-slide">
+                                    <h2 class="module-header" style="margin-bottom: 8px;">Weather (Slide 1)</h2>
+                                    <div class="body-sm text-primary">Sunny, 22°C</div>
+                                </div>
+                                <div class="carousel-slide" data-module="news-slide">
+                                    <h2 class="module-header" style="margin-bottom: 8px;">News Feed (Slide 2)</h2>
+                                    <div class="body-sm text-secondary">Local team wins the championship!</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="carousel-group-container"&gt;
+    &lt;div class="carousel-slide carousel-active" data-module="weather"&gt;
+        &lt;h2 class="module-header"&gt;Weather&lt;/h2&gt;
+        &lt;div class="body-sm text-primary"&gt;Sunny, 22°C&lt;/div&gt;
+    &lt;/div&gt;
+    &lt;div class="carousel-slide" data-module="news"&gt;
+        &lt;h2 class="module-header"&gt;News Feed&lt;/h2&gt;
+        &lt;div class="body-sm text-secondary"&gt;Headlines...&lt;/div&gt;
+    &lt;/div&gt;
+&lt;/div&gt;</code></pre>
                     </div>
                 </div>
             </section>
@@ -1241,7 +1349,24 @@
             demo.classList.toggle('backdrop-blur-active');
             btn.classList.toggle('btn-active');
         }
+
+        // Cycle Demo Carousel
+        function cycleDemoCarousel() {
+            const carousel = document.getElementById('demo-carousel');
+            const slides = carousel.querySelectorAll('.carousel-slide');
+            let activeIndex = -1;
+            slides.forEach((slide, idx) => {
+                if (slide.classList.contains('carousel-active')) {
+                    activeIndex = idx;
+                }
+            });
+            if (activeIndex !== -1 && slides.length > 0) {
+                slides[activeIndex].classList.remove('carousel-active');
+                const nextIndex = (activeIndex + 1) % slides.length;
+                slides[nextIndex].classList.add('carousel-active');
+            }
+        }
     </script>
-    <script src="https://unpkg.com/lucide@1.17.0/dist/umd/lucide.min.js" onload="lucide.createIcons()"></script>
+    <script src="/static/js/lucide.min.js" onload="lucide.createIcons()"></script>
 </body>
 </html>
