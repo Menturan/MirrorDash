@@ -25,11 +25,14 @@ class SetupPrompt extends HTMLElement {
             <style>
                 :host {
                     all: initial;
+                    color-scheme: dark;
+                    color: #ffffff;
                     display: none;
                     position: fixed;
                     inset: 0;
                     z-index: 1000;
                     background: rgba(0,0,0,0.85);
+                    -webkit-backdrop-filter: blur(4px);
                     backdrop-filter: blur(4px);
                     align-items: center;
                     justify-content: center;

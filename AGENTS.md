@@ -22,7 +22,7 @@ This file provides AI coding agents with everything they need to work effectivel
 
 ## Project Overview
 
-MirrorDash is a modular, ambient information display system designed for Raspberry Pi running in Kiosk mode. The backend is a FastAPI/Python server. The frontend is pure HTML, CSS, and JavaScript served to Chromium in full-screen kiosk mode.
+MirrorDash is a modular, ambient information display system designed for Raspberry Pi running in Kiosk mode. The backend is a FastAPI/Python server. The frontend is pure HTML, CSS, and JavaScript served to Cog (WebKit) in full-screen kiosk mode.
 
 **Key principle:** The mirror is a passive, glanceable display — not an interactive application.
 
@@ -79,7 +79,7 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 | Templating | Jinja2 (server-side, rendered per module) |
 | Real-time | WebSockets (one persistent connection per browser client) |
 | Module System | Python `importlib.metadata` entry points (`mirrordash.modules` group) |
-| Deployment | Raspberry Pi OS Trixie (Debian 13), OverlayFS read-only rootfs, Wayland (labwc), Chromium kiosk |
+| Deployment | Raspberry Pi OS Trixie (Debian 13), OverlayFS read-only rootfs, Wayland (labwc), Cog kiosk |
 
 ---
 

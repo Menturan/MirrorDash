@@ -195,12 +195,12 @@ If you prefer to perform the setup manually step-by-step, run the unified system
 sudo apt update && sudo apt full-upgrade -y && \
 sudo apt install -y --no-install-recommends \
     labwc \
-    chromium \
+    seatd \
+    cog \
     wlr-randr \
     avahi-daemon \
     nginx \
     plymouth \
-    plymouth-themes \
     pix-plym-splash \
     parted \
     python3 && \
@@ -212,12 +212,12 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | Package | Purpose |
 |---------|---------|
 | `labwc` | Minimal wlroots-based Wayland compositor (~5 MB RSS). Replaces Xorg + Openbox. |
-| `chromium` | Kiosk display browser with native Wayland support via `--ozone-platform=wayland`. The legacy `chromium-browser` package is deprecated on Trixie/Debian 13. |
+| `seatd` | Seat management daemon required for running Wayland compositors (like labwc) as non-root users. |
+| `cog` | Minimal, high-performance WebKit-based browser for embedded/kiosk systems. Runs natively under Wayland. |
 | `wlr-randr` | Display output control (rotation, resolution, power on/off) under Wayland. Replaces `xrandr`. |
 | `avahi-daemon` | mDNS/DNS-SD responder (Bonjour/Zeroconf). Advertises the device as `mirrordash.local` on the local network so users never need to type an IP address. |
 | `nginx` | Lightweight reverse proxy. Listens on port 80 so the mirror is reachable at `http://mirrordash.local` with no port number, then forwards traffic to uvicorn on `localhost:8000`. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
-| `plymouth-themes` | Standard theme definitions (e.g. spinner, glow) for Plymouth. |
 | `pix-plym-splash` | The Raspberry Pi-specific "pix" desktop Plymouth theme package required for the customized startup splash screen. |
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
@@ -325,15 +325,6 @@ echo "XCURSOR_THEME=invisible" > /home/pi/.config/labwc/environment
 
 # 7. Create labwc configuration folder and autostart kiosk rules
 cat << 'EOF' > /home/pi/.config/labwc/autostart
-# --- MirrorDash Kiosk Autostart ---
-
-# Hide mouse cursor natively at Wayland startup
-labwc-msg HideCursor 2>/dev/null || true
-
-# Prevent Chromium "didn't shut down correctly" restore prompt after power loss
-sed -i 's/"exited_cleanly":false/"exited_cleanly":true/' /home/pi/.config/chromium/'Local State' 2>/dev/null
-sed -i 's/"exit_type":"[^"]\+"/"exit_type":"Normal"/' /home/pi/.config/chromium/Default/Preferences 2>/dev/null
-
 # Kiosk Browser Crash Supervisor Loop
 CRASH_COUNTER=0
 MAX_CRASHES=5
@@ -342,21 +333,8 @@ THRESHOLD_SECS=10
 while true; do
   START_TIME=$(date +%s)
   
-  # Launch Chromium in kiosk mode with native Wayland rendering and touch/gesture hardening
-  # Opens the local loading.html instantly and checks for FastAPI server status
-  chromium \
-      --kiosk \
-      --ozone-platform=wayland \
-      --noerrdialogs \
-      --disable-infobars \
-      --no-first-run \
-      --disable-session-crashed-bubble \
-      --disable-features=TranslateUI \
-      --enable-features=OverlayScrollbar \
-      --disable-pinch \
-      --overscroll-history-navigation=0 \
-      --disable-dev-tools \
-      file:///home/pi/mirrordash/loading.html
+  # Launch Cog (WebKit) in native Wayland kiosk mode
+  cog file:///home/pi/mirrordash/loading.html
       
   EXIT_CODE=$?
   END_TIME=$(date +%s)
@@ -364,13 +342,13 @@ while true; do
   
   if [ "$DURATION" -lt "$THRESHOLD_SECS" ]; then
     CRASH_COUNTER=$((CRASH_COUNTER + 1))
-    echo "Chromium crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
+    echo "Cog crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
   else
     CRASH_COUNTER=0
   fi
   
   if [ "$CRASH_COUNTER" -ge "$MAX_CRASHES" ]; then
-    echo "Chromium crash loop detected! Launching diagnostic fallback..." >&2
+    echo "Browser crash loop detected! Launching diagnostic fallback..." >&2
     
     cat << 'ERR_EOF' > /tmp/kiosk_error.html
 <!DOCTYPE html>
@@ -384,12 +362,12 @@ while true; do
 </head>
 <body>
     <h1>Kiosk Display Error</h1>
-    <p>The kiosk browser crashed repeatedly. Please restart the device or contact support.</p>
+    <p>The interface renderer crashed repeatedly. Please restart the device or contact support.</p>
 </body>
 </html>
 ERR_EOF
     
-    chromium --kiosk --ozone-platform=wayland file:///tmp/kiosk_error.html
+    cog file:///tmp/kiosk_error.html
     while true; do sleep 3600; done
   fi
   
@@ -402,7 +380,7 @@ chmod +x /home/pi/.config/labwc/autostart
 ```
 
 > [!NOTE]
-> The `sed` commands at the top are a **crash recovery guard**. After a hard power loss (pulling the plug), Chromium would normally show a "pages didn't load correctly" restore dialog on the next boot. These commands silently clear that state before launch, ensuring unattended kiosk recovery.
+> Cog is a lightweight WebKit-based browser designed specifically for embedded kiosk environments. It has a significantly lower memory footprint compared to Chromium and does not suffer from "page restore" prompts or session state crashes after hard power loss, ensuring clean boot recovery natively.
 
 ### 2.5 Volatile Logging Strategy
 
