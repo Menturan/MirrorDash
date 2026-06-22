@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Setup Mode</title>
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .card {
+            max-width: 520px;
+            width: 90%;
+            background: rgba(0, 0, 0, 0.93);
+            border-radius: 1rem;
+            padding: 2.5rem;
+            border: 1px solid var(--color-dimmed-charcoal, #666666);
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+        .icon {
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: center;
+            color: var(--color-high-contrast, #ffffff);
+        }
+        .icon svg {
+            width: 48px;
+            height: 48px;
+            stroke-width: 1.5px;
+        }
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--color-high-contrast, #ffffff);
+            margin-top: 0;
+            margin-bottom: 0.75rem;
+        }
+        .main-text {
+            font-size: 0.9375rem;
+            color: var(--color-standard-gray, #999999);
+            line-height: 1.6;
+            margin: 0 0 2rem 0;
+        }
+        .url-box {
+            background: var(--surface-container, #1f1f1f);
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+            font-family: monospace;
+            font-size: 1.0625rem;
+            color: var(--color-high-contrast, #ffffff);
+            letter-spacing: 0.04em;
+            line-height: 1.5;
+        }
+        .subtext {
+            font-size: 0.8125rem;
+            color: var(--color-dimmed-charcoal, #666666);
+            line-height: 1.5;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon"><i data-lucide="wifi"></i></div>
+        <h1>WiFi Setup Mode</h1>
+        <p class="main-text">Your mirror is offline. Connect your phone or computer to the WiFi network below to configure a connection:</p>
+        <div class="url-box">
+            <span style="color: var(--color-standard-gray, #999); font-size: 0.875rem;">SSID:</span> MirrorDash-Setup<br>
+            <span style="color: var(--color-standard-gray, #999); font-size: 0.875rem;">URL:</span> http://10.42.0.1:8000/wifi-setup
+        </div>
+        <p class="subtext">Hotspot password: mirrordash. Open this URL in your browser to select your home Wi-Fi network.</p>
+    </div>
+
+    <script src="/static/js/lucide.min.js"></script>
+    <script>
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/admin/auth/status');
+                const data = await res.json();
+                if (!data.wifi_hotspot_active) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                // Ignore network errors
+            }
+        }
+        // Poll status every 5 seconds
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>

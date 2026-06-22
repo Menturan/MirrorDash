@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to MirrorDash</title>
+    <link rel="stylesheet" href="/static/fonts/inter.css">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden;
+        }
+        .card {
+            max-width: 520px;
+            width: 90%;
+            background: rgba(0, 0, 0, 0.93);
+            border-radius: 1rem;
+            padding: 2.5rem;
+            border: 1px solid var(--color-dimmed-charcoal, #666666);
+            text-align: center;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.6);
+        }
+        .icon {
+            margin-bottom: 1.5rem;
+            display: flex;
+            justify-content: center;
+            color: var(--color-high-contrast, #ffffff);
+        }
+        .icon svg {
+            width: 48px;
+            height: 48px;
+            stroke-width: 1.5px;
+        }
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 600;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--color-high-contrast, #ffffff);
+            margin-top: 0;
+            margin-bottom: 0.75rem;
+        }
+        .main-text {
+            font-size: 0.9375rem;
+            color: var(--color-standard-gray, #999999);
+            line-height: 1.6;
+            margin: 0 0 2rem 0;
+        }
+        .url-box {
+            background: var(--surface-container, #1f1f1f);
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+            font-family: monospace;
+            font-size: 1.0625rem;
+            color: var(--color-high-contrast, #ffffff);
+            letter-spacing: 0.04em;
+            line-height: 1.5;
+        }
+        .subtext {
+            font-size: 0.8125rem;
+            color: var(--color-dimmed-charcoal, #666666);
+            line-height: 1.5;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon"><i data-lucide="monitor-smartphone"></i></div>
+        <h1>Welcome to MirrorDash</h1>
+        <p class="main-text">Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.</p>
+        <div class="url-box">
+            mirrordash.local/admin
+        </div>
+        <p class="subtext">Set an admin password to secure your mirror and configure modules. This message will disappear automatically once setup is complete.</p>
+    </div>
+
+    <script src="/static/js/lucide.min.js"></script>
+    <script>
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+
+        async function checkStatus() {
+            try {
+                const res = await fetch('/admin/auth/status');
+                const data = await res.json();
+                // Reload if setup is complete or if wifi hotspot starts up
+                if (!data.setup_required || data.wifi_hotspot_active) {
+                    window.location.reload();
+                }
+            } catch (e) {
+                // Ignore network errors
+            }
+        }
+        // Poll status every 5 seconds
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>

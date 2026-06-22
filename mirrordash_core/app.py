@@ -14,7 +14,7 @@ from mirrordash_core.ws_manager import manager
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
 from mirrordash_core.api.backup import router as backup_router
-from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro
+from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active
 
 from mirrordash_core.display_power import display_power_manager
 
@@ -82,6 +82,14 @@ async def get_index(request: Request):
     host = request.headers.get("host", "")
     if "10.42.0.1" in host or request.query_params.get("captive") == "true":
         return RedirectResponse(url="/wifi-setup")
+    
+    if await is_wifi_hotspot_active():
+        return FileResponse(str(PACKAGE_DIR / "static" / "wifi_prompt.html"))
+
+    config = load_config()
+    if "admin_auth" not in config:
+        return FileResponse(str(PACKAGE_DIR / "static" / "admin_prompt.html"))
+
     return FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
 
 @app.get("/wifi-setup")

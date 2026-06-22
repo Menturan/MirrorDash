@@ -114,3 +114,28 @@ def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, clie
     response = client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "pass"})
     assert response.status_code == 200
     assert response.json()["status"] == "success"
+
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_index_serves_wifi_prompt_when_hotspot_active(mock_hotspot, client):
+    mock_hotspot.return_value = True
+    response = client.get("/", headers={"host": "localhost:8000"})
+    assert response.status_code == 200
+    assert "WiFi Setup Mode" in response.text
+
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_index_serves_admin_prompt_when_setup_required(mock_hotspot, client):
+    mock_hotspot.return_value = False
+    response = client.get("/", headers={"host": "localhost:8000"})
+    assert response.status_code == 200
+    assert "Welcome to MirrorDash" in response.text
+
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
+@patch("mirrordash_core.app.load_config")
+def test_index_serves_dashboard_when_configured(mock_load, mock_hotspot, client):
+    mock_hotspot.return_value = False
+    mock_load.return_value = {"admin_auth": {"hash": "dummy_hash"}}
+    response = client.get("/", headers={"host": "localhost:8000"})
+    assert response.status_code == 200
+    assert "MirrorDash" in response.text
+    assert "WiFi Setup Mode" not in response.text
+    assert "Welcome to MirrorDash" not in response.text
