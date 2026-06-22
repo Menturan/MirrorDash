@@ -157,7 +157,26 @@
                 b.classList.toggle('active', active);
                 b.setAttribute('aria-selected', active ? 'true' : 'false');
             });
+            const tabName = btn.id.replace('page-tab-', '');
+            window.location.hash = tabName;
         }
+
+        function handleHashChange() {
+            const hash = window.location.hash;
+            if (hash) {
+                const tabId = 'page-tab-' + hash.replace('#', '');
+                const tabBtn = document.getElementById(tabId);
+                if (tabBtn && !tabBtn.classList.contains('active')) {
+                    tabBtn.click();
+                }
+            } else {
+                const tabBtn = document.getElementById('page-tab-config');
+                if (tabBtn && !tabBtn.classList.contains('active')) {
+                    tabBtn.click();
+                }
+            }
+        }
+        window.addEventListener('hashchange', handleHashChange);
 
         async function triggerRestart() {
             if (!confirm('Are you sure you want to restart the system?')) return;
@@ -328,6 +347,7 @@
             const authed = await checkAuthStatus();
             if (authed) {
                 triggerLucide();
+                handleHashChange();
             }
         });
     </script>
