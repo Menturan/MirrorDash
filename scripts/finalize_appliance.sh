@@ -1,83 +1,45 @@
 #!/bin/bash
 # MirrorDash Appliance Finalization & Locking Script
-# Runs on the appliance itself to verify configuration, purge Wi-Fi, lock OverlayFS, and shut down.
+# Runs ON THE RASPBERRY PI to lock it down.
 
-set -e
+set -euo pipefail
 
-# Ensure running as root
 if [ "$EUID" -ne 0 ]; then
   echo "Please run as root (sudo bash finalize_appliance.sh)"
   exit 1
 fi
 
-# Parse arguments
-BYPASS_CONFIRM=false
-if [ "$1" = "-y" ] || [ "$1" = "--yes" ]; then
-  BYPASS_CONFIRM=true
-fi
-
 echo "=== MirrorDash Appliance Finalization & Locking ==="
 
-# --- 1. Pre-Lock Verification ---
-echo "Running pre-lock verification..."
-
-# Check persistent storage
-if ! mount | grep -q "/storage"; then
-  echo "Error: /storage partition is not mounted." >&2
-  exit 1
-fi
-echo "  [OK] /storage partition is mounted."
-
-# Check services
-SERVICES=("mirrordash.service" "mirrordash-wifi-fallback.service" "mirrordash-expand.service" "systemd-time-wait-sync.service")
-for svc in "${SERVICES[@]}"; do
-  if ! systemctl is-enabled "$svc" >/dev/null 2>&1; then
-    echo "Error: Service '$svc' is not enabled." >&2
-    exit 1
-  fi
-  echo "  [OK] Service '$svc' is enabled."
-done
-
-if [ "$BYPASS_CONFIRM" = false ]; then
-  echo ""
-  echo "WARNING: This will purge all Wi-Fi credentials, disable SSH, lock the root"
-  echo "filesystem with OverlayFS, and shut down the device."
-  echo "Make sure you have tested all configurations before proceeding."
-  echo ""
-  read -r -p "Are you sure you want to finalize and lock the appliance? (type 'yes' to confirm): " confirm
-  if [ "$confirm" != "yes" ]; then
-    echo "Finalization aborted by user."
-    exit 0
-  fi
-fi
-
-# --- 2. System Cleanup & UTC Config ---
+# --- 1. System Cleanup & UTC Config ---
 echo "Setting system timezone to UTC..."
 echo "UTC" > /etc/timezone
 ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 
 echo "Disabling SSH service..."
-systemctl disable ssh
+systemctl disable ssh || true
 
-# --- 3. Failsafe Wi-Fi Credentials Purge ---
+# --- 2. Failsafe Wi-Fi Credentials Purge ---
 echo "Purging all configured Wi-Fi networks and secrets..."
 if systemctl is-active --quiet NetworkManager 2>/dev/null; then
   for uuid in $(nmcli --fields UUID,TYPE connection show | awk '$2 ~ /wifi|802-11-wireless/ {print $1}'); do
     nmcli connection delete "$uuid" 2>/dev/null || true
   done
 fi
-rm -rf /etc/NetworkManager/system-connections/*
+rm -rf /etc/NetworkManager/system-connections/* 2>/dev/null || true
 echo "  [OK] Wi-Fi connections and profiles purged."
 
-# --- 4. Enable OverlayFS and Shutdown ---
-echo "Enabling OverlayFS..."
+# --- 3. Enable OverlayFS and Reboot ---
+echo "Enabling Hardware Read-Only OverlayFS..."
+# Använd inbyggda kommandot
 raspi-config nonint enable_overlayfs
 
 echo "=========================================================="
 echo " MirrorDash Appliance successfully finalized and locked!"
-echo " The system will now shut down."
-echo " Once shut down, you can safely extract the golden image."
+echo " The system will now safely reboot to apply the lock."
 echo "=========================================================="
-sleep 2
 
-poweroff
+# Extremt viktigt: Tvinga sync av initramfs innan omstart!
+sync
+sleep 3
+reboot
