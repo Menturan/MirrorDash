@@ -76,7 +76,7 @@ cleanup
 trap - EXIT ERR INT TERM
 
 echo -e "\e[34m[INFO] Shrinking OS partition with PiShrink...\e[0m"
-pishrink.sh "$FINAL_IMAGE"
+pishrink.sh -s "$FINAL_IMAGE"
 
 echo -e "\e[34m[INFO] Compressing final image to XZ...\e[0m"
 xz -T0 -6 "$FINAL_IMAGE"

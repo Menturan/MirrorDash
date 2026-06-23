@@ -534,6 +534,11 @@ step_system_cleanup() {
   rm -f /usr/sbin/update-initramfs || true
   dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
 
+  echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
+  if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
+    sed -i 's/^[[:space:]]*do_resize/# do_resize/g' /usr/lib/raspberrypi-sys-mods/firstboot
+  fi
+
   echo "Cleaning up build policies and caches..."
   rm -f /usr/sbin/policy-rc.d
   apt-get clean
