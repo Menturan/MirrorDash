@@ -231,7 +231,7 @@ step_configuring_console_login() {
   cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
+ExecStart=-/sbin/agetty --noissue --skip-login --autologin pi --noclear %I $TERM
 EOF
 
   # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
@@ -242,19 +242,6 @@ EOF
   # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
   echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
 
-  # Prevent auto-login from failing due to firstboot delay (we handle storage ourselves)
-
-  # Silence the tty1 autologin prompt and login banners
-  if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
-    if ! grep -q "\-\-noissue" /etc/systemd/system/getty@tty1.service.d/autologin.conf; then
-      echo "Silencing tty1 getty autologin console messages..."
-      sed -i 's/--autologin/--noissue --skip-login --autologin/g' /etc/systemd/system/getty@tty1.service.d/autologin.conf
-    fi
-  fi
-
-  # Create hushlogin file to silence shell login banners/MOTD
-  touch "$PI_HOME/.hushlogin"
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
 }
 
 step_setting_up_wayland() {
@@ -416,8 +403,8 @@ step_plymouth_splash() {
     mv /tmp/shutdown.png /usr/share/plymouth/themes/mirrordash/shutdown.png
   fi
 
-  # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
-  plymouth-set-default-theme --rebuild-initrd mirrordash
+  # Register our theme (initrd will be fully rebuilt later in step_system_cleanup)
+  plymouth-set-default-theme mirrordash
 }
 
 step_time_wait_sync() {

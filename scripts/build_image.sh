@@ -4,8 +4,7 @@
 
 set -euo pipefail
 
-# --- Configuration ---
-RPI_OS_URL_BASE="https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
+
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
 if [[ "$BUILD_DIR" != /* ]]; then BUILD_DIR="$(pwd)/$BUILD_DIR"; fi
 REPOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -30,12 +29,12 @@ echo -e "\e[34m[INFO] Fetching Raspberry Pi OS...\e[0m"
 mkdir -p "$BUILD_DIR" "$MOUNT_DIR"
 cd "$BUILD_DIR"
 
-LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
-LATEST_URL="${RPI_OS_URL_BASE}${LATEST_DIR}/"
-IMAGE_NAME=$(curl -sSL "$LATEST_URL" | grep -oP 'href="\K\d{4}-\d{2}-\d{2}-raspios-[^"]+\.img\.xz' | head -n 1)
+LATEST_URL_BASE="https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
+TARGET_URL=$(curl -Is "$LATEST_URL_BASE" | grep -i ^Location | cut -d' ' -f2 | tr -d '\r')
+IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "$IMAGE_NAME" ]; then
-    wget -q "${LATEST_URL}${IMAGE_NAME}"
+    wget -q "$TARGET_URL"
     xz -d -c "$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
 fi
 cp "${IMAGE_NAME%.xz}" "$FINAL_IMAGE"
@@ -50,11 +49,8 @@ LOOP_DEV=$(losetup -Pf --show "$FINAL_IMAGE")
 partprobe "$LOOP_DEV" || true
 
 echo -e "\e[34m[INFO] Waiting for loop device...\e[0m"
-for i in {1..15}; do
-    if [ -b "${LOOP_DEV}p2" ]; then break; fi
-    sleep 1
-    if [ "$i" -eq 15 ]; then exit 1; fi
-done
+udevadm settle
+partx -u "$LOOP_DEV" || true
 
 e2fsck -f -y "${LOOP_DEV}p2"
 resize2fs "${LOOP_DEV}p2"
@@ -68,7 +64,7 @@ mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
 echo -e "\e[34m[INFO] Executing setup_appliance.sh via systemd-nspawn...\e[0m"
-systemd-nspawn --setenv=BUILDING_IMAGE=1 --bind-ro=/etc/resolv.conf -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
+systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
 
 # --- Unmount & Shrink ---
 echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
