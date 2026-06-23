@@ -230,10 +230,7 @@ local_mount_root()
 INITSCRIPT
     chmod +x "$MOUNT_DIR/etc/initramfs-tools/scripts/overlay"
 
-    # Rebuild initramfs natively (ARM, no QEMU — pigz works correctly)
-    chroot "$MOUNT_DIR" /bin/bash -c "update-initramfs -u -k all"
-
-    # Enable overlay boot parameters
+    # Enable overlay boot parameters FIRST so update-initramfs hook copies to FAT32
     if ! grep -q "boot=overlay" "$MOUNT_DIR/boot/firmware/cmdline.txt" ; then
         sed -i 's/^/boot=overlay /' "$MOUNT_DIR/boot/firmware/cmdline.txt"
     fi
@@ -241,6 +238,9 @@ INITSCRIPT
     if ! grep -q "auto_initramfs=1" "$MOUNT_DIR/boot/firmware/config.txt" ; then
         echo "auto_initramfs=1" >> "$MOUNT_DIR/boot/firmware/config.txt"
     fi
+
+    # Rebuild initramfs natively (ARM, no QEMU — pigz works correctly)
+    chroot "$MOUNT_DIR" /bin/bash -c "update-initramfs -u -k all"
 }
 
 setup_storage_offline() {
@@ -442,11 +442,13 @@ run_timed_step "Run Appliance Setup" run_appliance_setup
 # --- Post-setup OverlayFS fixup ---
 # setup_appliance.sh comments out auto_initramfs=1 as a CI safety measure
 # (to prevent apt triggers from rebuilding initramfs without SD hardware).
-# The initramfs image itself was already correctly built by enable_overlayfs()
-# above, so we just need to re-enable the config.txt flag so the Pi firmware
-# loads it on boot.
+# We re-enable the config.txt flag so the Pi firmware loads it on boot,
+# and then we run update-initramfs one final time to guarantee it gets
+# properly copied to the /boot/firmware/ FAT32 partition.
 info "Re-enabling auto_initramfs in config.txt (post-setup fixup)..."
 sed -i 's/^#auto_initramfs=1/auto_initramfs=1/g' "$MOUNT_DIR/boot/firmware/config.txt"
+info "Rebuilding initramfs to ensure it is deployed to the FAT32 boot partition..."
+chroot "$MOUNT_DIR" /bin/bash -c "update-initramfs -u -k all"
 
 trap - EXIT
 cleanup_and_unmount
