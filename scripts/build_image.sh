@@ -68,7 +68,7 @@ mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
 echo -e "\e[34m[INFO] Executing setup_appliance.sh via systemd-nspawn...\e[0m"
-systemd-nspawn -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
+systemd-nspawn --setenv=BUILDING_IMAGE=1 --bind-ro=/etc/resolv.conf -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
 
 # --- Unmount & Shrink ---
 echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
