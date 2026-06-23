@@ -294,21 +294,14 @@ step_installing_app() {
   sudo -u "$PI_USER" HOME="$PI_HOME" mkdir -p "$PI_HOME/mirrordash"
 
   # Setup symlink structures (A/B venv layout)
-  sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT venv_a /storage/mirrordash/venv
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/venv "$PI_HOME/mirrordash/.venv"
 
-  # Create base_venv (Golden Copy) and active venv_a, then install from PyPI
+  # Create base_venv (Golden Copy), then install from PyPI
   sudo -u "$PI_USER" HOME="$PI_HOME" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
   cd "$HOME/mirrordash"
 
-  echo 'Creating primary virtual environment in venv_a...'
-  uv venv --allow-existing --python 3.14 /storage/mirrordash/venv_a
-
   echo 'Creating golden backup virtual environment base_venv...'
   uv venv --allow-existing --python 3.14 "$HOME/mirrordash/base_venv"
-
-  echo 'Installing MirrorDash from PyPI into primary venv...'
-  uv pip install --python /storage/mirrordash/venv_a mirrordash
 
   echo 'Installing MirrorDash from PyPI into golden venv...'
   uv pip install --python "$HOME/mirrordash/base_venv" mirrordash
@@ -529,6 +522,38 @@ step_finalize_script() {
   chmod +x /usr/local/bin/mirrordash-finalize.sh
 }
 
+step_storage_hydration() {
+  cat << 'EOF' > /usr/local/bin/mirrordash-hydrate.sh
+#!/bin/bash
+set -euo pipefail
+
+# Only hydrate if venv_a is missing
+if [ ! -d "/storage/mirrordash/venv_a" ]; then
+    echo "Hydrating /storage with golden base_venv..."
+    cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a
+    ln -sfT venv_a /storage/mirrordash/venv
+    chown -R pi:pi /storage/mirrordash
+fi
+EOF
+  chmod +x /usr/local/bin/mirrordash-hydrate.sh
+
+  cat << 'EOF' > /etc/systemd/system/mirrordash-storage-init.service
+[Unit]
+Description=Hydrate MirrorDash Storage Partition
+After=local-fs.target
+Requires=local-fs.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-hydrate.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl enable mirrordash-storage-init.service
+}
+
 step_system_cleanup() {
   echo "Restoring update-initramfs diversion..."
   rm -f /usr/sbin/update-initramfs || true
@@ -601,7 +626,8 @@ run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_
 run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Script & Service" step_wifi_captive_portal
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
 run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
-run_step "15" "system_cleanup" "Performing System Cleanup" step_system_cleanup
+run_step "15" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
+run_step "16" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 
 END_TIME_TOTAL=$SECONDS
 DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))
