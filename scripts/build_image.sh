@@ -1,15 +1,13 @@
 #!/bin/bash
 # Automated Golden Image Builder for MirrorDash
-# Builds securely via systemd-nspawn.
+# Builds securely via systemd-nspawn and shrinks to minimal size.
 
 set -euo pipefail
 
 # --- Configuration ---
 RPI_OS_URL_BASE="https://downloads.raspberrypi.com/raspios_lite_arm64/images/"
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
-if [[ "$BUILD_DIR" != /* ]]; then
-    BUILD_DIR="$(pwd)/$BUILD_DIR"
-fi
+if [[ "$BUILD_DIR" != /* ]]; then BUILD_DIR="$(pwd)/$BUILD_DIR"; fi
 REPOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION=$(grep -m 1 '^version = ' "$REPOS_DIR/pyproject.toml" | cut -d'"' -f2 || echo "dev")
 FINAL_IMAGE="mirrordash-os-v${VERSION}.img"
@@ -22,95 +20,65 @@ cleanup() {
     umount -R "$MOUNT_DIR" 2>/dev/null || true
     if [ -n "${LOOP_DEV:-}" ]; then
         losetup -d "$LOOP_DEV" 2>/dev/null || true
+        unset LOOP_DEV
     fi
 }
 trap cleanup EXIT ERR INT TERM
 
 # --- Download & Decompress ---
-echo -e "\e[34m[INFO] Fetching and verifying Raspberry Pi OS base image...\e[0m"
+echo -e "\e[34m[INFO] Fetching Raspberry Pi OS...\e[0m"
 mkdir -p "$BUILD_DIR" "$MOUNT_DIR"
 cd "$BUILD_DIR"
 
 LATEST_DIR=$(curl -sSL "$RPI_OS_URL_BASE" | grep -oP 'href="\Kraspios_lite_arm64-[^/]+' | tail -n 1)
 LATEST_URL="${RPI_OS_URL_BASE}${LATEST_DIR}/"
 IMAGE_NAME=$(curl -sSL "$LATEST_URL" | grep -oP 'href="\K\d{4}-\d{2}-\d{2}-raspios-[^"]+\.img\.xz' | head -n 1)
-DOWNLOAD_URL="${LATEST_URL}${IMAGE_NAME}"
 
 if [ ! -f "$IMAGE_NAME" ]; then
-    wget -q "$DOWNLOAD_URL"
-    wget -q "${DOWNLOAD_URL}.sha256"
-    if ! sha256sum -c "${IMAGE_NAME}.sha256" &>/dev/null; then
-        echo -e "\e[31m[ERROR] Checksum failed!\e[0m"
-        rm -f "$IMAGE_NAME"
-        exit 1
-    fi
+    wget -q "${LATEST_URL}${IMAGE_NAME}"
+    xz -d -c "$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
 fi
+cp "${IMAGE_NAME%.xz}" "$FINAL_IMAGE"
 
-IMAGE_FILE="${IMAGE_NAME%.xz}"
-if [ ! -f "$IMAGE_FILE" ]; then
-    echo -e "\e[34m[INFO] Decompressing base image...\e[0m"
-    xz -d -c "$IMAGE_NAME" > "$IMAGE_FILE"
-fi
-
-cp "$IMAGE_FILE" "$FINAL_IMAGE"
-
-# --- Partitioning ---
-echo -e "\e[34m[INFO] Expanding image and preparing partitions...\e[0m"
-truncate -s +6G "$FINAL_IMAGE"
-parted -s "$FINAL_IMAGE" resizepart 2 6GB
-parted -s "$FINAL_IMAGE" mkpart primary ext4 6GB 100%
+# --- Expand OS Partition for Build ---
+echo -e "\e[34m[INFO] Expanding rootfs for package installation...\e[0m"
+# Vi lägger bara till 2GB (p3 skapas inte här, utan på första booten av Pi:en)
+truncate -s +2G "$FINAL_IMAGE"
+parted -s "$FINAL_IMAGE" resizepart 2 100%
 
 LOOP_DEV=$(losetup -Pf --show "$FINAL_IMAGE")
 partprobe "$LOOP_DEV" || true
 
-# --- FIX: Vänta på att partitionerna faktiskt registreras ---
-echo -e "\e[34m[INFO] Waiting for loop devices to initialize...\e[0m"
+echo -e "\e[34m[INFO] Waiting for loop device...\e[0m"
 for i in {1..15}; do
-    if [ -b "${LOOP_DEV}p2" ] && [ -b "${LOOP_DEV}p3" ]; then
-        break
-    fi
+    if [ -b "${LOOP_DEV}p2" ]; then break; fi
     sleep 1
-    if [ "$i" -eq 15 ]; then
-        echo -e "\e[31m[ERROR] Loop devices did not appear in time!\e[0m"
-        exit 1
-    fi
+    if [ "$i" -eq 15 ]; then exit 1; fi
 done
 
 e2fsck -f -y "${LOOP_DEV}p2"
 resize2fs "${LOOP_DEV}p2"
-mkfs.ext4 -F -L mirrordash-data "${LOOP_DEV}p3"
 
-# --- Mounting & Setup ---
-echo -e "\e[34m[INFO] Mounting filesystems securely...\e[0m"
+# --- Mount & Chroot ---
+echo -e "\e[34m[INFO] Mounting and copying repository...\e[0m"
 mount "${LOOP_DEV}p2" "$MOUNT_DIR"
 mount "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
-mkdir -p "$MOUNT_DIR/storage"
-mount "${LOOP_DEV}p3" "$MOUNT_DIR/storage"
 
-echo -e "\e[34m[INFO] Copying repository to image...\e[0m"
 mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
-echo -e "\e[34m[INFO] Running setup_appliance.sh via systemd-nspawn...\e[0m"
-# systemd-nspawn automatically handles /dev, /proc, /sys and network securely!
-systemd-nspawn -D "$MOUNT_DIR" --bind-ro=/etc/resolv.conf /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
+echo -e "\e[34m[INFO] Executing setup_appliance.sh via systemd-nspawn...\e[0m"
+systemd-nspawn -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
 
-echo -e "\e[34m[INFO] Build successful. Unmounting securely before compression...\e[0m"
-sync
-umount -R "$MOUNT_DIR" 2>/dev/null || true
-if [ -n "${LOOP_DEV:-}" ]; then
-    losetup -d "$LOOP_DEV" 2>/dev/null || true
-    unset LOOP_DEV
-fi
+# --- Unmount & Shrink ---
+echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
+cleanup
+trap - EXIT ERR INT TERM
 
-echo -e "\e[34m[INFO] Shrinking the final image with PiShrink...\e[0m"
+echo -e "\e[34m[INFO] Shrinking OS partition with PiShrink...\e[0m"
 pishrink.sh "$FINAL_IMAGE"
 
-echo -e "\e[34m[INFO] Compressing with XZ (using all CPU cores)...\e[0m"
-rm -f "${FINAL_IMAGE}.xz" "${FINAL_IMAGE}.xz.sha256"
+echo -e "\e[34m[INFO] Compressing final image to XZ...\e[0m"
 xz -T0 -6 "$FINAL_IMAGE"
-
-echo -e "\e[34m[INFO] Generating SHA256 checksum...\e[0m"
 sha256sum "${FINAL_IMAGE}.xz" > "${FINAL_IMAGE}.xz.sha256"
-
-echo -e "\e[32m[SUCCESS] Image is ready: ${FINAL_IMAGE}.xz\e[0m"
+echo -e "\e[32m[SUCCESS] Build Complete!\e[0m"
