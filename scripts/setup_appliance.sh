@@ -1,829 +1,109 @@
 #!/bin/bash
-# MirrorDash Automatic Resumable Appliance Setup Script
-# Configure a fresh Debian Trixie (Raspberry Pi OS) installation into a production MirrorDash kiosk.
-#
-# This script is designed for production IoT appliances. It installs the application
-# from PyPI — no source code is cloned onto the device (AGENTS.md Rule 29).
+# MirrorDash Automatic Appliance Setup Script
+# Runs natively inside the build container.
 
-set -e
+set -euo pipefail
 
-# Prevent locale warnings from apt/dpkg during package installation
+# Environment safety
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
-export LANGUAGE=C.UTF-8
-
-# Ensure running as root
-if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root (sudo bash setup_appliance.sh)"
-  exit 1
-fi
-
-# Ensure target disk has enough space (at least 8GB to fit bootfs + rootfs + storage)
-ROOT_PART=$(findmnt -n -o SOURCE /)
-# Try to get the parent disk using lsblk, with a robust sed fallback
-PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-if [ -n "$PARENT_NAME" ]; then
-  ROOT_DISK="/dev/$PARENT_NAME"
-else
-  if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-    ROOT_DISK="${ROOT_PART%p[0-9]*}"
-  else
-    ROOT_DISK="${ROOT_PART%[0-9]*}"
-  fi
-fi
-if [ -b "$ROOT_DISK" ]; then
-  disk_size_bytes=$(blockdev --getsize64 "$ROOT_DISK")
-  if [ "$disk_size_bytes" -lt $((7 * 1024 * 1024 * 1024 + 500 * 1024 * 1024)) ]; then
-    echo "Error: MirrorDash requires a system drive of at least 8GB (detected $((disk_size_bytes / 1024 / 1024 / 1024))GB)." >&2
-    exit 1
-  fi
-fi
+export DEBIAN_FRONTEND=noninteractive
 
 PI_USER="pi"
 PI_HOME="/home/$PI_USER"
 GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
-STATE_FILE="/var/lib/mirrordash-setup-state"
 
-# Reset state if requested
-if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
-  echo "Resetting installation state..."
-  rm -f "$STATE_FILE"
-  echo "Cleaning up existing virtual environments for fresh setup..."
-  rm -rf /storage/mirrordash/venv_a /storage/mirrordash/venv_b /storage/mirrordash/venv_old /storage/mirrordash/venv_failed "$PI_HOME/mirrordash/base_venv"
+echo "=== 1. Package Installation & Base Setup ==="
+apt-get update
+# Uppdatera existerande paket och installera Cog & Wayland (med --no-install-recommends)
+apt-get upgrade -y
+apt-get install -y --no-install-recommends \
+    labwc \
+    seatd \
+    dbus-user-session \
+    fonts-liberation \
+    cog \
+    wlr-randr \
+    avahi-daemon \
+    nginx \
+    plymouth \
+    pix-plym-splash \
+    systemd-timesyncd \
+    python3
+
+echo "=== 2. Creating Appliance User & Directories ==="
+# Skapa pi-användaren med rätt system- och grafikrättigheter
+if ! id "$PI_USER" &>/dev/null; then
+    useradd -m -s /bin/bash -G sudo,video,render,input,tty,plugdev,netdev "$PI_USER"
+    echo "pi:raspberry" | chpasswd
 fi
 
-# Helper function to check if a step is already done
-is_step_completed() {
-  local step="$1"
-  if [ -f "$STATE_FILE" ] && grep -Fxq "$step" "$STATE_FILE"; then
-    return 0
-  fi
-  return 1
-}
+# Skapa struktur på persistent storage
+mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b
+chown -R "$PI_USER:$PI_USER" /storage
+mkdir -p "$PI_HOME/.mirrordash/cache" "$PI_HOME/.mirrordash/data"
+chown -R "$PI_USER:$PI_USER" "$PI_HOME/.mirrordash"
 
-# Helper function to mark a step as done
-mark_step_completed() {
-  local step="$1"
-  mkdir -p "$(dirname "$STATE_FILE")"
-  echo "$step" >> "$STATE_FILE"
-}
-
-# Core runner function for steps
-run_step() {
-  local step_num="$1"
-  local step_name="$2"
-  local step_desc="$3"
-  shift 3
-
-  if is_step_completed "$step_name"; then
-    echo "=== Skipping Step $step_num: $step_desc (Already Completed) ==="
-    # Run critical side-effects for skipped steps
-    if [ "$step_name" = "expanding_partition" ]; then
-      if ! mountpoint -q /storage; then
-        echo "Mounting /storage partition..."
-        mount /storage
-      fi
-    fi
-    return 0
-  fi
-
-  echo "=== $step_num. $step_desc ==="
-  local start_time=$SECONDS
-  "$@"
-  local end_time=$SECONDS
-  local duration=$((end_time - start_time))
-  local minutes=$((duration / 60))
-  local seconds=$((duration % 60))
-  mark_step_completed "$step_name"
-  echo ">>> Step $step_num completed in ${minutes}m ${seconds}s."
-  echo ""
-}
-
-# --- Step Functions ---
-
-step_expanding_partition() {
-  # Determine partition suffix and build target block device paths
-  if [[ "$ROOT_DISK" =~ [0-9]$ ]]; then
-    PART_SUFFIX="p"
-  else
-    PART_SUFFIX=""
-  fi
-  DATA_PART="${ROOT_DISK}${PART_SUFFIX}3"
-  ROOT_PART_NAME="${ROOT_DISK}${PART_SUFFIX}2"
-
-  # Expand root partition (p2) to 6GB and resize filesystem if p3/data partition doesn't exist
-  if [ ! -b "$DATA_PART" ]; then
-    printf "Yes\nIgnore\n" | parted "$ROOT_DISK" ---pretend-input-tty resizepart 2 6GB
-
-    # Force kernel to sync partition table changes before resizing filesystem
-    partprobe "$ROOT_DISK" || true
-    udevadm settle || true
-    sleep 2
-
-    resize2fs "$ROOT_PART_NAME"
-
-    # Create data partition (p3), format it
-    printf "Ignore\n" | parted "$ROOT_DISK" ---pretend-input-tty mkpart primary ext4 6GB 100%
-    mkfs.ext4 -F -L mirrordash-data "$DATA_PART"
-  fi
-
-  # Mount the new partition first, then create directory structure on it
-  mkdir -p /storage
-  if ! mountpoint -q /storage; then
-    mount "$DATA_PART" /storage
-  fi
-
-  # Now create directories on the actual persistent partition
-  mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b
-  chown -R "$PI_USER:$PI_USER" /storage
-
-  # Create application data directories
-  mkdir -p "$PI_HOME/.mirrordash/cache" "$PI_HOME/.mirrordash/data"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.mirrordash"
-
-  # Update fstab
-  if ! grep -q "LABEL=mirrordash-data" /etc/fstab; then
+echo "=== 3. Configuring Fstab ==="
+if ! grep -q "LABEL=mirrordash-data" /etc/fstab; then
     cat << 'EOF' >> /etc/fstab
 
-# --- MirrorDash Storage ---
-# Persistent data partition (survives OverlayFS)
+# MirrorDash Storage Map
 LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60,nofail,x-systemd.device-timeout=5  0  2
-
-# Bind-mount persistent data into the application's expected path
 /storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind,nofail,x-systemd.device-timeout=5  0  0
-
-# Volatile module cache in RAM (100 MB)
 tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
 EOF
-  fi
-
-  # Mount all fstab entries (bind mounts, tmpfs)
-  mount -a
-
-  # Route NetworkManager WiFi profiles to the persistent partition so they survive OverlayFS reboots
-  if [ ! -L /etc/NetworkManager/system-connections ]; then
-    if [ -d /etc/NetworkManager/system-connections ]; then
-      mkdir -p /storage/mirrordash/system-connections
-      cp -a /etc/NetworkManager/system-connections/* /storage/mirrordash/system-connections/ 2>/dev/null || true
-      rm -rf /etc/NetworkManager/system-connections
-    fi
-    mkdir -p /storage/mirrordash/system-connections
-    chown -R "$PI_USER:$PI_USER" /storage/mirrordash/system-connections
-    ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
-  fi
-
-  # Create the storage auto-expand script (runs on next boots)
-  cat << 'EOF' > /usr/local/bin/mirrordash-expand.sh
-#!/bin/bash
-# MirrorDash storage partition auto-expand script
-# Runs early on boot to expand partition 3 to fill the rest of the disk.
-
-set -e
-
-# Find the root partition and parent disk dynamically
-ROOT_PART=$(findmnt -n -o SOURCE /)
-PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-if [ -n "$PARENT_NAME" ]; then
-  ROOT_DISK="/dev/$PARENT_NAME"
-else
-  if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-    ROOT_DISK=$(echo "$ROOT_PART" | sed 's/p[0-9]\+$//')
-  else
-    ROOT_DISK=$(echo "$ROOT_PART" | sed 's/[0-9]\+$//')
-  fi
 fi
 
-if [ ! -b "$ROOT_DISK" ]; then
-  echo "Error: Could not resolve root disk." >&2
-  exit 1
-fi
+echo "=== 4. Setting Hostname & Network ==="
+echo "mirrordash" > /etc/hostname
+sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
+systemctl enable avahi-daemon
 
-if [[ "$ROOT_DISK" =~ [0-9]$ ]]; then
-  PART_SUFFIX="p"
-else
-  PART_SUFFIX=""
-fi
-DATA_PART="${ROOT_DISK}${PART_SUFFIX}3"
-
-if [ ! -b "$DATA_PART" ]; then
-  echo "Error: Persistent partition $DATA_PART does not exist." >&2
-  exit 1
-fi
-
-echo "Expanding storage partition 3 on $ROOT_DISK to 100%..."
-# Run parted to resize partition 3. Pipe inputs to handle interactive warnings.
-printf "Yes\nIgnore\n" | parted "$ROOT_DISK" ---pretend-input-tty resizepart 3 100%
-
-# Force kernel to recognize partition table changes
-partprobe "$ROOT_DISK" || true
-udevadm settle || true
-
-echo "Resizing ext4 filesystem on $DATA_PART..."
-# Perform online resize of ext4 filesystem
-resize2fs "$DATA_PART"
-
-echo "Storage partition expansion complete."
-EOF
-  chmod +x /usr/local/bin/mirrordash-expand.sh
-
-  # Create the systemd service file
-  cat << 'EOF' > /etc/systemd/system/mirrordash-expand.service
-[Unit]
-Description=MirrorDash Auto-Expand Storage Partition
-After=local-fs.target
-Before=mirrordash.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-expand.sh
-RemainAfterExit=yes
-StandardOutput=journal+console
-StandardError=journal+console
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-  # Enable the service
-  systemctl enable mirrordash-expand.service
-}
-
-step_installing_packages() {
-  echo "Configuring dpkg to exclude man pages, documentation, locales, and info files..."
-  mkdir -p /etc/dpkg/dpkg.cfg.d
-  cat << 'EOF' > /etc/dpkg/dpkg.cfg.d/01_nodoc
-path-exclude /usr/share/doc/*
-path-exclude /usr/share/man/*
-path-exclude /usr/share/groff/*
-path-exclude /usr/share/info/*
-path-exclude /usr/share/lintian/*
-path-exclude /usr/share/linda/*
-path-exclude /usr/share/locale/*
-EOF
-
-  echo "Configuring APT to skip recommended and suggested packages..."
-  mkdir -p /etc/apt/apt.conf.d
-  cat << 'EOF' > /etc/apt/apt.conf.d/01_nodoc
-  APT::Install-Recommends "false";
-  APT::Install-Suggests "false";
-  Get::Install-Recommends "false";
-EOF
-
-  # 2. Divert mandb and update-initramfs to prevent redundant execution during package installation
-  echo "Temporarily diverting mandb and update-initramfs to speed up package installation..."
-  dpkg-divert --local --rename --add /usr/bin/mandb
-  ln -sf /bin/true /usr/bin/mandb
-  dpkg-divert --local --rename --add /usr/sbin/update-initramfs
-  ln -sf /bin/true /usr/sbin/update-initramfs
-
-  # 3. Install eatmydata (bypass fsync) and pigz (multi-threaded gzip)
-  echo "Installing eatmydata and pigz to accelerate setup..."
-  apt update
-  apt install -y --no-install-recommends eatmydata pigz
-
-  # 4. Ensure initramfs is configured to use gzip compression.
-  # Note: mkinitramfs automatically substitutes pigz if the pigz package is installed
-  # and COMPRESS=gzip, providing multi-threaded compression without kernel config warnings.
-  if [ -f /etc/initramfs-tools/initramfs.conf ]; then
-    echo "Configuring initramfs to use standard gzip (which automatically utilizes pigz)..."
-    sed -i 's/^COMPRESS=.*/COMPRESS=gzip/' /etc/initramfs-tools/initramfs.conf
-  fi
-
-  # 5. Perform package upgrades and installation under eatmydata
-  echo "Installing system packages using eatmydata..."
-  eatmydata apt full-upgrade -y
-  eatmydata apt install -y --no-install-recommends \
-      labwc \
-      seatd \
-      cog \
-      wlr-randr \
-      avahi-daemon \
-      nginx \
-      plymouth \
-      pix-plym-splash \
-      parted \
-      python3
-
-  # Purge unused hardware daemons to save space and boot time
-  echo "Purging unused hardware daemons (triggerhappy)..."
-  eatmydata apt purge -y triggerhappy
-
-  eatmydata apt autoclean -y
-  eatmydata apt autoremove -y
-
-# --- INITRAMFS CLOUD FIX ---
-  echo "Disabling initramfs (Breaks when built in GitHub CI due to missing SD hardware)..."
-
-  rm -f /usr/sbin/update-initramfs || true
-  dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
-
-  if [ -f /boot/firmware/config.txt ]; then
-    echo "Commenting out auto_initramfs in config.txt..."
-    sed -i 's/^auto_initramfs=1/#auto_initramfs=1/g' /boot/firmware/config.txt
-  else
-    echo "WARNING: /boot/firmware/config.txt not found! Could not disable initramfs."
-  fi
-  # ---------------------------
-
-  rm -f /usr/bin/mandb
-  dpkg-divert --local --rename --remove /usr/bin/mandb
-
-  PI_KERNEL=$(ls /lib/modules | grep -E 'v8|rpi' | tail -n 1)
-  echo "Force building initramfs for Raspberry Pi kernel: $PI_KERNEL. This might work..."
-  update-initramfs -c -k "$PI_KERNEL"
-
-  rm -f /etc/apt/apt.conf.d/01_nodoc
-}
-
-step_setting_hostname() {
-  echo "mirrordash" > /etc/hostname
-  sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
-  systemctl enable avahi-daemon
-}
-
-step_configuring_nginx() {
-  rm -f /etc/nginx/sites-enabled/default
-  cat << 'EOF' > /etc/nginx/sites-available/mirrordash
-server {
-    listen 80 default_server;
-    server_name mirrordash.local _;
-
-    # WebSocket endpoint — must upgrade the connection
-    location /ws {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade    $http_upgrade;
-        proxy_set_header   Connection "upgrade";
-        proxy_set_header   Host       $host;
-        proxy_read_timeout 86400;
-    }
-
-    # All other requests
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-    }
-}
-EOF
-  ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
-  nginx -t
-  systemctl enable nginx
-}
-
-step_configuring_console_login() {
-  echo "Manually configuring tty1 autologin for user 'pi'..."
-  # 1. Tvinga systemet att boota i konsolläge (Motsvarar: systemctl set-default multi-user.target)
-    ln -fs /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
-
-    # 2. Aktivera getty-tjänsten på tty1 (Motsvarar: systemctl enable getty@tty1.service)
-    mkdir -p /etc/systemd/system/getty.target.wants
-    ln -fs /lib/systemd/system/getty@.service /etc/systemd/system/getty.target.wants/getty@tty1.service
-
-    # Skapa systemd-mappen för inloggningen
-    mkdir -p /etc/systemd/system/getty@tty1.service.d
-
-  cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
+echo "=== 5. Console Autologin & Plymouth ==="
+# Tvinga tty1 att logga in pi automatiskt
+mkdir -p /etc/systemd/system/getty@tty1.service.d
+cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
 [Service]
 ExecStart=
 ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
 EOF
+ln -fs /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+touch "$PI_HOME/.hushlogin"
+chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
 
-  # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
-  touch "$PI_HOME/.hushlogin"
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
-
-  echo "Provisioning headless user for Debian Trixie first-boot..."
-  # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
-  echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
-
-  # Force Raspberry Pi to ignore initramfs because cloud built initramfs often gets corrupt
-  echo "Disabling initramfs in config.txt to prevent cloud-build kernel panics..."
-  if [ -f /boot/firmware/config.txt ]; then
-    sed -i 's/^auto_initramfs=1/#auto_initramfs=1/g' /boot/firmware/config.txt
-  fi
-
-  # Silence the tty1 autologin prompt and login banners
-  if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
-    if ! grep -q "\-\-noissue" /etc/systemd/system/getty@tty1.service.d/autologin.conf; then
-      echo "Silencing tty1 getty autologin console messages..."
-      sed -i 's/--autologin/--noissue --skip-login --autologin/g' /etc/systemd/system/getty@tty1.service.d/autologin.conf
-    fi
-  fi
-
-  # Create hushlogin file to silence shell login banners/MOTD
-  touch "$PI_HOME/.hushlogin"
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
-}
-
-step_setting_up_wayland() {
-  # Launch labwc on tty1 login
-  # Overwrite completely to ensure idempotency and clear terminal text (agetty)
-  cat << 'EOF' > "$PI_HOME/.bash_profile"
-# --- MirrorDash Wayland Autostart ---
+echo "=== 6. Configuring Labwc & Cog (Kiosk Mode) ==="
+# Autostart Wayland when logging into tty1
+cat << 'EOF' > "$PI_HOME/.bash_profile"
 if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]]; then
   printf "\033c"
   exec labwc
 fi
 EOF
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.bash_profile"
+chown "$PI_USER:$PI_USER" "$PI_HOME/.bash_profile"
 
-  # Create a custom invisible cursor theme for the kiosk user to hide the mouse cursor safely
-  echo "Setting up local transparent cursor theme (invisible)..."
-  mkdir -p "$PI_HOME/.local/share/icons/invisible/cursors"
-
-  # Create index.theme so applications recognize it as a valid theme
-  cat << 'EOF' > "$PI_HOME/.local/share/icons/invisible/index.theme"
-[Icon Theme]
-Name=invisible
-Comment=Invisible cursor theme
+# Säkra Kiosken: Ta bort högerklicksmenyn
+mkdir -p "$PI_HOME/.config/labwc"
+cat << 'EOF' > "$PI_HOME/.config/labwc/rc.xml"
+<?xml version="1.0"?>
+<labwc_config>
+  <mouse><context name="Root"><mousebind button="Right" action="Press"><action name="None" /></mousebind></context></mouse>
+</labwc_config>
 EOF
 
-  # Write a valid, 32x32 transparent XCursor file
-  python3 -c "import struct; data = struct.pack('<4sIII', b'Xcur', 16, 0x00010000, 1) + struct.pack('<III', 0xfffd0002, 32, 28) + struct.pack('<IIIIIIIII', 36, 0xfffd0002, 32, 1, 32, 32, 0, 0, 0) + b'\x00'*(32*32*4); open('$PI_HOME/.local/share/icons/invisible/cursors/default', 'wb').write(data)"
-
-  # Create standard cursor symlinks pointing to the transparent default cursor
-  ln -sf default "$PI_HOME/.local/share/icons/invisible/cursors/left_ptr"
-  ln -sf default "$PI_HOME/.local/share/icons/invisible/cursors/pointer"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.local"
-
-  # Configure labwc to use the invisible cursor theme
-  mkdir -p "$PI_HOME/.config/labwc"
-  echo "XCURSOR_THEME=invisible" > "$PI_HOME/.config/labwc/environment"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
-
-  # Create labwc autostart
-  cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
-# Kiosk Browser Crash Supervisor Loop
-CRASH_COUNTER=0
-MAX_CRASHES=5
-THRESHOLD_SECS=10
-
+# Autostart Cog-webbläsaren
+cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
+labwc-msg HideCursor 2>/dev/null || true
 while true; do
-  START_TIME=$(date +%s)
-
-  # Launch Cog (WebKit) in native Wayland kiosk mode
-  cog file:///home/pi/mirrordash/loading.html
-
-  EXIT_CODE=$?
-  END_TIME=$(date +%s)
-  DURATION=$((END_TIME - START_TIME))
-
-  if [ "$DURATION" -lt "$THRESHOLD_SECS" ]; then
-    CRASH_COUNTER=$((CRASH_COUNTER + 1))
-    echo "Cog crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
-  else
-    CRASH_COUNTER=0
-  fi
-
-  if [ "$CRASH_COUNTER" -ge "$MAX_CRASHES" ]; then
-    echo "Browser crash loop detected! Launching diagnostic fallback..." >&2
-
-    cat << 'ERR_EOF' > /tmp/kiosk_error.html
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding-top: 20%; }
-        h1 { color: #ff3333; font-size: 2.5rem; }
-        p { color: #999; font-size: 1.2rem; }
-    </style>
-</head>
-<body>
-    <h1>Kiosk Display Error</h1>
-    <p>The interface renderer crashed repeatedly. Please restart the device or contact support.</p>
-</body>
-</html>
-ERR_EOF
-
-    cog file:///tmp/kiosk_error.html
-    while true; do sleep 3600; done
-  fi
-
-  SLEEP_TIME=$((CRASH_COUNTER * 2))
-  [ "$SLEEP_TIME" -eq 0 ] && SLEEP_TIME=1
-  sleep "$SLEEP_TIME"
+  cog -P wl file:///home/pi/mirrordash/loading.html
+  sleep 2
 done &
 EOF
-  chmod +x "$PI_HOME/.config/labwc/autostart"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
-}
+chmod +x "$PI_HOME/.config/labwc/autostart"
+chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
-step_installing_app() {
-  # Install uv as the pi user (standalone binary — does not require git or Python)
-  sudo -u "$PI_USER" HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
+echo "=== 7. Enabling Critical Services ==="
+systemctl enable seatd systemd-timesyncd
+sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
 
-  # Create app directory
-  sudo -u "$PI_USER" HOME="$PI_HOME" mkdir -p "$PI_HOME/mirrordash"
-
-  # Setup symlink structures (A/B venv layout)
-  sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT venv_a /storage/mirrordash/venv
-  sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/venv "$PI_HOME/mirrordash/.venv"
-
-  # Create base_venv (Golden Copy) and active venv_a, then install from PyPI
-  sudo -u "$PI_USER" HOME="$PI_HOME" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
-  cd "$HOME/mirrordash"
-
-  echo 'Creating primary virtual environment in venv_a...'
-  uv venv --allow-existing --python 3.14 /storage/mirrordash/venv_a
-
-  echo 'Creating golden backup virtual environment base_venv...'
-  uv venv --allow-existing --python 3.14 "$HOME/mirrordash/base_venv"
-
-  echo 'Installing MirrorDash from PyPI into primary venv...'
-  uv pip install --python /storage/mirrordash/venv_a mirrordash
-
-  echo 'Installing MirrorDash from PyPI into golden venv...'
-  uv pip install --python "$HOME/mirrordash/base_venv" mirrordash
-EOF
-
-  # Download or copy launch.sh and loading.html
-  if [ -f "/opt/MirrorDash/scripts/launch.sh" ]; then
-    echo "Copying launch.sh and loading.html from local repository..."
-    cp "/opt/MirrorDash/scripts/launch.sh" "$PI_HOME/mirrordash/launch.sh"
-    cp "/opt/MirrorDash/mirrordash_core/static/loading.html" "$PI_HOME/mirrordash/loading.html"
-  else
-    echo "Downloading launch.sh and loading.html from GitHub..."
-    curl -sSLf "$GITHUB_RAW/scripts/launch.sh" -o "$PI_HOME/mirrordash/launch.sh"
-    curl -sSLf "$GITHUB_RAW/mirrordash_core/static/loading.html" -o "$PI_HOME/mirrordash/loading.html"
-  fi
-  chmod +x "$PI_HOME/mirrordash/launch.sh"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/mirrordash"
-}
-
-step_passwordless_sudo() {
-  cat << 'EOF' > /etc/sudoers.d/mirrordash
-# MirrorDash application — scoped passwordless sudo
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,ro /
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
-pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
-pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
-pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
-pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
-EOF
-  chmod 440 /etc/sudoers.d/mirrordash
-  visudo -cf /etc/sudoers.d/mirrordash
-}
-
-step_watchdog_boot_optimization() {
-  # Watchdog RuntimeWatchdogSec=14s
-  sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
-  systemctl daemon-reexec
-
-  # Suppress splash, boot delay, Bluetooth, allocate gpu memory in config.txt
-  if ! grep -q "disable_splash=1" /boot/firmware/config.txt; then
-    cat << 'EOF' >> /boot/firmware/config.txt
-
-# --- MirrorDash Hardware Hardening ---
-disable_splash=1
-boot_delay=0
-gpu_mem=128
-dtoverlay=disable-bt
-EOF
-  fi
-
-  # Silence kernel logs in cmdline.txt: replace console=tty1 with console=tty3 and append quiet/splash options
-  if [ -f /boot/firmware/cmdline.txt ]; then
-    # Replace console=tty1 with console=tty3 if present
-    sed -i 's/console=tty1/console=tty3/g' /boot/firmware/cmdline.txt
-    # Ensure options are present
-    for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles" "logo.nologo"; do
-      if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
-        sed -i "s/$/ $opt/" /boot/firmware/cmdline.txt
-      fi
-    done
-  fi
-}
-
-step_plymouth_splash() {
-  # Ensure the theme directory exists (especially on fresh Lite images)
-  mkdir -p /usr/share/plymouth/themes/pix
-
-  # Silence the Plymouth theme status messages and patch for separate shutdown splash
-  if [ -f /usr/share/plymouth/themes/pix/pix.script ]; then
-    local patched=false
-    if grep -q "^[[:space:]]*Plymouth\.SetMessageFunction" /usr/share/plymouth/themes/pix/pix.script || \
-       grep -q "^[[:space:]]*Plymouth\.SetUpdateStatusFunction" /usr/share/plymouth/themes/pix/pix.script; then
-      echo "Silencing Plymouth message callbacks in pix.script..."
-      sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/pix/pix.script
-      sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/pix/pix.script
-      patched=true
-    fi
-    if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/pix/pix.script; then
-      echo "Patching pix.script to support separate shutdown splash image..."
-      sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/pix/pix.script
-      patched=true
-    fi
-    if [ "$patched" = true ]; then
-      # Force rebuild by removing sentinel
-      rm -f /usr/share/plymouth/themes/pix/.mirrordash_configured
-    fi
-  fi
-
-  # Skip rebuilding initramfs if our custom theme is already configured (saves significant time)
-  if [ -f /usr/share/plymouth/themes/pix/.mirrordash_configured ] && [ "$(plymouth-set-default-theme)" = "pix" ]; then
-    echo "Plymouth splash screen is already configured. Skipping rebuild."
-    return 0
-  fi
-
-  # Download or copy splash and shutdown images
-  if [ -f "/opt/MirrorDash/mirrordash_core/static/splash.png" ]; then
-    echo "Copying splash and shutdown images from local repository..."
-    cp "/opt/MirrorDash/mirrordash_core/static/splash.png" /usr/share/plymouth/themes/pix/splash.png
-    cp "/opt/MirrorDash/mirrordash_core/static/shutdown.png" /usr/share/plymouth/themes/pix/shutdown.png
-  else
-    echo "Downloading splash and shutdown images from GitHub..."
-    # Use atomic temp file downloads to prevent corrupt empty files on network failure
-    curl -sSLf "$GITHUB_RAW/mirrordash_core/static/splash.png" -o /tmp/splash.png
-    mv /tmp/splash.png /usr/share/plymouth/themes/pix/splash.png
-
-    curl -sSLf "$GITHUB_RAW/mirrordash_core/static/shutdown.png" -o /tmp/shutdown.png
-    mv /tmp/shutdown.png /usr/share/plymouth/themes/pix/shutdown.png
-  fi
-
-  # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
-  plymouth-set-default-theme --rebuild-initrd pix
-
-  # Mark as configured
-  touch /usr/share/plymouth/themes/pix/.mirrordash_configured
-}
-
-step_time_wait_sync() {
-  systemctl enable systemd-time-wait-sync.service
-}
-
-step_wifi_captive_portal() {
-  cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check.sh
-#!/bin/bash
-INTERFACE="wlan0"
-SSID="MirrorDash-Setup"
-PASSWORD="mirrordash"
-CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
-
-logger -t mirrordash-wifi "Starting network connectivity check..."
-for i in {1..30}; do
-    if ip route show | grep -q "^default"; then
-        logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
-        exit 0
-    fi
-    sleep 1
-done
-
-logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
-
-# Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
-SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
-echo "$SCAN_RESULT" > "$CACHE_FILE"
-chmod 644 "$CACHE_FILE"
-logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
-
-# Purge any existing MirrorDash-Setup profiles
-nmcli connection delete "$SSID" 2>/dev/null || true
-
-# Add and configure the AP hotspot
-nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
-nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
-nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
-nmcli connection modify "$SSID" wifi-sec.pmf 1
-nmcli connection modify "$SSID" ipv4.method shared
-
-if nmcli connection up "$SSID"; then
-    logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
-else
-    logger -t mirrordash-wifi "Failed to start hotspot."
-fi
-EOF
-  chmod +x /usr/local/bin/mirrordash-wifi-check.sh
-
-  cat << 'EOF' > /etc/systemd/system/mirrordash-wifi-fallback.service
-[Unit]
-Description=MirrorDash WiFi Fallback Captive Portal Monitor
-After=NetworkManager.service
-Before=mirrordash.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
-RemainAfterExit=yes
-TimeoutStartSec=45
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl enable mirrordash-wifi-fallback.service
-}
-
-step_systemd_service() {
-  cat << 'EOF' > /etc/systemd/system/mirrordash.service
-[Unit]
-Description=MirrorDash Core App Backend
-After=network.target
-RequiresMountsFor=/home/pi/.mirrordash/data
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/mirrordash
-Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
-Environment="WAYLAND_DISPLAY=wayland-1"
-Environment="XDG_RUNTIME_DIR=/run/user/1000"
-ExecStart=/home/pi/mirrordash/launch.sh
-Restart=always
-RestartSec=3
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
-  systemctl enable mirrordash.service
-}
-
-step_finalize_script() {
-  if [ -f "/opt/MirrorDash/scripts/finalize_appliance.sh" ]; then
-    echo "Copying finalize_appliance.sh from local repository..."
-    cp "/opt/MirrorDash/scripts/finalize_appliance.sh" /usr/local/bin/mirrordash-finalize.sh
-  else
-    echo "Downloading finalize_appliance.sh from GitHub..."
-    curl -sSLf "$GITHUB_RAW/scripts/finalize_appliance.sh" -o /usr/local/bin/mirrordash-finalize.sh
-  fi
-  chmod +x /usr/local/bin/mirrordash-finalize.sh
-}
-
-step_system_cleanup() {
-  echo "Pruning package manager caches..."
-  apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools
-  apt-get clean
-  apt-get autoremove -y
-
-  echo "Purging heavy international fonts..."
-  apt-get purge -y "fonts-noto-cjk*" "fonts-noto-core*" "fonts-kacst*" "fonts-tlwg*" "fonts-nanum*"
-  apt-get autoremove -y
-
-  echo "Removing heavy UI assets..."
-  rm -rf /usr/share/icons/Adwaita
-  rm -rf /usr/share/icons/hicolor
-  rm -rf /usr/share/backgrounds/*
-  rm -rf /usr/share/doc/*
-  rm -rf /usr/share/man/*
-
-  echo "Pruning temporary directories and system caches..."
-  rm -rf /tmp/* /var/tmp/*
-  rm -rf /root/.cache /home/pi/.cache
-  rm -rf /var/lib/apt/lists/*
-  rm -rf /home/pi/.local/share/uv/cache
-  rm -rf /root/.local/share/uv/cache
-
-  echo "Purging unnecessary firmware..."
-  rm -rf /lib/firmware/amdgpu
-  rm -rf /lib/firmware/radeon
-  rm -rf /lib/firmware/nvidia
-  rm -rf /lib/firmware/intel
-  rm -rf /lib/firmware/mellanox
-  rm -rf /lib/firmware/iwlwifi*
-
-  echo "Truncating system logs and journals..."
-  find /var/log -type f -exec truncate -s 0 {} \;
-  journalctl --vacuum-time=1s 2>/dev/null || true
-
-  echo "Clearing bash and execution histories..."
-  rm -f /root/.bash_history /home/pi/.bash_history
-  history -c 2>/dev/null || true
-}
-# --- Execution ---
-
-START_TIME_TOTAL=$SECONDS
-
-run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent Storage" step_expanding_partition
-run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
-run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
-run_step "4" "configuring_nginx" "Configuring nginx Reverse Proxy" step_configuring_nginx
-run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_configuring_console_login
-run_step "6" "setting_up_wayland" "Setting up Wayland Auto-launch & Kiosk Config" step_setting_up_wayland
-run_step "7" "installing_app" "Installing uv & MirrorDash App" step_installing_app
-run_step "8" "passwordless_sudo" "Setting up Passwordless Sudo" step_passwordless_sudo
-run_step "9" "watchdog_boot_optimization" "Enabling Watchdog & Optimizing Boot" step_watchdog_boot_optimization
-run_step "10" "plymouth_splash" "Configuring Plymouth Splash Screen" step_plymouth_splash
-run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_sync
-run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Script & Service" step_wifi_captive_portal
-run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
-run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
-run_step "15" "system_cleanup" "Performing System Cleanup" step_system_cleanup
-
-END_TIME_TOTAL=$SECONDS
-DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))
-minutes=$((DURATION_TOTAL / 60))
-seconds=$((DURATION_TOTAL % 60))
-
-echo "=========================================================="
-echo " MirrorDash setup successfully completed in ${minutes}m ${seconds}s!"
-echo " Recommended: Reboot the Raspberry Pi to test components."
-echo " Run: sudo reboot"
-echo "=========================================================="
+echo "=== Setup Appliance Script Completed Successfully! ==="
