@@ -11,6 +11,7 @@ set -e
 export LC_ALL=C.UTF-8
 export LANG=C.UTF-8
 export LANGUAGE=C.UTF-8
+export DEBIAN_FRONTEND=noninteractive
 
 # Ensure running as root
 if [ "$EUID" -ne 0 ]; then
@@ -31,11 +32,27 @@ else
     ROOT_DISK="${ROOT_PART%[0-9]*}"
   fi
 fi
-if [ -b "$ROOT_DISK" ]; then
-  disk_size_bytes=$(blockdev --getsize64 "$ROOT_DISK")
-  if [ "$disk_size_bytes" -lt $((7 * 1024 * 1024 * 1024 + 500 * 1024 * 1024)) ]; then
-    echo "Error: MirrorDash requires a system drive of at least 8GB (detected $((disk_size_bytes / 1024 / 1024 / 1024))GB)." >&2
-    exit 1
+# Bypass the physical disk size check if we are building the image in the cloud
+if [ -z "${BUILDING_IMAGE:-}" ]; then
+  ROOT_PART=$(findmnt -n -o SOURCE /)
+  PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
+  
+  if [ -n "$PARENT_NAME" ]; then
+    ROOT_DISK="/dev/$PARENT_NAME"
+  else
+    if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
+      ROOT_DISK="${ROOT_PART%p[0-9]*}"
+    else
+      ROOT_DISK="${ROOT_PART%[0-9]*}"
+    fi
+  fi
+  
+  if [ -b "$ROOT_DISK" ]; then
+    disk_size_bytes=$(blockdev --getsize64 "$ROOT_DISK")
+    if [ "$disk_size_bytes" -lt $((7 * 1024 * 1024 * 1024 + 500 * 1024 * 1024)) ]; then
+      echo "Error: MirrorDash requires a system drive of at least 8GB (detected $((disk_size_bytes / 1024 / 1024 / 1024))GB)." >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -113,7 +130,7 @@ ROOT_DISK="${ROOT_DISK%[0-9]*}"
 # 1. Skapa p3 om den inte finns
 if ! lsblk "$ROOT_DISK" | grep -q ".*3"; then
     echo "Creating Partition 3 for MirrorDash Data..."
-    END_P2=$(parted -s "$ROOT_DISK" unit B print | awk '/^ 2/ {print $3}')
+    END_P2=$(parted -s "$ROOT_DISK" unit B print | awk '$1 == "2" {print $3}')
     parted -s "$ROOT_DISK" mkpart primary ext4 "$END_P2" 100%
     partprobe "$ROOT_DISK"
     sleep 2
