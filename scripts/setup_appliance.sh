@@ -566,7 +566,7 @@ step_system_cleanup() {
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
-    sed -i 's/^[[:space:]]*do_resize/# do_resize/g' /usr/lib/raspberrypi-sys-mods/firstboot
+    sed -i '/^main () {/i do_resize() { return 1; }' /usr/lib/raspberrypi-sys-mods/firstboot
   fi
 
   echo "Cleaning up build policies and caches..."
