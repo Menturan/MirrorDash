@@ -83,5 +83,22 @@ echo -e "\e[34m[INFO] Running setup_appliance.sh via systemd-nspawn...\e[0m"
 # systemd-nspawn automatically handles /dev, /proc, /sys and network securely!
 systemd-nspawn -D "$MOUNT_DIR" --bind-ro=/etc/resolv.conf /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
 
-echo -e "\e[34m[INFO] Build successful. Packing image...\e[0m"
-# The cleanup trap will safely unmount everything here before compression.
+echo -e "\e[34m[INFO] Build successful. Unmounting securely before compression...\e[0m"
+sync
+umount -R "$MOUNT_DIR" 2>/dev/null || true
+if [ -n "${LOOP_DEV:-}" ]; then
+    losetup -d "$LOOP_DEV" 2>/dev/null || true
+    unset LOOP_DEV
+fi
+
+echo -e "\e[34m[INFO] Shrinking the final image with PiShrink...\e[0m"
+pishrink.sh "$FINAL_IMAGE"
+
+echo -e "\e[34m[INFO] Compressing with XZ (using all CPU cores)...\e[0m"
+rm -f "${FINAL_IMAGE}.xz" "${FINAL_IMAGE}.xz.sha256"
+xz -T0 -6 "$FINAL_IMAGE"
+
+echo -e "\e[34m[INFO] Generating SHA256 checksum...\e[0m"
+sha256sum "${FINAL_IMAGE}.xz" > "${FINAL_IMAGE}.xz.sha256"
+
+echo -e "\e[32m[SUCCESS] Image is ready: ${FINAL_IMAGE}.xz\e[0m"
