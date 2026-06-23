@@ -130,10 +130,12 @@ ROOT_DISK="${ROOT_DISK%[0-9]*}"
 # 1. Skapa p3 om den inte finns
 if ! lsblk "$ROOT_DISK" | grep -q ".*3"; then
     echo "Creating Partition 3 for MirrorDash Data..."
+    # Idiotsäker awk-selektor för att hitta p2:s slut
     END_P2=$(parted -s "$ROOT_DISK" unit B print | awk '$1 == "2" {print $3}')
-    parted -s "$ROOT_DISK" mkpart primary ext4 "$END_P2" 100%
-    partprobe "$ROOT_DISK"
-    sleep 2
+    # Tvinga parted att ignorera "not aligned"-varningar på SD-kort
+    printf "Yes\nIgnore\n" | parted ---pretend-input-tty "$ROOT_DISK" mkpart primary ext4 "$END_P2" 100% || true
+    partprobe "$ROOT_DISK" || true
+    udevadm settle || sleep 2
 fi
 
 # 2. Hitta namnet på p3
@@ -156,14 +158,13 @@ EOF
 
   chmod +x /usr/local/bin/mirrordash-expand.sh
 
-  # Denna systemd-tjänst körs före alla andra mounts
+  # CRITICAL FIX: Denna tjänst MÅSTE köra innan systemd ens försöker läsa fstab (local-fs-pre.target)
   cat << 'EOF' > /etc/systemd/system/mirrordash-expand.service
 [Unit]
 Description=MirrorDash Dynamic Storage Creator
 DefaultDependencies=no
-After=local-fs-pre.target systemd-udevd.service
-Before=local-fs.target systemd-remount-fs.service NetworkManager.service
-Requires=local-fs-pre.target
+After=systemd-udevd.service
+Before=local-fs-pre.target
 
 [Service]
 Type=oneshot
@@ -171,7 +172,7 @@ ExecStart=/usr/local/bin/mirrordash-expand.sh
 RemainAfterExit=yes
 
 [Install]
-WantedBy=local-fs.target
+WantedBy=sysinit.target
 EOF
   systemctl enable mirrordash-expand.service
 
