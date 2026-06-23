@@ -48,6 +48,7 @@ jobs:
             pigz \
             wget \
             curl \
+            systemd-container \
             zerofree
           sudo wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
           sudo chmod +x /usr/local/bin/pishrink.sh
