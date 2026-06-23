@@ -365,7 +365,7 @@ EOF
     # Ensure options are present
     for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles" "logo.nologo"; do
       if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
-        sed -i "s/$/ $opt/" /boot/firmware/cmdline.txt
+        sed -i "1s/$/ $opt/" /boot/firmware/cmdline.txt
       fi
     done
   fi
@@ -532,7 +532,8 @@ set -euo pipefail
 # Only hydrate if venv_a is missing
 if [ ! -d "/storage/mirrordash/venv_a" ]; then
     echo "Hydrating /storage with golden base_venv..."
-    cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a
+    cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
+    mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
     ln -sfT venv_a /storage/mirrordash/venv
     chown -R pi:pi /storage/mirrordash
 fi
