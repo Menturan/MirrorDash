@@ -62,7 +62,19 @@ parted -s "$FINAL_IMAGE" mkpart primary ext4 6GB 100%
 
 LOOP_DEV=$(losetup -Pf --show "$FINAL_IMAGE")
 partprobe "$LOOP_DEV" || true
-sleep 2
+
+# --- FIX: Vänta på att partitionerna faktiskt registreras ---
+echo -e "\e[34m[INFO] Waiting for loop devices to initialize...\e[0m"
+for i in {1..15}; do
+    if [ -b "${LOOP_DEV}p2" ] && [ -b "${LOOP_DEV}p3" ]; then
+        break
+    fi
+    sleep 1
+    if [ "$i" -eq 15 ]; then
+        echo -e "\e[31m[ERROR] Loop devices did not appear in time!\e[0m"
+        exit 1
+    fi
+done
 
 e2fsck -f -y "${LOOP_DEV}p2"
 resize2fs "${LOOP_DEV}p2"
