@@ -55,12 +55,55 @@ tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  
 EOF
 fi
 
-echo "=== 4. Setting Hostname & Network ==="
+echo "=== 4. Configuring Persistent Wi-Fi ==="
+# FIX: Spara NetworkManager-profiler på den skrivbara lagringen så de överlever OverlayFS
+mkdir -p /storage/mirrordash/system-connections
+chmod 700 /storage/mirrordash/system-connections
+rm -rf /etc/NetworkManager/system-connections
+ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
+
+echo "=== 5. Restoring Storage Expansion Script ==="
+# FIX: Tvinga partition 3 att expandera till max på första booten (Bypass för MBR-begränsningar)
+cat << 'EOF' > /usr/local/bin/mirrordash-expand.sh
+#!/bin/bash
+set -euo pipefail
+ROOT_PART=$(findmnt -n -o SOURCE /)
+ROOT_DISK="${ROOT_PART%p[0-9]*}"
+ROOT_DISK="${ROOT_DISK%[0-9]*}"
+DATA_PART="${ROOT_DISK}p3"
+if [ ! -b "$DATA_PART" ]; then DATA_PART="${ROOT_DISK}3"; fi
+
+if [ -b "$DATA_PART" ]; then
+  echo "Expanding MirrorDash data partition..."
+  printf "Yes\nIgnore\n" | parted "$ROOT_DISK" ---pretend-input-tty resizepart 3 100% || true
+  partprobe "$ROOT_DISK" || true
+  resize2fs "$DATA_PART" || true
+fi
+EOF
+chmod +x /usr/local/bin/mirrordash-expand.sh
+
+cat << 'EOF' > /etc/systemd/system/mirrordash-expand.service
+[Unit]
+Description=MirrorDash Auto-Expand Storage Partition
+After=local-fs.target
+Before=mirrordash.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-expand.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable mirrordash-expand.service
+
+echo "=== 6. Setting Hostname & Network ==="
 echo "mirrordash" > /etc/hostname
 sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
 systemctl enable avahi-daemon
 
-echo "=== 5. Console Autologin & Plymouth ==="
+echo "=== 7. Console Autologin & Plymouth ==="
 # Tvinga tty1 att logga in pi automatiskt
 mkdir -p /etc/systemd/system/getty@tty1.service.d
 cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
@@ -72,7 +115,7 @@ ln -fs /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
 touch "$PI_HOME/.hushlogin"
 chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
 
-echo "=== 6. Configuring Labwc & Cog (Kiosk Mode) ==="
+echo "=== 8. Configuring Labwc & Cog (Kiosk Mode) ==="
 # Autostart Wayland when logging into tty1
 cat << 'EOF' > "$PI_HOME/.bash_profile"
 if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]]; then
@@ -102,7 +145,7 @@ EOF
 chmod +x "$PI_HOME/.config/labwc/autostart"
 chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
 
-echo "=== 7. Enabling Critical Services ==="
+echo "=== 9. Enabling Critical Services ==="
 systemctl enable seatd systemd-timesyncd
 sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
 
