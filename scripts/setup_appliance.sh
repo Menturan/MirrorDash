@@ -19,6 +19,14 @@ if [ "$EUID" -ne 0 ]; then
   exit 1
 fi
 
+echo "=== Setting up Container Build Policy ==="
+# Officiell Debian-metod för att hindra tjänster (som Plymouth) från att starta under byggfasen
+cat << 'EOF' > /usr/sbin/policy-rc.d
+#!/bin/sh
+exit 101
+EOF
+chmod +x /usr/sbin/policy-rc.d
+
 # Ensure target disk has enough space (at least 8GB to fit bootfs + rootfs + storage)
 ROOT_PART=$(findmnt -n -o SOURCE /)
 # Try to get the parent disk using lsblk, with a robust sed fallback
@@ -36,7 +44,7 @@ fi
 if [ -z "${BUILDING_IMAGE:-}" ]; then
   ROOT_PART=$(findmnt -n -o SOURCE /)
   PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-  
+
   if [ -n "$PARENT_NAME" ]; then
     ROOT_DISK="/dev/$PARENT_NAME"
   else
@@ -46,7 +54,7 @@ if [ -z "${BUILDING_IMAGE:-}" ]; then
       ROOT_DISK="${ROOT_PART%[0-9]*}"
     fi
   fi
-  
+
   if [ -b "$ROOT_DISK" ]; then
     disk_size_bytes=$(blockdev --getsize64 "$ROOT_DISK")
     if [ "$disk_size_bytes" -lt $((7 * 1024 * 1024 * 1024 + 500 * 1024 * 1024)) ]; then
@@ -119,62 +127,32 @@ run_step() {
 # --- Step Functions ---
 
 step_expanding_partition() {
-  cat << 'EOF' > /usr/local/bin/mirrordash-expand.sh
-#!/bin/bash
-set -euo pipefail
+  echo "Configuring systemd-repart for declarative automatic partition expansion..."
+  mkdir -p /etc/repart.d
 
-ROOT_PART=$(findmnt -n -o SOURCE /)
-ROOT_DISK="${ROOT_PART%p[0-9]*}"
-ROOT_DISK="${ROOT_DISK%[0-9]*}"
-
-# 1. Skapa p3 om den inte finns
-if ! lsblk "$ROOT_DISK" | grep -q ".*3"; then
-    echo "Creating Partition 3 for MirrorDash Data..."
-    # Idiotsäker awk-selektor för att hitta p2:s slut
-    END_P2=$(parted -s "$ROOT_DISK" unit B print | awk '$1 == "2" {print $3}')
-    # Tvinga parted att ignorera "not aligned"-varningar på SD-kort
-    printf "Yes\nIgnore\n" | parted ---pretend-input-tty "$ROOT_DISK" mkpart primary ext4 "$END_P2" 100% || true
-    partprobe "$ROOT_DISK" || true
-    udevadm settle || sleep 2
-fi
-
-# 2. Hitta namnet på p3
-if [[ "$ROOT_DISK" =~ [0-9]$ ]]; then DATA_PART="${ROOT_DISK}p3"; else DATA_PART="${ROOT_DISK}3"; fi
-
-# 3. Formatera om den är tom
-if ! blkid -o value -s TYPE "$DATA_PART" | grep -q "ext4"; then
-    mkfs.ext4 -F -L mirrordash-data "$DATA_PART"
-fi
-
-resize2fs "$DATA_PART" || true
-
-# 4. Montera den tillfälligt och skapa mappar
-mkdir -p /storage
-mount "$DATA_PART" /storage
-mkdir -p /storage/mirrordash/data /storage/mirrordash/system-connections /storage/mirrordash/venv
-chmod 700 /storage/mirrordash/system-connections
-umount /storage
+  cat << 'EOF' > /etc/repart.d/50-data.conf
+[Partition]
+Type=linux-generic
+Label=mirrordash-data
+Format=ext4
+Weight=100
 EOF
 
-  chmod +x /usr/local/bin/mirrordash-expand.sh
+  mkdir -p /storage
+  if ! grep -q "LABEL=mirrordash-data" /etc/fstab; then
+    cat << 'EOF' >> /etc/fstab
 
-  # CRITICAL FIX: Denna tjänst MÅSTE köra innan systemd ens försöker läsa fstab (local-fs-pre.target)
-  cat << 'EOF' > /etc/systemd/system/mirrordash-expand.service
-[Unit]
-Description=MirrorDash Dynamic Storage Creator
-DefaultDependencies=no
-After=systemd-udevd.service
-Before=local-fs-pre.target
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-expand.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=sysinit.target
+# --- MirrorDash Persistent Storage ---
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
 EOF
-  systemctl enable mirrordash-expand.service
+  fi
+
+  echo "Configuring systemd-tmpfiles to ensure persistent directories exist..."
+  cat << 'EOF' > /etc/tmpfiles.d/mirrordash-storage.conf
+d /storage/mirrordash/data 0755 pi pi - -
+d /storage/mirrordash/system-connections 0700 root root - -
+d /storage/mirrordash/venv 0755 pi pi - -
+EOF
 
   # Länka NetworkManager till den nya partitionen (Wi-Fi överlever OverlayFS)
   rm -rf /etc/NetworkManager/system-connections
@@ -182,6 +160,10 @@ EOF
 }
 
 step_installing_packages() {
+  echo "Diverting update-initramfs to prevent cloud-build kernel panics..."
+  dpkg-divert --local --rename --add /usr/sbin/update-initramfs
+  ln -sf /bin/true /usr/sbin/update-initramfs
+
   apt-get update
   apt-get install -y --no-install-recommends \
       labwc \
@@ -193,7 +175,8 @@ step_installing_packages() {
       avahi-daemon \
       plymouth \
       pix-plym-splash \
-      systemd-timesyncd
+      systemd-timesyncd \
+      initramfs-tools
 }
 
 step_setting_hostname() {
@@ -259,11 +242,7 @@ EOF
   # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
   echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
 
-  # Force Raspberry Pi to ignore initramfs because cloud built initramfs often gets corrupt
-  echo "Disabling initramfs in config.txt to prevent cloud-build kernel panics..."
-  if [ -f /boot/firmware/config.txt ]; then
-    sed -i 's/^auto_initramfs=1/#auto_initramfs=1/g' /boot/firmware/config.txt
-  fi
+  # Prevent auto-login from failing due to firstboot delay (we handle storage ourselves)
 
   # Silence the tty1 autologin prompt and login banners
   if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
@@ -306,8 +285,10 @@ EOF
 }
 
 step_installing_app() {
-  # Install uv as the pi user (standalone binary — does not require git or Python)
-  sudo -u "$PI_USER" HOME="$PI_HOME" bash -c "curl -LsSf https://astral.sh/uv/install.sh | sh"
+  # Install uv globally (standalone binary) securely via release artifact
+  echo "Downloading uv binary securely to /usr/local/bin..."
+  curl -sSLf https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  chmod +x /usr/local/bin/uv
 
   # Create app directory
   sudo -u "$PI_USER" HOME="$PI_HOME" mkdir -p "$PI_HOME/mirrordash"
@@ -397,56 +378,52 @@ EOF
 }
 
 step_plymouth_splash() {
-  # Ensure the theme directory exists (especially on fresh Lite images)
-  mkdir -p /usr/share/plymouth/themes/pix
-
-  # Silence the Plymouth theme status messages and patch for separate shutdown splash
-  if [ -f /usr/share/plymouth/themes/pix/pix.script ]; then
-    local patched=false
-    if grep -q "^[[:space:]]*Plymouth\.SetMessageFunction" /usr/share/plymouth/themes/pix/pix.script || \
-       grep -q "^[[:space:]]*Plymouth\.SetUpdateStatusFunction" /usr/share/plymouth/themes/pix/pix.script; then
-      echo "Silencing Plymouth message callbacks in pix.script..."
-      sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/pix/pix.script
-      sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/pix/pix.script
-      patched=true
-    fi
-    if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/pix/pix.script; then
-      echo "Patching pix.script to support separate shutdown splash image..."
-      sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/pix/pix.script
-      patched=true
-    fi
-    if [ "$patched" = true ]; then
-      # Force rebuild by removing sentinel
-      rm -f /usr/share/plymouth/themes/pix/.mirrordash_configured
-    fi
-  fi
-
-  # Skip rebuilding initramfs if our custom theme is already configured (saves significant time)
-  if [ -f /usr/share/plymouth/themes/pix/.mirrordash_configured ] && [ "$(plymouth-set-default-theme)" = "pix" ]; then
+  # Skip rebuilding initramfs if our custom theme is already configured
+  if [ "$(plymouth-set-default-theme)" = "mirrordash" ]; then
     echo "Plymouth splash screen is already configured. Skipping rebuild."
     return 0
+  fi
+
+  echo "Cloning 'pix' Plymouth theme to create a robust 'mirrordash' theme..."
+  mkdir -p /usr/share/plymouth/themes/mirrordash
+  cp -r /usr/share/plymouth/themes/pix/* /usr/share/plymouth/themes/mirrordash/ || true
+
+  if [ -f /usr/share/plymouth/themes/mirrordash/pix.plymouth ]; then
+    mv /usr/share/plymouth/themes/mirrordash/pix.plymouth /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+    sed -i 's/Name=Raspberry Pi/Name=MirrorDash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+    sed -i 's/\/usr\/share\/plymouth\/themes\/pix/\/usr\/share\/plymouth\/themes\/mirrordash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+    sed -i 's/pix\.script/mirrordash.script/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+    mv /usr/share/plymouth/themes/mirrordash/pix.script /usr/share/plymouth/themes/mirrordash/mirrordash.script
+  fi
+
+  # Apply our clean script modifications safely to our cloned theme
+  if [ -f /usr/share/plymouth/themes/mirrordash/mirrordash.script ]; then
+    echo "Silencing Plymouth message callbacks in mirrordash.script..."
+    sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+    sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+    
+    if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/mirrordash/mirrordash.script; then
+      echo "Patching mirrordash.script to support separate shutdown splash image..."
+      sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+    fi
   fi
 
   # Download or copy splash and shutdown images
   if [ -f "/opt/MirrorDash/mirrordash_core/static/splash.png" ]; then
     echo "Copying splash and shutdown images from local repository..."
-    cp "/opt/MirrorDash/mirrordash_core/static/splash.png" /usr/share/plymouth/themes/pix/splash.png
-    cp "/opt/MirrorDash/mirrordash_core/static/shutdown.png" /usr/share/plymouth/themes/pix/shutdown.png
+    cp "/opt/MirrorDash/mirrordash_core/static/splash.png" /usr/share/plymouth/themes/mirrordash/splash.png
+    cp "/opt/MirrorDash/mirrordash_core/static/shutdown.png" /usr/share/plymouth/themes/mirrordash/shutdown.png
   else
     echo "Downloading splash and shutdown images from GitHub..."
-    # Use atomic temp file downloads to prevent corrupt empty files on network failure
     curl -sSLf "$GITHUB_RAW/mirrordash_core/static/splash.png" -o /tmp/splash.png
-    mv /tmp/splash.png /usr/share/plymouth/themes/pix/splash.png
+    mv /tmp/splash.png /usr/share/plymouth/themes/mirrordash/splash.png
 
     curl -sSLf "$GITHUB_RAW/mirrordash_core/static/shutdown.png" -o /tmp/shutdown.png
-    mv /tmp/shutdown.png /usr/share/plymouth/themes/pix/shutdown.png
+    mv /tmp/shutdown.png /usr/share/plymouth/themes/mirrordash/shutdown.png
   fi
 
   # On Trixie, --rebuild-initrd is required for splash changes to take effect on boot
-  plymouth-set-default-theme --rebuild-initrd pix
-
-  # Mark as configured
-  touch /usr/share/plymouth/themes/pix/.mirrordash_configured
+  plymouth-set-default-theme --rebuild-initrd mirrordash
 }
 
 step_time_wait_sync() {
@@ -553,6 +530,15 @@ step_finalize_script() {
 }
 
 step_system_cleanup() {
+  echo "Restoring update-initramfs diversion..."
+  rm -f /usr/sbin/update-initramfs || true
+  dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
+
+  echo "Cleaning up build policies and caches..."
+  rm -f /usr/sbin/policy-rc.d
+  apt-get clean
+  rm -rf /var/lib/apt/lists/*
+
   echo "Pruning package manager caches..."
   apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools
   apt-get clean
