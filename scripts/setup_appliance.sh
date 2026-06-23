@@ -293,8 +293,9 @@ step_installing_app() {
   # Create app directory
   sudo -u "$PI_USER" HOME="$PI_HOME" mkdir -p "$PI_HOME/mirrordash"
 
-  # Setup symlink structures (A/B venv layout)
+  # Setup symlink structures (A/B venv layout & persistent data)
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/venv "$PI_HOME/mirrordash/.venv"
+  sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/data "$PI_HOME/.mirrordash"
 
   # Create base_venv (Golden Copy), then install from PyPI
   sudo -u "$PI_USER" HOME="$PI_HOME" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
@@ -488,8 +489,9 @@ step_systemd_service() {
   cat << 'EOF' > /etc/systemd/system/mirrordash.service
 [Unit]
 Description=MirrorDash Core App Backend
-After=network.target
-RequiresMountsFor=/home/pi/.mirrordash/data
+After=network.target mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+RequiresMountsFor=/storage/mirrordash/data
 
 [Service]
 Type=simple
@@ -558,6 +560,9 @@ step_system_cleanup() {
   echo "Restoring update-initramfs diversion..."
   rm -f /usr/sbin/update-initramfs || true
   dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
+
+  echo "Rebuilding initramfs to embed plymouth and kernel updates..."
+  update-initramfs -u
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
