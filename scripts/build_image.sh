@@ -77,7 +77,7 @@ mount "${LOOP_DEV}p3" "$MOUNT_DIR/storage"
 
 echo -e "\e[34m[INFO] Copying repository to image...\e[0m"
 mkdir -p "$MOUNT_DIR/opt/MirrorDash"
-cp -a "$REPOS_DIR"/* "$MOUNT_DIR/opt/MirrorDash/"
+find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
 echo -e "\e[34m[INFO] Running setup_appliance.sh via systemd-nspawn...\e[0m"
 # systemd-nspawn automatically handles /dev, /proc, /sys and network securely!
