@@ -232,7 +232,7 @@ step_configuring_console_login() {
   cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
 [Service]
 ExecStart=
-ExecStart=-/sbin/agetty --noissue --skip-login --autologin pi --noclear %I $TERM
+ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
 EOF
 
   # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
