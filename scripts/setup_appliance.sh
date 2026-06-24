@@ -262,8 +262,9 @@ EOF
 
   cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
 labwc-msg HideCursor 2>/dev/null || true
+export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
 while true; do
-  cog -P wl file:///home/pi/mirrordash/loading.html
+  cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
   sleep 2
 done &
 EOF
@@ -340,7 +341,6 @@ step_watchdog_boot_optimization() {
 # --- MirrorDash Hardware Hardening ---
 disable_splash=1
 boot_delay=0
-gpu_mem=128
 dtoverlay=disable-bt
 EOF
   fi
@@ -486,7 +486,7 @@ User=pi
 WorkingDirectory=/home/pi/mirrordash
 Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
-Environment="WAYLAND_DISPLAY=wayland-1"
+Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/home/pi/mirrordash/launch.sh
 Restart=always
