@@ -550,6 +550,7 @@ step_system_cleanup() {
   dpkg-divert --local --rename --remove /usr/sbin/update-initramfs || true
 
   echo "Rebuilding initramfs to embed plymouth and kernel updates..."
+  sed -i 's/^MODULES=.*/MODULES=most/' /etc/initramfs-tools/initramfs.conf
   update-initramfs -u
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
