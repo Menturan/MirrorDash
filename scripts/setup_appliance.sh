@@ -176,7 +176,8 @@ step_installing_packages() {
       plymouth \
       pix-plym-splash \
       systemd-timesyncd \
-      initramfs-tools
+      initramfs-tools \
+      nginx
 }
 
 step_setting_hostname() {
