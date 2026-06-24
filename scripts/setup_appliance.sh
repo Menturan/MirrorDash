@@ -332,7 +332,6 @@ EOF
 step_watchdog_boot_optimization() {
   # Watchdog RuntimeWatchdogSec=14s
   sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
-  systemctl daemon-reexec
 
   # Suppress splash, boot delay, Bluetooth, allocate gpu memory in config.txt
   if ! grep -q "disable_splash=1" /boot/firmware/config.txt; then
