@@ -58,7 +58,7 @@ jobs:
 
       - name: Upload image and checksum
         run: |
-          IMAGE=$(ls build_workspace/*.img.xz | head -n 1)
+          IMAGE=$(ls build_workspace/mirrordash-os-*.img.xz | head -n 1)
           CHECKSUM="${IMAGE}.sha256"
           echo "IMAGE=$IMAGE" >> $GITHUB_ENV
           echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
