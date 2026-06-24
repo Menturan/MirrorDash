@@ -595,7 +595,7 @@ step_system_cleanup() {
   rm -rf /lib/firmware/iwlwifi*
 
   echo "Truncating system logs and journals..."
-  find /var/log -type f -exec truncate -s 0 {} \;
+  find /var/log -type f -exec truncate -s 0 {} \; 2>/dev/null || true
   journalctl --vacuum-time=1s 2>/dev/null || true
 
   echo "Clearing bash and execution histories..."
