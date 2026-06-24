@@ -564,12 +564,12 @@ step_system_cleanup() {
   rm -rf /var/lib/apt/lists/*
 
   echo "Pruning package manager caches..."
-  apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools
+  apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools || true
   apt-get clean
   apt-get autoremove -y
 
   echo "Purging heavy international fonts..."
-  apt-get purge -y "fonts-noto-cjk*" "fonts-noto-core*" "fonts-kacst*" "fonts-tlwg*" "fonts-nanum*"
+  apt-get purge -y "fonts-noto-cjk*" "fonts-noto-core*" "fonts-kacst*" "fonts-tlwg*" "fonts-nanum*" || true
   apt-get autoremove -y
 
   echo "Removing heavy UI assets..."
