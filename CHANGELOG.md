@@ -10,18 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Core App
 - Hardened the A/B virtual environment update endpoints and backup restoration system by explicitly targeting the target python binary path, avoiding active venv symlink/environment dependencies.
 - Resolved Python runtime name collision warnings (`UnboundLocalError` on local `Path` imports).
-- Synchronized the manual golden image construction steps (`GOLDEN_IMAGE.md`) with the automated setup/build scripts.
 
 ### System OS (Appliance)
-- Refactored the graphical boot sequence to launch the Wayland compositor (`labwc`) and WebKit browser (`cog`) via native systemd services (`labwc-kiosk.service` and `cog-kiosk.service`), resolving the `logind`-`seatd` race condition and removing legacy `.bash_profile` startup hooks.
-- Refactored the first-boot storage hydration system, introducing a robust `mirrordash-storage-init.service` which handles setting up persistent environments automatically via base_venv clones, resolving A/B copy races and file-vs-symlink directory collisions.
-- Refactored the captive portal Wi-Fi fallback connectivity check to run asynchronously (`Type=simple` in systemd) using native NetworkManager D-Bus checks (`nm-online`), eliminating a 30-second blocking delay on boot when Wi-Fi is offline. Added a pre-AP spectrum sweep and network caching to `/var/lib/mirrordash-wifi-scan.cache`.
-- Hardened the boot fallback launcher (`launch.sh`) to exclude standard signal exits (`SIGINT` and `SIGTERM`) from triggering rollbacks, and added the atomic `-T` (`--no-target-directory`) flag to prevent directory nesting during rollbacks.
-- Replaced fragile directory-listing HTML scraping with canonical HTTP redirect tracking (`curl -w '%{url_effective}'`) in the image download script.
-- Implemented a failsafe `trap` in `setup_appliance.sh` to guarantee that the `/etc/fstab` root partition mask is safely restored on script failure, preventing kernel panics on reboot.
-- Replaced a fragile `/usr/lib/raspberrypi-sys-mods/firstboot` regex patch with an absolute line-number function override to prevent partition resize conflicts.
-- Silenced Plymouth DRM resource contention by forcing a root-privileged pre-start quit check (`ExecStartPre=+-/usr/bin/plymouth quit --retain-splash`) in the compositor service.
-- Cleaned up redundant `.hushlogin` creation and sleep timers, and pruned unneeded GPU/system firmware packages to save SD card space.
+- Migrated Wayland (`labwc`) and the kiosk browser (`cog`) to native systemd services, resolving logind-seatd race conditions.
+- Implemented asynchronous, non-blocking captive portal checks using NetworkManager (`nm-online`) to eliminate boot delays.
+- Refactored first-boot storage hydration (`mirrordash-storage-init.service`) from a golden `base_venv` to prevent environment corruption.
+- Hardened script stability with atomic rollback moves (`mv -T`), failsafe build `fstab` restoration traps, and a robust `firstboot` override.
+- Optimized the build by using canonical image redirect tracking, resolving Plymouth DRM resource contention, and pruning unneeded packages/firmware.
+- Synchronized the manual golden image guide (`GOLDEN_IMAGE.md`) with the automated scripts.
 
 ## [0.3.0-os2] - 2026-06-23
 
