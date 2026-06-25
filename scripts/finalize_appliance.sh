@@ -41,5 +41,4 @@ echo "=========================================================="
 
 # Extremt viktigt: Tvinga sync av initramfs innan omstart!
 sync
-sleep 3
 reboot

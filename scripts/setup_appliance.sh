@@ -250,6 +250,7 @@ TTYVTDisallocate=yes
 StandardOutput=journal
 StandardError=journal
 Environment=WLR_LIBINPUT_NO_DEVICES=1
+ExecStartPre=-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/bin/labwc
 Restart=always
 RestartSec=3
@@ -267,14 +268,31 @@ EOF
 
   cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
 labwc-msg HideCursor 2>/dev/null || true
-export COG_PLATFORM_WL_VIEW_FULLSCREEN=1
-while true; do
-  cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
-  sleep 2
-done &
 EOF
   chmod +x "$PI_HOME/.config/labwc/autostart"
   chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
+
+  echo "Configuring cog kiosk systemd service..."
+  cat << 'EOF' > /etc/systemd/system/cog-kiosk.service
+[Unit]
+Description=Cog WebKit Kiosk
+After=labwc-kiosk.service
+Requires=labwc-kiosk.service
+BindsTo=labwc-kiosk.service
+
+[Service]
+User=pi
+Environment="WAYLAND_DISPLAY=wayland-0"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="COG_PLATFORM_WL_VIEW_FULLSCREEN=1"
+ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target
+EOF
+  systemctl enable cog-kiosk.service
 }
 
 step_installing_app() {
