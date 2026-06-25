@@ -16,7 +16,7 @@ def parse_unreleased(content: str) -> tuple[list[str], list[str]]:
     # Match [Unreleased] block: either followed by another ## [X.Y.Z] section,
     # or followed by comparison links at the bottom, or end of string
     unreleased_match = re.search(
-        r"## \[Unreleased\](.*?)(?=\n\[Unreleased\]:|\Z)",
+        r"## \[Unreleased\](.*?)(?=\n## \[|\n\[Unreleased\]:|\Z)",
         content,
         re.DOTALL,
     )
@@ -136,20 +136,30 @@ def main() -> None:
 
     # Replace the entire [Unreleased] block
     content = re.sub(
-        r"## \[Unreleased\].*?(?=\n\[Unreleased\]:|\Z)",
+        r"## \[Unreleased\].*?(?=\n## \[|\n\[Unreleased\]:|\Z)",
         remaining.rstrip("\n"),
         content,
         flags=re.DOTALL,
     )
 
-    # Insert the new version section BEFORE [Unreleased] so latest release is at the top
-    insert_anchor = "## [Unreleased]\n"
-    idx = content.find(insert_anchor)
-    if idx == -1:
+    # Insert the new version section AFTER [Unreleased] and before the next section
+    unreleased_idx = content.find("## [Unreleased]")
+    if unreleased_idx == -1:
         print("Error: Could not locate [Unreleased] section")
         sys.exit(1)
 
-    content = content[:idx] + new_section + "\n" + content[idx:]
+    next_sec_match = re.search(r"\n## \[", content[unreleased_idx + 15:])
+    if next_sec_match:
+        insert_idx = unreleased_idx + 15 + next_sec_match.start() + 1
+    else:
+        # If no other version sections exist, insert before the comparison links
+        links_idx = content.find("\n[Unreleased]:")
+        if links_idx != -1:
+            insert_idx = links_idx + 1
+        else:
+            insert_idx = len(content)
+
+    content = content[:insert_idx] + new_section + "\n" + content[insert_idx:]
 
     # Update comparison links
     content = update_comparison_links(content, version, prev_version, is_os=(track == "os"))
