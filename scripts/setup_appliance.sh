@@ -238,6 +238,7 @@ step_setting_up_wayland() {
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-quit-wait.service
 Conflicts=getty@tty1.service
+Wants=cog-kiosk.service
 
 [Service]
 User=pi
@@ -581,13 +582,15 @@ step_system_cleanup() {
   
   # Temporarily mask the root filesystem in fstab so mkinitramfs doesn't crash trying to probe it
   cp /etc/fstab /etc/fstab.bak
+  trap 'mv -f /etc/fstab.bak /etc/fstab 2>/dev/null || true' EXIT ERR INT TERM
   sed -i '/ \/ /s/^/#/' /etc/fstab
   update-initramfs -u || echo "Warning: update-initramfs exited with a non-zero status"
   mv /etc/fstab.bak /etc/fstab
+  trap - EXIT ERR INT TERM
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
-    sed -i '/^main () {/i do_resize() { return 1; }' /usr/lib/raspberrypi-sys-mods/firstboot
+    sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
   fi
 
   echo "Cleaning up build policies and caches..."
