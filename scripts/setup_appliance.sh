@@ -165,6 +165,7 @@ step_installing_packages() {
   ln -sf /bin/true /usr/sbin/update-initramfs
 
   apt-get update
+  apt-get install -y --no-install-recommends \
       labwc \
       dbus-user-session \
       fonts-liberation \

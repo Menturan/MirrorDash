@@ -116,6 +116,11 @@ python mirrordash_core/main.py
 
 0a. **Be critical and proactive.** Do not blindly execute tasks as described if there is a cleaner, simpler, or more architecturally sound approach. If you think there is a better way of doing things (e.g., serving static files instead of building complex DOM-polling overlays), ALWAYS suggest it and guide the user towards the better solution.
 
+0b. **Strict DevOps Build Philosophy.** When writing or modifying build and appliance scripts (e.g., `build_image.sh`, `setup_appliance.sh`), you MUST use stable, failsafe, declarative DevOps standards. 
+- **Never** use "hobbyist" hacks: No shell polling loops (`sleep` or `while` checks), no string-scraping HTML for URLs (`grep | cut`), and no arbitrary terminal autologins or `.bash_profile` injections.
+- **Always** use deterministic solutions: Native D-Bus event waiting (e.g., `nm-online`, `nmcli device wait`), native systemd services (`graphical.target`, `PAMName=login`), and canonical API flags (e.g., `curl -w '%{url_effective}'`). 
+Build scripts must be deterministic, free of race-conditions, and mathematically proven to execute correctly without relying on timing or visual DOM layouts.
+
 ### Python
 
 1. **No late-binding closures in loops.** Any nested function (`def`) defined inside a `for` loop that closes over a loop variable MUST use a factory function to capture the value immediately. This is a known bug pattern in this codebase.
