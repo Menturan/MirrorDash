@@ -177,6 +177,8 @@ step_installing_packages() {
       pix-plym-splash \
       systemd-timesyncd \
       initramfs-tools \
+      network-manager \
+      dnsmasq-base \
       nginx
 }
 
@@ -247,7 +249,11 @@ EOF
 
 step_setting_up_wayland() {
   cat << 'EOF' > "$PI_HOME/.bash_profile"
+if test -z "${XDG_RUNTIME_DIR}"; then
+  export XDG_RUNTIME_DIR=/run/user/$(id -u)
+fi
 if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]]; then
+  export WLR_LIBINPUT_NO_DEVICES=1
   printf "\033c"
   exec labwc
 fi
@@ -477,7 +483,7 @@ Before=mirrordash.service
 Type=oneshot
 ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
 RemainAfterExit=yes
-TimeoutStartSec=45
+TimeoutStartSec=90
 
 [Install]
 WantedBy=multi-user.target
