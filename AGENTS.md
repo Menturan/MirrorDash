@@ -151,6 +151,18 @@ python mirrordash_core/main.py
 
 8. **Latest OS Assumption.** Always assume the Golden Image is created from the absolute latest version of Raspberry Pi OS Lite (64-bit) (based on Debian Trixie/Debian 13 or newer). Configure all scripting, system packages, cmdline.txt adjustments, and network commands accordingly.
 
+9. **Wayland Kiosk Systemd Architecture.** Never launch Wayland (`labwc`) using `.bash_profile` or `agetty --autologin` hacks. Always use a dedicated `systemd` service bound to `tty1` (via `TTYPath=/dev/tty1`) and using `PAMName=login`. This guarantees `systemd-logind` session acquisition and native `XDG_RUNTIME_DIR` generation without race conditions.
+
+10. **Headless wlroots Requirements.** Always export `WLR_LIBINPUT_NO_DEVICES=1` when running `labwc` (or any `wlroots` compositor) on the mirror. Without this, the compositor will instantly crash when it fails to detect physical keyboards or mice.
+
+11. **Do not install seatd.** Raspberry Pi OS natively manages hardware access via `systemd-logind`. Installing `seatd` alongside it introduces severe race conditions over the GPU DRM nodes (`/dev/dri/card0`), resulting in black screens. Always rely on native `logind`.
+
+12. **Native Network Polling.** Never use `sleep` loops polling shell commands (e.g., `ip route`) to check network connectivity. Always use native D-Bus event polling tools like `nm-online -q -t 30` to ensure stable, immediate network state resolution.
+
+13. **Captive Portal Dependencies & Blocks.** 
+    - NetworkManager requires the `dnsmasq-base` package to successfully broadcast an Access Point (`mode ap`). Debian Lite does not install this by default.
+    - Fresh Raspberry Pi OS images hard-block the Wi-Fi radio. You must execute `raspi-config nonint do_wifi_country <CC>` and `rfkill unblock wifi` before attempting to spin up any hotspots.
+
 ### Frontend
 
 9. **Conservative framework adoption.** The mirror frontend uses vanilla HTML, CSS, and JavaScript by default. Introducing frameworks (React, Vue, Alpine, HTMX, etc.) should be avoided unless there is a compelling justification that vanilla JS cannot solve. If a framework is deemed necessary, consult with the maintainers first and document the rationale in `ARCHITECTURE.md`.
