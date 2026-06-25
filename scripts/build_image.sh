@@ -26,7 +26,8 @@ trap cleanup EXIT ERR INT TERM
 
 # --- Download & Decompress ---
 echo -e "\e[34m[INFO] Fetching Raspberry Pi OS...\e[0m"
-mkdir -p "$BUILD_DIR" "$MOUNT_DIR"
+DOWNLOAD_DIR="$BUILD_DIR/downloads"
+mkdir -p "$BUILD_DIR" "$MOUNT_DIR" "$DOWNLOAD_DIR"
 cd "$BUILD_DIR"
 
 LATEST_URL_BASE="https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
@@ -34,12 +35,12 @@ TARGET_URL=$(curl -sLI -o /dev/null -w '%{url_effective}' "$LATEST_URL_BASE")
 IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "${IMAGE_NAME%.xz}" ]; then
-    if [ ! -f "$IMAGE_NAME" ]; then
+    if [ ! -f "$DOWNLOAD_DIR/$IMAGE_NAME" ]; then
         echo -e "\e[34m[INFO] Downloading base image...\e[0m"
-        wget -q -c "$TARGET_URL"
+        wget -q -c -P "$DOWNLOAD_DIR" "$TARGET_URL"
     fi
     echo -e "\e[34m[INFO] Decompressing base image...\e[0m"
-    xz -d -c "$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
+    xz -d -c "$DOWNLOAD_DIR/$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
 fi
 cp "${IMAGE_NAME%.xz}" "$FINAL_IMAGE"
 
