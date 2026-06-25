@@ -304,6 +304,7 @@ step_installing_app() {
   cd "$HOME/mirrordash"
 
   echo 'Creating golden backup virtual environment base_venv...'
+  rm -rf "$HOME/mirrordash/base_venv"
   uv venv --allow-existing --python 3.14 "$HOME/mirrordash/base_venv"
 
   echo 'Installing MirrorDash from PyPI into golden venv...'
@@ -539,11 +540,20 @@ mkdir -p /storage/mirrordash
 # Only hydrate if venv_a is missing
 if [ ! -d "/storage/mirrordash/venv_a" ]; then
     echo "Hydrating /storage with golden base_venv..."
+    rm -rf /storage/mirrordash/venv_a.tmp
     cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
     mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
-    ln -sfT venv_a /storage/mirrordash/venv
-    chown -R pi:pi /storage/mirrordash
+    chown -R pi:pi /storage/mirrordash/venv_a
 fi
+
+# Clean up active venv if it is a real directory instead of a symlink
+if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
+    rm -rf /storage/mirrordash/venv
+fi
+
+# Always ensure the active venv symlink is correct (extremely fast, no filesystem traversal)
+ln -sfT venv_a /storage/mirrordash/venv
+chown pi:pi /storage/mirrordash /storage/mirrordash/venv
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh
 
@@ -582,7 +592,9 @@ step_system_cleanup() {
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
-    sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
+    if ! grep -q "do_resize() { return 0; }" /usr/lib/raspberrypi-sys-mods/firstboot; then
+      sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
+    fi
   fi
 
   echo "Cleaning up build policies and caches..."
