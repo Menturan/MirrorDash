@@ -165,9 +165,7 @@ step_installing_packages() {
   ln -sf /bin/true /usr/sbin/update-initramfs
 
   apt-get update
-  apt-get install -y --no-install-recommends \
       labwc \
-      seatd \
       dbus-user-session \
       fonts-liberation \
       cog \
@@ -251,6 +249,8 @@ step_setting_up_wayland() {
   cat << 'EOF' > "$PI_HOME/.bash_profile"
 if test -z "${XDG_RUNTIME_DIR}"; then
   export XDG_RUNTIME_DIR=/run/user/$(id -u)
+  mkdir -p "${XDG_RUNTIME_DIR}"
+  chmod 0700 "${XDG_RUNTIME_DIR}"
 fi
 if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]]; then
   export WLR_LIBINPUT_NO_DEVICES=1
@@ -276,16 +276,6 @@ done &
 EOF
   chmod +x "$PI_HOME/.config/labwc/autostart"
   chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
-  
-  # Allow any user in the 'video' group to access seatd (since 'pi' gets 'video' natively on firstboot)
-  mkdir -p /etc/systemd/system/seatd.service.d
-  cat << 'EOF' > /etc/systemd/system/seatd.service.d/group.conf
-[Service]
-ExecStart=
-ExecStart=/usr/bin/seatd -g video
-EOF
-  
-  systemctl enable seatd
 }
 
 step_installing_app() {
@@ -439,6 +429,14 @@ raspi-config nonint do_wifi_country US 2>/dev/null || true
 rfkill unblock wifi 2>/dev/null || true
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
+# Wait for NetworkManager to claim wlan0
+for j in {1..10}; do
+    if nmcli dev status | grep -q "wlan0"; then
+        nmcli dev set wlan0 managed yes 2>/dev/null || true
+        break
+    fi
+    sleep 1
+done
 for i in {1..30}; do
     if ip route show | grep -q "^default"; then
         logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
