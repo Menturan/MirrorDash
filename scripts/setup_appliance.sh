@@ -28,18 +28,6 @@ EOF
 chmod +x /usr/sbin/policy-rc.d
 
 # Ensure target disk has enough space (at least 8GB to fit bootfs + rootfs + storage)
-ROOT_PART=$(findmnt -n -o SOURCE /)
-# Try to get the parent disk using lsblk, with a robust sed fallback
-PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-if [ -n "$PARENT_NAME" ]; then
-  ROOT_DISK="/dev/$PARENT_NAME"
-else
-  if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-    ROOT_DISK="${ROOT_PART%p[0-9]*}"
-  else
-    ROOT_DISK="${ROOT_PART%[0-9]*}"
-  fi
-fi
 # Bypass the physical disk size check if we are building the image in the cloud
 if [ -z "${BUILDING_IMAGE:-}" ]; then
   ROOT_PART=$(findmnt -n -o SOURCE /)
@@ -148,10 +136,13 @@ EOF
   fi
 
   echo "Configuring systemd-tmpfiles to ensure persistent directories exist..."
+  # NOTE: /storage/mirrordash/venv is intentionally NOT listed here.
+  # It must be a symlink (created by mirrordash-hydrate.sh), not a directory.
+  # A tmpfiles 'd' entry would create a real directory that ln -sfT cannot replace,
+  # causing a cascading first-boot failure (hydration → storage-init → mirrordash).
   cat << 'EOF' > /etc/tmpfiles.d/mirrordash-storage.conf
 d /storage/mirrordash/data 0755 pi pi - -
 d /storage/mirrordash/system-connections 0700 root root - -
-d /storage/mirrordash/venv 0755 pi pi - -
 EOF
 
   # Länka NetworkManager till den nya partitionen (Wi-Fi överlever OverlayFS)
@@ -278,7 +269,6 @@ EOF
 [Unit]
 Description=Cog WebKit Kiosk
 After=labwc-kiosk.service
-Requires=labwc-kiosk.service
 BindsTo=labwc-kiosk.service
 
 [Service]
