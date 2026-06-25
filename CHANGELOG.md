@@ -8,10 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Core App
 
-- Update build_image.sh (fd191f9)
-- Update build_image.sh (669758d)
-- Update build_image.sh (188e583)
-- Update build_image.sh (edecc07)
 - Match correct final image artifact in github workflow release step (aa9604d)
 - Append Wayland, NetworkManager, and kiosk systemd architectural rules (2b3cb06)
 - Revert "docs(agents): append Wayland, NetworkManager, and kiosk systemd architectural rules"
@@ -23,11 +19,16 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Condense CHANGELOG.md Unreleased System OS section (b84776b)
 - Bump version to 0.3.1 (ba5d2f7)
 - Implement git-cliff configuration and update commit guidelines (263f337)
+- Regenerate CHANGELOG.md using git-cliff (8641cdd)
 
 ### System OS (Appliance)
 
+- Update build_image.sh (fd191f9)
+- Update build_image.sh (669758d)
 - Update setup_appliance.sh (c85b9f6)
+- Update build_image.sh (188e583)
 - Update setup_appliance.sh (1d43f64)
+- Update build_image.sh (edecc07)
 - Update setup_appliance.sh (9d8d94e)
 - Update setup_appliance.sh (f6ed5a5)
 - Implement DevOps standard setup for Golden Image (e9e8cf5)
@@ -71,22 +72,25 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Emphasize /design live explorer in main README (7584e14)
 - Align design explorer and tokens with Ethereal specs (c1796e1)
 - Add zero-css layout utilities and documentation (1b3a382)
-- Update build_image.sh (685f952)
 - Update build-os-image.yml (b7b795a)
-- Update build_image.sh (679c482)
 
 ### System OS (Appliance)
 
 - Ensure initramfs is deployed to FAT32 boot partition (099f33d)
+- Update build_image.sh (685f952)
 - Update setup_appliance.sh (659be3e)
 - Update finalize_appliance.sh (7f0faa3)
+- Update build_image.sh (679c482)
 ## [0.3.0-os1] - 2026-06-22
 
 ### Core App
 
-- Enforce latest core app version tracking in release_os.py (9467187)
 - Clarify interactive release wizards and version tracking requirements (9f8282d)
 - Organize CHANGELOG for 0.3.0-os1 OS image release (824c1d4)
+
+### System OS (Appliance)
+
+- Enforce latest core app version tracking in release_os.py (9467187)
 ## [0.3.0] - 2026-06-22
 
 ### Core App
@@ -164,7 +168,6 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Document release distinction and deployment procedures in RELEASING.md (c20ac54)
 - Add rule 31 to AGENTS.md and generate Table of Contents headers (41c6b40)
 - Clarify two deployment types in RELEASING.md and fix references (c128acc)
-- Added optimizations for build_image.sh (9cc9131)
 - Bump CI Python runtime to 3.14 (b33d8e6)
 - Update CHANGELOG for captive portal and WiFi persistence fixes (487ec7a)
 - Note WiFi credential exclusion on backup page (421751b)
@@ -182,6 +185,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Add execution time tracking to all steps in setup_appliance.sh (2f3a036)
 - Add overall execution time trackers to build and setup scripts (ade05dd)
 - Strip system locales and purge unused packages in setup_appliance.sh (8198541)
+- Added optimizations for build_image.sh (9cc9131)
 - Make captive portal fully offline-capable and persist WiFi credentials (0025f3f)
 ## [0.2.2] - 2026-06-12
 

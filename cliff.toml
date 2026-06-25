@@ -43,6 +43,11 @@ commit_parsers = [
     { message = ".*scripts.*", group = "System OS (Appliance)" },
     { message = ".*appliance.*", group = "System OS (Appliance)" },
     { message = ".*golden-image.*", group = "System OS (Appliance)" },
+    { message = ".*build_image.*", group = "System OS (Appliance)" },
+    { message = ".*setup_appliance.*", group = "System OS (Appliance)" },
+    { message = ".*finalize_appliance.*", group = "System OS (Appliance)" },
+    { message = ".*launch\\.sh.*", group = "System OS (Appliance)" },
+    { message = ".*release_os.*", group = "System OS (Appliance)" },
 
     # --- Core App Scopes ---
     { scope = "api", group = "Core App" },
