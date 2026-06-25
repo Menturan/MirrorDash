@@ -218,47 +218,41 @@ EOF
 }
 
 step_configuring_console_login() {
-  echo "Manually configuring tty1 autologin for user 'pi'..."
-  # 1. Tvinga systemet att boota i konsolläge (Motsvarar: systemctl set-default multi-user.target)
-    ln -fs /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
-
-    # 2. Aktivera getty-tjänsten på tty1 (Motsvarar: systemctl enable getty@tty1.service)
-    mkdir -p /etc/systemd/system/getty.target.wants
-    ln -fs /lib/systemd/system/getty@.service /etc/systemd/system/getty.target.wants/getty@tty1.service
-
-    # Skapa systemd-mappen för inloggningen
-    mkdir -p /etc/systemd/system/getty@tty1.service.d
-
-  cat << 'EOF' > /etc/systemd/system/getty@tty1.service.d/autologin.conf
-[Service]
-ExecStart=
-ExecStart=-/sbin/agetty --autologin pi --noclear --noissue %I $TERM
-EOF
-
-  # Skapa hushlogin-filen för att dölja "Welcome to Debian"-texten
-  touch "$PI_HOME/.hushlogin"
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.hushlogin"
+  echo "Setting system to graphical target..."
+  ln -fs /lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
   echo "Provisioning headless user for Debian Trixie first-boot..."
   # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
   echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
-
 }
 
 step_setting_up_wayland() {
-  cat << 'EOF' > "$PI_HOME/.bash_profile"
-if test -z "${XDG_RUNTIME_DIR}"; then
-  export XDG_RUNTIME_DIR=/run/user/$(id -u)
-  mkdir -p "${XDG_RUNTIME_DIR}"
-  chmod 0700 "${XDG_RUNTIME_DIR}"
-fi
-if [[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]]; then
-  export WLR_LIBINPUT_NO_DEVICES=1
-  printf "\033c"
-  exec labwc
-fi
+  echo "Configuring labwc kiosk systemd service..."
+  cat << 'EOF' > /etc/systemd/system/labwc-kiosk.service
+[Unit]
+Description=Labwc Kiosk Wayland Compositor
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service
+
+[Service]
+User=pi
+PAMName=login
+WorkingDirectory=~
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardOutput=journal
+StandardError=journal
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+ExecStart=/usr/bin/labwc
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
 EOF
-  chown "$PI_USER:$PI_USER" "$PI_HOME/.bash_profile"
+  systemctl enable labwc-kiosk.service
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
   mkdir -p "$PI_HOME/.config/labwc"
@@ -437,13 +431,11 @@ for j in {1..10}; do
     fi
     sleep 1
 done
-for i in {1..30}; do
-    if ip route show | grep -q "^default"; then
-        logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
-        exit 0
-    fi
-    sleep 1
-done
+
+if nm-online -q -t 30; then
+    logger -t mirrordash-wifi "Network online. Exiting captive portal check."
+    exit 0
+fi
 
 logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
 
