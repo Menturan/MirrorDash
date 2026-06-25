@@ -134,51 +134,67 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 > ```
 > After the script finishes, you can reboot the Pi to verify the system, then skip directly to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)**.
 
-### 1.4 First Boot: Expand Root & Create Persistent Partition
+### 1.4 Declarative Partition Expansion & Storage Layout Setup
 
-Because the automatic partition expansion script was disabled in Section 1.3, your root partition starts at only 3.5GB in size. To expand it to `6GB` and prepare the persistent storage layout directories dynamically on any boot drive (SD card, USB SSD, or NVMe), run the unified command chain:
+Instead of resizing partitions manually, MirrorDash utilizes **systemd-repart** to grow the root filesystem and partition 3 dynamically at boot, and **systemd-tmpfiles** to ensure directory structures exist.
+
+1. **Patch OS firstboot to skip manual resize**:
+   Prevent the Raspberry Pi OS `firstboot` script from resizing the root partition to 100% (allowing space for the data partition):
+   ```bash
+   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
+     sudo sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
+   fi
+   ```
+
+2. **Configure systemd-repart**:
+   Create a declarative configuration under `/etc/repart.d/50-data.conf` to define partition 3 (`mirrordash-data`) occupying all remaining disk space:
+   ```bash
+   sudo mkdir -p /etc/repart.d
+   sudo tee /etc/repart.d/50-data.conf << 'EOF'
+   [Partition]
+   Type=linux-generic
+   Label=mirrordash-data
+   Format=ext4
+   Weight=100
+   EOF
+   ```
+
+3. **Configure systemd-tmpfiles**:
+   Write directory instantiation rules to `/etc/tmpfiles.d/mirrordash-storage.conf` to guarantee the persistent data directory exists inside `/storage` on boot:
+   ```bash
+   sudo tee /etc/tmpfiles.d/mirrordash-storage.conf << 'EOF'
+   d /storage/mirrordash/data 0755 pi pi - -
+   d /storage/mirrordash/system-connections 0700 root root - -
+   EOF
+   ```
+
+4. **Symlink NetworkManager System Connections**:
+   Redirect the NetworkManager connection directory to the persistent partition so that Wi-Fi connection configurations survive OverlayFS:
+   ```bash
+   sudo rm -rf /etc/NetworkManager/system-connections
+   sudo ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
+   ```
+
+### 1.5 Update `/etc/fstab` & Initialize Mounts
+
+Update `/etc/fstab` to mount the declarative `mirrordash-data` partition automatically on boot. The partition will automatically grow on first boot via `x-systemd.growfs`.
 
 ```bash
-# 1. Identify the system block device and partitions dynamically
-ROOT_PART=$(findmnt -n -o SOURCE /)
-ROOT_DISK=$(echo "$ROOT_PART" | sed 's/p[0-9]\+$//; s/[0-9]\+$//')
-if [[ "$ROOT_DISK" =~ [0-9]$ ]]; then PART_SUFFIX="p"; else PART_SUFFIX=""; fi
-DATA_PART="${ROOT_DISK}${PART_SUFFIX}3"
-ROOT_PART_NAME="${ROOT_DISK}${PART_SUFFIX}2"
-
-# 2. Expand root to 6GB, create partition 3, format it, and initialize directories
-printf "Yes\nIgnore\n" | sudo parted "$ROOT_DISK" ---pretend-input-tty resizepart 2 6GB && \
-sudo resize2fs "$ROOT_PART_NAME" && \
-printf "Ignore\n" | sudo parted "$ROOT_DISK" ---pretend-input-tty mkpart primary ext4 6GB 100% && \
-sudo mkfs.ext4 -F -L mirrordash-data "$DATA_PART" && \
-sudo mkdir -p /storage && \
-sudo mount "$DATA_PART" /storage && \
-sudo mkdir -p /storage/mirrordash/data /storage/mirrordash/venv_a /storage/mirrordash/venv_b && \
-sudo chown -R pi:pi /storage && \
-mkdir -p /home/pi/.mirrordash/cache /home/pi/.mirrordash/data
-```
-
-### 1.5 Update `/etc/fstab` & Mount
-
-Append the storage layout mounts to `/etc/fstab` and mount all filesystems in one step:
-
-```bash
-# Append MirrorDash storage layout mounts to /etc/fstab
+# Create mount point and register persistent partition in /etc/fstab
+sudo mkdir -p /storage
 sudo tee -a /etc/fstab << 'EOF'
 
-# --- MirrorDash Storage ---
-# Persistent data partition (survives OverlayFS)
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,commit=60,nofail,x-systemd.device-timeout=5  0  2
-
-# Bind-mount persistent data into the application's expected path
-/storage/mirrordash/data  /home/pi/.mirrordash/data  none  bind,nofail,x-systemd.device-timeout=5  0  0
-
-# Volatile module cache in RAM (100 MB)
-tmpfs  /home/pi/.mirrordash/cache  tmpfs  defaults,noatime,nosuid,size=100M  0  0
+# --- MirrorDash Persistent Storage ---
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
 EOF
+```
 
-# Mount and check partition details
-sudo mount -a && df -h | grep -E "storage|mirrordash"
+If you are running the setup on a live Pi, you can trigger partition generation and mount the directory immediately:
+```bash
+# Run systemd-repart to create the partition and mount /storage
+sudo systemd-repart --dry-run=no
+sudo systemctl daemon-reload
+sudo mount /storage
 ```
 
 ---
@@ -282,105 +298,97 @@ sudo nginx -t && sudo systemctl enable nginx && sudo systemctl restart nginx
 > [!NOTE]
 > The `/ws` location block is critical — WebSocket connections require `Upgrade` and `Connection` headers to be forwarded. Without this block, the real-time module updates on the mirror display will fail. The `proxy_read_timeout 86400` prevents nginx from closing idle WebSocket connections after 60 seconds.
 
-### 2.4 Console Auto-Login & Kiosk Autostart Setup
+### 2.4 Console Auto-Login & Kiosk Autostart Setup (Wayland & Cog Kiosk Services)
 
-Configure `getty` for passwordless console autologin, prepare the `.bash_profile` Wayland hook, globally disable the mouse cursor in standard system themes, and create the labwc compositor auto-start layout file:
+Configure the system to boot to the graphical target, set up user credentials for headless boot, and define the systemd kiosk services to launch the **labwc** Wayland compositor and the **Cog** WebKit kiosk browser automatically:
 
 ```bash
-# 1. Enable console auto-login B2
-sudo raspi-config nonint do_boot_behaviour B2
+# 1. Set the default system target to graphical
+sudo ln -fs /lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
-# 2. Silence tty1 console getty auto-login prompt and banner messages
-if [ -f /etc/systemd/system/getty@tty1.service.d/autologin.conf ]; then
-  sudo sed -i 's/--autologin/--noissue --skip-login --autologin/g' /etc/systemd/system/getty@tty1.service.d/autologin.conf
-fi
+# 2. Provision headless user credentials for Debian Trixie first-boot
+# (Creates 'pi' user with default password 'raspberry')
+echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" | sudo tee /boot/firmware/userconf.txt > /dev/null
 
-# 3. Silence shell login banners (MOTD and Last login text)
+# 3. Silence MOTD and Last login text on user login
 touch /home/pi/.hushlogin
 
-# 4. Append auto-launch hook for Wayland on tty1 login
-if ! grep -q "exec labwc" /home/pi/.bash_profile 2>/dev/null; then
-  echo '[[ -z $WAYLAND_DISPLAY && $XDG_VTNR -eq 1 ]] && exec labwc' >> /home/pi/.bash_profile
-fi
-
-# 5. Create a local transparent cursor theme for the kiosk user to hide the mouse cursor
-mkdir -p /home/pi/.local/share/icons/invisible/cursors
-
-# Create index.theme so applications recognize it as a valid theme
-cat << 'EOF' > /home/pi/.local/share/icons/invisible/index.theme
-[Icon Theme]
-Name=invisible
-Comment=Invisible cursor theme
+# 4. Configure labwc window manager preferences to disable right-click menus
+mkdir -p /home/pi/.config/labwc
+cat << 'EOF' > /home/pi/.config/labwc/rc.xml
+<?xml version="1.0"?>
+<labwc_config>
+  <mouse>
+    <context name="Root">
+      <mousebind button="Right" action="Press">
+        <action name="None" />
+      </mousebind>
+    </context>
+  </mouse>
+</labwc_config>
 EOF
 
-# Write a valid, 32x32 transparent XCursor file
-python3 -c "import struct; data = struct.pack('<4sIII', b'Xcur', 16, 0x00010000, 1) + struct.pack('<III', 0xfffd0002, 32, 28) + struct.pack('<IIIIIIIII', 36, 0xfffd0002, 32, 1, 32, 32, 0, 0, 0) + b'\x00'*(32*32*4); open('/home/pi/.local/share/icons/invisible/cursors/default', 'wb').write(data)"
-ln -sf default /home/pi/.local/share/icons/invisible/cursors/left_ptr
-ln -sf default /home/pi/.local/share/icons/invisible/cursors/pointer
-chown -R pi:pi /home/pi/.local
-
-# 6. Configure labwc to use the invisible cursor theme
-mkdir -p /home/pi/.config/labwc
-echo "XCURSOR_THEME=invisible" > /home/pi/.config/labwc/environment
-
-# 7. Create labwc configuration folder and autostart kiosk rules
+# 5. Hide mouse cursor natively via labwc autostart
 cat << 'EOF' > /home/pi/.config/labwc/autostart
-# Kiosk Browser Crash Supervisor Loop
-CRASH_COUNTER=0
-MAX_CRASHES=5
-THRESHOLD_SECS=10
-
-while true; do
-  START_TIME=$(date +%s)
-  
-  # Launch Cog (WebKit) in native Wayland kiosk mode
-  cog file:///home/pi/mirrordash/loading.html
-      
-  EXIT_CODE=$?
-  END_TIME=$(date +%s)
-  DURATION=$((END_TIME - START_TIME))
-  
-  if [ "$DURATION" -lt "$THRESHOLD_SECS" ]; then
-    CRASH_COUNTER=$((CRASH_COUNTER + 1))
-    echo "Cog crashed in $DURATION seconds. (Crash: $CRASH_COUNTER/$MAX_CRASHES)" >&2
-  else
-    CRASH_COUNTER=0
-  fi
-  
-  if [ "$CRASH_COUNTER" -ge "$MAX_CRASHES" ]; then
-    echo "Browser crash loop detected! Launching diagnostic fallback..." >&2
-    
-    cat << 'ERR_EOF' > /tmp/kiosk_error.html
-<!DOCTYPE html>
-<html>
-<head>
-    <style>
-        body { background: #000; color: #fff; font-family: sans-serif; text-align: center; padding-top: 20%; }
-        h1 { color: #ff3333; font-size: 2.5rem; }
-        p { color: #999; font-size: 1.2rem; }
-    </style>
-</head>
-<body>
-    <h1>Kiosk Display Error</h1>
-    <p>The interface renderer crashed repeatedly. Please restart the device or contact support.</p>
-</body>
-</html>
-ERR_EOF
-    
-    cog file:///tmp/kiosk_error.html
-    while true; do sleep 3600; done
-  fi
-  
-  SLEEP_TIME=$((CRASH_COUNTER * 2))
-  [ "$SLEEP_TIME" -eq 0 ] && SLEEP_TIME=1
-  sleep "$SLEEP_TIME"
-done &
+labwc-msg HideCursor 2>/dev/null || true
 EOF
 chmod +x /home/pi/.config/labwc/autostart
+chown -R pi:pi /home/pi/.config
+
+# 6. Create the systemd service for Labwc Wayland Kiosk
+sudo tee /etc/systemd/system/labwc-kiosk.service << 'EOF'
+[Unit]
+Description=Labwc Kiosk Wayland Compositor
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service
+Wants=cog-kiosk.service
+
+[Service]
+User=pi
+PAMName=login
+WorkingDirectory=~
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardOutput=journal
+StandardError=journal
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
+ExecStart=/usr/bin/labwc
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+# 7. Create the systemd service for Cog Kiosk Browser
+sudo tee /etc/systemd/system/cog-kiosk.service << 'EOF'
+[Unit]
+Description=Cog WebKit Kiosk
+After=labwc-kiosk.service
+BindsTo=labwc-kiosk.service
+
+[Service]
+User=pi
+Environment="WAYLAND_DISPLAY=wayland-0"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="COG_PLATFORM_WL_VIEW_FULLSCREEN=1"
+ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+# 8. Enable the systemd kiosk services
+sudo systemctl enable labwc-kiosk.service cog-kiosk.service
 ```
 
 > [!NOTE]
-> Cog is a lightweight WebKit-based browser designed specifically for embedded kiosk environments. It has a significantly lower memory footprint compared to Chromium and does not suffer from "page restore" prompts or session state crashes after hard power loss, ensuring clean boot recovery natively.
+> Cog is a lightweight WebKit-based browser designed specifically for embedded kiosk environments. Running both `labwc` and `cog` as systemd services is the canonical DevOps approach. It eliminates fragile terminal startup hooks, captures all crash logs in `journalctl`, and handles automatic service recovery.
 
 ### 2.5 Volatile Logging Strategy
 
@@ -398,39 +406,94 @@ sudo raspi-config   # Advanced Options → Logging → Persistent
 
 ### 3.1 Install uv & Deploy Application
 
-Initialize the deployment working directory, install `uv` (modern Python package manager), configure the persistent A/B virtual environment layout, and deploy the application:
+Initialize the deployment working directory, install `uv` (modern Python package manager), configure the persistent A/B virtual environment layout, and deploy the application.
+
+In production, the active virtual environment resides on the persistent `/storage` partition. During installation, we install the **Golden Copy** (`base_venv`) directly onto the read-only root partition. On the first boot, a storage hydration daemon automatically initializes the active writeable virtual environment (`venv_a`) by copying `base_venv`.
 
 ```bash
-# 1. Install uv
-curl -LsSf https://astral.sh/uv/install.sh | sh && \
-export PATH="$HOME/.local/bin:$PATH"
+# 1. Download and install uv binary globally
+sudo curl -sSLf https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+sudo chmod +x /usr/local/bin/uv
 
-# 2. Create app directory
-mkdir -p /home/pi/mirrordash && cd /home/pi/mirrordash
+# 2. Create the application directory
+mkdir -p /home/pi/mirrordash
 
 # 3. Setup symlinks to the persistent partition
-ln -sfT venv_a /storage/mirrordash/venv && \
+# Note: ~/.mirrordash is a symlink pointing to /storage/mirrordash/data
 ln -sfT /storage/mirrordash/venv /home/pi/mirrordash/.venv
+ln -sfT /storage/mirrordash/data /home/pi/.mirrordash
 
-# 4. Create base_venv (Golden Copy) and active venv_a
-uv venv --allow-existing --python 3.14 /storage/mirrordash/venv_a && \
-uv venv --allow-existing --python 3.14 /home/pi/mirrordash/base_venv
+# 4. Create base_venv (Golden Copy) on the root filesystem
+cd /home/pi/mirrordash
+rm -rf base_venv
+uv venv --allow-existing --python 3.14 base_venv
 
-# 5. Install mirrordash from PyPI into both virtual environments
-# Note: uv is a standalone binary at ~/.local/bin/uv — it is NOT inside the venv.
-uv pip install --python .venv mirrordash && \
-uv pip install --python /home/pi/mirrordash/base_venv mirrordash
+# 5. Install mirrordash from PyPI into the Golden Copy
+uv pip install --python base_venv mirrordash
 
-# 6. Download the auxiliary scripts and HTML assets directly from GitHub
-curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh \
-    -o /home/pi/mirrordash/launch.sh && \
-chmod +x /home/pi/mirrordash/launch.sh && \
-curl -sSL https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/loading.html \
-    -o /home/pi/mirrordash/loading.html
+# 6. Download the launcher script and loading HTML page
+curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh
+curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/loading.html -o /home/pi/mirrordash/loading.html
+chmod +x /home/pi/mirrordash/launch.sh
 
-# 7. Ensure correct file ownership
+# 7. Ensure correct file ownership for kiosk user
 sudo chown -R pi:pi /home/pi/mirrordash
 ```
+
+### 3.1b First-Boot Storage Hydration Setup
+
+To ensure the persistent storage partition is properly initialized with a functional virtual environment on the first boot, configure the storage hydration service:
+
+1. **Write hydration script**:
+   Create `/usr/local/bin/mirrordash-hydrate.sh` to copy `base_venv` to the persistent `/storage/mirrordash/venv_a` directory on boot if it is missing:
+   ```bash
+   sudo tee /usr/local/bin/mirrordash-hydrate.sh << 'EOF'
+   #!/bin/bash
+   set -euo pipefail
+
+   # Ensure parent directory exists — cannot rely on systemd-tmpfiles ordering
+   mkdir -p /storage/mirrordash
+
+   # Only hydrate if venv_a is missing
+   if [ ! -d "/storage/mirrordash/venv_a" ]; then
+       echo "Hydrating /storage with golden base_venv..."
+       rm -rf /storage/mirrordash/venv_a.tmp
+       cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
+       mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
+       chown -R pi:pi /storage/mirrordash/venv_a
+   fi
+
+   # Clean up active venv if it is a real directory instead of a symlink
+   if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
+       rm -rf /storage/mirrordash/venv
+   fi
+
+   # Always ensure the active venv symlink is correct (extremely fast, no filesystem traversal)
+   ln -sfT venv_a /storage/mirrordash/venv
+   chown pi:pi /storage/mirrordash /storage/mirrordash/venv
+   EOF
+   sudo chmod +x /usr/local/bin/mirrordash-hydrate.sh
+   ```
+
+2. **Configure systemd storage hydration service**:
+   Define and enable `/etc/systemd/system/mirrordash-storage-init.service`:
+   ```bash
+   sudo tee /etc/systemd/system/mirrordash-storage-init.service << 'EOF'
+   [Unit]
+   Description=Hydrate MirrorDash Storage Partition
+   After=local-fs.target
+   Requires=local-fs.target
+
+   [Service]
+   Type=oneshot
+   ExecStart=/usr/local/bin/mirrordash-hydrate.sh
+   RemainAfterExit=yes
+
+   [Install]
+   WantedBy=multi-user.target
+   EOF
+   sudo systemctl enable mirrordash-storage-init.service
+   ```
 
 ### 3.2 Passwordless Sudo for Application Commands
 
@@ -469,13 +532,12 @@ Configure the watchdog daemon, optimize the boot files for fast silent booting, 
 sudo sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf && \
 sudo systemctl daemon-reexec
 
-# 2. Append visual boot suppression and GPU allocations to config.txt
+# 2. Append visual boot suppression and Bluetooth disabling to config.txt
 sudo tee -a /boot/firmware/config.txt << 'EOF'
 
 # --- MirrorDash Hardware Hardening ---
 disable_splash=1
 boot_delay=0
-gpu_mem=128
 dtoverlay=disable-bt
 EOF
 
@@ -483,24 +545,44 @@ EOF
 sudo sed -i 's/console=tty1/console=tty3/g' /boot/firmware/cmdline.txt
 for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles" "logo.nologo"; do
   if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
-    sudo sed -i "s/$/ $opt/" /boot/firmware/cmdline.txt
+    sudo sed -i "1s/$/ $opt/" /boot/firmware/cmdline.txt
   fi
 done
 
-# 4. Download MirrorDash Plymouth splash assets, disable theme status messages, patch for separate shutdown splash, rebuild initramfs, and enable NTP sync guard
-# On Trixie, --rebuild-initrd is required for splash changes to take effect on boot.
-sudo mkdir -p /usr/share/plymouth/themes/pix && \
-curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png \
-    | sudo tee /usr/share/plymouth/themes/pix/splash.png > /dev/null && \
-curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/shutdown.png \
-    | sudo tee /usr/share/plymouth/themes/pix/shutdown.png > /dev/null && \
-( [ ! -f /usr/share/plymouth/themes/pix/pix.script ] || ( \
-  sudo sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/pix/pix.script && \
-  sudo sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/pix/pix.script && \
-  sudo sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/pix/pix.script \
-) ) && \
-sudo plymouth-set-default-theme --rebuild-initrd pix && \
+# 4. Create custom 'mirrordash' Plymouth theme, patch for separate shutdown splash, and set theme
+sudo mkdir -p /usr/share/plymouth/themes/mirrordash
+sudo cp -r /usr/share/plymouth/themes/pix/* /usr/share/plymouth/themes/mirrordash/ || true
+
+if [ -f /usr/share/plymouth/themes/mirrordash/pix.plymouth ]; then
+  sudo mv /usr/share/plymouth/themes/mirrordash/pix.plymouth /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+  sudo sed -i 's/Name=Raspberry Pi/Name=MirrorDash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+  sudo sed -i 's/\/usr\/share\/plymouth\/themes\/pix/\/usr\/share\/plymouth\/themes\/mirrordash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+  sudo sed -i 's/pix\.script/mirrordash.script/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
+  sudo mv /usr/share/plymouth/themes/mirrordash/pix.script /usr/share/plymouth/themes/mirrordash/mirrordash.script
+fi
+
+# Apply clean script modifications to comments and separate shutdown splash image
+if [ -f /usr/share/plymouth/themes/mirrordash/mirrordash.script ]; then
+  sudo sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+  sudo sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+  
+  if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/mirrordash/mirrordash.script; then
+    sudo sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+  fi
+fi
+
+# Download/write custom splash and shutdown splash assets
+sudo curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png -o /usr/share/plymouth/themes/mirrordash/splash.png
+sudo curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/shutdown.png -o /usr/share/plymouth/themes/mirrordash/shutdown.png
+
+# Register the new default theme
+sudo plymouth-set-default-theme mirrordash
+
+# 5. Enable timezone NTP sync wait service
 sudo systemctl enable systemd-time-wait-sync.service
+
+# 6. Rebuild initramfs to apply changes
+sudo update-initramfs -u
 ```
 
 > [!TIP]
@@ -528,30 +610,40 @@ sudo tee /usr/local/bin/mirrordash-wifi-check.sh << 'EOF'
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 PASSWORD="mirrordash"
+CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
-for i in {1..30}; do
-    # Check if the system has any default gateway (Ethernet or configured Wi-Fi)
-    if ip route show | grep -q "^default"; then
-        logger -t mirrordash-wifi "Network online (default gateway detected). Exiting."
-        exit 0
-    fi
-    sleep 1
-done
+# Wait for NetworkManager to claim wlan0
+nmcli device wait wlan0 timeout 10 2>/dev/null || true
+nmcli dev set wlan0 managed yes 2>/dev/null || true
 
-logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Switching to setup hotspot..."
+if nm-online -q -t 30; then
+    logger -t mirrordash-wifi "Network online. Exiting captive portal check."
+    exit 0
+fi
+
+logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
+
+# Force a physical radio hardware scan to populate the cache
+nmcli dev wifi rescan 2>/dev/null || true
+
+# Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
+SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
+echo "$SCAN_RESULT" > "$CACHE_FILE"
+chmod 644 "$CACHE_FILE"
+logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
+
 # Purge any existing MirrorDash-Setup profiles
-sudo nmcli connection delete "$SSID" 2>/dev/null || true
+nmcli connection delete "$SSID" 2>/dev/null || true
 
-# Add and configure a custom hotspot profile with PMF disabled to avoid Broadcom firmware bugs
-sudo nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
-sudo nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
-sudo nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
-sudo nmcli connection modify "$SSID" wifi-sec.pmf 1
-sudo nmcli connection modify "$SSID" ipv4.method shared
+# Add and configure the AP hotspot
+nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode AP
+nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
+nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
+nmcli connection modify "$SSID" wifi-sec.pmf 1
+nmcli connection modify "$SSID" ipv4.method shared
 
-# Attempt to bring the connection up
-if sudo nmcli connection up "$SSID"; then
+if nmcli connection up "$SSID"; then
     logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
 else
     logger -t mirrordash-wifi "Failed to start hotspot."
@@ -567,10 +659,10 @@ After=NetworkManager.service
 Before=mirrordash.service
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
 RemainAfterExit=yes
-TimeoutStartSec=45
+TimeoutStartSec=90
 
 [Install]
 WantedBy=multi-user.target
@@ -589,8 +681,9 @@ Create the primary background service manager unit and enable it to run at syste
 sudo tee /etc/systemd/system/mirrordash.service << 'EOF'
 [Unit]
 Description=MirrorDash Core App Backend
-After=network.target
-RequiresMountsFor=/home/pi/.mirrordash/data
+After=network.target mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+RequiresMountsFor=/storage/mirrordash/data
 
 [Service]
 Type=simple
@@ -598,7 +691,7 @@ User=pi
 WorkingDirectory=/home/pi/mirrordash
 Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
-Environment="WAYLAND_DISPLAY=wayland-1"
+Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/home/pi/mirrordash/launch.sh
 Restart=always
@@ -615,7 +708,7 @@ sudo systemctl enable mirrordash.service
 ```
 
 > [!NOTE]
-> `RequiresMountsFor=` ensures the persistent data partition is mounted before the service starts. The `Environment=` directives expose the venv's `PATH` to subprocess calls (e.g., `uv pip install` during module installation).
+> `Requires=mirrordash-storage-init.service` and `After=mirrordash-storage-init.service` ensure the virtual environment is fully hydrated and symlinks are set up before starting the application. `RequiresMountsFor=` ensures the persistent data partition is mounted. `Environment="WAYLAND_DISPLAY=wayland-0"` matches the compositor service.
 
 ---
 
@@ -672,15 +765,16 @@ Verify that all critical services are functional and the persistent partition is
 mount | grep /storage
 ls -la /home/pi/.mirrordash/data/
 
+# Verify MirrorDash services are enabled
+sudo systemctl is-enabled mirrordash-storage-init.service
+sudo systemctl is-enabled labwc-kiosk.service cog-kiosk.service
+sudo systemctl is-enabled mirrordash.service
+sudo systemctl is-enabled mirrordash-wifi-fallback.service
+sudo systemctl is-enabled systemd-time-wait-sync.service
+
 # Verify MirrorDash starts correctly
 sudo systemctl start mirrordash.service
 curl -s http://localhost:8000/health
-
-# Verify WiFi fallback service is enabled
-sudo systemctl is-enabled mirrordash-wifi-fallback.service
-
-# Verify time-sync service is enabled
-sudo systemctl is-enabled systemd-time-wait-sync.service
 
 # Verify sudoers configuration (should not prompt for a password)
 sudo -n mount -o remount,rw /   # Should succeed without password prompt
@@ -689,7 +783,7 @@ sudo -n mount -o remount,ro /   # May fail with "mount point is busy" on a live 
 
 ### 7.3 Lock Root & Finalize (Manual)
 
-Perform a final system cleanup (prune package caches, clear temporary files, truncate logs, and strip command history), purge your development Wi-Fi connection profiles, disable the SSH service, set the default base system timezone to UTC, enable OverlayFS, and power down the Pi in one clean execution sequence:
+Perform a final system cleanup (prune package caches, clear temporary files, truncate logs, and strip command history), purge your development Wi-Fi connection profiles, disable the SSH service, set the default base system timezone to UTC, enable OverlayFS, and reboot the Pi in one clean execution sequence:
 
 ```bash
 # 1. Perform final system cleanup and package pruning
@@ -704,12 +798,13 @@ rm -f ~/.bash_history && history -c
 sudo systemctl disable ssh && \
 sudo timedatectl set-timezone UTC
 
-# 3. Clean up all wireless networks failsafely, enable OverlayFS, and power down
+# 3. Clean up all wireless networks failsafely, enable OverlayFS, and reboot
 # Note: These commands are chained with '&&' in a single sequence so they run to completion even after your Wi-Fi/SSH connection drops.
 for uuid in $(nmcli --fields UUID,TYPE connection show | awk '$2 ~ /wifi|802-11-wireless/ {print $1}'); do sudo nmcli connection delete "$uuid" 2>/dev/null || true; done && \
 sudo rm -rf /etc/NetworkManager/system-connections/* && \
 sudo raspi-config nonint enable_overlayfs && \
-sudo poweroff
+sync && \
+sudo reboot
 ```
 
 ---
@@ -746,11 +841,11 @@ This table documents which data survives a reboot under the OverlayFS-locked pro
 
 | Data | Location | Storage | Survives Reboot? |
 |------|----------|---------|-----------------|
-| Application config | `~/.mirrordash/data/config.json` | Persistent partition (bind mount) | ✅ Yes |
-| Module persistent data | `~/.mirrordash/data/<module>/` | Persistent partition (bind mount) | ✅ Yes |
-| Module cache | `~/.mirrordash/cache/<module>/` | tmpfs (RAM) | ❌ No |
+| Application config | `~/.mirrordash/data/config.json` | Persistent partition (via symlink) | ✅ Yes |
+| Module persistent data | `~/.mirrordash/data/<module>/` | Persistent partition (via symlink) | ✅ Yes |
+| Module cache | `~/.mirrordash/cache/<module>/` | Persistent partition (via symlink) | ✅ Yes |
 | System logs | `/run/log/journal/` | RAM (volatile journald) | ❌ No |
-| Installed packages | `/storage/mirrordash/venv` | Persistent partition via symlink | ✅ Yes |
+| Installed packages | `/storage/mirrordash/venv` | Persistent partition | ✅ Yes |
 | SSH toggle state | `/etc/systemd/system/` | Saved in `config.json` & re-applied at boot | ✅ Yes |
 | System password | `/etc/shadow` | Saved in `pi_password.hash` & re-applied at boot | ✅ Yes |
 | Timezone | `/etc/localtime` | Saved in `config.json` & re-applied at boot | ✅ Yes |
