@@ -533,6 +533,9 @@ step_storage_hydration() {
 #!/bin/bash
 set -euo pipefail
 
+# Ensure parent directory exists — cannot rely on systemd-tmpfiles ordering
+mkdir -p /storage/mirrordash
+
 # Only hydrate if venv_a is missing
 if [ ! -d "/storage/mirrordash/venv_a" ]; then
     echo "Hydrating /storage with golden base_venv..."
