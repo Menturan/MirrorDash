@@ -1,0 +1,62 @@
+# git-cliff configuration file
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Template formatting to match Keep a Changelog
+header = """
+# Changelog
+
+All notable changes to the MirrorDash project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})\
+{% endfor %}
+{% endfor %}
+"""
+trim = true
+
+[git]
+# parse conventional commits
+conventional_commits = true
+# filter out the commits that are not conventional
+filter_unconventional = false
+# split commits by line
+split_commits = false
+# commit parsers
+commit_parsers = [
+    # --- System OS (Appliance) Scopes ---
+    { scope = "scripts", group = "System OS (Appliance)" },
+    { scope = "os", group = "System OS (Appliance)" },
+    { scope = "golden-image", group = "System OS (Appliance)" },
+    { scope = "appliance", group = "System OS (Appliance)" },
+    { message = ".*scripts.*", group = "System OS (Appliance)" },
+    { message = ".*appliance.*", group = "System OS (Appliance)" },
+    { message = ".*golden-image.*", group = "System OS (Appliance)" },
+
+    # --- Core App Scopes ---
+    { scope = "api", group = "Core App" },
+    { scope = "core", group = "Core App" },
+    { scope = "ui", group = "Core App" },
+    { scope = "design", group = "Core App" },
+    { scope = "kiosk", group = "Core App" },
+    { scope = "frontend", group = "Core App" },
+    { scope = "auth", group = "Core App" },
+    { scope = "config", group = "Core App" },
+    
+    # --- Fallback default ---
+    { message = ".*", group = "Core App" }
+]
+# protect release tags (exclude formatting chore/docs tag commits from log)
+filter_commits = false
+tag_pattern = "v[0-9]*"

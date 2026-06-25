@@ -179,7 +179,10 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
     git commit --no-gpg-sign -m "feat: ..."
     ```
  
-17. **Follow conventional commits:** `feat:`, `fix:`, `refactor:`, `style:`, `docs:`, `chore:`.
+17. **Follow conventional commits with specific scopes for changelog generation:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
+    - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add updates panel`).
+    - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind-seatd race`).
+    - Defaults/Fallbacks: Commits without scopes default to `Core App` (unless keywords like "scripts" or "appliance" are present in the description).
 
 17a. **Do not commit downloaded developer tools.** When downloading binaries or helper tools during development (e.g., `shellcheck`), always download them to a temporary directory outside the git repository (e.g., `/tmp` or the agent's scratch space) to prevent them from being accidentally tracked or committed.
 

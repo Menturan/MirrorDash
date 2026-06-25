@@ -34,6 +34,15 @@ This document outlines the release, testing, and deployment workflows for Mirror
   - `minor` (e.g. `0.2.x` -> `0.3.0`) for new, backward-compatible features.
   - `major` (e.g. `0.x.x` -> `1.0.0`) for API-breaking changes.
 - **Do Not Manually Tag Locally**: Let the GitHub Release interface create the git tag. This ensures that the GitHub Release, git tag, and PyPI package version are always perfectly aligned.
+- **Changelog Automation & Commit Scopes**: We use `git-cliff` (configured in `cliff.toml`) to automatically group and generate the changelog. To ensure commits are correctly sorted, you must follow the Conventional Commits specification and specify one of the following scopes:
+  - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add new modules endpoint`).
+  - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind race condition`).
+  - Commits without conventional scopes will fallback to `Core App` (unless keywords like "scripts" or "appliance" are detected in the description).
+
+To run `git-cliff` manually to update or re-generate `CHANGELOG.md`:
+```bash
+git-cliff -o CHANGELOG.md
+```
 
 ---
 
