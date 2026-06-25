@@ -51,9 +51,10 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$DURATION" -lt 10 ];
             rm -rf /storage/mirrordash/venv_failed
         fi
         
-        # Swap directories and restore link
-        mv /storage/mirrordash/venv_old "/storage/mirrordash/$OLD_DIR"
-        mv "/storage/mirrordash/$FAILED_DIR" "/storage/mirrordash/venv_failed"
+        # Swap directories and restore link atomically
+        rm -rf "/storage/mirrordash/$OLD_DIR" 2>/dev/null || true
+        mv -T "/storage/mirrordash/venv_old" "/storage/mirrordash/$OLD_DIR"
+        mv -T "/storage/mirrordash/$FAILED_DIR" "/storage/mirrordash/venv_failed"
         ln -sfT "$OLD_DIR" "$VENV_LINK"
         
         # Boot the rolled-back environment
