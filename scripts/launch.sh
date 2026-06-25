@@ -28,9 +28,9 @@ EXIT_CODE=$?
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
-# Standard SIGTERM exit code is 143. Exit code 0 is clean shutdown.
+# Standard SIGTERM exit code is 143, SIGINT is 130. Exit code 0 is clean shutdown.
 # If python exited with a crash code and lasted less than 10 seconds, trigger rollback.
-if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$DURATION" -lt 10 ]; then
+if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 ] && [ "$DURATION" -lt 10 ]; then
     echo "Boot crash detected (Exit Code: $EXIT_CODE, Duration: ${DURATION}s)."
     
     # 1. Try A/B Rollback
