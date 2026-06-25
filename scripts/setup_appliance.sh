@@ -456,7 +456,6 @@ logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Sc
 
 # Force a physical radio hardware scan to populate the cache
 nmcli dev wifi rescan 2>/dev/null || true
-sleep 3
 
 # Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
 SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
