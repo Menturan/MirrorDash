@@ -270,6 +270,15 @@ done &
 EOF
   chmod +x "$PI_HOME/.config/labwc/autostart"
   chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
+  
+  # Allow any user in the 'video' group to access seatd (since 'pi' gets 'video' natively on firstboot)
+  mkdir -p /etc/systemd/system/seatd.service.d
+  cat << 'EOF' > /etc/systemd/system/seatd.service.d/group.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/seatd -g video
+EOF
+  
   systemctl enable seatd
 }
 
@@ -418,6 +427,10 @@ INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 PASSWORD="mirrordash"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
+
+# Unblock Wi-Fi radio (RPi OS blocks it by default until country is set)
+raspi-config nonint do_wifi_country US 2>/dev/null || true
+rfkill unblock wifi 2>/dev/null || true
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
 for i in {1..30}; do
