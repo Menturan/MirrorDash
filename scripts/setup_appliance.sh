@@ -250,7 +250,7 @@ TTYVTDisallocate=yes
 StandardOutput=journal
 StandardError=journal
 Environment=WLR_LIBINPUT_NO_DEVICES=1
-ExecStartPre=-/usr/bin/plymouth quit --retain-splash
+ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/bin/labwc
 Restart=always
 RestartSec=3
@@ -452,6 +452,10 @@ if nm-online -q -t 30; then
 fi
 
 logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
+
+# Force a physical radio hardware scan to populate the cache
+nmcli dev wifi rescan 2>/dev/null || true
+sleep 3
 
 # Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
 SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
