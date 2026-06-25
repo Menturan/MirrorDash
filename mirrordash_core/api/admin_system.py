@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import urllib.request
+from pathlib import Path
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
@@ -34,7 +35,6 @@ def get_venv_paths():
     """Get venv paths: (venv_link, active_path, next_path).
     Returns None if not running on a system with /storage/mirrordash.
     """
-    from pathlib import Path
     storage_dir = Path("/storage/mirrordash")
     if not storage_dir.exists():
         return None
@@ -60,7 +60,6 @@ async def prepare_venv_next(force_clean: bool = False):
     Returns (active_path, next_path) or None.
     """
     import shutil
-    from pathlib import Path
     paths = get_venv_paths()
     if not paths:
         return None
@@ -216,8 +215,14 @@ async def update_core() -> dict:
     await remount_rw()
     try:
         logger.info(f"Upgrading mirrordash (current version: {current_version})")
+        cmd = ["uv", "pip", "install", "--upgrade"]
+        if swap_info:
+            active_path, next_path = swap_info
+            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
+        cmd.append("mirrordash")
+
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "install", "--upgrade", "mirrordash",
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env,
@@ -284,8 +289,14 @@ async def rebuild_venv() -> dict:
         if current_version != "unknown":
             install_target = f"mirrordash=={current_version}"
 
+        cmd_core = ["uv", "pip", "install"]
+        if swap_info:
+            active_path, next_path = swap_info
+            cmd_core.extend(["--python", str(Path(next_path) / "bin" / "python")])
+        cmd_core.append(install_target)
+
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "install", install_target,
+            *cmd_core,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env,
@@ -298,7 +309,6 @@ async def rebuild_venv() -> dict:
             raise HTTPException(status_code=500, detail=f"Failed to install core: {err_msg}")
 
         # 2. Find and install local modules
-        from pathlib import Path
         from mirrordash_core.config import get_base_dir
         base_dir = get_base_dir()
         modules_dir = Path(base_dir) / "modules"
@@ -307,8 +317,13 @@ async def rebuild_venv() -> dict:
             for folder in modules_dir.iterdir():
                 if folder.is_dir() and (folder / "pyproject.toml").exists():
                     logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
+                    cmd_local = ["uv", "pip", "install"]
+                    if swap_info:
+                        cmd_local.extend(["--python", str(Path(next_path) / "bin" / "python")])
+                    cmd_local.extend(["-e", str(folder)])
+
                     proc_local = await asyncio.create_subprocess_exec(
-                        "uv", "pip", "install", "-e", str(folder),
+                        *cmd_local,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
                         env=safe_env,
@@ -322,8 +337,13 @@ async def rebuild_venv() -> dict:
         for mod_name in configured_modules.keys():
             if mod_name not in local_module_names and mod_name != "mirrordash-clock":
                 logger.info(f"Rebuilding venv: installing configured PyPI module {mod_name}")
+                cmd_pypi = ["uv", "pip", "install"]
+                if swap_info:
+                    cmd_pypi.extend(["--python", str(Path(next_path) / "bin" / "python")])
+                cmd_pypi.append(mod_name)
+
                 proc_pypi = await asyncio.create_subprocess_exec(
-                    "uv", "pip", "install", mod_name,
+                    *cmd_pypi,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=safe_env,

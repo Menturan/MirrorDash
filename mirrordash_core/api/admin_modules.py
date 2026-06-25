@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import urllib.request
+from pathlib import Path
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
@@ -59,8 +60,14 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
         safe_env = {k: v for k, v in os.environ.items() if k in (
             "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
         )}
+        cmd = ["uv", "pip", "install"]
+        if swap_info:
+            active_path, next_path = swap_info
+            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
+        cmd.append(package_name)
+
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "install", package_name,
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env
@@ -117,8 +124,14 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
         safe_env = {k: v for k, v in os.environ.items() if k in (
             "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
         )}
+        cmd = ["uv", "pip", "install", "--upgrade"]
+        if swap_info:
+            active_path, next_path = swap_info
+            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
+        cmd.append(package_name)
+
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "install", "--upgrade", package_name,
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env
@@ -134,8 +147,14 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
 
         logger.info(f"Successfully upgraded {package_name}. Verifying installation compatibility...")
 
-        # Build check command
-        python_bin = sys.executable
+        # Build check command targeting the upgraded virtual environment
+        if swap_info:
+            active_path, next_path = swap_info
+            candidate_bin = Path(next_path) / "bin" / "python"
+            python_bin = str(candidate_bin) if candidate_bin.exists() else sys.executable
+        else:
+            python_bin = sys.executable
+
         check_cmd = [
             python_bin, "-c",
             f"from importlib.metadata import entry_points; "
@@ -211,8 +230,14 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
         safe_env = {k: v for k, v in os.environ.items() if k in (
             "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
         )}
+        cmd = ["uv", "pip", "uninstall", "-y"]
+        if swap_info:
+            active_path, next_path = swap_info
+            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
+        cmd.append(package_name)
+
         proc = await asyncio.create_subprocess_exec(
-            "uv", "pip", "uninstall", "-y", package_name,
+            *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=safe_env

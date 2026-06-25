@@ -429,10 +429,14 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
                 package_name = mod.get("package_name")
                 version = mod.get("version")
 
+                python_target = []
+                if os.path.exists("/storage/mirrordash/venv/bin/python"):
+                    python_target = ["--python", "/storage/mirrordash/venv/bin/python"]
+
                 if mod_type == "pypi":
                     logger.info(f"Restoring PyPI module: {package_name} (version {version})")
                     # Try installing with strict version, fallback to standard install if fails
-                    cmd_install = ["uv", "pip", "install", f"{package_name}=={version}"]
+                    cmd_install = ["uv", "pip", "install"] + python_target + [f"{package_name}=={version}"]
                     proc_inst = await asyncio.create_subprocess_exec(
                         *cmd_install,
                         stdout=asyncio.subprocess.PIPE,
@@ -441,8 +445,9 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
                     await proc_inst.communicate()
                     if proc_inst.returncode != 0:
                         logger.warning(f"Failed to install package {package_name}=={version}. Retrying general install...")
+                        cmd_fallback = ["uv", "pip", "install"] + python_target + [package_name]
                         proc_fallback = await asyncio.create_subprocess_exec(
-                            "uv", "pip", "install", package_name,
+                            *cmd_fallback,
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.PIPE
                         )
@@ -464,8 +469,9 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
                         # Copy back
                         shutil.copytree(src_dir, dest_dir)
                         # Install editable mode
+                        cmd_local = ["uv", "pip", "install"] + python_target + ["-e", str(dest_dir)]
                         proc_local = await asyncio.create_subprocess_exec(
-                            "uv", "pip", "install", "-e", str(dest_dir),
+                            *cmd_local,
                             stdout=asyncio.subprocess.PIPE,
                             stderr=asyncio.subprocess.PIPE
                         )
