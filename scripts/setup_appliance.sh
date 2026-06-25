@@ -185,6 +185,10 @@ step_setting_hostname() {
   echo "mirrordash" > /etc/hostname
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
   systemctl enable avahi-daemon
+
+  echo "Unblocking Wi-Fi radio permanently..."
+  raspi-config nonint do_wifi_country US 2>/dev/null || true
+  rfkill unblock wifi 2>/dev/null || true
 }
 
 step_configuring_nginx() {
@@ -419,10 +423,6 @@ SSID="MirrorDash-Setup"
 PASSWORD="mirrordash"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
-# Unblock Wi-Fi radio (RPi OS blocks it by default until country is set)
-raspi-config nonint do_wifi_country US 2>/dev/null || true
-rfkill unblock wifi 2>/dev/null || true
-
 logger -t mirrordash-wifi "Starting network connectivity check..."
 # Wait for NetworkManager to claim wlan0
 nmcli device wait wlan0 timeout 10 2>/dev/null || true
@@ -466,7 +466,7 @@ After=NetworkManager.service
 Before=mirrordash.service
 
 [Service]
-Type=oneshot
+Type=simple
 ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
 RemainAfterExit=yes
 TimeoutStartSec=90
