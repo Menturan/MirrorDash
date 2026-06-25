@@ -424,13 +424,8 @@ rfkill unblock wifi 2>/dev/null || true
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
 # Wait for NetworkManager to claim wlan0
-for j in {1..10}; do
-    if nmcli dev status | grep -q "wlan0"; then
-        nmcli dev set wlan0 managed yes 2>/dev/null || true
-        break
-    fi
-    sleep 1
-done
+nmcli device wait wlan0 timeout 10 2>/dev/null || true
+nmcli dev set wlan0 managed yes 2>/dev/null || true
 
 if nm-online -q -t 30; then
     logger -t mirrordash-wifi "Network online. Exiting captive portal check."
@@ -560,7 +555,12 @@ step_system_cleanup() {
 
   echo "Rebuilding initramfs to embed plymouth and kernel updates..."
   sed -i 's/^MODULES=.*/MODULES=most/' /etc/initramfs-tools/initramfs.conf
-  update-initramfs -u
+  
+  # Temporarily mask the root filesystem in fstab so mkinitramfs doesn't crash trying to probe it
+  cp /etc/fstab /etc/fstab.bak
+  sed -i '/ \/ /s/^/#/' /etc/fstab
+  update-initramfs -u || echo "Warning: update-initramfs exited with a non-zero status"
+  mv /etc/fstab.bak /etc/fstab
 
   echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then

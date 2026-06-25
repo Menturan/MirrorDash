@@ -30,7 +30,7 @@ mkdir -p "$BUILD_DIR" "$MOUNT_DIR"
 cd "$BUILD_DIR"
 
 LATEST_URL_BASE="https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
-TARGET_URL=$(curl -Is "$LATEST_URL_BASE" | grep -i ^Location | cut -d' ' -f2 | tr -d '\r')
+TARGET_URL=$(curl -sLI -o /dev/null -w '%{url_effective}' "$LATEST_URL_BASE")
 IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "$IMAGE_NAME" ]; then
