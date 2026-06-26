@@ -30,6 +30,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 
 ### System OS (Appliance)
 
+- Harden repart and hydration services against udev and mount timing races (673c4ee)
 - Implement MBR-compatible dynamic partitioning service on first boot (dfaf32b)
 - Update build_image.sh (fd191f9)
 - Update build_image.sh (669758d)
