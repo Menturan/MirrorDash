@@ -602,13 +602,15 @@ if [ ! -b "$TARGET_PART" ]; then
     # Create partition using parted
     parted -s "$DISK" -- align optimal mkpart primary ext4 "${START_SECTOR}s" 100%
     
-    # Reload partition table and wait for udev to create the device node
-    partprobe "$DISK"
+    # Reload partition table and wait for udev to create the device node (using fallback for busy partition tables)
+    partprobe "$DISK" || partx -a "$DISK" || true
     udevadm settle
     
     if [ -b "$TARGET_PART" ]; then
         echo "Formatting $TARGET_PART as ext4 with label 'mirrordash-data'..."
         mkfs.ext4 -F -L mirrordash-data "$TARGET_PART"
+        # Ensure udev processes the new disk label symlink before exiting
+        udevadm settle
     else
         echo "Error: Partition device $TARGET_PART did not appear after udevadm settle" >&2
         exit 1
@@ -643,6 +645,14 @@ step_storage_hydration() {
   cat << 'EOF' > /usr/local/bin/mirrordash-hydrate.sh
 #!/bin/bash
 set -euo pipefail
+
+# Defensive mount check: if the partition exists but is not mounted, force-mount it
+if [ -b "/dev/disk/by-label/mirrordash-data" ]; then
+    if ! mountpoint -q /storage; then
+        echo "Warning: /storage is not mounted but the partition exists. Mounting it..."
+        mount /storage || mount /dev/disk/by-label/mirrordash-data /storage
+    fi
+fi
 
 # Ensure parent directory and subdirectories exist on mounted /storage
 mkdir -p /storage/mirrordash/data
