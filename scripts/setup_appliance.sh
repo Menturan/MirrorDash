@@ -176,7 +176,6 @@ step_installing_packages() {
 step_setting_hostname() {
   echo "mirrordash" > /etc/hostname
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
-  systemctl enable avahi-daemon
 
   echo "Unblocking Wi-Fi radio permanently..."
   raspi-config nonint do_wifi_country US 2>/dev/null || true
@@ -211,7 +210,6 @@ server {
 EOF
   ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
   nginx -t
-  systemctl enable nginx
 }
 
 step_configuring_console_login() {
