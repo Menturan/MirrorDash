@@ -22,6 +22,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Regenerate CHANGELOG.md using git-cliff (8641cdd)
 - Organize CHANGELOG for 0.3.1-os1 OS image release (4225ba7)
 - Update CHANGELOG.md for plymouth and seatd fixes (7293e8a)
+- Update CHANGELOG.md for wlr-randr retry and seatd dependency commit (2397b45)
 
 ### System OS (Appliance)
 
@@ -69,6 +70,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Fix build_image grouping and update cliff.toml mapping rules (8b313e3)
 - Resolve plymouth-kiosk deadlock and seatd permissions (7ba3312)
 - Add seatd dependency to labwc-kiosk and wlr-randr retries in backend (2219a42)
+- Resolve seatd systemctl container build failure and group safety (91f1c02)
 ## [0.3.0-os2] - 2026-06-23
 
 ### Core App
