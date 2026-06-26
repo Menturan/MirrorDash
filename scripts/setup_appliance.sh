@@ -254,8 +254,9 @@ EOF
   systemctl enable labwc-kiosk.service
 
   echo "Configuring seatd permissions for unprivileged Wayland access..."
-  systemctl enable seatd.service
-  systemctl start seatd.service || true
+  # Note: seatd.service is enabled automatically upon installation by the package manager.
+  # Do not run systemctl enable/start inside the build container since systemd is not running.
+  groupadd -f seat
   usermod -a -G seat "$PI_USER"
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
