@@ -339,10 +339,15 @@ EOF
 chmod +x /home/pi/.config/labwc/autostart
 chown -R pi:pi /home/pi/.config
 
-# 6. Ensure the seat group exists and configure permissions for unprivileged Wayland access
-# (Note: seatd.service is enabled automatically upon installation by the package manager on Debian)
-sudo groupadd -f seat
-sudo usermod -a -G seat pi
+# 6. Configure seatd permissions for unprivileged Wayland access and enable the service
+# (Note: We configure seatd to use the 'video' group since 'pi' is always in 'video' by default, avoiding first-boot group reset issues)
+sudo mkdir -p /etc/systemd/system/seatd.service.d
+sudo tee /etc/systemd/system/seatd.service.d/group.conf << 'EOF'
+[Service]
+ExecStart=
+ExecStart=/usr/bin/seatd -g video
+EOF
+sudo systemctl daemon-reload
 sudo systemctl enable seatd.service
 
 # 7. Create the systemd service for Labwc Wayland Kiosk

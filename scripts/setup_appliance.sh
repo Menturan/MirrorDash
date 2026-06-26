@@ -260,8 +260,15 @@ EOF
   echo "Configuring seatd permissions for unprivileged Wayland access..."
   # Ensure seatd.service is explicitly enabled using offline mode to avoid container build D-Bus/PID 1 errors.
   systemctl --root=/ enable seatd.service
-  groupadd -f seat
-  usermod -a -G seat "$PI_USER"
+
+  # Configure seatd to use the 'video' group instead of 'seat' because the 'pi' user is
+  # created on first boot and is not added to the 'seat' group by default, but is always in 'video'.
+  mkdir -p /etc/systemd/system/seatd.service.d
+  cat << 'EOF' > /etc/systemd/system/seatd.service.d/group.conf
+[Service]
+ExecStart=
+ExecStart=/usr/bin/seatd -g video
+EOF
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
   mkdir -p "$PI_HOME/.config/labwc"
