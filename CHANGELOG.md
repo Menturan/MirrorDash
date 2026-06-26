@@ -26,6 +26,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Update CHANGELOG.md for seatd container build fixes (8ecba90)
 - Update CHANGELOG.md for redundant systemctl purge commit (1849b85)
 - Update CHANGELOG.md (f9fbf57)
+- Update CHANGELOG.md (5ae8383)
 
 ### System OS (Appliance)
 
@@ -77,6 +78,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Purge redundant package systemctl enable calls to prevent container build failures (10e88a7)
 - Guarantee offline service enablement on Trixie chroot (5118736)
 - Configure seatd socket to video group to resolve first-boot reset (afd8acc)
+- Prevent emergency mode lockouts by adding fstab nofail and stripping resize parameter (a843ae1)
 ## [0.3.0-os2] - 2026-06-23
 
 ### Core App
