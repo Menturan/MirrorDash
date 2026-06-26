@@ -25,6 +25,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Update CHANGELOG.md for wlr-randr retry and seatd dependency commit (2397b45)
 - Update CHANGELOG.md for seatd container build fixes (8ecba90)
 - Update CHANGELOG.md for redundant systemctl purge commit (1849b85)
+- Update CHANGELOG.md (f9fbf57)
 
 ### System OS (Appliance)
 
@@ -75,6 +76,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Resolve seatd systemctl container build failure and group safety (91f1c02)
 - Purge redundant package systemctl enable calls to prevent container build failures (10e88a7)
 - Guarantee offline service enablement on Trixie chroot (5118736)
+- Configure seatd socket to video group to resolve first-boot reset (afd8acc)
 ## [0.3.0-os2] - 2026-06-23
 
 ### Core App
