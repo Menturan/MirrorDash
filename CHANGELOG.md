@@ -21,6 +21,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Implement git-cliff configuration and update commit guidelines (263f337)
 - Regenerate CHANGELOG.md using git-cliff (8641cdd)
 - Organize CHANGELOG for 0.3.1-os1 OS image release (4225ba7)
+- Update CHANGELOG.md for plymouth and seatd fixes (7293e8a)
 
 ### System OS (Appliance)
 
@@ -67,6 +68,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 - Resolve release_changelog.py regex lookahead and section insertion bugs (ac48eed)
 - Fix build_image grouping and update cliff.toml mapping rules (8b313e3)
 - Resolve plymouth-kiosk deadlock and seatd permissions (7ba3312)
+- Add seatd dependency to labwc-kiosk and wlr-randr retries in backend (2219a42)
 ## [0.3.0-os2] - 2026-06-23
 
 ### Core App
