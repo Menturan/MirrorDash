@@ -158,6 +158,7 @@ step_installing_packages() {
   apt-get update
   apt-get install -y --no-install-recommends \
       labwc \
+      seatd \
       dbus-user-session \
       fonts-liberation \
       cog \
@@ -227,8 +228,8 @@ step_setting_up_wayland() {
   cat << 'EOF' > /etc/systemd/system/labwc-kiosk.service
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
-After=systemd-user-sessions.service plymouth-quit-wait.service
-Conflicts=getty@tty1.service
+After=systemd-user-sessions.service plymouth-start.service
+Conflicts=getty@tty1.service plymouth-quit-wait.service
 Wants=cog-kiosk.service
 
 [Service]
@@ -251,6 +252,11 @@ RestartSec=3
 WantedBy=graphical.target
 EOF
   systemctl enable labwc-kiosk.service
+
+  echo "Configuring seatd permissions for unprivileged Wayland access..."
+  systemctl enable seatd.service
+  systemctl start seatd.service || true
+  usermod -a -G seat "$PI_USER"
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
   mkdir -p "$PI_HOME/.config/labwc"

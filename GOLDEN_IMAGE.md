@@ -335,12 +335,16 @@ EOF
 chmod +x /home/pi/.config/labwc/autostart
 chown -R pi:pi /home/pi/.config
 
-# 6. Create the systemd service for Labwc Wayland Kiosk
+# 6. Enable seatd service and configure permissions for unprivileged Wayland access
+sudo systemctl enable seatd.service
+sudo usermod -a -G seat pi
+
+# 7. Create the systemd service for Labwc Wayland Kiosk
 sudo tee /etc/systemd/system/labwc-kiosk.service << 'EOF'
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
-After=systemd-user-sessions.service plymouth-quit-wait.service
-Conflicts=getty@tty1.service
+After=systemd-user-sessions.service plymouth-start.service
+Conflicts=getty@tty1.service plymouth-quit-wait.service
 Wants=cog-kiosk.service
 
 [Service]
@@ -363,7 +367,7 @@ RestartSec=3
 WantedBy=graphical.target
 EOF
 
-# 7. Create the systemd service for Cog Kiosk Browser
+# 8. Create the systemd service for Cog Kiosk Browser
 sudo tee /etc/systemd/system/cog-kiosk.service << 'EOF'
 [Unit]
 Description=Cog WebKit Kiosk
@@ -383,7 +387,7 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
 
-# 8. Enable the systemd kiosk services
+# 9. Enable the systemd kiosk services
 sudo systemctl enable labwc-kiosk.service cog-kiosk.service
 ```
 
