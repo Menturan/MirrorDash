@@ -180,6 +180,9 @@ step_setting_hostname() {
   echo "Unblocking Wi-Fi radio permanently..."
   raspi-config nonint do_wifi_country US 2>/dev/null || true
   rfkill unblock wifi 2>/dev/null || true
+
+  echo "Enabling avahi-daemon service..."
+  systemctl --root=/ enable avahi-daemon.service
 }
 
 step_configuring_nginx() {
@@ -210,6 +213,9 @@ server {
 EOF
   ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
   nginx -t
+
+  echo "Enabling nginx service..."
+  systemctl --root=/ enable nginx.service
 }
 
 step_configuring_console_login() {
@@ -249,11 +255,11 @@ RestartSec=3
 [Install]
 WantedBy=graphical.target
 EOF
-  systemctl enable labwc-kiosk.service
+  systemctl --root=/ enable labwc-kiosk.service
 
   echo "Configuring seatd permissions for unprivileged Wayland access..."
-  # Note: seatd.service is enabled automatically upon installation by the package manager.
-  # Do not run systemctl enable/start inside the build container since systemd is not running.
+  # Ensure seatd.service is explicitly enabled using offline mode to avoid container build D-Bus/PID 1 errors.
+  systemctl --root=/ enable seatd.service
   groupadd -f seat
   usermod -a -G seat "$PI_USER"
 
@@ -288,7 +294,7 @@ RestartSec=2
 [Install]
 WantedBy=graphical.target
 EOF
-  systemctl enable cog-kiosk.service
+  systemctl --root=/ enable cog-kiosk.service
 }
 
 step_installing_app() {
@@ -427,7 +433,7 @@ step_plymouth_splash() {
 }
 
 step_time_wait_sync() {
-  systemctl enable systemd-time-wait-sync.service
+  systemctl --root=/ enable systemd-time-wait-sync.service
 }
 
 step_wifi_captive_portal() {
@@ -492,7 +498,7 @@ TimeoutStartSec=90
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl enable mirrordash-wifi-fallback.service
+  systemctl --root=/ enable mirrordash-wifi-fallback.service
 }
 
 step_systemd_service() {
@@ -520,7 +526,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl enable mirrordash.service
+  systemctl --root=/ enable mirrordash.service
 }
 
 step_finalize_script() {
@@ -576,7 +582,7 @@ RemainAfterExit=yes
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl enable mirrordash-storage-init.service
+  systemctl --root=/ enable mirrordash-storage-init.service
 }
 
 step_system_cleanup() {

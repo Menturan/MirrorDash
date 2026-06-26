@@ -88,6 +88,10 @@ sudo bash scripts/build_image.sh [/path/to/large/drive]
 
 The script runs `setup_appliance.sh` inside the mounted image to apply all the steps documented in Sections 1–6 automatically. Proceed to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)** after the script completes, or read the manual sections below to understand each step in detail.
 
+> [!NOTE]
+> **Automated vs. Manual Service Enablement:**
+> In the automated `setup_appliance.sh` script (run inside systemd-nspawn during the image build), all service enablement commands use `systemctl --root=/ enable <service>` instead of a plain `systemctl enable`. This enables the services in offline mode directly on the filesystem root without needing systemd running as PID 1 or D-Bus being online, which avoids container build failures while guaranteeing that `nginx`, `avahi-daemon`, `seatd`, and MirrorDash kiosk services start automatically on the booted Pi.
+
 ---
 
 ## 1. Operating System Initialization
