@@ -189,7 +189,7 @@ sudo mkdir -p /storage
 sudo tee -a /etc/fstab << 'EOF'
 
 # --- MirrorDash Persistent Storage ---
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
 EOF
 ```
 

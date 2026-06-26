@@ -131,7 +131,7 @@ EOF
     cat << 'EOF' >> /etc/fstab
 
 # --- MirrorDash Persistent Storage ---
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
 EOF
   fi
 
@@ -377,16 +377,47 @@ dtoverlay=disable-bt
 EOF
   fi
 
-  # Silence kernel logs in cmdline.txt: replace console=tty1 with console=tty3 and append quiet/splash options
+  # Silence kernel logs in cmdline.txt: replace console=tty1 with console=tty3, remove auto-resize parameters, and append quiet/splash options
   if [ -f /boot/firmware/cmdline.txt ]; then
-    # Replace console=tty1 with console=tty3 if present
-    sed -i 's/console=tty1/console=tty3/g' /boot/firmware/cmdline.txt
-    # Ensure options are present
-    for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_cursor_default=0" "plymouth.ignore-serial-consoles" "logo.nologo"; do
-      if ! grep -q "$opt" /boot/firmware/cmdline.txt; then
-        sed -i "1s/$/ $opt/" /boot/firmware/cmdline.txt
+    echo "Parsing and optimizing /boot/firmware/cmdline.txt..."
+    read -r -a current_opts < /boot/firmware/cmdline.txt
+
+    declare -a new_opts
+    for opt in "${current_opts[@]}"; do
+      # Skip auto-resize parameters or legacy console configurations
+      if [[ "$opt" == "resize" || "$opt" == init=*init_resize.sh || "$opt" == console=* ]]; then
+        continue
+      fi
+      new_opts+=("$opt")
+    done
+
+    declare -a target_opts=(
+      "console=tty3"
+      "loglevel=0"
+      "quiet"
+      "splash"
+      "systemd.show_status=false"
+      "vt.global_cursor_default=0"
+      "plymouth.ignore-serial-consoles"
+      "logo.nologo"
+    )
+
+    for target in "${target_opts[@]}"; do
+      prefix="${target%%=*}"
+      found=0
+      for i in "${!new_opts[@]}"; do
+        if [[ "${new_opts[i]}" == "$prefix"* ]]; then
+          new_opts[i]="$target"
+          found=1
+          break
+        fi
+      done
+      if [ "$found" -eq 0 ]; then
+        new_opts+=("$target")
       fi
     done
+
+    echo "${new_opts[*]}" > /boot/firmware/cmdline.txt
   fi
 }
 
