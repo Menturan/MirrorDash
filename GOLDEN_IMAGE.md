@@ -138,9 +138,9 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 > ```
 > After the script finishes, you can reboot the Pi to verify the system, then skip directly to **[Section 7: Failsafe Locking & Image Finalization](#7-failsafe-locking-overlayfs--image-finalization)**.
 
-### 1.4 Declarative Partition Expansion & Storage Layout Setup
+### 1.4 Dynamic Partition Expansion & Storage Layout Setup
 
-Instead of resizing partitions manually, MirrorDash utilizes **systemd-repart** to grow the root filesystem and partition 3 dynamically at boot, and **systemd-tmpfiles** to ensure directory structures exist.
+Instead of resizing partitions manually, MirrorDash utilizes a custom, deterministic systemd service (**`mirrordash-repart.service`**) executing **`parted`** on early boot (during sysinit) to create partition 3 (`mirrordash-data`) occupying the remaining disk space.
 
 1. **Patch OS firstboot to skip manual resize**:
    Prevent the Raspberry Pi OS `firstboot` script from resizing the root partition to 100% (allowing space for the data partition):
@@ -150,26 +150,67 @@ Instead of resizing partitions manually, MirrorDash utilizes **systemd-repart** 
    fi
    ```
 
-2. **Configure systemd-repart**:
-   Create a declarative configuration under `/etc/repart.d/50-data.conf` to define partition 3 (`mirrordash-data`) occupying all remaining disk space:
+2. **Configure MBR Partition expander script**:
+   Write the partitioning logic to `/usr/local/bin/mirrordash-repart.sh`:
    ```bash
-   sudo mkdir -p /etc/repart.d
-   sudo tee /etc/repart.d/50-data.conf << 'EOF'
-   [Partition]
-   Type=linux-generic
-   Label=mirrordash-data
-   Format=ext4
-   Weight=100
+   sudo tee /usr/local/bin/mirrordash-repart.sh << 'EOF'
+   #!/bin/bash
+   set -euo pipefail
+   ROOT_PART=$(findmnt -n -o SOURCE /)
+   PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
+   if [ -n "$PARENT_NAME" ]; then
+       DISK="/dev/$PARENT_NAME"
+   else
+       if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
+           DISK="${ROOT_PART%p[0-9]*}"
+       else
+           DISK="${ROOT_PART%[0-9]*}"
+       fi
+   fi
+   PART_NUM=3
+   if [[ "$DISK" == *nvme* || "$DISK" == *mmcblk* ]]; then
+       TARGET_PART="${DISK}p${PART_NUM}"
+   else
+       TARGET_PART="${DISK}${PART_NUM}"
+   fi
+   if [ ! -b "$TARGET_PART" ]; then
+       END_SECTOR=$(parted -s "$DISK" unit s print | awk '/^[[:space:]]*2/ {print $3}' | tr -d 's')
+       if [ -z "$END_SECTOR" ]; then
+           exit 1
+       fi
+       START_SECTOR=$((END_SECTOR + 1))
+       parted -s "$DISK" -- align optimal mkpart primary ext4 "${START_SECTOR}s" 100%
+       partprobe "$DISK"
+       udevadm settle
+       if [ -b "$TARGET_PART" ]; then
+           mkfs.ext4 -F -L mirrordash-data "$TARGET_PART"
+       else
+           exit 1
+       fi
+   fi
    EOF
+   sudo chmod +x /usr/local/bin/mirrordash-repart.sh
    ```
 
-3. **Configure systemd-tmpfiles**:
-   Write directory instantiation rules to `/etc/tmpfiles.d/mirrordash-storage.conf` to guarantee the persistent data directory exists inside `/storage` on boot:
+3. **Configure the repart service**:
+   Create the systemd service `/etc/systemd/system/mirrordash-repart.service`:
    ```bash
-   sudo tee /etc/tmpfiles.d/mirrordash-storage.conf << 'EOF'
-   d /storage/mirrordash/data 0755 pi pi - -
-   d /storage/mirrordash/system-connections 0700 root root - -
+   sudo tee /etc/systemd/system/mirrordash-repart.service << 'EOF'
+   [Unit]
+   Description=MirrorDash MBR Partition Expander
+   DefaultDependencies=no
+   After=systemd-udevd.service
+   Before=local-fs-pre.target
+
+   [Service]
+   Type=oneshot
+   ExecStart=/usr/local/bin/mirrordash-repart.sh
+   RemainAfterExit=yes
+
+   [Install]
+   WantedBy=sysinit.target
    EOF
+   sudo systemctl enable mirrordash-repart.service
    ```
 
 4. **Symlink NetworkManager System Connections**:
@@ -181,7 +222,7 @@ Instead of resizing partitions manually, MirrorDash utilizes **systemd-repart** 
 
 ### 1.5 Update `/etc/fstab` & Initialize Mounts
 
-Update `/etc/fstab` to mount the declarative `mirrordash-data` partition automatically on boot. The partition will automatically grow on first boot via `x-systemd.growfs`.
+Update `/etc/fstab` to mount the `mirrordash-data` partition automatically on boot.
 
 ```bash
 # Create mount point and register persistent partition in /etc/fstab
@@ -189,14 +230,14 @@ sudo mkdir -p /storage
 sudo tee -a /etc/fstab << 'EOF'
 
 # --- MirrorDash Persistent Storage ---
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.device-timeout=15s  0  2
 EOF
 ```
 
 If you are running the setup on a live Pi, you can trigger partition generation and mount the directory immediately:
 ```bash
-# Run systemd-repart to create the partition and mount /storage
-sudo systemd-repart --dry-run=no
+# Run the repart script manually and mount /storage
+sudo /usr/local/bin/mirrordash-repart.sh
 sudo systemctl daemon-reload
 sudo mount /storage
 ```
@@ -466,8 +507,12 @@ To ensure the persistent storage partition is properly initialized with a functi
    #!/bin/bash
    set -euo pipefail
 
-   # Ensure parent directory exists — cannot rely on systemd-tmpfiles ordering
-   mkdir -p /storage/mirrordash
+   # Ensure parent directory and subdirectories exist on mounted /storage
+   mkdir -p /storage/mirrordash/data
+   mkdir -p /storage/mirrordash/system-connections
+   chown -R pi:pi /storage/mirrordash
+   chown root:root /storage/mirrordash/system-connections
+   chmod 700 /storage/mirrordash/system-connections
 
    # Only hydrate if venv_a is missing
    if [ ! -d "/storage/mirrordash/venv_a" ]; then
@@ -491,13 +536,14 @@ To ensure the persistent storage partition is properly initialized with a functi
    ```
 
 2. **Configure systemd storage hydration service**:
-   Define and enable `/etc/systemd/system/mirrordash-storage-init.service`:
+   Define and enable `/etc/systemd/system/mirrordash-storage-init.service` (ordered before NetworkManager so connections exist prior to startup):
    ```bash
    sudo tee /etc/systemd/system/mirrordash-storage-init.service << 'EOF'
    [Unit]
    Description=Hydrate MirrorDash Storage Partition
    After=local-fs.target
    Requires=local-fs.target
+   Before=NetworkManager.service
 
    [Service]
    Type=oneshot

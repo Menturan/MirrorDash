@@ -115,37 +115,18 @@ run_step() {
 # --- Step Functions ---
 
 step_expanding_partition() {
-  echo "Configuring systemd-repart for declarative automatic partition expansion..."
-  mkdir -p /etc/repart.d
-
-  cat << 'EOF' > /etc/repart.d/50-data.conf
-[Partition]
-Type=linux-generic
-Label=mirrordash-data
-Format=ext4
-Weight=100
-EOF
-
+  echo "Configuring persistent storage mount in /etc/fstab..."
   mkdir -p /storage
   if ! grep -q "LABEL=mirrordash-data" /etc/fstab; then
     cat << 'EOF' >> /etc/fstab
 
 # --- MirrorDash Persistent Storage ---
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.growfs,x-systemd.device-timeout=15s  0  2
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.device-timeout=15s  0  2
 EOF
   fi
 
-  echo "Configuring systemd-tmpfiles to ensure persistent directories exist..."
-  # NOTE: /storage/mirrordash/venv is intentionally NOT listed here.
-  # It must be a symlink (created by mirrordash-hydrate.sh), not a directory.
-  # A tmpfiles 'd' entry would create a real directory that ln -sfT cannot replace,
-  # causing a cascading first-boot failure (hydration → storage-init → mirrordash).
-  cat << 'EOF' > /etc/tmpfiles.d/mirrordash-storage.conf
-d /storage/mirrordash/data 0755 pi pi - -
-d /storage/mirrordash/system-connections 0700 root root - -
-EOF
-
-  # Länka NetworkManager till den nya partitionen (Wi-Fi överlever OverlayFS)
+  # Link NetworkManager system-connections to the persistent partition
+  # (Network profiles survive OverlayFS because /storage is not locked)
   rm -rf /etc/NetworkManager/system-connections
   ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
 }
@@ -170,7 +151,8 @@ step_installing_packages() {
       initramfs-tools \
       network-manager \
       dnsmasq-base \
-      nginx
+      nginx \
+      parted
 }
 
 step_setting_hostname() {
@@ -578,13 +560,96 @@ step_finalize_script() {
   chmod +x /usr/local/bin/mirrordash-finalize.sh
 }
 
+step_repart_service() {
+  echo "Creating MBR partition expander script..."
+  cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh
+#!/bin/bash
+# MirrorDash MBR Partition Expander
+set -euo pipefail
+
+ROOT_PART=$(findmnt -n -o SOURCE /)
+PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
+if [ -n "$PARENT_NAME" ]; then
+    DISK="/dev/$PARENT_NAME"
+else
+    if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
+        DISK="${ROOT_PART%p[0-9]*}"
+    else
+        DISK="${ROOT_PART%[0-9]*}"
+    fi
+fi
+
+PART_NUM=3
+if [[ "$DISK" == *nvme* || "$DISK" == *mmcblk* ]]; then
+    TARGET_PART="${DISK}p${PART_NUM}"
+else
+    TARGET_PART="${DISK}${PART_NUM}"
+fi
+
+if [ ! -b "$TARGET_PART" ]; then
+    echo "Persistent partition $TARGET_PART not found. Creating..."
+    
+    # Get the end sector of partition 2
+    END_SECTOR=$(parted -s "$DISK" unit s print | awk '/^[[:space:]]*2/ {print $3}' | tr -d 's')
+    if [ -z "$END_SECTOR" ]; then
+        echo "Error: Could not determine end sector of partition 2" >&2
+        exit 1
+    fi
+    
+    START_SECTOR=$((END_SECTOR + 1))
+    echo "Creating partition $PART_NUM starting at ${START_SECTOR}s..."
+    
+    # Create partition using parted
+    parted -s "$DISK" -- align optimal mkpart primary ext4 "${START_SECTOR}s" 100%
+    
+    # Reload partition table and wait for udev to create the device node
+    partprobe "$DISK"
+    udevadm settle
+    
+    if [ -b "$TARGET_PART" ]; then
+        echo "Formatting $TARGET_PART as ext4 with label 'mirrordash-data'..."
+        mkfs.ext4 -F -L mirrordash-data "$TARGET_PART"
+    else
+        echo "Error: Partition device $TARGET_PART did not appear after udevadm settle" >&2
+        exit 1
+    fi
+else
+    echo "Persistent partition $TARGET_PART already exists."
+fi
+EOF
+  chmod +x /usr/local/bin/mirrordash-repart.sh
+
+  echo "Configuring mirrordash-repart.service..."
+  cat << 'EOF' > /etc/systemd/system/mirrordash-repart.service
+[Unit]
+Description=MirrorDash MBR Partition Expander
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=local-fs-pre.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-repart.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target
+EOF
+
+  systemctl --root=/ enable mirrordash-repart.service
+}
+
 step_storage_hydration() {
   cat << 'EOF' > /usr/local/bin/mirrordash-hydrate.sh
 #!/bin/bash
 set -euo pipefail
 
-# Ensure parent directory exists — cannot rely on systemd-tmpfiles ordering
-mkdir -p /storage/mirrordash
+# Ensure parent directory and subdirectories exist on mounted /storage
+mkdir -p /storage/mirrordash/data
+mkdir -p /storage/mirrordash/system-connections
+chown -R pi:pi /storage/mirrordash
+chown root:root /storage/mirrordash/system-connections
+chmod 700 /storage/mirrordash/system-connections
 
 # Only hydrate if venv_a is missing
 if [ ! -d "/storage/mirrordash/venv_a" ]; then
@@ -611,6 +676,7 @@ EOF
 Description=Hydrate MirrorDash Storage Partition
 After=local-fs.target
 Requires=local-fs.target
+Before=NetworkManager.service
 
 [Service]
 Type=oneshot
@@ -708,8 +774,9 @@ run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_
 run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Script & Service" step_wifi_captive_portal
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
 run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
-run_step "15" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
-run_step "16" "system_cleanup" "Performing System Cleanup" step_system_cleanup
+run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
+run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
+run_step "17" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 
 END_TIME_TOTAL=$SECONDS
 DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))
@@ -721,3 +788,4 @@ echo " MirrorDash setup successfully completed in ${minutes}m ${seconds}s!"
 echo " Recommended: Reboot the Raspberry Pi to test components."
 echo " Run: sudo reboot"
 echo "=========================================================="
+
