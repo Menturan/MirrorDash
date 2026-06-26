@@ -343,7 +343,7 @@ sudo usermod -a -G seat pi
 sudo tee /etc/systemd/system/labwc-kiosk.service << 'EOF'
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
-After=systemd-user-sessions.service plymouth-start.service
+After=systemd-user-sessions.service plymouth-start.service seatd.service
 Conflicts=getty@tty1.service plymouth-quit-wait.service
 Wants=cog-kiosk.service
 

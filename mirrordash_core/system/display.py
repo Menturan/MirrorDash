@@ -171,26 +171,33 @@ async def apply_system_settings(rotation: str, resolution: str, brightness: int,
         }
         wlr_rot = wlr_rot_map.get(rotation, "normal")
 
-        proc = await asyncio.create_subprocess_exec(
-            "wlr-randr",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            displays = re.findall(r"^(\S+)\s+", stdout.decode("utf-8", errors="ignore"), re.MULTILINE)
-            if displays:
-                display = displays[0]
-                res_args = []
-                if resolution and resolution != "auto":
-                    res_args = ["--mode", resolution]
+        # Retry query up to 5 times to handle compositor startup timing
+        for attempt in range(5):
+            proc = await asyncio.create_subprocess_exec(
+                "wlr-randr",
+                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+            )
+            stdout, _ = await proc.communicate()
+            if proc.returncode == 0:
+                displays = re.findall(r"^(\S+)\s+", stdout.decode("utf-8", errors="ignore"), re.MULTILINE)
+                if displays:
+                    display = displays[0]
+                    res_args = []
+                    if resolution and resolution != "auto":
+                        res_args = ["--mode", resolution]
 
-                cmd = ["wlr-randr", "--output", display, "--transform", wlr_rot] + res_args
-                proc_wlr = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await proc_wlr.wait()
-                logger.info(f"Applied wlr-randr display configuration for {display}: transform={wlr_rot}, resolution={resolution}")
+                    cmd = ["wlr-randr", "--output", display, "--transform", wlr_rot] + res_args
+                    proc_wlr = await asyncio.create_subprocess_exec(
+                        *cmd,
+                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+                    )
+                    await proc_wlr.wait()
+                    logger.info(f"Applied wlr-randr display configuration for {display}: transform={wlr_rot}, resolution={resolution}")
+                    break
+            else:
+                logger.debug(f"wlr-randr query failed on attempt {attempt + 1}/5 (Wayland might not be ready yet)")
+                if attempt < 4:
+                    await asyncio.sleep(1)
     except Exception as e:
         logger.debug(f"wlr-randr display settings skipped or failed: {e}")
 
