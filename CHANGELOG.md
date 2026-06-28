@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Core App
 
 ### System OS (Appliance)
+
+## [0.3.3-os1] - 2026-06-29
+
+### Core App
+
+### System OS (Appliance)
 - Create an explicitly transparent X11 cursor theme during boot to permanently hide the mouse pointer in Wayland without relying on the missing `labwc-msg` utility.
 - Fix typo in `seatd` daemon path (`/usr/sbin/seatd` instead of `/usr/bin/seatd`) on Debian Trixie that was causing fatal labwc crashes and a black screen.
 
