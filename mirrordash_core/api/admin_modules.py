@@ -58,6 +58,14 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
     await remount_rw()
     try:
         logger.info(f"Installing package: {package_name}")
+        
+        # Auto-resolve locally bundled modules
+        local_target = package_name
+        for base in ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules"):
+            if Path(base, package_name).is_dir():
+                local_target = str(Path(base, package_name))
+                break
+
         # Strip full environment to avoid leaking server secrets to subprocess
         safe_env = {k: v for k, v in os.environ.items() if k in (
             "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
@@ -66,7 +74,7 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
         if swap_info:
             active_path, next_path = swap_info
             cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append(package_name)
+        cmd.append(local_target)
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -144,6 +152,14 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
     await remount_rw()
     try:
         logger.info(f"Upgrading package: {package_name} (current version: {old_version or 'unknown'})")
+        
+        # Auto-resolve locally bundled modules
+        local_target = package_name
+        for base in ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules"):
+            if Path(base, package_name).is_dir():
+                local_target = str(Path(base, package_name))
+                break
+
         safe_env = {k: v for k, v in os.environ.items() if k in (
             "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
         )}
@@ -151,7 +167,7 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
         if swap_info:
             active_path, next_path = swap_info
             cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append(package_name)
+        cmd.append(local_target)
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
