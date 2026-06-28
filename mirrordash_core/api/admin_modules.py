@@ -441,103 +441,103 @@ async def scan_community_modules_now():
 
     def _fetch_simple_index():
         url = "https://pypi.org/simple/"
-                req = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "MirrorDash/1.0", "Accept-Encoding": "gzip"}
-                )
+        req = urllib.request.Request(
+            url,
+            headers={"User-Agent": "MirrorDash/1.0", "Accept-Encoding": "gzip"}
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                content = resp.read()
+                if resp.info().get("Content-Encoding") == "gzip":
+                    content = gzip.decompress(content)
+                return content.decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to fetch PyPI simple index: {e}")
+            return ""
+
+    html = await loop.run_in_executor(None, _fetch_simple_index)
+    if html:
+        # Find all package names starting with mirrordash-
+        # Exclude mirrordash-core and mirrordash itself
+        names = re.findall(r'<a href=\"/simple/(mirrordash-[^\"]+)/\">', html)
+        names = sorted(list(set(n for n in names if n != "mirrordash" and n != "mirrordash-core")))
+
+        # Fetch metadata for each discovered package
+        for name in names:
+            def _fetch_meta():
+                url = f"https://pypi.org/pypi/{name}/json"
+                req = urllib.request.Request(url, headers={"User-Agent": "MirrorDash/1.0"})
                 try:
-                    with urllib.request.urlopen(req, timeout=15) as resp:
-                        content = resp.read()
-                        if resp.info().get("Content-Encoding") == "gzip":
-                            content = gzip.decompress(content)
-                        return content.decode("utf-8")
-                except Exception as e:
-                    logger.error(f"Failed to fetch PyPI simple index: {e}")
-                    return ""
-
-            html = await loop.run_in_executor(None, _fetch_simple_index)
-            if html:
-                # Find all package names starting with mirrordash-
-                # Exclude mirrordash-core and mirrordash itself
-                names = re.findall(r'<a href=\"/simple/(mirrordash-[^\"]+)/\">', html)
-                names = sorted(list(set(n for n in names if n != "mirrordash" and n != "mirrordash-core")))
-
-                # Fetch metadata for each discovered package
-                for name in names:
-                    def _fetch_meta():
-                        url = f"https://pypi.org/pypi/{name}/json"
-                        req = urllib.request.Request(url, headers={"User-Agent": "MirrorDash/1.0"})
-                        try:
-                            with urllib.request.urlopen(req, timeout=5) as resp:
-                                return json.loads(resp.read().decode("utf-8"))
-                        except Exception:
-                            return None
-
-                    meta = await loop.run_in_executor(None, _fetch_meta)
-                    if meta:
-                        info = meta.get("info", {})
-                        scanned_modules.append({
-                            "name": name,
-                            "install_name": name,
-                            "title": info.get("name", name).replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                            "description": info.get("summary") or "No description available.",
-                            "source": "pypi"
-                        })
-                    else:
-                        scanned_modules.append({
-                            "name": name,
-                            "install_name": name,
-                            "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                            "description": "No description available.",
-                            "source": "pypi"
-                        })
-                    scanned_names.add(name)
-
-            # Now scan GitHub for mirrordash-* repositories
-            logger.info("Scanning GitHub for mirrordash-* community modules...")
-            def _fetch_github_repos():
-                url = "https://api.github.com/search/repositories?q=mirrordash-"
-                req = urllib.request.Request(
-                    url,
-                    headers={
-                        "User-Agent": "MirrorDash/1.0",
-                        "Accept": "application/vnd.github.v3+json"
-                    }
-                )
-                try:
-                    with urllib.request.urlopen(req, timeout=10) as resp:
+                    with urllib.request.urlopen(req, timeout=5) as resp:
                         return json.loads(resp.read().decode("utf-8"))
-                except Exception as e:
-                    logger.error(f"Failed to fetch GitHub repos: {e}")
+                except Exception:
                     return None
 
-            github_data = await loop.run_in_executor(None, _fetch_github_repos)
-            if github_data and "items" in github_data:
-                for item in github_data["items"]:
-                    repo_name = item.get("name", "")
-                    if repo_name.startswith("mirrordash-") and repo_name not in ("mirrordash", "mirrordash-core", "mirrordash-sdk"):
-                        if repo_name not in scanned_names:
-                            owner = item.get("owner", {}).get("login")
-                            html_url = item.get("html_url", "")
-                            install_url = f"git+{html_url}.git" if not html_url.endswith(".git") else f"git+{html_url}"
-                            scanned_modules.append({
-                                "name": repo_name,
-                                "install_name": install_url,
-                                "title": repo_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                                "description": item.get("description") or f"Community module from GitHub ({owner}).",
-                                "source": "github"
-                            })
-                            scanned_names.add(repo_name)
-
-            # Ensure clock is always included as fallback/pre-packaged
-            if "mirrordash-clock" not in scanned_names:
-                scanned_modules.insert(0, {
-                    "name": "mirrordash-clock",
-                    "install_name": "mirrordash-clock",
-                    "title": "Clock Widget",
-                    "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes.",
+            meta = await loop.run_in_executor(None, _fetch_meta)
+            if meta:
+                info = meta.get("info", {})
+                scanned_modules.append({
+                    "name": name,
+                    "install_name": name,
+                    "title": info.get("name", name).replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                    "description": info.get("summary") or "No description available.",
                     "source": "pypi"
                 })
+            else:
+                scanned_modules.append({
+                    "name": name,
+                    "install_name": name,
+                    "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                    "description": "No description available.",
+                    "source": "pypi"
+                })
+            scanned_names.add(name)
+
+    # Now scan GitHub for mirrordash-* repositories
+    logger.info("Scanning GitHub for mirrordash-* community modules...")
+    def _fetch_github_repos():
+        url = "https://api.github.com/search/repositories?q=mirrordash-"
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "MirrorDash/1.0",
+                "Accept": "application/vnd.github.v3+json"
+            }
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except Exception as e:
+            logger.error(f"Failed to fetch GitHub repos: {e}")
+            return None
+
+    github_data = await loop.run_in_executor(None, _fetch_github_repos)
+    if github_data and "items" in github_data:
+        for item in github_data["items"]:
+            repo_name = item.get("name", "")
+            if repo_name.startswith("mirrordash-") and repo_name not in ("mirrordash", "mirrordash-core", "mirrordash-sdk"):
+                if repo_name not in scanned_names:
+                    owner = item.get("owner", {}).get("login")
+                    html_url = item.get("html_url", "")
+                    install_url = f"git+{html_url}.git" if not html_url.endswith(".git") else f"git+{html_url}"
+                    scanned_modules.append({
+                        "name": repo_name,
+                        "install_name": install_url,
+                        "title": repo_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                        "description": item.get("description") or f"Community module from GitHub ({owner}).",
+                        "source": "github"
+                    })
+                    scanned_names.add(repo_name)
+
+    # Ensure clock is always included as fallback/pre-packaged
+    if "mirrordash-clock" not in scanned_names:
+        scanned_modules.insert(0, {
+            "name": "mirrordash-clock",
+            "install_name": "mirrordash-clock",
+            "title": "Clock Widget",
+            "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes.",
+            "source": "pypi"
+        })
 
     if scanned_modules:
         DISCOVERED_COMMUNITY_MODULES = scanned_modules

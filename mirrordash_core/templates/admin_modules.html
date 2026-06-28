@@ -1,4 +1,16 @@
 <!-- Modules Tab Panel -->
+<style>
+    /* HTMX Indicator Styling */
+    .htmx-indicator {
+        display: none;
+    }
+    .htmx-request .htmx-indicator {
+        display: inline-block;
+    }
+    .htmx-request .htmx-normal {
+        display: none;
+    }
+</style>
 <div class="page-panel active" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules">
     <!-- Search Bar -->
     <div class="search-bar-container" style="position: relative; margin-bottom: 2rem;">
@@ -139,8 +151,10 @@
                                 hx-post="/admin/panels/modules/install"
                                 hx-vals='{"package_name": "{{ m.install_name }}"}'
                                 hx-target="#global-status"
-                                hx-confirm="Are you sure you want to install {{ m.title }}? The system will restart after installation.">
-                            <i class="fas fa-download"></i> Install
+                                hx-confirm="Are you sure you want to install {{ m.title }}? The system will restart after installation."
+                                hx-disabled-elt="this">
+                            <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
+                            <span class="htmx-normal"><i class="fas fa-download"></i> Install</span>
                         </button>
                     </div>
                 </div>
@@ -159,9 +173,10 @@
                        aria-label="Custom package name or path"
                        style="flex: 1; background: #0c0c0e; border: 1px solid #27272a; color: white; border-radius: 6px; padding: 10px 14px;"
                        autocomplete="off" required>
-                <button type="submit" id="custom-install-btn" class="btn secondary" aria-label="Install custom module">
-                    <i class="fas fa-plus" aria-hidden="true" style="margin-right: 5px;"></i>
-                    <span>Install</span>
+                <button type="submit" id="custom-install-btn" class="btn secondary" aria-label="Install custom module"
+                        hx-disabled-elt="this">
+                    <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
+                    <span class="htmx-normal"><i class="fas fa-plus" aria-hidden="true" style="margin-right: 5px;"></i> Install</span>
                 </button>
             </div>
         </form>
