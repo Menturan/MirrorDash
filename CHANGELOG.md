@@ -31,6 +31,8 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 
 ### System OS (Appliance)
 
+- Add hourly cron job to automatically purge WebKit browser cache, preventing fatal Out-Of-Memory kernel panics over long uptimes (ee5b1ed)
+- Add git to required appliance dependencies for uv module resolution (6c223d3)
 - Disable cog-kiosk systemd start rate limiting to prevent fatal crashes during slow compositor boots (51ecc85)
 - Mask getty@tty1.service and autologin@tty1.service to prevent terminal preemption and SIGHUP crashes (3702565)
 - Resolve Wayland startup race conditions by extending wlr-randr retries and adding seatd Wants dependency (860c1dd)
