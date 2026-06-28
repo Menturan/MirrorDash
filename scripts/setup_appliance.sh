@@ -675,7 +675,8 @@ fi
 # Ensure parent directory and subdirectories exist on mounted /storage
 mkdir -p /storage/mirrordash/data
 mkdir -p /storage/mirrordash/system-connections
-chown -R pi:pi /storage/mirrordash
+chown pi:pi /storage/mirrordash
+chown pi:pi /storage/mirrordash/data
 chown root:root /storage/mirrordash/system-connections
 chmod 700 /storage/mirrordash/system-connections
 
