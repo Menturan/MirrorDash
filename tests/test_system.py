@@ -149,8 +149,12 @@ async def test_connect_wifi_success(mock_ro, mock_rw, mock_subproc):
     assert "successfully activated" in msg
     mock_rw.assert_called_once()
     mock_ro.assert_called_once()
-    # verify password was passed securely via communicate
-    mock_proc.communicate.assert_called_once_with(input=b"MyPassword\n")
+    # verify password was passed in the command line (headless nmcli support)
+    assert mock_subproc.call_count >= 1
+    # The last call should be the actual connection command containing the password
+    args = mock_subproc.call_args_list[-1][0]
+    assert "MyPassword" in args
+    mock_proc.communicate.assert_called_with()
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
