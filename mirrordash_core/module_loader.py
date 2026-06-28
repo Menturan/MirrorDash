@@ -5,9 +5,11 @@ import logging
 import importlib.metadata
 import importlib.util
 import os
+import json
 from mirrordash_core.config import load_config, find_module_config, get_base_dir
 from mirrordash_core.ws_manager import manager
 from mirrordash_core.event_bus import event_bus
+from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
 
 logger = logging.getLogger("mirrordash.core.module_loader")
 
@@ -121,7 +123,6 @@ class ModuleLoader:
                 plugin_class = ep.load()
 
                 # Pre-create and inject writeable data and cache directory paths
-                import os
                 module_cfg_copy = module_cfg.copy()
                 base_dir = get_base_dir()
                 data_dir = os.path.join(base_dir, "data", module_name)
