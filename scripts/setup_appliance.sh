@@ -126,10 +126,8 @@ LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.device-
 EOF
   fi
 
-  # Link NetworkManager system-connections to the persistent partition
   # (Network profiles survive OverlayFS because /storage is not locked)
-  rm -rf /etc/NetworkManager/system-connections
-  ln -s /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
+  # NetworkManager refuses to follow symlinks for security reasons, so we bind-mount it in the hydrate script instead.
 }
 
 step_installing_packages() {
@@ -675,6 +673,12 @@ mkdir -p /storage/mirrordash/system-connections
 chown -R pi:pi /storage/mirrordash
 chown root:root /storage/mirrordash/system-connections
 chmod 700 /storage/mirrordash/system-connections
+
+# Bind mount the NetworkManager connections directory to bypass symlink security restrictions
+if ! mountpoint -q /etc/NetworkManager/system-connections; then
+    mkdir -p /etc/NetworkManager/system-connections
+    mount --bind /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
+fi
 
 # Only hydrate if venv_a is missing
 if [ ! -d "/storage/mirrordash/venv_a" ]; then
