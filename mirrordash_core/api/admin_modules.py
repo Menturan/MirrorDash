@@ -45,12 +45,14 @@ _scan_task = None
 
 @router.post("/install", dependencies=[Depends(require_api_key)])
 async def install_module(package_name: str = Body(..., embed=True)) -> dict:
-    # Security validation: strict package naming check (PyPI-safe names only)
-    if not re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name):
-        raise HTTPException(status_code=400, detail="Invalid package name")
+    # Security validation: strict package naming check (PyPI-safe names or GitHub git+https URLs)
+    is_git_url = package_name.startswith("git+https://github.com/") and re.match(r"^git\+https://github\.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+(?:\.git)?(?:@[a-zA-Z0-9_\-./]+)?$", package_name)
+    is_pypi_or_path = re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name)
+    if not (is_pypi_or_path or is_git_url):
+        raise HTTPException(status_code=400, detail="Invalid package name or URL")
     # Disallow local path traversal
     if ".." in package_name:
-        raise HTTPException(status_code=400, detail="Invalid package name")
+        raise HTTPException(status_code=400, detail="Invalid package name or URL")
 
     swap_info = await prepare_venv_next()
     await remount_rw()
@@ -76,6 +78,19 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if proc.returncode == 0:
             logger.info(f"Successfully installed {package_name}")
+            
+            # Clean uv cache
+            try:
+                clean_proc = await asyncio.create_subprocess_exec(
+                    "uv", "cache", "clean",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=safe_env
+                )
+                await clean_proc.wait()
+            except Exception as ce:
+                logger.warning(f"Failed to clean uv cache after install: {ce}")
+
             if swap_info:
                 await commit_venv_next(*swap_info)
             from mirrordash_core.system import run_restart
@@ -101,16 +116,24 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
 async def update_module(package_name: str = Body(..., embed=True)) -> dict:
     import sys
 
-    # Security validation: strict package naming check (PyPI-safe names only)
-    if not re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name):
-        raise HTTPException(status_code=400, detail="Invalid package name")
+    # Security validation: strict package naming check (PyPI-safe names or GitHub git+https URLs)
+    is_git_url = package_name.startswith("git+https://github.com/") and re.match(r"^git\+https://github\.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+(?:\.git)?(?:@[a-zA-Z0-9_\-./]+)?$", package_name)
+    is_pypi_or_path = re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name)
+    if not (is_pypi_or_path or is_git_url):
+        raise HTTPException(status_code=400, detail="Invalid package name or URL")
     # Disallow local path traversal
     if ".." in package_name:
-        raise HTTPException(status_code=400, detail="Invalid package name")
+        raise HTTPException(status_code=400, detail="Invalid package name or URL")
 
     # Try resolving current version for rollback reference
     old_version = None
-    for name_variant in (package_name, package_name.replace("-", "_"), package_name.replace("_", "-")):
+    # For git installs, the metadata check might be by repo name (e.g. mirrordash-calendar)
+    # We resolve the package name from git url if it's a git url:
+    clean_package_name = package_name
+    if package_name.startswith("git+https://github.com/"):
+        clean_package_name = package_name.split("/")[-1].split(".git")[0].split("@")[0]
+        
+    for name_variant in (clean_package_name, clean_package_name.replace("-", "_"), clean_package_name.replace("_", "-")):
         try:
             old_version = importlib.metadata.version(name_variant)
             break
@@ -160,7 +183,7 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
             f"from importlib.metadata import entry_points; "
             f"import mirrordash_core.app; "
             f"[ep.load() for g in ('mirrordash.modules', 'mymm.modules') for ep in entry_points(group=g) if ep.name in "
-            f"('{package_name}', '{package_name.replace('-', '_')}', '{package_name.replace('_', '-')}')]"
+            f"('{clean_package_name}', '{clean_package_name.replace('-', '_')}', '{clean_package_name.replace('_', '-')}')]"
         ]
 
         check_proc = await asyncio.create_subprocess_exec(
@@ -173,6 +196,19 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if check_proc.returncode == 0:
             logger.info(f"Upgrade check passed for {package_name}. Restarting server...")
+            
+            # Clean uv cache
+            try:
+                clean_proc = await asyncio.create_subprocess_exec(
+                    "uv", "cache", "clean",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=safe_env
+                )
+                await clean_proc.wait()
+            except Exception as ce:
+                logger.warning(f"Failed to clean uv cache after update: {ce}")
+
             if swap_info:
                 await commit_venv_next(*swap_info)
             from mirrordash_core.system import run_restart
@@ -246,6 +282,19 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
 
         if proc.returncode == 0:
             logger.info(f"Successfully uninstalled {package_name}")
+            
+            # Clean uv cache
+            try:
+                clean_proc = await asyncio.create_subprocess_exec(
+                    "uv", "cache", "clean",
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                    env=safe_env
+                )
+                await clean_proc.wait()
+            except Exception as ce:
+                logger.warning(f"Failed to clean uv cache after uninstall: {ce}")
+
             if swap_info:
                 await commit_venv_next(*swap_info)
             from mirrordash_core.system import run_restart
@@ -350,13 +399,16 @@ async def list_modules() -> dict:
 # ---------------------------------------------------------------------------
 
 async def run_pypi_modules_scan():
-    """Periodically scan PyPI simple index for mirrordash-* packages."""
+    """Periodically scan PyPI simple index and GitHub for mirrordash-* packages."""
     global DISCOVERED_COMMUNITY_MODULES
     import gzip
     while True:
         try:
-            logger.info("Scanning PyPI for mirrordash-* community modules...")
+            logger.info("Scanning PyPI and GitHub for mirrordash-* community modules...")
             loop = asyncio.get_running_loop()
+
+            scanned_modules = []
+            scanned_names = set()
 
             def _fetch_simple_index():
                 url = "https://pypi.org/simple/"
@@ -382,7 +434,6 @@ async def run_pypi_modules_scan():
                 names = sorted(list(set(n for n in names if n != "mirrordash" and n != "mirrordash-core")))
 
                 # Fetch metadata for each discovered package
-                scanned_modules = []
                 for name in names:
                     def _fetch_meta():
                         url = f"https://pypi.org/pypi/{name}/json"
@@ -398,32 +449,75 @@ async def run_pypi_modules_scan():
                         info = meta.get("info", {})
                         scanned_modules.append({
                             "name": name,
+                            "install_name": name,
                             "title": info.get("name", name).replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                            "description": info.get("summary") or "No description available."
+                            "description": info.get("summary") or "No description available.",
+                            "source": "pypi"
                         })
                     else:
                         scanned_modules.append({
                             "name": name,
+                            "install_name": name,
                             "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                            "description": "No description available."
+                            "description": "No description available.",
+                            "source": "pypi"
                         })
+                    scanned_names.add(name)
 
-                # Ensure clock is always included as fallback/pre-packaged
-                scanned_names = {m["name"] for m in scanned_modules}
-                if "mirrordash-clock" not in scanned_names:
-                    scanned_modules.insert(0, {
-                        "name": "mirrordash-clock",
-                        "title": "Clock Widget",
-                        "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
-                    })
+            # Now scan GitHub for mirrordash-* repositories
+            logger.info("Scanning GitHub for mirrordash-* community modules...")
+            def _fetch_github_repos():
+                url = "https://api.github.com/search/repositories?q=mirrordash-"
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "MirrorDash/1.0",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        return json.loads(resp.read().decode("utf-8"))
+                except Exception as e:
+                    logger.error(f"Failed to fetch GitHub repos: {e}")
+                    return None
 
+            github_data = await loop.run_in_executor(None, _fetch_github_repos)
+            if github_data and "items" in github_data:
+                for item in github_data["items"]:
+                    repo_name = item.get("name", "")
+                    if repo_name.startswith("mirrordash-") and repo_name not in ("mirrordash", "mirrordash-core", "mirrordash-sdk"):
+                        if repo_name not in scanned_names:
+                            owner = item.get("owner", {}).get("login")
+                            html_url = item.get("html_url", "")
+                            install_url = f"git+{html_url}.git" if not html_url.endswith(".git") else f"git+{html_url}"
+                            scanned_modules.append({
+                                "name": repo_name,
+                                "install_name": install_url,
+                                "title": repo_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                                "description": item.get("description") or f"Community module from GitHub ({owner}).",
+                                "source": "github"
+                            })
+                            scanned_names.add(repo_name)
+
+            # Ensure clock is always included as fallback/pre-packaged
+            if "mirrordash-clock" not in scanned_names:
+                scanned_modules.insert(0, {
+                    "name": "mirrordash-clock",
+                    "install_name": "mirrordash-clock",
+                    "title": "Clock Widget",
+                    "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes.",
+                    "source": "pypi"
+                })
+
+            if scanned_modules:
                 DISCOVERED_COMMUNITY_MODULES = scanned_modules
-                logger.info(f"PyPI scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
+                logger.info(f"Scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(f"Error scanning PyPI for modules: {e}", exc_info=True)
+            logger.error(f"Error scanning for community modules: {e}", exc_info=True)
 
         # Run scan every 12 hours
         await asyncio.sleep(43200)
