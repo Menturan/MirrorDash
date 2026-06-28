@@ -215,7 +215,7 @@ step_setting_up_wayland() {
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-start.service seatd.service
-Conflicts=getty@tty1.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
 Wants=cog-kiosk.service
 
 [Service]
@@ -285,8 +285,8 @@ WantedBy=graphical.target
 EOF
   systemctl --root=/ enable cog-kiosk.service
 
-  echo "Masking default getty on tty1 to prevent terminal login preemption..."
-  systemctl --root=/ mask getty@tty1.service
+  echo "Masking default getty and autologin on tty1 to prevent terminal login preemption..."
+  systemctl --root=/ mask getty@tty1.service autologin@tty1.service
 }
 
 step_installing_app() {

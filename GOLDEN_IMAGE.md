@@ -396,7 +396,7 @@ sudo tee /etc/systemd/system/labwc-kiosk.service << 'EOF'
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-start.service seatd.service
-Conflicts=getty@tty1.service plymouth-quit-wait.service
+Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
 Wants=cog-kiosk.service
 
 [Service]
@@ -439,9 +439,9 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
 
-# 9. Enable the systemd kiosk services and mask the default tty1 getty
+# 9. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
 sudo systemctl enable labwc-kiosk.service cog-kiosk.service
-sudo systemctl mask getty@tty1.service
+sudo systemctl mask getty@tty1.service autologin@tty1.service
 ```
 
 > [!NOTE]
