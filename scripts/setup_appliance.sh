@@ -281,6 +281,7 @@ User=pi
 Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 Environment="COG_PLATFORM_WL_VIEW_FULLSCREEN=1"
+Environment="XCURSOR_THEME=empty"
 ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
 Restart=always
 RestartSec=2
