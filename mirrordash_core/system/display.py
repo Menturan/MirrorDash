@@ -201,7 +201,7 @@ async def apply_system_settings(rotation: str, resolution: str, brightness: int,
     except Exception as e:
         logger.debug(f"wlr-randr display settings skipped or failed: {e}")
 
-async def set_screen_power(on: bool) -> None:
+async def set_screen_power(on: bool) -> bool:
     """Asynchronously controls display power state (ON or OFF) via xrandr/xset, wlr-randr, or vcgencmd."""
     state_str = "on" if on else "off"
     logger.info(f"Setting screen power state: {state_str}")
@@ -223,7 +223,7 @@ async def set_screen_power(on: bool) -> None:
                 )
                 await proc_w.wait()
                 logger.info(f"Set wlr-randr output {display} to {action}")
-                return
+                return True
     except Exception as e:
         logger.debug(f"wlr-randr power control failed or skipped: {e}")
 
@@ -236,7 +236,7 @@ async def set_screen_power(on: bool) -> None:
         await proc.wait()
         if proc.returncode == 0:
             logger.info(f"Turned screen {state_str} via xset dpms")
-            return
+            return True
     except Exception as e:
         logger.debug(f"xset dpms control failed or skipped: {e}")
 
@@ -257,7 +257,7 @@ async def set_screen_power(on: bool) -> None:
                 )
                 await proc_x.wait()
                 logger.info(f"Set xrandr output {display} to {action}")
-                return
+                return True
     except Exception as e:
         logger.debug(f"xrandr power control failed or skipped: {e}")
 
@@ -271,5 +271,8 @@ async def set_screen_power(on: bool) -> None:
         await proc.wait()
         if proc.returncode == 0:
             logger.info(f"Set Raspberry Pi screen power to {val} via vcgencmd")
+            return True
     except Exception as e:
         logger.debug(f"vcgencmd display power control failed or skipped: {e}")
+
+    return False

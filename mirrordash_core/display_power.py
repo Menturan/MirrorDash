@@ -159,8 +159,9 @@ class DisplayPowerManager:
                 await asyncio.sleep(5.0)
 
     async def set_state(self, on: bool) -> None:
-        self.is_on = on
-        await set_screen_power(on)
+        success = await set_screen_power(on)
+        if success:
+            self.is_on = on
 
     def _is_time_in_range(self, start_str: str, end_str: str, current_time: time) -> bool:
         try:
