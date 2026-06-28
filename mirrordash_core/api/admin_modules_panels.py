@@ -56,6 +56,9 @@ async def get_panel_modules(request: Request):
 
     disk_usage = await get_disk_usage()
 
+    import mirrordash_core.api.admin_modules as adm_mods
+    last_scan = adm_mods.LAST_SCAN_TIMESTAMP
+
     return templates.TemplateResponse(
         request=request,
         name="admin_modules.html",
@@ -63,7 +66,8 @@ async def get_panel_modules(request: Request):
             "installed_modules": installed_modules,
             "discoverable_modules": discoverable,
             "disk_usage": disk_usage,
-            "query": query
+            "query": query,
+            "last_scan": last_scan or "Never"
         }
     )
 

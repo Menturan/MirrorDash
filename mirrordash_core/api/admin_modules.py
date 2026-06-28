@@ -416,18 +416,31 @@ async def list_modules() -> dict:
 
 async def run_pypi_modules_scan():
     """Periodically scan PyPI simple index and GitHub for mirrordash-* packages."""
-    global DISCOVERED_COMMUNITY_MODULES
-    import gzip
     while True:
         try:
-            logger.info("Scanning PyPI and GitHub for mirrordash-* community modules...")
-            loop = asyncio.get_running_loop()
+            await scan_community_modules_now()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Error scanning for community modules: {e}", exc_info=True)
+        # Run scan every 12 hours
+        await asyncio.sleep(43200)
 
-            scanned_modules = []
-            scanned_names = set()
+LAST_SCAN_TIMESTAMP = None
 
-            def _fetch_simple_index():
-                url = "https://pypi.org/simple/"
+async def scan_community_modules_now():
+    """Scan PyPI simple index and GitHub for mirrordash-* packages immediately."""
+    global DISCOVERED_COMMUNITY_MODULES, LAST_SCAN_TIMESTAMP
+    import gzip
+    from datetime import datetime, timezone
+    logger.info("Scanning PyPI and GitHub for mirrordash-* community modules...")
+    loop = asyncio.get_running_loop()
+
+    scanned_modules = []
+    scanned_names = set()
+
+    def _fetch_simple_index():
+        url = "https://pypi.org/simple/"
                 req = urllib.request.Request(
                     url,
                     headers={"User-Agent": "MirrorDash/1.0", "Accept-Encoding": "gzip"}
@@ -526,17 +539,10 @@ async def run_pypi_modules_scan():
                     "source": "pypi"
                 })
 
-            if scanned_modules:
-                DISCOVERED_COMMUNITY_MODULES = scanned_modules
-                logger.info(f"Scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
-
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(f"Error scanning for community modules: {e}", exc_info=True)
-
-        # Run scan every 12 hours
-        await asyncio.sleep(43200)
+    if scanned_modules:
+        DISCOVERED_COMMUNITY_MODULES = scanned_modules
+        LAST_SCAN_TIMESTAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        logger.info(f"Scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
 
 
 def start_community_modules_scan():
@@ -560,6 +566,12 @@ async def list_community_modules() -> list[dict]:
     """Return a list of popular discoverable community modules on PyPI."""
     global DISCOVERED_COMMUNITY_MODULES
     return DISCOVERED_COMMUNITY_MODULES
+
+@router.post("/community-modules/scan", dependencies=[Depends(require_api_key)])
+async def force_scan_community_modules():
+    """Manually trigger a scan of community modules."""
+    await scan_community_modules_now()
+    return {"status": "success", "message": "Module list refreshed from GitHub and PyPI."}
 
 
 
