@@ -542,7 +542,6 @@ step_systemd_service() {
 Description=MirrorDash Core App Backend
 After=network.target mirrordash-storage-init.service
 Requires=mirrordash-storage-init.service
-RequiresMountsFor=/storage/mirrordash/data
 
 [Service]
 Type=simple
