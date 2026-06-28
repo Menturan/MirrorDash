@@ -7,14 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Core App
-- Add a global offline indicator (slashed globe) to the kiosk interface that automatically appears when outward internet connectivity is lost.
-- Switch the disk usage monitor to target the persistent `/storage` partition instead of the read-only rootfs.
-- Fix HTMX endpoint path for manually rescanning community modules.
-- Fix default community module registry to use GitHub URLs for editable installations instead of local paths.
 
 ### System OS (Appliance)
-- Fix typo in `seatd` daemon path (`/usr/sbin/seatd` instead of `/usr/bin/seatd`) on Debian Trixie that was causing fatal labwc crashes and a black screen.
 - Create an explicitly transparent X11 cursor theme during boot to permanently hide the mouse pointer in Wayland without relying on the missing `labwc-msg` utility.
+- Fix typo in `seatd` daemon path (`/usr/sbin/seatd` instead of `/usr/bin/seatd`) on Debian Trixie that was causing fatal labwc crashes and a black screen.
+
+## [0.3.3] - 2026-06-29
+
+### Core App
+- Add a global offline indicator (slashed globe) to the kiosk interface that automatically appears when outward internet connectivity is lost.
+- Fix HTMX endpoint path for manually rescanning community modules.
+- Fix default community module registry to use GitHub URLs for editable installations instead of local paths.
+- Switch the disk usage monitor to target the persistent `/storage` partition instead of the read-only rootfs.
+
+### System OS (Appliance)
 
 ## [0.3.2-os1] - 2026-06-28
 
