@@ -30,7 +30,7 @@ This reverts commit 2b3cb0639acdabdcd7d0026a5e24e33467cd653c. (88b2009)
 
 ### System OS (Appliance)
 
-- Mask getty@tty1.service to prevent TTY1 preemption and SIGHUP crashes (29279c6)
+- Mask getty@tty1.service and autologin@tty1.service to prevent terminal preemption and SIGHUP crashes (3702565)
 - Harden repart and hydration services against udev and mount timing races (673c4ee)
 - Implement MBR-compatible dynamic partitioning service on first boot (dfaf32b)
 - Update build_image.sh (fd191f9)
