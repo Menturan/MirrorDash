@@ -264,7 +264,8 @@ sudo apt install -y --no-install-recommends \
     plymouth \
     pix-plym-splash \
     parted \
-    python3 && \
+    python3 \
+    git && \
 sudo apt autoclean -y && sudo apt autoremove -y
 ```
 
@@ -282,6 +283,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `pix-plym-splash` | The Raspberry Pi-specific "pix" desktop Plymouth theme package required for the customized startup splash screen. |
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
+| `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
 
 > [!NOTE]
 > **NetworkManager** is the default network backend on Trixie — no separate install is needed. **log2ram** is not installed because Trixie configures `systemd-journald` as **volatile by default** (logs go to RAM and are lost on reboot), which already eliminates the primary SD card write source.

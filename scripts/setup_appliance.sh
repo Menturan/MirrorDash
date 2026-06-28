@@ -152,7 +152,8 @@ step_installing_packages() {
       network-manager \
       dnsmasq-base \
       nginx \
-      parted
+      parted \
+      git
 }
 
 step_setting_hostname() {
