@@ -388,7 +388,7 @@ sudo mkdir -p /etc/systemd/system/seatd.service.d
 sudo tee /etc/systemd/system/seatd.service.d/group.conf << 'EOF'
 [Service]
 ExecStart=
-ExecStart=/usr/bin/seatd -g video
+ExecStart=/usr/sbin/seatd -g video
 EOF
 sudo systemctl daemon-reload
 sudo systemctl enable seatd.service

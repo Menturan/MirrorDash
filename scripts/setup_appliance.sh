@@ -249,7 +249,7 @@ EOF
   cat << 'EOF' > /etc/systemd/system/seatd.service.d/group.conf
 [Service]
 ExecStart=
-ExecStart=/usr/bin/seatd -g video
+ExecStart=/usr/sbin/seatd -g video
 EOF
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
@@ -258,11 +258,15 @@ EOF
 <?xml version="1.0"?><labwc_config><mouse><context name="Root"><mousebind button="Right" action="Press"><action name="None" /></mousebind></context></mouse></labwc_config>
 EOF
 
-  cat << 'EOF' > "$PI_HOME/.config/labwc/autostart"
-labwc-msg HideCursor 2>/dev/null || true
+  # Generate a 1-pixel transparent X11 cursor theme to permanently hide the mouse pointer in Wayland
+  mkdir -p "$PI_HOME/.icons/empty/cursors"
+  echo "WGN1chAAAAAAAAEAAQAAAAIA/f8gAAAAHAAAACQAAAACAP3/IAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAMgAAAAAAAAA=" | base64 -d > "$PI_HOME/.icons/empty/cursors/left_ptr"
+  cat << 'EOF' > "$PI_HOME/.icons/empty/index.theme"
+[Icon Theme]
+Name=empty
 EOF
-  chmod +x "$PI_HOME/.config/labwc/autostart"
-  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config"
+  echo "XCURSOR_THEME=empty" > "$PI_HOME/.config/labwc/environment"
+  chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config" "$PI_HOME/.icons"
 
   echo "Configuring cog kiosk systemd service..."
   cat << 'EOF' > /etc/systemd/system/cog-kiosk.service
