@@ -442,7 +442,16 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
 
-# 9. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
+# 9. Set up an hourly OS safeguard to purge browser cache from the RAM overlay
+sudo tee /etc/cron.hourly/mirrordash-cache-purge << 'EOF'
+#!/bin/sh
+# Aggressively clear the WebKit browser cache to prevent RAM overlay exhaustion
+rm -rf /home/pi/.cache/wpe/* 2>/dev/null || true
+rm -rf /home/pi/.cache/cog/* 2>/dev/null || true
+EOF
+sudo chmod +x /etc/cron.hourly/mirrordash-cache-purge
+
+# 10. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
 sudo systemctl enable labwc-kiosk.service cog-kiosk.service
 sudo systemctl mask getty@tty1.service autologin@tty1.service
 ```

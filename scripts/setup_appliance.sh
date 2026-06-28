@@ -287,6 +287,15 @@ WantedBy=graphical.target
 EOF
   systemctl --root=/ enable cog-kiosk.service
 
+  echo "Setting up hourly OS safeguard to purge browser cache from RAM overlay..."
+  cat << 'EOF' > /etc/cron.hourly/mirrordash-cache-purge
+#!/bin/sh
+# Aggressively clear the WebKit browser cache to prevent RAM overlay exhaustion
+rm -rf /home/pi/.cache/wpe/* 2>/dev/null || true
+rm -rf /home/pi/.cache/cog/* 2>/dev/null || true
+EOF
+  chmod +x /etc/cron.hourly/mirrordash-cache-purge
+
   echo "Masking default getty and autologin on tty1 to prevent terminal login preemption..."
   systemctl --root=/ mask getty@tty1.service autologin@tty1.service
 }
