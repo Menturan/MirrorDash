@@ -171,8 +171,8 @@ async def apply_system_settings(rotation: str, resolution: str, brightness: int,
         }
         wlr_rot = wlr_rot_map.get(rotation, "normal")
 
-        # Retry query up to 5 times to handle compositor startup timing
-        for attempt in range(5):
+        # Retry query up to 60 times to handle compositor startup timing
+        for attempt in range(60):
             proc = await asyncio.create_subprocess_exec(
                 "wlr-randr",
                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
@@ -195,8 +195,8 @@ async def apply_system_settings(rotation: str, resolution: str, brightness: int,
                     logger.info(f"Applied wlr-randr display configuration for {display}: transform={wlr_rot}, resolution={resolution}")
                     break
             else:
-                logger.debug(f"wlr-randr query failed on attempt {attempt + 1}/5 (Wayland might not be ready yet)")
-                if attempt < 4:
+                logger.debug(f"wlr-randr query failed on attempt {attempt + 1}/60 (Wayland might not be ready yet)")
+                if attempt < 59:
                     await asyncio.sleep(1)
     except Exception as e:
         logger.debug(f"wlr-randr display settings skipped or failed: {e}")

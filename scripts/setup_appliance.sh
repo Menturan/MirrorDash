@@ -215,8 +215,8 @@ step_setting_up_wayland() {
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-start.service seatd.service
+Wants=seatd.service cog-kiosk.service
 Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
-Wants=cog-kiosk.service
 
 [Service]
 User=pi
