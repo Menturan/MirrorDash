@@ -235,7 +235,7 @@ Restart=always
 RestartSec=3
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable labwc-kiosk.service
 
@@ -286,7 +286,7 @@ Restart=always
 RestartSec=2
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable cog-kiosk.service
 
