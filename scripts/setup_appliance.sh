@@ -616,7 +616,7 @@ if [ ! -b "$TARGET_PART" ]; then
     echo "Creating partition $PART_NUM starting at ${START_SECTOR}s..."
     
     # Create partition using parted
-    parted -s "$DISK" -- align optimal mkpart primary ext4 "${START_SECTOR}s" 100%
+    parted -s -a optimal "$DISK" -- mkpart primary ext4 "${START_SECTOR}s" 100%
     
     # Reload partition table and wait for udev to create the device node (using fallback for busy partition tables)
     partprobe "$DISK" || partx -a "$DISK" || true
