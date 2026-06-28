@@ -284,6 +284,9 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
   systemctl --root=/ enable cog-kiosk.service
+
+  echo "Masking default getty on tty1 to prevent terminal login preemption..."
+  systemctl --root=/ mask getty@tty1.service
 }
 
 step_installing_app() {

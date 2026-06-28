@@ -439,8 +439,9 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
 
-# 9. Enable the systemd kiosk services
+# 9. Enable the systemd kiosk services and mask the default tty1 getty
 sudo systemctl enable labwc-kiosk.service cog-kiosk.service
+sudo systemctl mask getty@tty1.service
 ```
 
 > [!NOTE]
@@ -826,12 +827,13 @@ Verify that all critical services are functional and the persistent partition is
 mount | grep /storage
 ls -la /home/pi/.mirrordash/data/
 
-# Verify MirrorDash services are enabled
+# Verify MirrorDash services are enabled and getty is masked
 sudo systemctl is-enabled mirrordash-storage-init.service
 sudo systemctl is-enabled labwc-kiosk.service cog-kiosk.service
 sudo systemctl is-enabled mirrordash.service
 sudo systemctl is-enabled mirrordash-wifi-fallback.service
 sudo systemctl is-enabled systemd-time-wait-sync.service
+sudo systemctl is-enabled getty@tty1.service # Should output 'masked'
 
 # Verify MirrorDash starts correctly
 sudo systemctl start mirrordash.service
