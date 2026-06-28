@@ -270,6 +270,7 @@ EOF
 Description=Cog WebKit Kiosk
 After=labwc-kiosk.service
 BindsTo=labwc-kiosk.service
+StartLimitIntervalSec=0
 
 [Service]
 User=pi
