@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Core App
 
+- Resolve display power startup race condition by propagating success boolean to manager loop (19056c8)
 - Match correct final image artifact in github workflow release step (aa9604d)
 - Append Wayland, NetworkManager, and kiosk systemd architectural rules (2b3cb06)
 - Revert "docs(agents): append Wayland, NetworkManager, and kiosk systemd architectural rules"
