@@ -12,11 +12,21 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- Connection status indicator -->
     <div id="ws-status" class="ws-status ws-status--connecting" aria-live="polite" aria-label="Connection status">
         <span class="ws-status__dot"></span>
         <i data-lucide="wifi" style="width: 14px; height: 14px; stroke-width: 2px;"></i>
         <span class="ws-status__label">Connecting…</span>
+    </div>
+
+    <!-- Internet offline indicator -->
+    <div id="offline-indicator" class="offline-indicator" aria-live="polite" aria-label="Internet Connection" style="display: none;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+            <path d="M2 12h20"></path>
+            <line x1="2" y1="2" x2="22" y2="22"></line>
+        </svg>
+        <span class="ws-status__label">Offline</span>
     </div>
 
     <div class="container">

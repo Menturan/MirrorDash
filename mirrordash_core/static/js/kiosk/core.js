@@ -250,3 +250,24 @@ async function loadActiveModules() {
 
 loadActiveModules();
 connect();
+
+// Global Internet Connectivity Monitoring
+function updateOfflineIndicator() {
+    const indicator = document.getElementById('offline-indicator');
+    if (!indicator) return;
+    
+    if (!navigator.onLine) {
+        indicator.style.display = 'flex';
+        // Small delay to ensure display:flex has applied before opacity transition
+        setTimeout(() => indicator.style.opacity = '1', 10);
+    } else {
+        indicator.style.opacity = '0';
+        setTimeout(() => { 
+            if (navigator.onLine) indicator.style.display = 'none'; 
+        }, 500);
+    }
+}
+
+window.addEventListener('online', updateOfflineIndicator);
+window.addEventListener('offline', updateOfflineIndicator);
+updateOfflineIndicator(); // Initialize state on load

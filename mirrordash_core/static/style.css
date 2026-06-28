@@ -367,8 +367,31 @@ body, html {
 .ws-status--disconnected { color: var(--color-status-warning); }
 
 @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+    0%   { opacity: 1;   transform: scale(1); }
+    50%  { opacity: 0.4; transform: scale(0.9); }
+    100% { opacity: 1;   transform: scale(1); }
+}
+
+.offline-indicator {
+    position: fixed;
+    top: 45px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.85);
+    border: 1px solid var(--outline-variant);
+    border-radius: var(--radius-full);
+    padding: 6px 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--color-status-warning);
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    transition: opacity 0.5s ease-in-out;
 }
 
 /* ============================================================
