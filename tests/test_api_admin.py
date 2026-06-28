@@ -260,7 +260,7 @@ def test_uninstall_module_success(mock_subproc, mock_ro, mock_rw, mock_save, moc
     assert "mirrordash-clock" not in saved_config["modules"]
     
     # Assert subprocess executed uninstall
-    mock_subproc.assert_called_once_with(
+    mock_subproc.assert_any_call(
         "uv", "pip", "uninstall", "-y", "mirrordash-clock",
         stdout=-1, stderr=-1, env=ANY
     )

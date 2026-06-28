@@ -44,7 +44,12 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock
     mock_proc_check.returncode = 0
     mock_proc_check.communicate = AsyncMock(return_value=(b"Check passed", b""))
     
-    mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check]
+    # Clean process mock
+    mock_proc_clean = MagicMock()
+    mock_proc_clean.returncode = 0
+    mock_proc_clean.communicate = AsyncMock(return_value=(b"", b""))
+    
+    mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check, mock_proc_clean]
     
     headers = {"X-API-Key": "secret"}
     # Call the endpoint
@@ -53,8 +58,8 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     
-    # Verify both commands were run
-    assert mock_exec.call_count == 2
+    # Verify all three commands were run
+    assert mock_exec.call_count == 3
 
 @patch("mirrordash_core.api.admin_modules.load_config")
 @patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
