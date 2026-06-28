@@ -30,7 +30,8 @@ chmod +x /usr/sbin/policy-rc.d
 # Ensure target disk has enough space (at least 8GB to fit bootfs + rootfs + storage)
 # Bypass the physical disk size check if we are building the image in the cloud
 if [ -z "${BUILDING_IMAGE:-}" ]; then
-  ROOT_PART=$(findmnt -n -o SOURCE /)
+  ROOT_DEV_PARAM=$(cat /proc/cmdline | grep -o 'root=[^ ]*' | cut -d= -f2)
+  ROOT_PART=$(findfs "$ROOT_DEV_PARAM" 2>/dev/null || findmnt -n -o SOURCE /)
   PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
 
   if [ -n "$PARENT_NAME" ]; then
@@ -581,7 +582,8 @@ step_repart_service() {
 # MirrorDash MBR Partition Expander
 set -euo pipefail
 
-ROOT_PART=$(findmnt -n -o SOURCE /)
+ROOT_DEV_PARAM=$(cat /proc/cmdline | grep -o 'root=[^ ]*' | cut -d= -f2)
+ROOT_PART=$(findfs "$ROOT_DEV_PARAM" 2>/dev/null || findmnt -n -o SOURCE /)
 PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
 if [ -n "$PARENT_NAME" ]; then
     DISK="/dev/$PARENT_NAME"
