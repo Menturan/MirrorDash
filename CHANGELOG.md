@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Core App
 
 ### System OS (Appliance)
+
+## [0.3.2-os1] - 2026-06-28
+
+### Core App
+
+### System OS (Appliance)
 - Add atomic download continuation to build image (935e656)
 - Add atomic no-target-directory flag to fallback rollback moves (9a714a9)
 - Add error suppression to log truncation step for robustness (81a5268)
