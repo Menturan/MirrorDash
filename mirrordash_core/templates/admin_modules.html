@@ -34,7 +34,7 @@
             <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
                 <h3 style="margin: 0; font-size: 0.95rem; font-weight: 500; color: white; display: flex; align-items: center; gap: 8px;">
                     <i class="fas fa-database" style="color: var(--accent-color);"></i>
-                    <span>Root Partition Storage (Virtual Env)</span>
+                    <span>Persistent Storage (Modules & Config)</span>
                 </h3>
                 <span id="disk-usage-summary" style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--mono-family);">
                     {{ (disk_usage.used_bytes / 1024 / 1024 / 1024)|round(1) }} GB used of {{ (disk_usage.total_bytes / 1024 / 1024 / 1024)|round(1) }} GB ({{ disk_usage.percent_used }}% used)
@@ -129,7 +129,7 @@
             <div style="text-align: right;">
                 <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Last scanned: {{ last_scan }}</span>
                 <button class="btn secondary btn-sm"
-                        hx-post="/community-modules/scan"
+                        hx-post="/admin/community-modules/scan"
                         hx-target="#global-status"
                         hx-swap="innerHTML"
                         onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Scanning...'; setTimeout(() => location.reload(), 3000);">
