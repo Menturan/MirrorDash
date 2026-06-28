@@ -202,7 +202,7 @@ async def is_wifi_hotspot_active() -> bool:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=2)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
             if proc.returncode == 0:
                 lines = stdout.decode("utf-8", errors="ignore").splitlines()
                 return "MirrorDash-Setup" in lines
