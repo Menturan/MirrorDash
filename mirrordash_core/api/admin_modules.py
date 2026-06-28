@@ -533,10 +533,10 @@ async def scan_community_modules_now():
     if "mirrordash-clock" not in scanned_names:
         scanned_modules.insert(0, {
             "name": "mirrordash-clock",
-            "install_name": "mirrordash-clock",
+            "install_name": "git+https://github.com/Menturan/MirrorDash.git#subdirectory=modules/mirrordash-clock",
             "title": "Clock Widget",
             "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes.",
-            "source": "pypi"
+            "source": "github"
         })
 
     if scanned_modules:

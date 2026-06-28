@@ -365,10 +365,12 @@ async def rebuild_venv() -> dict:
 
 @router.get("/disk-usage", dependencies=[Depends(require_api_key)])
 async def get_disk_usage() -> dict:
-    """Get root partition disk space usage."""
+    """Get persistent storage partition disk space usage."""
     import shutil
+    import os
     try:
-        total, used, free = shutil.disk_usage("/")
+        check_path = "/storage" if os.path.ismount("/storage") or os.path.exists("/storage") else "/"
+        total, used, free = shutil.disk_usage(check_path)
         percent = round((used / total) * 100, 1) if total > 0 else 0.0
         return {
             "total_bytes": total,

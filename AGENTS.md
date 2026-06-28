@@ -212,7 +212,7 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
 
 26. **Professional Grade IoT & Consumer Simplicity.** The system must operate with professional-grade IoT reliability, designed to run continuously for years without manual intervention, memory leaks, or filesystem corruption. Every user-facing interface, including the captive portal network setup wizard, must be designed with ultimate simplicity in mind, ensuring that non-technical users (such as your parents) can use and configure the device safely, intuitively, and without command-line access.
 
-27. **Disk Space Boundary Monitoring.** The virtual environment `.venv` resides on the root filesystem (ext4) which is capped at 6GB in the golden image. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint). Always display a warning visual when remaining root partition free space drops below 500MB to avoid system crashes on OverlayFS.
+27. **Disk Space Boundary Monitoring.** Active virtual environments (`venv_a`, `venv_b`) and all community modules reside on the persistent `/storage` partition. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint, which monitors `/storage`). Always display a warning visual when remaining persistent storage space drops below 500MB to avoid module installation failures.
 
 28. **Deploy Automations & Scripting.** When writing golden image or system administration guides, provide a single setup script (e.g., `scripts/setup_appliance.sh`) and chain manual command segments using `&&` to minimize copy-paste errors and user friction.
 
