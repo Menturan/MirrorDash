@@ -28,3 +28,6 @@ pishrink.sh
 *.img
 *.img.gz
 
+# MirrorDash modules (each is an independent Git repository)
+modules/*/
+
