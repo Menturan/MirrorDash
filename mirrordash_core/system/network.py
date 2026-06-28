@@ -113,22 +113,17 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
     except Exception as e:
         logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
 
-    cmd = ["sudo", "nmcli"]
+    cmd = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
     if password:
-        cmd.append("--ask")
-    cmd.extend(["dev", "wifi", "connect", ssid])
+        cmd.extend(["password", password])
 
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
-            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        if password:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(input=f"{password}\n".encode()), timeout=30)
-        else:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
 
         # Lock FS
         await remount_ro()
