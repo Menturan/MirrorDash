@@ -94,8 +94,18 @@ MirrorDash is a modular, ambient information display system designed for Raspber
 
 ## Running Locally
 
+To run the application locally:
 ```bash
+# 1. Activate the virtual environment
 source .venv/bin/activate
+
+# 2. Install development and testing optional dependencies (includes Playwright)
+uv pip install -e .[dev]
+
+# 3. Install Playwright browser binaries for visual testing
+.venv/bin/playwright install chromium
+
+# 4. Start the application
 python mirrordash_core/main.py
 ```
 
@@ -192,6 +202,11 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
     - **Required for Logic Changes**: Unit/integration tests in the `tests/` directory are mandatory for any backend/frontend code modifications, logic updates, or bug fixes.
     - **Bypass for Non-Logic Changes**: You MUST NOT run backend tests if modifications are strictly limited to documentation (e.g., `.md` files), inline code comments, pure styling (CSS), static assets, or templates with no execution logic.
     - **Targeted Test Runs**: During development, run only the relevant test file or specific test cases (e.g., `.venv/bin/pytest tests/test_event_bus.py` or `.venv/bin/pytest -k <test_name>`) instead of running the entire suite. Only run the full suite (`.venv/bin/pytest`) as a final validation step before completion.
+    - **Visual Browser / Integration Tests**: Frontend UX and browser flows are verified using Playwright. Run these locally with:
+      ```bash
+      .venv/bin/pytest -v tests/test_visual_admin.py
+      ```
+      This will launch a local server and test real browser behavior (e.g., config drawer expansion, page tab swaps, overlay states).
 
 
 ### General
