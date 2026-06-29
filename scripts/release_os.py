@@ -19,6 +19,7 @@ What it does NOT do (intentional — requires human decision):
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
 import sys
 
@@ -145,8 +146,17 @@ def main():
     run_tests()
 
     print("\n[3/4] Reorganizing CHANGELOG.md using git-cliff...")
+    if shutil.which("git-cliff"):
+        git_cliff_cmd = ["git-cliff"]
+    elif shutil.which("npx"):
+        git_cliff_cmd = ["npx", "--yes", "git-cliff"]
+    else:
+        print("  ERROR: git-cliff or npx not found in PATH.")
+        print("  Please install git-cliff (e.g. via cargo: `cargo install git-cliff` or npm: `npm install -g git-cliff`).")
+        sys.exit(1)
+
     result = subprocess.run(
-        ["git-cliff", "-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
+        git_cliff_cmd + ["-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
         cwd=repos_dir,
     )
     if result.returncode != 0:
