@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Core App
+- Add dev-only optional dependency group in `pyproject.toml` to isolate testing libraries (Playwright, pytest-playwright, etc.) from the production image environment.
+- Create a comprehensive visual integration test suite using Playwright browser automation to verify all admin dashboard panels (navigation, configuration, logs, backups, and system controls).
+- Establish a dynamic mocking framework to isolate hardware and system boundaries in visual tests, resolving sudo password prompts and filesystem write errors.
+- Implement professional wildcard HTTP redirection middleware for the WiFi captive portal, automatically capturing client detection paths (Apple/Android/Windows canaries) and redirecting remote clients to the setup wizard.
+- Add active AP state caching to the captive portal to eliminate shell command execution overhead during normal network operations.
 
 ### System OS (Appliance)
 
