@@ -139,3 +139,26 @@ def test_index_serves_dashboard_when_configured(mock_load, mock_hotspot, client)
     assert "MirrorDash" in response.text
     assert "WiFi Setup Mode" not in response.text
     assert "Welcome to MirrorDash" not in response.text
+
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_captive_portal_redirects_remote_client(mock_hotspot, client):
+    mock_hotspot.return_value = True
+
+    # Remote client tries to access Apple's captive detection portal path
+    response = client.get("/hotspot-detect.html", headers={"host": "captive.apple.com"}, follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://10.42.0.1/wifi-setup"
+
+    # Remote client tries to access root /
+    response = client.get("/", headers={"host": "google.com"}, follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://10.42.0.1/wifi-setup"
+
+    # Remote client tries to access an allowed path (/wifi-setup)
+    response = client.get("/wifi-setup", headers={"host": "10.42.0.1"}, follow_redirects=False)
+    assert response.status_code == 200
+
+    # Remote client tries to access an allowed path (/static/style.css)
+    response = client.get("/static/style.css", headers={"host": "10.42.0.1"}, follow_redirects=False)
+    assert response.status_code != 302
+

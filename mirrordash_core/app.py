@@ -76,6 +76,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def captive_portal_redirect(request: Request, call_next):
+    host = request.headers.get("host", "")
+    is_local = "localhost" in host or "127.0.0.1" in host
+    
+    if not is_local:
+        path = request.url.path
+        allowed = False
+        for prefix in ("/wifi-setup", "/static", "/api/wifi", "/health"):
+            if path.startswith(prefix):
+                allowed = True
+                break
+        
+        if not allowed:
+            if await is_wifi_hotspot_active():
+                return RedirectResponse(url="http://10.42.0.1/wifi-setup", status_code=302)
+                
+    return await call_next(request)
+
 # Register admin API router
 app.include_router(admin_router)
 app.include_router(backup_router)
