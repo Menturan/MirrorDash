@@ -66,6 +66,7 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 - Stabilize and complete playwright visual test suite (ce6257b)
 - Implement professional wildcard HTTP redirects for captive portal (3164cf9)
 - Update CHANGELOG for visual tests and captive portal changes (7cb5f1d)
+- Automatically generate CHANGELOG using git-cliff (818e524)
 
 ### System OS (Appliance)
 
