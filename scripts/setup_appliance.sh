@@ -259,6 +259,8 @@ EOF
 EOF
 
   # Generate a 1-pixel transparent X11 cursor theme to permanently hide the mouse pointer in Wayland
+  # The XCURSOR_THEME environment variable (set in labwc/environment below) tells the compositor
+  # to use this theme instead of any system default, hiding the cursor at the compositor level.
   mkdir -p "$PI_HOME/.icons/empty/cursors"
   echo "WGN1chAAAAAAAAEAAQAAAAIA/f8gAAAAHAAAACQAAAACAP3/IAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAMgAAAAAAAAA=" | base64 -d > "$PI_HOME/.icons/empty/cursors/left_ptr"
   # Symlink all other common cursor names to left_ptr to prevent fallbacks to default system cursor icons

@@ -375,12 +375,23 @@ cat << 'EOF' > /home/pi/.config/labwc/rc.xml
 </labwc_config>
 EOF
 
-# 5. Hide mouse cursor natively via labwc autostart
-cat << 'EOF' > /home/pi/.config/labwc/autostart
-labwc-msg HideCursor 2>/dev/null || true
+# 5. Hide mouse cursor at compositor level via a transparent X11 cursor theme
+# XCURSOR_THEME=empty tells labwc to use a custom theme containing only a
+# 1-pixel transparent cursor. This is the correct, deterministic approach:
+# no timing dependencies, no extra tools, works from the very first frame.
+# 'left_ptr' is the default cursor; all other common cursor types are symlinked
+# to it so that no compositor fallback to a system cursor can occur.
+mkdir -p /home/pi/.icons/empty/cursors
+echo "WGN1chAAAAAAAAEAAQAAAAIA/f8gAAAAHAAAACQAAAACAP3/IAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAMgAAAAAAAAA=" | base64 -d > /home/pi/.icons/empty/cursors/left_ptr
+for c in default pointer hand hand1 hand2 wait watch text xterm cross crosshair help question_arrow; do
+  ln -sf left_ptr "/home/pi/.icons/empty/cursors/$c"
+done
+cat << 'EOF' > /home/pi/.icons/empty/index.theme
+[Icon Theme]
+Name=empty
 EOF
-chmod +x /home/pi/.config/labwc/autostart
-chown -R pi:pi /home/pi/.config
+echo "XCURSOR_THEME=empty" > /home/pi/.config/labwc/environment
+chown -R pi:pi /home/pi/.config /home/pi/.icons
 
 # 6. Configure seatd permissions for unprivileged Wayland access and enable the service
 # (Note: We configure seatd to use the 'video' group since 'pi' is always in 'video' by default, avoiding first-boot group reset issues)
