@@ -123,9 +123,19 @@
                 const res = await fetch('/admin/auth/status');
                 if (!res.ok) throw new Error('Failed to fetch auth status');
                 const data = await res.json();
-                
+
                 if (data.setup_required) {
-                    const pwd = prompt('Welcome! Please create an admin password for MirrorDash (at least 4 characters):');
+                    // Clear any stale stored key — it's either a fresh install or the
+                    // stored auth config is corrupt/missing and needs to be recreated.
+                    currentApiKey = '';
+                    localStorage.removeItem('mirrordash_api_key');
+
+                    const isFirstTime = !data.auth_existed;
+                    const promptMsg = isFirstTime
+                        ? 'Welcome! Please create an admin password for MirrorDash (at least 4 characters):'
+                        : '⚠️ Admin password config is missing or corrupt. Please set a new password (at least 4 characters):';
+
+                    const pwd = prompt(promptMsg);
                     if (!pwd || pwd.length < 4) {
                         alert('Password must be at least 4 characters. Reload to try again.');
                         return false;
@@ -135,7 +145,7 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ password: pwd })
                     });
-                    
+
                     if (setupRes.ok) {
                         currentApiKey = pwd;
                         localStorage.setItem('mirrordash_api_key', currentApiKey);

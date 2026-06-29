@@ -41,7 +41,10 @@ async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> 
     salt = auth.get("salt")
 
     if not expected_hash or not salt:
-        raise HTTPException(status_code=500, detail="Invalid admin auth config")
+        raise HTTPException(
+            status_code=403,
+            detail="Admin auth config is corrupt or incomplete. Please reset the password."
+        )
 
     provided_hash = hash_password(x_api_key, salt)
     if not secrets.compare_digest(provided_hash, expected_hash):

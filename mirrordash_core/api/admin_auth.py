@@ -13,10 +13,20 @@ router = APIRouter()
 @router.get("/auth/status")
 async def get_auth_status() -> dict:
     config = load_config()
-    setup_required = "admin_auth" not in config
+    auth = config.get("admin_auth")
+    # setup_required is True when auth is absent OR when the stored entry is
+    # corrupt (missing or empty hash / salt keys).
+    setup_required = (
+        not auth
+        or not auth.get("hash")
+        or not auth.get("salt")
+    )
     hotspot_active = await is_wifi_hotspot_active()
     return {
         "setup_required": setup_required,
+        # auth_existed tells the frontend whether an auth entry was present but
+        # found to be corrupt, so it can show the right prompt message.
+        "auth_existed": auth is not None,
         "wifi_hotspot_active": hotspot_active
     }
 
@@ -28,7 +38,10 @@ async def setup_auth(body: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
 
     config = load_config()
-    if "admin_auth" in config:
+    auth = config.get("admin_auth")
+    # Allow setup (or re-setup) when auth is absent OR corrupt.
+    auth_is_valid = auth and auth.get("hash") and auth.get("salt")
+    if auth_is_valid:
         raise HTTPException(status_code=400, detail="Password is already set")
 
     salt = secrets.token_hex(16)
