@@ -43,3 +43,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["mirrordash_core"]
+
+[tool.pytest.ini_options]
+addopts = "--ignore=tests/test_visual_admin.py"

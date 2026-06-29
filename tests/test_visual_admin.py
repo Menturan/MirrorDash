@@ -3,12 +3,12 @@ import socket
 import threading
 import uvicorn
 import pytest
+import contextlib
 from unittest.mock import patch, AsyncMock
-from mirrordash_core.app import app
-from mirrordash_core.api.admin import hash_password
 
 # Setup mock config
 mock_salt = "0123456789abcdef"
+from mirrordash_core.api.admin import hash_password
 mock_hash = hash_password("secret", mock_salt)
 
 MOCK_CONFIG = {
@@ -16,11 +16,21 @@ MOCK_CONFIG = {
         "hash": mock_hash,
         "salt": mock_salt
     },
+    "globals": {
+        "language": "en",
+        "timezone": "Europe/Stockholm",
+        "time_format": "24h",
+        "temperature_unit": "C",
+        "distance_unit": "km",
+        "latitude": 59.3293,
+        "longitude": 18.0686
+    },
     "system": {
         "rotation": "normal",
         "resolution": "auto",
         "brightness": 100,
-        "volume": 80
+        "volume": 80,
+        "ssh": False
     },
     "modules": {
         "mirrordash-clock": {
@@ -31,6 +41,82 @@ MOCK_CONFIG = {
     }
 }
 
+MOCK_BACKUPS = {
+    "backups": [
+        {
+            "filename": "backup_2026-06-29.mirror",
+            "created_at": "2026-06-29T21:30:00",
+            "size_bytes": 102400,
+            "encrypted": True
+        }
+    ]
+}
+
+# Dynamic patching helper to mock functions in all namespaces where they are imported
+@contextlib.contextmanager
+def patch_all_system():
+    mock_rw = AsyncMock(return_value=True)
+    mock_ro = AsyncMock(return_value=True)
+    mock_restart = AsyncMock(return_value=True)
+    mock_get_ssh_val = AsyncMock(return_value=False) # Start with SSH disabled to test toggle
+    mock_set_ssh_val = AsyncMock(return_value=True)
+    
+    # Mock subprocess for chpasswd and openssl
+    mock_proc = AsyncMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"mocked_hash\n", b""))
+    
+    modules = [
+        "mirrordash_core.api.admin_system",
+        "mirrordash_core.api.admin_system_panels",
+        "mirrordash_core.api.admin_auth",
+        "mirrordash_core.api.admin_config",
+        "mirrordash_core.api.admin_modules_panels",
+        "mirrordash_core.api.admin_shared",
+        "mirrordash_core.config",
+        "mirrordash_core.system",
+        "mirrordash_core.system.os",
+        "mirrordash_core.system.network"
+    ]
+    
+    stack = contextlib.ExitStack()
+    with stack:
+        # Patch system and utility imports in every module namespace
+        for m in modules:
+            for func_name, mock_obj in [
+                ("load_config", MOCK_CONFIG),
+                ("remount_rw", mock_rw),
+                ("remount_ro", mock_ro),
+                ("run_restart", mock_restart),
+                ("get_ssh_status", mock_get_ssh_val),
+                ("set_ssh_status", mock_set_ssh_val),
+            ]:
+                try:
+                    if func_name == "load_config":
+                        stack.enter_context(patch(f"{m}.{func_name}", return_value=mock_obj))
+                    else:
+                        stack.enter_context(patch(f"{m}.{func_name}", mock_obj))
+                except AttributeError:
+                    # Ignore if the module doesn't import or define this function
+                    pass
+        
+        # Intercept subprocesses in admin_system.py
+        stack.enter_context(patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", return_value=mock_proc))
+        
+        # Specific service level mocks
+        stack.enter_context(patch("mirrordash_core.display_power.display_power_manager.start", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.display_power.display_power_manager.stop", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.module_loader.module_loader.start_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.module_loader.module_loader.stop_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.api.admin_logs.get_logs", return_value={"logs": "MOCK LOG LINE 1\nMOCK LOG LINE 2"}))
+        stack.enter_context(patch("mirrordash_core.api.backup.list_backups", return_value=MOCK_BACKUPS))
+        stack.enter_context(patch("mirrordash_core.api.backup.create_backup", return_value={"filename": "backup_2026-06-29.mirror", "status": "success"}))
+        
+        yield
+
+# Import app after helper definitions to maintain logical ordering
+from mirrordash_core.app import app
+
 def get_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.bind(("", 0))
@@ -40,16 +126,7 @@ def get_free_port():
 
 @pytest.fixture(scope="module")
 def server_url():
-    # Globally patch load_config and startup sequences for the server thread
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.admin_auth.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.admin_modules_panels.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.config.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.display_power.display_power_manager.start", new_callable=AsyncMock), \
-         patch("mirrordash_core.display_power.display_power_manager.stop", new_callable=AsyncMock), \
-         patch("mirrordash_core.module_loader.module_loader.start_modules", new_callable=AsyncMock), \
-         patch("mirrordash_core.module_loader.module_loader.stop_modules", new_callable=AsyncMock):
-        
+    with patch_all_system():
         port = get_free_port()
         config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning")
         server = uvicorn.Server(config)
@@ -63,30 +140,18 @@ def server_url():
 
 @pytest.fixture(autouse=True)
 def mock_backend_functions():
-    # Mock OS/system actions so the test server doesn't shut down or edit read-only FS
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.admin_auth.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.admin_modules_panels.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.config.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.system.remount_rw", new_callable=AsyncMock), \
-         patch("mirrordash_core.system.remount_ro", new_callable=AsyncMock), \
-         patch("mirrordash_core.system.run_restart", new_callable=AsyncMock):
-        yield
+    with patch_all_system(), patch("mirrordash_core.config.save_config") as mock_save:
+        yield mock_save
+
+def navigate_authenticated(page, server_url):
+    # Navigate to public health page first to initialize origin localStorage securely
+    page.goto(f"{server_url}/health")
+    page.evaluate("() => localStorage.setItem('mirrordash_api_key', 'secret')")
+    # Load the admin page directly authenticated
+    page.goto(f"{server_url}/admin")
 
 def test_admin_dashboard_navigation_and_drawer(page, server_url):
-    # Intercept prompt dialog for API key input and confirm dialogs
-    def handle_dialog(dialog):
-        if dialog.type == "prompt":
-            dialog.accept("secret")
-        elif dialog.type == "confirm":
-            dialog.accept()
-        else:
-            dialog.dismiss()
-
-    page.on("dialog", handle_dialog)
-
-    # Navigate to the dashboard
-    page.goto(f"{server_url}/admin")
+    navigate_authenticated(page, server_url)
 
     # 1. Verify we land on the default configuration page
     page.wait_for_selector("h1")
@@ -118,18 +183,11 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     assert not drawer.is_visible()
 
 def test_admin_dashboard_restart_overlay(page, server_url):
-    def handle_dialog(dialog):
-        if dialog.type == "prompt":
-            dialog.accept("secret")
-        elif dialog.type == "confirm":
-            dialog.accept()
-        else:
-            dialog.dismiss()
-
-    page.on("dialog", handle_dialog)
-
-    page.goto(f"{server_url}/admin")
+    navigate_authenticated(page, server_url)
     page.wait_for_selector("h1")
+
+    # Setup confirm handler for restart prompt
+    page.on("dialog", lambda dialog: dialog.accept() if dialog.type == "confirm" else dialog.dismiss())
 
     # Click the main Restart button in the header
     restart_btn = page.locator("#restart-btn")
@@ -145,3 +203,106 @@ def test_admin_dashboard_restart_overlay(page, server_url):
     # Wait for the overlay to naturally disappear once /health responds successfully
     page.wait_for_selector("#restart-overlay", state="hidden")
     assert not overlay.is_visible()
+
+def test_admin_configuration_panel(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    # Verify Visual Editor is visible
+    assert page.locator("#panel-visual").is_visible()
+    
+    # Switch to Raw JSON tab
+    page.click("#tab-raw")
+    page.wait_for_selector("#panel-raw", state="visible")
+    assert page.locator("#panel-raw").is_visible()
+    assert not page.locator("#panel-visual").is_visible()
+    
+    # Switch back to Visual Editor
+    page.click("#tab-visual")
+    page.wait_for_selector("#panel-visual", state="visible")
+    assert page.locator("#panel-visual").is_visible()
+
+def test_admin_logs_panel(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    # Click Logs tab
+    page.click("#page-tab-logs")
+    page.wait_for_selector("#logs-viewer")
+
+    # Verify mock log lines are loaded in the log viewer
+    log_content = page.locator("#logs-viewer").text_content()
+    assert "MOCK LOG LINE 1" in log_content
+    assert "MOCK LOG LINE 2" in log_content
+
+    # Select module logs filter
+    page.select_option("#log-type-select", "modules")
+    
+    # Verify module selection dropdown container becomes visible
+    page.wait_for_selector("#log-module-select-container", state="visible")
+    assert page.locator("#log-module-select-container").is_visible()
+
+    # Click Refresh button
+    page.click("#refresh-logs-btn")
+    # Verify logs viewer container updates and content is still present
+    page.wait_for_selector("#logs-viewer")
+    assert "MOCK LOG LINE 1" in page.locator("#logs-viewer").text_content()
+
+def test_admin_backup_panel(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    # Click Backup & Restore tab
+    page.click("#page-tab-backup")
+    page.wait_for_selector("#backups-list-tbody")
+
+    # Verify mock backup is rendered in list
+    assert page.locator("text=backup_2026-06-29.mirror").is_visible()
+
+    # Toggle Password Protection
+    assert not page.locator("#backup-password-container").is_visible()
+    page.evaluate("document.getElementById('backup-encrypt-toggle').checked = true; document.getElementById('backup-encrypt-toggle').dispatchEvent(new Event('change'))")
+    page.wait_for_selector("#backup-password-container", state="visible")
+    assert page.locator("#backup-password-container").is_visible()
+
+    # Fill password and generate backup
+    page.fill("#backup-password", "supersecretpwd")
+    page.click("#create-backup-btn")
+
+    # Verify alert/success messaging gets displayed in global status
+    page.wait_for_selector("#global-status", state="visible")
+    assert "Backup generated successfully" in page.locator("#global-status").text_content()
+
+def test_admin_system_panel(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    # Click System Settings tab
+    page.click("#page-tab-system")
+    page.wait_for_selector("#system-settings-form")
+
+    # Verify slider and selection elements are loaded
+    assert page.locator("#sys-brightness").is_visible()
+    assert page.locator("#sys-volume").is_visible()
+    assert page.locator("#sys-rotation").is_visible()
+
+    # Drag or update the brightness slider value
+    page.evaluate("document.getElementById('sys-brightness').value = 85; document.getElementById('sys-brightness').dispatchEvent(new Event('input'))")
+    assert page.locator("#sys-brightness-val").text_content() == "85%"
+
+    # Toggle SSH switch and set user password
+    assert not page.locator("#sys-ssh-password-group").is_visible()
+    page.evaluate("document.getElementById('sys-ssh').checked = true; document.getElementById('sys-ssh').dispatchEvent(new Event('change'))")
+    page.wait_for_selector("#sys-ssh-password-group", state="visible")
+    assert page.locator("#sys-ssh-password-group").is_visible()
+    page.fill("#sys-ssh-password", "pi_password_123")
+
+    # Change rotation settings
+    page.select_option("#sys-rotation", "right")
+
+    # Submit settings form
+    page.click("#save-system-btn")
+
+    # Verify status bar notifies user of successful save
+    page.wait_for_selector("#global-status", state="visible")
+    assert "System settings applied successfully" in page.locator("#global-status").text_content()
