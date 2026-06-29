@@ -382,24 +382,17 @@ async def install_panel_module(package_name: str = Form(...)):
         return HTMLResponse(content=f"""
             <div class="alert alert--success">Successfully installed {package_name}! System is restarting...</div>
             <script>
-                showGlobal('Successfully installed {package_name}. Restarting...', 'success');
-                setTimeout(() => {{
-                    const pollStart = Date.now();
-                    const poll = setInterval(async () => {{
-                        if (Date.now() - pollStart > 60000) {{
-                            clearInterval(poll);
-                            showGlobal('Server did not respond after 60s.', 'error');
-                            return;
-                        }}
-                        try {{
-                            const r = await fetch('/health');
-                            if (r.ok) {{
-                                clearInterval(poll);
-                                window.location.reload();
-                            }}
-                        }} catch (_) {{}}
-                    }}, 2000);
-                }}, 3000);
+                if (window.pollRestartAndReload) {{
+                    window.pollRestartAndReload({{
+                        targetPanel: 'modules',
+                        successMsg: 'Successfully installed {package_name}!',
+                        title: 'Installing Module',
+                        message: 'Restarting MirrorDash to load {package_name}...'
+                    }});
+                }} else {{
+                    showGlobal('Successfully installed {package_name}. Restarting...', 'success');
+                    setTimeout(() => {{ window.location.reload(); }}, 5000);
+                }}
             </script>
         """)
     except Exception as e:
@@ -414,24 +407,17 @@ async def uninstall_panel_module(package_name: str = Form(...)):
         return HTMLResponse(content=f"""
             <div class="alert alert--success">Successfully uninstalled {package_name}! System is restarting...</div>
             <script>
-                showGlobal('Successfully uninstalled {package_name}. Restarting...', 'success');
-                setTimeout(() => {{
-                    const pollStart = Date.now();
-                    const poll = setInterval(async () => {{
-                        if (Date.now() - pollStart > 60000) {{
-                            clearInterval(poll);
-                            showGlobal('Server did not respond after 60s.', 'error');
-                            return;
-                        }}
-                        try {{
-                            const r = await fetch('/health');
-                            if (r.ok) {{
-                                clearInterval(poll);
-                                window.location.reload();
-                            }}
-                        }} catch (_) {{}}
-                    }}, 2000);
-                }}, 3000);
+                if (window.pollRestartAndReload) {{
+                    window.pollRestartAndReload({{
+                        targetPanel: 'modules',
+                        successMsg: 'Successfully uninstalled {package_name}!',
+                        title: 'Uninstalling Module',
+                        message: 'Restarting MirrorDash to complete uninstallation of {package_name}...'
+                    }});
+                }} else {{
+                    showGlobal('Successfully uninstalled {package_name}. Restarting...', 'success');
+                    setTimeout(() => {{ window.location.reload(); }}, 5000);
+                }}
             </script>
         """)
     except Exception as e:
@@ -446,24 +432,17 @@ async def upgrade_panel_module(package_name: str = Form(...)):
         return HTMLResponse(content=f"""
             <div class="alert alert--success">Successfully upgraded {package_name}! System is restarting...</div>
             <script>
-                showGlobal('Successfully upgraded {package_name}. Restarting...', 'success');
-                setTimeout(() => {{
-                    const pollStart = Date.now();
-                    const poll = setInterval(async () => {{
-                        if (Date.now() - pollStart > 60000) {{
-                            clearInterval(poll);
-                            showGlobal('Server did not respond after 60s.', 'error');
-                            return;
-                        }}
-                        try {{
-                            const r = await fetch('/health');
-                            if (r.ok) {{
-                                clearInterval(poll);
-                                window.location.reload();
-                            }}
-                        }} catch (_) {{}}
-                    }}, 2000);
-                }}, 3000);
+                if (window.pollRestartAndReload) {{
+                    window.pollRestartAndReload({{
+                        targetPanel: 'modules',
+                        successMsg: 'Successfully upgraded {package_name}!',
+                        title: 'Upgrading Module',
+                        message: 'Restarting MirrorDash to complete upgrade of {package_name}...'
+                    }});
+                }} else {{
+                    showGlobal('Successfully upgraded {package_name}. Restarting...', 'success');
+                    setTimeout(() => {{ window.location.reload(); }}, 5000);
+                }}
             </script>
         """)
     except Exception as e:

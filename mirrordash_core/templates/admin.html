@@ -88,6 +88,17 @@
         </div>
     </div>
 
+    <!-- System Restart / Reconnecting Overlay -->
+    <div id="restart-overlay" class="modal-overlay" role="dialog" aria-modal="true" style="display: none; flex-direction: column; text-align: center; gap: 1rem;">
+        <div style="background: rgba(15, 15, 20, 0.95); border: 1px solid var(--card-border); border-radius: 12px; padding: 2.5rem; max-width: 420px; width: 90%; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);">
+            <div style="margin-bottom: 1.5rem;">
+                <i class="fas fa-circle-notch fa-spin" style="font-size: 3rem; color: var(--accent-color);"></i>
+            </div>
+            <h3 id="restart-overlay-title" style="margin: 0 0 8px 0; font-size: 1.3rem; color: white;">Restarting MirrorDash</h3>
+            <p id="restart-overlay-message" style="margin: 0; font-size: 0.95rem; color: var(--text-muted); line-height: 1.4;">Applying configuration changes and restarting backend...</p>
+        </div>
+    </div>
+
     <noscript>
         <p style="color:white;text-align:center;padding:2rem;">JavaScript is required for the admin interface.</p>
     </noscript>
@@ -192,25 +203,94 @@
                     return;
                 }
             } catch (_) {}
-            showGlobal('Restarting… waiting for server to come back online.', 'info');
-            const pollStart = Date.now();
-            const poll = setInterval(async () => {
-                if (Date.now() - pollStart > 30000) {
-                    clearInterval(poll);
-                    showGlobal('Server did not respond after 30s.', 'error');
+            
+            window.pollRestartAndReload({
+                successMsg: 'System restarted successfully.',
+                title: 'Restarting MirrorDash',
+                message: 'Waiting for the backend server to come back online...',
+                onFinish: () => {
                     btn.disabled = false;
                     btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                }
+            });
+        }
+
+        window.toggleConfigureModule = function(name) {
+            const drawer = document.getElementById('config-drawer-' + name);
+            if (!drawer) return;
+            if (drawer.style.display === 'none') {
+                drawer.style.display = 'block';
+            } else {
+                drawer.style.display = 'none';
+                const fields = document.getElementById('config-fields-' + name);
+                if (fields) fields.innerHTML = '';
+            }
+        };
+
+        window.showRestartOverlay = function(title, message) {
+            const overlay = document.getElementById('restart-overlay');
+            if (overlay) {
+                document.getElementById('restart-overlay-title').textContent = title || 'Restarting System';
+                document.getElementById('restart-overlay-message').textContent = message || 'Please wait...';
+                overlay.style.display = 'flex';
+            }
+        };
+
+        window.hideRestartOverlay = function() {
+            const overlay = document.getElementById('restart-overlay');
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        };
+
+        window.pollRestartAndReload = function(options = {}) {
+            const targetPanel = options.targetPanel || '';
+            const successMsg = options.successMsg || 'Changes applied successfully.';
+            
+            window.showRestartOverlay(
+                options.title || 'Restarting MirrorDash',
+                options.message || 'Applying configuration changes and restarting backend...'
+            );
+            
+            let isDown = false;
+            const pollStart = Date.now();
+            
+            const poll = setInterval(async () => {
+                // Timeout after 90 seconds
+                if (Date.now() - pollStart > 90000) {
+                    clearInterval(poll);
+                    window.hideRestartOverlay();
+                    showGlobal('Restart timed out. Please refresh the page manually.', 'error');
+                    if (options.onFinish) options.onFinish();
                     return;
                 }
+                
                 try {
-                    const r = await fetch('/health');
-                    if (r.ok) {
+                    const res = await fetch('/health?t=' + Date.now());
+                    
+                    if (!isDown) {
+                        // Wait for server to go down. If it is already up after 5s, assume it cycled fast.
+                        if (Date.now() - pollStart > 5000) {
+                            isDown = true;
+                        }
+                    } else if (res.ok) {
                         clearInterval(poll);
-                        window.location.reload();
+                        window.hideRestartOverlay();
+                        showGlobal(successMsg, 'success');
+                        if (options.onFinish) options.onFinish();
+                        
+                        if (targetPanel) {
+                            htmx.ajax('GET', '/admin/panels/' + targetPanel, {target: '#tab-content'});
+                        } else {
+                            window.location.reload();
+                        }
                     }
-                } catch (_) {}
-            }, 1500);
-        }
+                } catch (err) {
+                    // Connection error means server is down
+                    isDown = true;
+                }
+            }, 1000);
+        };
 
         document.body.addEventListener('htmx:configRequest', (event) => {
             event.detail.headers['X-API-Key'] = currentApiKey;
