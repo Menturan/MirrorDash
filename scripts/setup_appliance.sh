@@ -261,6 +261,10 @@ EOF
   # Generate a 1-pixel transparent X11 cursor theme to permanently hide the mouse pointer in Wayland
   mkdir -p "$PI_HOME/.icons/empty/cursors"
   echo "WGN1chAAAAAAAAEAAQAAAAIA/f8gAAAAHAAAACQAAAACAP3/IAAAAAEAAAABAAAAAQAAAAAAAAAAAAAAMgAAAAAAAAA=" | base64 -d > "$PI_HOME/.icons/empty/cursors/left_ptr"
+  # Symlink all other common cursor names to left_ptr to prevent fallbacks to default system cursor icons
+  for c in default pointer hand hand1 hand2 wait watch text xterm cross crosshair help question_arrow; do
+    ln -sf left_ptr "$PI_HOME/.icons/empty/cursors/$c"
+  done
   cat << 'EOF' > "$PI_HOME/.icons/empty/index.theme"
 [Icon Theme]
 Name=empty

@@ -112,6 +112,10 @@
     padding: 0;
 }
 
+body, html, * {
+    cursor: none !important;
+}
+
 body, html {
     width: 100vw;
     height: 100vh;
@@ -121,7 +125,6 @@ body, html {
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    cursor: none;
 }
 
 /* ============================================================
