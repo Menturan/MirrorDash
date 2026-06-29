@@ -282,13 +282,13 @@ def main():
     print("\n[3/5] Bumping version...")
     bump_version(VERSION)
 
-    print("\n[4/5] Reorganizing CHANGELOG.md...")
+    print("\n[4/5] Reorganizing CHANGELOG.md using git-cliff...")
     result = subprocess.run(
-        ["python3", "scripts/release_changelog.py", "core", VERSION],
+        ["git-cliff", "-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
         cwd=repos_dir,
     )
     if result.returncode != 0:
-        print("  ERROR: CHANGELOG reorganization failed")
+        print("  ERROR: git-cliff failed to reorganize CHANGELOG.md")
         sys.exit(1)
 
     print("\n[5/5] Committing and pushing...")

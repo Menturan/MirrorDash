@@ -7,7 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Core App
-
 - Match correct final image artifact in github workflow release step (aa9604d)
 - Append Wayland, NetworkManager, and kiosk systemd architectural rules (2b3cb06)
 - Revert "docs(agents): append Wayland, NetworkManager, and kiosk systemd architectural rules"
@@ -67,9 +66,8 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 - Implement professional wildcard HTTP redirects for captive portal (3164cf9)
 - Update CHANGELOG for visual tests and captive portal changes (7cb5f1d)
 - Automatically generate CHANGELOG using git-cliff (818e524)
-
+- Final automated regeneration of CHANGELOG.md (623246a)
 ### System OS (Appliance)
-
 - Update build_image.sh (fd191f9)
 - Update build_image.sh (669758d)
 - Update setup_appliance.sh (c85b9f6)
@@ -136,34 +134,19 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 ## [0.3.0-os2] - 2026-06-23
 
 ### Core App
-
 - Mock SSH status check in display power test to avoid password prompts (eefb314)
 - Emphasize /design live explorer in main README (7584e14)
 - Align design explorer and tokens with Ethereal specs (c1796e1)
 - Add zero-css layout utilities and documentation (1b3a382)
 - Update build-os-image.yml (b7b795a)
-
-### System OS (Appliance)
-
-- Ensure initramfs is deployed to FAT32 boot partition (099f33d)
-- Update build_image.sh (685f952)
-- Update setup_appliance.sh (659be3e)
-- Update finalize_appliance.sh (7f0faa3)
-- Update build_image.sh (679c482)
 ## [0.3.0-os1] - 2026-06-22
 
 ### Core App
-
 - Clarify interactive release wizards and version tracking requirements (9f8282d)
 - Organize CHANGELOG for 0.3.0-os1 OS image release (824c1d4)
-
-### System OS (Appliance)
-
-- Enforce latest core app version tracking in release_os.py (9467187)
 ## [0.3.0] - 2026-06-22
 
 ### Core App
-
 - Optimize and fix github actions OS image builds (1703348)
 - Correct setup prompt element selectors for WiFi hotspot mode (fb1eb29)
 - Change framework rule from forbidden to conservative adoption (c113396)
@@ -190,15 +173,9 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 - Update CHANGELOG.md with changes since last release (6573c5f)
 - Bump version to 0.3.0 (055955e)
 - Changelog fix (b897966)
-
-### System OS (Appliance)
-
-- Fix autologin.conf whitespace bug and auto_initramfs build conflict (14e64ff)
-- Add guided version wizards to release scripts (a7ced88)
 ## [0.2.4-os1] - 2026-06-16
 
 ### Core App
-
 - Update GOLDEN_IMAGE.md to reflect native ARM build (no QEMU) (6aad790)
 - Restructure GOLDEN_IMAGE.md with clear Track A (automated) vs Track B (manual reference) split (6174b95)
 - Restructure RELEASING.md for two distinct release tracks with CHANGELOG guidance (4ee0388)
@@ -216,16 +193,9 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 - Gitlab-build-fix 2 (25d4f13)
 - Github-os-build-fix (0c574f8)
 - Github-os-build-fix 2 (6be006f)
-
-### System OS (Appliance)
-
-- Drop QEMU from build_image.sh, add GitHub Actions ARM64 workflow (5a84caa)
-- Add Python release automation scripts (release_core.py, release_os.py, release_changelog.py) (1cb3f41)
-- Reference release automation scripts in RELEASING.md workflow steps (f02d691)
 ## [0.2.4] - 2026-06-15
 
 ### Core App
-
 - Implement and harden OS image builder and extraction tools (6632462)
 - Update core application settings, styling, and tests (64a8758)
 - Update documentation, release guidelines, and changelogs (b12a9ad)
@@ -246,25 +216,13 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 - Add Rule 32 (dual-artifact release model) and renumber TOC to 33 (49d2b8c)
 - Trim AGENTS.md — remove redundant Common Pitfalls table, update TOC (68fd1f2)
 - Trim AGENTS.md — remove redundant Common Pitfalls table, reduce from 355 to 314 lines (48320da)
-
-### System OS (Appliance)
-
-- Optimize appliance setup, finalizer, and silent kiosk boot flow (9f06a83)
-- Optimize package setup and parallel initramfs compression in setup_appliance.sh (3fa67d7)
-- Add execution time tracking to all steps in setup_appliance.sh (2f3a036)
-- Add overall execution time trackers to build and setup scripts (ade05dd)
-- Strip system locales and purge unused packages in setup_appliance.sh (8198541)
-- Added optimizations for build_image.sh (9cc9131)
-- Make captive portal fully offline-capable and persist WiFi credentials (0025f3f)
 ## [0.2.2] - 2026-06-12
 
 ### Core App
-
 - V0.2.2 - fix setup script, add python-multipart, and restructure static/templates packaging (275c79a)
 ## [0.2.1] - 2026-06-12
 
 ### Core App
-
 - Add job environment to publish.yml for PyPI OIDC (5c6f6c8)
 - Document recent bugfixes under v0.2.0 in CHANGELOG.md (5d3a26d)
 - Release version 0.2.1 changelog (aa47e11)
@@ -274,16 +232,8 @@ This reverts commit 9df14fa803ea5ade7af91f880fc3cf27fb6c0cfd. (1f58eb3)
 ## [0.2.0] - 2026-06-12
 
 ### Core App
-
 - Initial commit (70f14d5)
 - Show first-run setup prompt on mirror display when no admin password is set (c7ba6a7)
 - Drop :8000 from captive portal fallback URLs in docs and tests (340fabf)
 - Bump core application version to 0.2.0 (d834b91)
 - Add GitHub Actions workflow for PyPI publishing and README badges (13f062e)
-
-### System OS (Appliance)
-
-- A/B update system, OverlayFS hardening, AGENTS.md IoT rules, and doc-code sync audit (996c829)
-- AGENTS.md rule 30 (doc-code sync), GOLDEN_IMAGE.md cleanup, setup_appliance.sh production hardening (46645af)
-- Advertise mirrordash.local via avahi mDNS (no IP address needed) (c06ff72)
-- Add nginx reverse proxy to drop :8000 from URLs (ae736c9)

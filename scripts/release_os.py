@@ -144,13 +144,13 @@ def main():
     print("\n[2/4] Running test suite...")
     run_tests()
 
-    print("\n[3/4] Reorganizing CHANGELOG.md...")
+    print("\n[3/4] Reorganizing CHANGELOG.md using git-cliff...")
     result = subprocess.run(
-        ["python3", "scripts/release_changelog.py", "os", VERSION],
+        ["git-cliff", "-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
         cwd=repos_dir,
     )
     if result.returncode != 0:
-        print("  ERROR: CHANGELOG reorganization failed")
+        print("  ERROR: git-cliff failed to reorganize CHANGELOG.md")
         sys.exit(1)
 
     print("\n[4/4] Committing and pushing...")

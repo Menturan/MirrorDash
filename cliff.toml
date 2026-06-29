@@ -13,16 +13,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 """
 body = """
 {% if version %}\
+{% if version | contains(pat="-os") %}\
 ## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+
+### System OS (Appliance)
+{% for group, commits in commits | group_by(attribute="group") %}\
+{% if group == "System OS (Appliance)" %}\
+{% for commit in commits %}\
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
+{% endif %}\
+{% endfor %}\
+{% else %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+
+### Core App
+{% for group, commits in commits | group_by(attribute="group") %}\
+{% if group == "Core App" %}\
+{% for commit in commits %}\
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
+{% endif %}\
+{% endfor %}\
+{% endif %}\
 {% else %}\
 ## [Unreleased]
+
+### Core App
+{% for group, commits in commits | group_by(attribute="group") %}\
+{% if group == "Core App" %}\
+{% for commit in commits %}\
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
 {% endif %}\
-{% for group, commits in commits | group_by(attribute="group") %}
-### {{ group }}
-{% for commit in commits %}
-- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})\
-{% endfor %}
-{% endfor %}
+{% endfor %}\
+
+### System OS (Appliance)
+{% for group, commits in commits | group_by(attribute="group") %}\
+{% if group == "System OS (Appliance)" %}\
+{% for commit in commits %}\
+- {{ commit.message | upper_first }} ({{ commit.id | truncate(length=7, end="") }})
+{% endfor %}\
+{% endif %}\
+{% endfor %}\
+{% endif %}\
 """
 trim = true
 
