@@ -251,6 +251,9 @@
                     <label for="auth-new-password-input" class="auth-input-label">New Password</label>
                     <input type="password" id="auth-new-password-input" class="auth-input" placeholder="Min. 4 characters">
                 </div>
+                <div id="auth-forgot-link-group" style="text-align: right; margin-top: -8px; margin-bottom: 12px;">
+                    <a href="#" onclick="handleForgotPassword(event)" style="font-size: 0.8rem; color: #a1a1aa; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='#a1a1aa'">Forgot password?</a>
+                </div>
                 <button type="submit" class="auth-btn" id="auth-submit-btn">Unlock</button>
             </form>
         </div>
@@ -303,6 +306,11 @@
             document.getElementById('auth-password-input').value = '';
             document.getElementById('auth-new-password-input').value = '';
             document.getElementById('auth-pin-input').value = '';
+
+            const forgotGroup = document.getElementById('auth-forgot-link-group');
+            if (forgotGroup) {
+                forgotGroup.style.display = (mode === 'login') ? 'block' : 'none';
+            }
 
             overlay.setAttribute('data-mode', mode);
             overlay.classList.add('open');
@@ -439,6 +447,48 @@
                 if (mode === 'login') submitBtn.textContent = 'Unlock';
                 if (mode === 'setup') submitBtn.textContent = 'Create Password';
                 if (mode === 'recover') submitBtn.textContent = 'Restore Password';
+            }
+        }
+
+        async function handleForgotPassword(event) {
+            event.preventDefault();
+            const submitBtn = document.getElementById('auth-submit-btn');
+            const forgotLink = event.target;
+            
+            if (forgotLink.disabled) return;
+            
+            if (!confirm("This will trigger password recovery mode. A Recovery PIN will be generated and displayed on your physical mirror screen to allow you to set a new password. Proceed?")) {
+                return;
+            }
+            
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Initializing…';
+            forgotLink.disabled = true;
+            forgotLink.style.opacity = '0.5';
+            
+            try {
+                const res = await fetch('/admin/auth/forgot-password', {
+                    method: 'POST'
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    submitBtn.disabled = false;
+                    forgotLink.disabled = false;
+                    forgotLink.style.opacity = '1';
+                    showAuthModal('recover');
+                    showAuthError('A 6-digit Recovery PIN has been displayed on your physical mirror screen. Please retrieve the PIN and enter it below along with your new password.');
+                } else {
+                    const err = await res.json();
+                    showAuthError('Failed to initialize recovery: ' + (err.detail || 'Unknown error'));
+                    submitBtn.disabled = false;
+                    forgotLink.disabled = false;
+                    forgotLink.style.opacity = '1';
+                }
+            } catch (e) {
+                showAuthError('An error occurred during recovery initialization: ' + e.message);
+                submitBtn.disabled = false;
+                forgotLink.disabled = false;
+                forgotLink.style.opacity = '1';
             }
         }
 

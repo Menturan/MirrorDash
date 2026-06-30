@@ -139,7 +139,15 @@ All other modules in that region (e.g., a Todo list with no group name) will sta
 *   On Raspberry Pi, the system volume and brightness controls require administrative hardware privileges. Ensure your user has permissions to run system control scripts.
 
 ### I forgot my admin password. How do I reset it?
-If you forget your admin password, you can reset the security configuration by manually deleting the authentication block from your configuration file:
+If you forget your admin password, you can reset it securely without resetting your entire configuration:
+
+#### Option A: Direct Web Recovery (Recommended for most users)
+1. Go to the Admin Dashboard login page in your browser.
+2. Click the **Forgot password?** link under the password input field.
+3. Confirm the prompt to initialize recovery. This will immediately display a 6-digit Recovery PIN on your physical mirror screen (reloading the display if necessary).
+4. Enter this 6-digit Recovery PIN into the recovery prompt in your web browser and set a new password.
+
+#### Option B: Manual Command-Line Reset (For developers/system administrators)
 1. Connect to your mirror via SSH (or access the terminal on the device).
 2. Open the active configuration file:
    ```bash

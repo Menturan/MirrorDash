@@ -247,6 +247,41 @@ def test_recover_auth_success(mock_hotspot, mock_ro, mock_rw, mock_save, mock_lo
     assert "salt" in saved["admin_auth"]
 
 
+@patch("mirrordash_core.api.admin_auth.load_config")
+def test_forgot_password_no_auth(mock_load, client):
+    """Forgot password must be rejected if no auth has been configured yet."""
+    mock_load.return_value = {} # Setup not completed
+    response = client.post("/admin/auth/forgot-password")
+    assert response.status_code == 400
+    assert "Password has not been set yet" in response.json()["detail"]
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.api.admin_auth.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_auth.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.app.manager.broadcast", new_callable=AsyncMock)
+def test_forgot_password_success(mock_broadcast, mock_ro, mock_rw, mock_save, mock_load, client):
+    """Forgot password must corrupt the current auth config and broadcast a reload."""
+    mock_load.return_value = {"admin_auth": {"hash": "somehash", "salt": "somesalt"}}
+    
+    from mirrordash_core.api.admin_auth import clear_recovery_pin
+    clear_recovery_pin()
+
+    response = client.post("/admin/auth/forgot-password")
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    # Verify config was corrupted (hash key is removed, but auth exists)
+    mock_save.assert_called_once()
+    saved = mock_save.call_args[0][0]
+    assert "admin_auth" in saved
+    assert "hash" not in saved["admin_auth"]
+    
+    # Verify reload broadcast was triggered
+    mock_broadcast.assert_called_once_with({"action": "reload"})
+
+
 
 @patch("mirrordash_core.api.admin_shared.load_config")
 @patch("mirrordash_core.api.admin_system.load_config")

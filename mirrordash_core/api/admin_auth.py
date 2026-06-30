@@ -145,3 +145,36 @@ async def recover_auth(body: dict = Body(...)) -> dict:
     finally:
         await remount_ro()
 
+
+@router.post("/auth/forgot-password")
+async def forgot_password() -> dict:
+    """Initiate password recovery by corrupting the current auth block,
+    generating a Recovery PIN, and telling the kiosk screen to reload.
+    """
+    config = load_config()
+    auth = config.get("admin_auth")
+    if not auth:
+        raise HTTPException(status_code=400, detail="Password has not been set yet.")
+
+    # Corrupt the admin_auth configuration (delete hash key if exists)
+    config["admin_auth"] = {
+        "salt": "forgotten"
+    }
+
+    await remount_rw()
+    try:
+        save_config(config)
+        # Ensure the recovery PIN is active in memory
+        get_recovery_pin()
+        
+        # Broadcast reload so the physical kiosk immediately loads the PIN screen
+        try:
+            from mirrordash_core.app import manager
+            await manager.broadcast({"action": "reload"})
+        except Exception:
+            pass
+            
+        return {"status": "success", "message": "Password recovery mode initialized."}
+    finally:
+        await remount_ro()
+
