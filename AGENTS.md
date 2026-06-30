@@ -131,6 +131,8 @@ python mirrordash_core/main.py
 - **Always** use deterministic solutions: Native D-Bus event waiting (e.g., `nm-online`, `nmcli device wait`), native systemd services (`graphical.target`, `PAMName=login`), and canonical API flags (e.g., `curl -w '%{url_effective}'`). 
 Build scripts must be deterministic, free of race-conditions, and mathematically proven to execute correctly without relying on timing or visual DOM layouts.
 
+0c. **Do not implement when asked a question.** If the user's request is investigatory or ask-only in nature (e.g., "is this really secure?", "how does X work?"), you MUST ONLY answer the question. Do not modify source code, write new scripts, or execute modifying commands.
+
 ### Python
 
 1. **No late-binding closures in loops.** Any nested function (`def`) defined inside a `for` loop that closes over a loop variable MUST use a factory function to capture the value immediately. This is a known bug pattern in this codebase.
