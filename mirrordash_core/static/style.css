@@ -132,8 +132,8 @@ body, html {
    ============================================================ */
 .container {
     display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    grid-template-rows: 1fr 1fr 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-rows: repeat(3, minmax(0, 1fr));
     grid-template-areas:
         "top_left top_center top_right"
         "middle_left middle_center middle_right"
@@ -147,6 +147,8 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: var(--widget-gap);
+    min-height: 0;
+    overflow: hidden;
 }
 
 #top_left      { grid-area: top_left;      align-items: flex-start; }
