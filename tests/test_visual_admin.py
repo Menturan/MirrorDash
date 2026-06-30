@@ -186,13 +186,15 @@ def test_admin_dashboard_restart_overlay(page, server_url):
     navigate_authenticated(page, server_url)
     page.wait_for_selector("h1")
 
-    # Setup confirm handler for restart prompt
-    page.on("dialog", lambda dialog: dialog.accept() if dialog.type == "confirm" else dialog.dismiss())
-
     # Click the main Restart button in the header
     restart_btn = page.locator("#restart-btn")
     assert restart_btn.is_visible()
     restart_btn.click()
+
+    # Wait for the custom confirm overlay to appear
+    page.wait_for_selector("#confirm-overlay", state="visible")
+    # Click the Confirm button on the custom confirm overlay
+    page.click("#confirm-ok-btn")
 
     # The glassmorphic restart overlay should immediately show up
     overlay = page.locator("#restart-overlay")

@@ -20,7 +20,7 @@
             
             <form hx-post="/admin/panels/backup/create" hx-target="#global-status" hx-swap="innerHTML"
                   hx-indicator="#create-backup-spinner"
-                  onsubmit="const toggle = document.getElementById('backup-encrypt-toggle'); if (toggle.checked && !document.getElementById('backup-password').value) { alert('Please enter a password to encrypt the backup.'); return false; }">
+                  onsubmit="const toggle = document.getElementById('backup-encrypt-toggle'); if (toggle.checked && !document.getElementById('backup-password').value) { showGlobal('Please enter a password to encrypt the backup.', 'error'); return false; }">
                 <div class="form-group checkbox-group">
                     <label class="checkbox-label" for="backup-encrypt-toggle">
                         <input type="checkbox" id="backup-encrypt-toggle" name="encrypt" value="true" onchange="toggleBackupPassword(this.checked)">

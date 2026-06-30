@@ -259,6 +259,21 @@
         </div>
     </div>
 
+    <!-- Premium Confirm Modal Overlay -->
+    <div id="confirm-overlay" class="auth-overlay" role="dialog" aria-modal="true" style="z-index: 10005;">
+        <div class="auth-card">
+            <div class="auth-icon" id="confirm-icon">
+                <i data-lucide="help-circle"></i>
+            </div>
+            <h2 id="confirm-title" class="auth-title">Are you sure?</h2>
+            <p id="confirm-desc" class="auth-desc"></p>
+            <div style="display: flex; gap: 1rem; justify-content: stretch; margin-top: 1.5rem;">
+                <button id="confirm-cancel-btn" class="auth-btn" style="flex: 1; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.08); color: white; border-radius: 10px;">Cancel</button>
+                <button id="confirm-ok-btn" class="auth-btn" style="flex: 1; background: #ffffff; color: #121216; border-radius: 10px;">Confirm</button>
+            </div>
+        </div>
+    </div>
+
     <noscript>
         <p style="color:white;text-align:center;padding:2rem;">JavaScript is required for the admin interface.</p>
     </noscript>
@@ -285,6 +300,52 @@
                 authError.textContent = msg;
                 authError.style.display = 'block';
             }
+        }
+
+        function showConfirm(title, desc, confirmText = 'Confirm', isDestructive = false) {
+            const overlay = document.getElementById('confirm-overlay');
+            const titleEl = document.getElementById('confirm-title');
+            const descEl = document.getElementById('confirm-desc');
+            const okBtn = document.getElementById('confirm-ok-btn');
+            const cancelBtn = document.getElementById('confirm-cancel-btn');
+            const icon = document.getElementById('confirm-icon');
+
+            titleEl.textContent = title;
+            descEl.textContent = desc;
+            okBtn.textContent = confirmText;
+            
+            if (isDestructive) {
+                okBtn.className = 'auth-btn corrupt-btn';
+                icon.className = 'auth-icon corrupt';
+                icon.innerHTML = '<i data-lucide="shield-alert"></i>';
+            } else {
+                okBtn.className = 'auth-btn';
+                icon.className = 'auth-icon';
+                icon.innerHTML = '<i data-lucide="help-circle"></i>';
+            }
+
+            if (window.lucide) lucide.createIcons({ root: icon });
+
+            overlay.classList.add('open');
+
+            return new Promise((resolve) => {
+                const handleOk = () => {
+                    overlay.classList.remove('open');
+                    cleanup();
+                    resolve(true);
+                };
+                const handleCancel = () => {
+                    overlay.classList.remove('open');
+                    cleanup();
+                    resolve(false);
+                };
+                const cleanup = () => {
+                    okBtn.removeEventListener('click', handleOk);
+                    cancelBtn.removeEventListener('click', handleCancel);
+                };
+                okBtn.addEventListener('click', handleOk);
+                cancelBtn.addEventListener('click', handleCancel);
+            });
         }
 
         function showAuthModal(mode) {
@@ -457,9 +518,13 @@
             
             if (forgotLink.disabled) return;
             
-            if (!confirm("This will trigger password recovery mode. A Recovery PIN will be generated and displayed on your physical mirror screen to allow you to set a new password. Proceed?")) {
-                return;
-            }
+            const confirmed = await showConfirm(
+                "Trigger Password Recovery?",
+                "This will trigger password recovery mode. A Recovery PIN will be generated and displayed on your physical mirror screen to allow you to set a new password.",
+                "Initialize Recovery",
+                true
+            );
+            if (!confirmed) return;
             
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Initializing…';
@@ -548,7 +613,13 @@
         window.addEventListener('hashchange', handleHashChange);
 
         async function triggerRestart() {
-            if (!confirm('Are you sure you want to restart the system?')) return;
+            const confirmed = await showConfirm(
+                "Restart System?",
+                "Are you sure you want to restart the mirror system? This will temporarily interrupt the display.",
+                "Restart",
+                true
+            );
+            if (!confirmed) return;
             const btn = document.getElementById('restart-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting…';
