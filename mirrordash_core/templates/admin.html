@@ -263,7 +263,7 @@
     <script src="/static/js/htmx.min.js"></script>
     <script src="/static/js/lucide.min.js"></script>
     <script>
-        let currentApiKey = localStorage.getItem('mirrordash_api_key') || localStorage.getItem('mymm_api_key') || '';
+        let currentApiKey = localStorage.getItem('mirrordash_api_key') || '';
         let authPromiseResolve;
 
         function showGlobal(msg, type = 'info') {
@@ -430,14 +430,12 @@
                 if (data.auth_corrupt) {
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
-                    localStorage.removeItem('mymm_api_key');
                     return await showAuthModal('recover');
                 }
 
                 if (data.setup_required) {
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
-                    localStorage.removeItem('mymm_api_key');
                     return await showAuthModal('setup');
                 } else {
                     if (!currentApiKey) {
@@ -589,7 +587,6 @@
             if (event.detail.xhr.status === 401 || event.detail.xhr.status === 403) {
                 if (currentApiKey) {
                     localStorage.removeItem('mirrordash_api_key');
-                    localStorage.removeItem('mymm_api_key');
                     currentApiKey = '';
                     alert('Authentication failed. Please reload the page to authenticate.');
                     window.location.reload();
