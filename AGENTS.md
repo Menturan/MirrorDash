@@ -263,6 +263,12 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
 - `GET /api/active-modules` is **intentionally public** — the mirror kiosk fetches it unauthenticated on load to show loading skeletons.
 - `GET /health` is also public.
 
+### Password Recovery Philosophy
+
+- Password recovery uses a self-contained **physical possession factor** rather than email/SMTP verification. 
+- When recovery is initiated (either via `/admin/auth/forgot-password` or due to a corrupt configuration file), the backend deletes the `"hash"` key in `admin_auth`, generates a secure memory-only 6-digit Recovery PIN, and triggers a WebSocket reload broadcast. 
+- The physical mirror kiosk display reloads and renders this 6-digit PIN. The user must stand physically in front of the mirror to retrieve the PIN, protecting the device against remote unauthorized admin resets over the network.
+
 ### Design System
 
 The visual system is documented in `DESIGN.md` and implemented in `mirrordash_core/static/style.css`. These two files must always be kept in sync.
