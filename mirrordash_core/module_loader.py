@@ -96,13 +96,7 @@ class ModuleLoader:
         modules_config = config.get("modules", {})
 
         # Discover modules via entry points
-        # Discover from both mirrordash.modules and mymm.modules
-        eps_dict = {}
-        for ep in importlib.metadata.entry_points(group='mymm.modules'):
-            eps_dict[ep.name] = ep
-        for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-            eps_dict[ep.name] = ep
-        eps = list(eps_dict.values())
+        eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
 
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
 

@@ -63,12 +63,7 @@ def validate_config(config: dict) -> None:
     if isinstance(modules, dict):
         # Discover entry point classes to validate against their config_schema
         import importlib.metadata
-        eps_dict = {}
-        for ep in importlib.metadata.entry_points(group='mymm.modules'):
-            eps_dict[ep.name] = ep
-        for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-            eps_dict[ep.name] = ep
-        eps = list(eps_dict.values())
+        eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
 
         schemas = {}
         for ep in eps:
@@ -346,11 +341,7 @@ async def add_array_item_route(
         if match:
             module_name = match.group(1)
             import importlib.metadata
-            eps_dict = {}
-            for ep in importlib.metadata.entry_points(group='mymm.modules'):
-                eps_dict[ep.name] = ep
-            for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-                eps_dict[ep.name] = ep
+            eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
             ep = eps_dict.get(module_name) or eps_dict.get(module_name.replace("-", "_"))
             if ep:
                 try:

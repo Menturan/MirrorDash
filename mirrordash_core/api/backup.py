@@ -130,12 +130,7 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
         # 3. Discover and process modules
         modules_list = []
         try:
-            eps_dict = {}
-            for ep in importlib.metadata.entry_points(group='mymm.modules'):
-                eps_dict[ep.name] = ep
-            for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-                eps_dict[ep.name] = ep
-            eps = list(eps_dict.values())
+            eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
 
             for ep in eps:
                 name = ep.name

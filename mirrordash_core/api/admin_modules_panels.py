@@ -74,11 +74,7 @@ async def get_panel_modules(request: Request):
 
 @router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
 async def get_module_config_form(module_name: str):
-    eps_dict = {}
-    for ep in importlib.metadata.entry_points(group='mymm.modules'):
-        eps_dict[ep.name] = ep
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-        eps_dict[ep.name] = ep
+    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
     ep = eps_dict.get(module_name)
     if not ep:
@@ -178,11 +174,7 @@ async def save_module_config_route(module_name: str, request: Request):
     cfg_key = list(modules_dict.keys())[0]
     module_cfg = modules_dict[cfg_key]
 
-    eps_dict = {}
-    for ep in importlib.metadata.entry_points(group='mymm.modules'):
-        eps_dict[ep.name] = ep
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-        eps_dict[ep.name] = ep
+    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
     ep = eps_dict.get(module_name)
     schema = None
     if ep:
@@ -254,11 +246,7 @@ async def remove_module_config_route(module_name: str):
 
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
 async def check_module_update_route(module_name: str):
-    eps_dict = {}
-    for ep in importlib.metadata.entry_points(group='mymm.modules'):
-        eps_dict[ep.name] = ep
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-        eps_dict[ep.name] = ep
+    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
     ep = eps_dict.get(module_name)
     if not ep:
@@ -316,11 +304,7 @@ async def check_module_update_route(module_name: str):
 
 @router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
 async def get_module_notes(module_name: str):
-    eps_dict = {}
-    for ep in importlib.metadata.entry_points(group='mymm.modules'):
-        eps_dict[ep.name] = ep
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-        eps_dict[ep.name] = ep
+    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
     ep = eps_dict.get(module_name)
     if not ep:

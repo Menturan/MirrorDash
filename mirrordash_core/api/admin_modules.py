@@ -198,7 +198,7 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
             python_bin, "-c",
             f"from importlib.metadata import entry_points; "
             f"import mirrordash_core.app; "
-            f"[ep.load() for g in ('mirrordash.modules', 'mymm.modules') for ep in entry_points(group=g) if ep.name in "
+            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in "
             f"('{clean_package_name}', '{clean_package_name.replace('-', '_')}', '{clean_package_name.replace('_', '-')}')]"
         ]
 
@@ -335,12 +335,7 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
 @router.get("/list-modules", dependencies=[Depends(require_api_key)])
 async def list_modules() -> dict:
     """List all discovered entry-point modules and their config status."""
-    eps_dict = {}
-    for ep in importlib.metadata.entry_points(group='mymm.modules'):
-        eps_dict[ep.name] = ep
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
-        eps_dict[ep.name] = ep
-    eps = list(eps_dict.values())
+    eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
     config = load_config()
     modules_config = config.get("modules", {})
     result = {}
@@ -357,7 +352,7 @@ async def list_modules() -> dict:
 
         if not schema:
             schema = {
-                "title": name.replace("mirrordash-", "").replace("mirrordash_", "").replace("mymm-", "").replace("mymm_", "").title(),
+                "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
                 "description": "No description available.",
                 "properties": {
                     "enabled": {

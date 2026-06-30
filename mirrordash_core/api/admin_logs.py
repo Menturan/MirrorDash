@@ -41,17 +41,15 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
                 if len(filtered_lines) >= lines:
                     break
 
-                is_module = "mirrordash.modules" in line or "mymm.modules" in line
+                is_module = "mirrordash.modules" in line
 
                 if type == "modules" and is_module:
                     if module:
                         norm_target = module.replace('-', '_').lower()
                         norm_line = line.replace('-', '_').lower()
-                        short_target = norm_target.replace('mirrordash_', '').replace('mymm_', '')
+                        short_target = norm_target.replace('mirrordash_', '')
                         if (f"mirrordash.modules.{norm_target}" in norm_line or
-                            f"mirrordash.modules.{short_target}" in norm_line or
-                            f"mymm.modules.{norm_target}" in norm_line or
-                            f"mymm.modules.{short_target}" in norm_line):
+                            f"mirrordash.modules.{short_target}" in norm_line):
                             filtered_lines.append(line)
                     else:
                         filtered_lines.append(line)

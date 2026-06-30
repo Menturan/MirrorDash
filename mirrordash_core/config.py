@@ -14,27 +14,19 @@ logger = logging.getLogger("mirrordash.core.config")
 ROOT_DIR = Path(__file__).parent.parent.resolve()
 
 def get_base_dir() -> Path:
-    """Get the active base directory (supporting fallback to legacy directory)."""
-    home_mirrordash = Path(os.path.expanduser("~")) / ".mirrordash"
-    home_mymagicmirror = Path(os.path.expanduser("~")) / ".mymagicmirror"
-    if home_mirrordash.exists():
-        return home_mirrordash
-    if home_mymagicmirror.exists():
-        return home_mymagicmirror
-    return home_mirrordash
+    """Get the active base directory."""
+    return Path(os.path.expanduser("~")) / ".mirrordash"
 
 def get_config_path(for_saving: bool = False) -> Path:
     """Resolve the location of config.json.
 
     1. Check MIRRORDASH_CONFIG_PATH environment variable.
-    2. Check MYMM_CONFIG_PATH environment variable.
-    3. Check ~/.mirrordash/data/config.json.
-    4. Check ~/.mirrordash/config.json.
-    5. Check ~/.mymagicmirror/config.json.
-    6. Check ROOT_DIR/config.json (only when loading/not saving).
-    7. Fallback to ~/.mirrordash/data/config.json.
+    2. Check ~/.mirrordash/data/config.json.
+    3. Check ~/.mirrordash/config.json.
+    4. Check ROOT_DIR/config.json (only when loading/not saving).
+    5. Fallback to ~/.mirrordash/data/config.json.
     """
-    env_path = os.environ.get("MIRRORDASH_CONFIG_PATH") or os.environ.get("MYMM_CONFIG_PATH")
+    env_path = os.environ.get("MIRRORDASH_CONFIG_PATH")
     if env_path:
         return Path(env_path).resolve()
 
@@ -45,10 +37,6 @@ def get_config_path(for_saving: bool = False) -> Path:
     home_config = Path(os.path.expanduser("~")) / ".mirrordash" / "config.json"
     if home_config.exists():
         return home_config
-
-    legacy_config = Path(os.path.expanduser("~")) / ".mymagicmirror" / "config.json"
-    if legacy_config.exists():
-        return legacy_config
 
     if not for_saving:
         dev_config = ROOT_DIR / "config.json"
