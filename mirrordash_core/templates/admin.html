@@ -124,18 +124,27 @@
                 if (!res.ok) throw new Error('Failed to fetch auth status');
                 const data = await res.json();
 
+                if (data.auth_corrupt) {
+                    // The admin_auth entry exists but is unusable (missing hash/salt).
+                    // We do NOT allow unauthenticated re-setup — that would let anyone
+                    // on the network claim admin access. Recovery requires the existing
+                    // password (if partially known) via /auth/change-password, or manual
+                    // config repair via SSH.
+                    currentApiKey = '';
+                    localStorage.removeItem('mirrordash_api_key');
+                    showGlobal(
+                        '⚠️ Admin password config is corrupt. Use /auth/change-password with your existing key, or repair config.json via SSH.',
+                        'error'
+                    );
+                    return false;
+                }
+
                 if (data.setup_required) {
-                    // Clear any stale stored key — it's either a fresh install or the
-                    // stored auth config is corrupt/missing and needs to be recreated.
+                    // No auth entry at all — first-boot setup.
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
 
-                    const isFirstTime = !data.auth_existed;
-                    const promptMsg = isFirstTime
-                        ? 'Welcome! Please create an admin password for MirrorDash (at least 4 characters):'
-                        : '⚠️ Admin password config is missing or corrupt. Please set a new password (at least 4 characters):';
-
-                    const pwd = prompt(promptMsg);
+                    const pwd = prompt('Welcome! Please create an admin password for MirrorDash (at least 4 characters):');
                     if (!pwd || pwd.length < 4) {
                         alert('Password must be at least 4 characters. Reload to try again.');
                         return false;

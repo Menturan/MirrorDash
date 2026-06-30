@@ -41,6 +41,15 @@ def mock_admin_shared_load_config():
         yield
 
 
+@pytest.fixture(autouse=True)
+def clear_config_cache():
+    """Invalidate the in-memory config cache before each test to prevent test pollution."""
+    from mirrordash_core.config import invalidate_config_cache
+    invalidate_config_cache()
+    yield
+    invalidate_config_cache()
+
+
 @patch("mirrordash_core.api.admin_auth.load_config")
 @patch("mirrordash_core.api.admin_auth.save_config")
 @patch("mirrordash_core.api.admin_auth.remount_rw", new_callable=AsyncMock)
@@ -50,10 +59,35 @@ def test_auth_status_setup_required(mock_hotspot, mock_ro, mock_rw, mock_save, m
     # Setup not complete: "admin_auth" not in config
     mock_load.return_value = {}
     mock_hotspot.return_value = True
-    
+
     response = client.get("/admin/auth/status")
     assert response.status_code == 200
-    assert response.json() == {"setup_required": True, "auth_existed": False, "wifi_hotspot_active": True}
+    data = response.json()
+    assert data["setup_required"] is True
+    assert data["auth_corrupt"] is False
+    assert data["wifi_hotspot_active"] is True
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_auth_status_corrupt_entry(mock_hotspot, mock_load, client):
+    """Corrupt admin_auth must surface as auth_corrupt=True, NOT setup_required."""
+    mock_hotspot.return_value = False
+
+    for corrupt in [
+        {"admin_auth": {}},                        # both keys missing
+        {"admin_auth": {"hash": "abc"}},            # salt missing
+        {"admin_auth": {"salt": "xyz"}},            # hash missing
+        {"admin_auth": {"hash": "", "salt": "x"}},  # hash empty
+        {"admin_auth": {"hash": "x", "salt": ""}},  # salt empty
+    ]:
+        mock_load.return_value = corrupt
+        response = client.get("/admin/auth/status")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["setup_required"] is False, f"setup_required must be False for corrupt: {corrupt}"
+        assert data["auth_corrupt"] is True, f"auth_corrupt must be True for: {corrupt}"
+
 
 @patch("mirrordash_core.api.admin_auth.load_config")
 @patch("mirrordash_core.api.admin_auth.save_config")
@@ -61,16 +95,17 @@ def test_auth_status_setup_required(mock_hotspot, mock_ro, mock_rw, mock_save, m
 @patch("mirrordash_core.api.admin_auth.remount_ro", new_callable=AsyncMock)
 def test_auth_setup_success(mock_ro, mock_rw, mock_save, mock_load, client):
     mock_load.return_value = {}
-    
+
     response = client.post("/admin/auth/setup", json={"password": "my_new_password"})
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    
+
     mock_save.assert_called_once()
     saved_config = mock_save.call_args[0][0]
     assert "admin_auth" in saved_config
     assert "hash" in saved_config["admin_auth"]
     assert "salt" in saved_config["admin_auth"]
+
 
 @patch("mirrordash_core.api.admin_auth.load_config")
 @patch("mirrordash_core.api.admin_auth.save_config")
@@ -82,50 +117,17 @@ def test_auth_setup_failures(mock_ro, mock_rw, mock_save, mock_load, client):
     assert response.status_code == 400
     assert "must be at least 4 characters" in response.json()["detail"]
 
-    # Password already set (valid entry)
+    # Password already set (valid entry) — blocked
     mock_load.return_value = {"admin_auth": {"hash": "abc", "salt": "123"}}
     response = client.post("/admin/auth/setup", json={"password": "validpassword"})
     assert response.status_code == 400
     assert "is already set" in response.json()["detail"]
 
-
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
-def test_auth_status_corrupt_entry(mock_hotspot, mock_load, client):
-    """Corrupt admin_auth (missing keys) must trigger setup_required with auth_existed=True."""
-    mock_hotspot.return_value = False
-
-    for corrupt in [
-        {"admin_auth": {}},                      # both keys missing
-        {"admin_auth": {"hash": "abc"}},          # salt missing
-        {"admin_auth": {"salt": "xyz"}},          # hash missing
-        {"admin_auth": {"hash": "", "salt": "x"}}, # hash empty
-        {"admin_auth": {"hash": "x", "salt": ""}}, # salt empty
-    ]:
-        mock_load.return_value = corrupt
-        response = client.get("/admin/auth/status")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["setup_required"] is True, f"Expected setup_required for: {corrupt}"
-        assert data["auth_existed"] is True, f"Expected auth_existed for: {corrupt}"
-
-
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
-@patch("mirrordash_core.api.admin_auth.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_auth.remount_ro", new_callable=AsyncMock)
-def test_auth_setup_allowed_when_corrupt(mock_ro, mock_rw, mock_save, mock_load, client):
-    """Re-setup must be allowed when the stored admin_auth entry is corrupt."""
-    for corrupt in [
-        {"admin_auth": {}},
-        {"admin_auth": {"hash": "", "salt": "x"}},
-        {"admin_auth": {"hash": "x", "salt": ""}},
-    ]:
-        mock_load.return_value = corrupt
-        mock_save.reset_mock()
-        response = client.post("/admin/auth/setup", json={"password": "new_password"})
-        assert response.status_code == 200, f"Re-setup should succeed for corrupt: {corrupt}"
-        assert response.json()["status"] == "success"
+    # Corrupt entry — also blocked by setup; must use change-password instead
+    mock_load.return_value = {"admin_auth": {}}
+    response = client.post("/admin/auth/setup", json={"password": "validpassword"})
+    assert response.status_code == 400
+    assert "is already set" in response.json()["detail"]
 
 
 @patch("mirrordash_core.api.admin_shared.load_config")
@@ -139,6 +141,53 @@ def test_require_api_key_returns_403_on_corrupt_auth(mock_load, client):
         mock_load.return_value = corrupt
         response = client.get("/admin/system", headers={"X-API-Key": "anykey"})
         assert response.status_code == 403, f"Expected 403 for corrupt: {corrupt}"
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.api.admin_auth.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_auth.remount_ro", new_callable=AsyncMock)
+def test_change_password_success(mock_ro, mock_rw, mock_save, mock_auth_load, client):
+    """change-password requires the current valid password and updates it.
+    The autouse fixture already patches admin_shared.load_config with MOCK_CONFIG.
+    Use side_effect so the endpoint gets a fresh copy and cannot mutate MOCK_CONFIG.
+    """
+    import copy
+    mock_auth_load.side_effect = lambda: copy.deepcopy(MOCK_CONFIG)
+
+    response = client.post(
+        "/admin/auth/change-password",
+        json={"new_password": "brand_new_password"},
+        headers={"X-API-Key": "secret"}
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    saved = mock_save.call_args[0][0]
+    assert saved["admin_auth"]["hash"] != mock_hash  # new hash stored
+    assert "salt" in saved["admin_auth"]
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+def test_change_password_requires_auth(mock_auth_load, client):
+    """change-password must be rejected without a valid current password.
+    Use side_effect to return a fresh copy so MOCK_CONFIG cannot be mutated.
+    """
+    import copy
+    mock_auth_load.side_effect = lambda: copy.deepcopy(MOCK_CONFIG)
+
+    # No header
+    response = client.post("/admin/auth/change-password", json={"new_password": "newpass"})
+    assert response.status_code == 401
+
+    # Wrong password
+    response = client.post(
+        "/admin/auth/change-password",
+        json={"new_password": "newpass"},
+        headers={"X-API-Key": "wrongpassword"}
+    )
+    assert response.status_code == 401
+
 
 @patch("mirrordash_core.api.admin_shared.load_config")
 @patch("mirrordash_core.api.admin_system.load_config")
