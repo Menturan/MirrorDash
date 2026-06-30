@@ -237,6 +237,7 @@
             </div>
             <h2 id="auth-title" class="auth-title">Welcome to MirrorDash</h2>
             <p id="auth-desc" class="auth-desc">Enter your password to unlock the admin dashboard.</p>
+            <div id="auth-error" class="alert alert--error" style="display: none; margin-bottom: 1.5rem; text-align: left; font-size: 0.88rem; padding: 0.75rem 1rem;"></div>
             <form id="auth-form" class="auth-form" onsubmit="handleAuthSubmit(event)">
                 <div class="auth-input-group" id="auth-password-group">
                     <label for="auth-password-input" class="auth-input-label">Password</label>
@@ -275,6 +276,14 @@
             setTimeout(() => { globalStatus.hidden = true; }, 5000);
         }
 
+        function showAuthError(msg) {
+            const authError = document.getElementById('auth-error');
+            if (authError) {
+                authError.textContent = msg;
+                authError.style.display = 'block';
+            }
+        }
+
         function showAuthModal(mode) {
             const overlay = document.getElementById('auth-overlay');
             const icon = document.getElementById('auth-icon');
@@ -284,6 +293,12 @@
             const newPasswordGroup = document.getElementById('auth-new-password-group');
             const pinGroup = document.getElementById('auth-pin-group');
             const submitBtn = document.getElementById('auth-submit-btn');
+
+            const authError = document.getElementById('auth-error');
+            if (authError) {
+                authError.textContent = '';
+                authError.style.display = 'none';
+            }
 
             document.getElementById('auth-password-input').value = '';
             document.getElementById('auth-new-password-input').value = '';
@@ -344,6 +359,12 @@
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing…';
 
+            const authError = document.getElementById('auth-error');
+            if (authError) {
+                authError.textContent = '';
+                authError.style.display = 'none';
+            }
+
             try {
                 if (mode === 'login') {
                     const res = await fetch('/admin/system', {
@@ -357,13 +378,13 @@
                         submitBtn.textContent = 'Unlock';
                         authPromiseResolve(true);
                     } else {
-                        alert('Invalid password. Please try again.');
+                        showAuthError('Invalid password. Please try again.');
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Unlock';
                     }
                 } else if (mode === 'setup') {
                     if (password.length < 4) {
-                        alert('Password must be at least 4 characters.');
+                        showAuthError('Password must be at least 4 characters.');
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Create Password';
                         return;
@@ -382,13 +403,13 @@
                         authPromiseResolve(true);
                     } else {
                         const err = await res.json();
-                        alert('Failed to set password: ' + (err.detail || 'Unknown error'));
+                        showAuthError('Failed to set password: ' + (err.detail || 'Unknown error'));
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Create Password';
                     }
                 } else if (mode === 'recover') {
                     if (newPassword.length < 4) {
-                        alert('Password must be at least 4 characters.');
+                        showAuthError('Password must be at least 4 characters.');
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Restore Password';
                         return;
@@ -407,13 +428,13 @@
                         authPromiseResolve(true);
                     } else {
                         const err = await res.json();
-                        alert('Failed to restore password: ' + (err.detail || 'Unknown error'));
+                        showAuthError('Failed to restore password: ' + (err.detail || 'Unknown error'));
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Restore Password';
                     }
                 }
             } catch (e) {
-                alert('An error occurred during authentication: ' + e.message);
+                showAuthError('An error occurred during authentication: ' + e.message);
                 submitBtn.disabled = false;
                 if (mode === 'login') submitBtn.textContent = 'Unlock';
                 if (mode === 'setup') submitBtn.textContent = 'Create Password';
@@ -588,7 +609,6 @@
                 if (currentApiKey) {
                     localStorage.removeItem('mirrordash_api_key');
                     currentApiKey = '';
-                    alert('Authentication failed. Please reload the page to authenticate.');
                     window.location.reload();
                 }
             }
