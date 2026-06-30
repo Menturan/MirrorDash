@@ -430,12 +430,14 @@
                 if (data.auth_corrupt) {
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
+                    localStorage.removeItem('mymm_api_key');
                     return await showAuthModal('recover');
                 }
 
                 if (data.setup_required) {
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
+                    localStorage.removeItem('mymm_api_key');
                     return await showAuthModal('setup');
                 } else {
                     if (!currentApiKey) {
@@ -585,10 +587,13 @@
 
         document.body.addEventListener('htmx:responseError', (event) => {
             if (event.detail.xhr.status === 401 || event.detail.xhr.status === 403) {
-                localStorage.removeItem('mirrordash_api_key');
-                currentApiKey = '';
-                alert('Authentication failed. Please reload the page to authenticate.');
-                window.location.reload();
+                if (currentApiKey) {
+                    localStorage.removeItem('mirrordash_api_key');
+                    localStorage.removeItem('mymm_api_key');
+                    currentApiKey = '';
+                    alert('Authentication failed. Please reload the page to authenticate.');
+                    window.location.reload();
+                }
             }
         });
 
