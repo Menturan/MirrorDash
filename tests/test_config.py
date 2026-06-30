@@ -18,7 +18,7 @@ def test_get_config_path_home_exists(tmp_path):
     fake_config_file = fake_config_dir / "config.json"
     fake_config_file.touch()
     
-    with patch.dict(os.environ, {}), \
+    with patch.dict(os.environ, {}, clear=True), \
          patch("os.path.expanduser", return_value=str(fake_home)):
         # Since the home config exists, it should be chosen over any dev config
         assert get_config_path() == fake_config_file
@@ -33,7 +33,7 @@ def test_get_config_path_dev_fallback(tmp_path):
     dev_config_file = fake_root / "config.json"
     dev_config_file.touch()
     
-    with patch.dict(os.environ, {}), \
+    with patch.dict(os.environ, {}, clear=True), \
          patch("os.path.expanduser", return_value=str(fake_home)), \
          patch("mirrordash_core.config.ROOT_DIR", fake_root):
         assert get_config_path() == dev_config_file
@@ -43,7 +43,7 @@ def test_get_config_path_default_home(tmp_path):
     fake_home = tmp_path / "home"
     fake_root = tmp_path / "root"
     
-    with patch.dict(os.environ, {}), \
+    with patch.dict(os.environ, {}, clear=True), \
          patch("os.path.expanduser", return_value=str(fake_home)), \
          patch("mirrordash_core.config.ROOT_DIR", fake_root):
         expected = Path(fake_home) / ".mirrordash" / "data" / "config.json"
@@ -91,7 +91,7 @@ def test_get_config_path_for_saving_ignores_dev_fallback(tmp_path):
     dev_config_file = fake_root / "config.json"
     dev_config_file.touch()
     
-    with patch.dict(os.environ, {}), \
+    with patch.dict(os.environ, {}, clear=True), \
          patch("os.path.expanduser", return_value=str(fake_home)), \
          patch("mirrordash_core.config.ROOT_DIR", fake_root):
         # When saving, it should ignore the dev_config_file and fallback to default home
