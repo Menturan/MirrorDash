@@ -138,6 +138,23 @@ All other modules in that region (e.g., a Todo list with no group name) will sta
 ### System settings (brightness/rotation) are not applying
 *   On Raspberry Pi, the system volume and brightness controls require administrative hardware privileges. Ensure your user has permissions to run system control scripts.
 
+### I forgot my admin password. How do I reset it?
+If you forget your admin password, you can reset the security configuration by manually deleting the authentication block from your configuration file:
+1. Connect to your mirror via SSH (or access the terminal on the device).
+2. Open the active configuration file:
+   ```bash
+   nano ~/.mirrordash/data/config.json
+   ```
+3. Locate the `"admin_auth"` section at the top of the file:
+   ```json
+   "admin_auth": {
+     "hash": "...",
+     "salt": "..."
+   },
+   ```
+4. Delete the entire `"admin_auth"` block (making sure the remaining JSON is syntactically valid) and save the file.
+5. Restart the server or reboot the mirror. The next time you open the Admin Dashboard in your browser, you will be prompted to set a new password during the first-run setup wizard.
+
 ---
 
 ## 8. Network Setup (WiFi Captive Portal)
