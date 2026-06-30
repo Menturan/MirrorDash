@@ -64,7 +64,7 @@
                     {% set is_configured = meta.configured %}
                     {% set is_enabled = meta.enabled %}
                     {% set title = meta.schema.title or name %}
-                    <div class="module-card {% if is_configured and not is_enabled %}disabled-module{% endif %}" id="module-card-{{ name }}">
+                    <div class="module-card {% if is_configured and not is_enabled %}disabled-module{% endif %}" id="module-card-{{ name }}" hx-disinherit="*">
                         <div class="module-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
                             <div>
                                 <h3 style="margin: 0; font-size: 1.15rem; color: white;">{{ title }}</h3>

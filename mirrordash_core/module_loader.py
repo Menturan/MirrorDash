@@ -169,7 +169,6 @@ class ModuleLoader:
                 if not hasattr(plugin_instance, "render_template"):
                     try:
                         from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
-                        import os
 
                         loaders = []
 

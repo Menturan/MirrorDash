@@ -367,7 +367,6 @@ async def rebuild_venv() -> dict:
 async def get_disk_usage() -> dict:
     """Get persistent storage partition disk space usage."""
     import shutil
-    import os
     try:
         check_path = "/storage" if os.path.ismount("/storage") or os.path.exists("/storage") else "/"
         total, used, free = shutil.disk_usage(check_path)

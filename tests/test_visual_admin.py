@@ -306,3 +306,38 @@ def test_admin_system_panel(page, server_url):
     # Verify status bar notifies user of successful save
     page.wait_for_selector("#global-status", state="visible")
     assert "System settings applied successfully" in page.locator("#global-status").text_content()
+
+
+def test_add_to_mirror(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    # Navigate to Modules tab
+    page.click("#page-tab-modules")
+    page.wait_for_selector("#installed-modules-container")
+
+    # Locate Add to Mirror button for mirrordash_calendar
+    config_btn = page.locator("#config-btn-mirrordash_calendar")
+    assert config_btn.is_visible()
+    assert "Add to Mirror" in config_btn.text_content()
+
+    # Register console error and network response/request handlers to check for frontend issues
+    console_errors = []
+    page.on("console", lambda msg: console_errors.append(f"[{msg.type}] {msg.text}"))
+
+    # Click Add to Mirror
+    config_btn.click()
+
+    # Verify drawer opens
+    drawer = page.locator("#config-drawer-mirrordash_calendar")
+    page.wait_for_selector("#config-drawer-mirrordash_calendar", state="visible")
+    assert drawer.is_visible()
+
+    # Wait for the config fields inside the drawer to load and contain Configuration Parameters
+    fields = page.locator("#config-fields-mirrordash_calendar")
+    page.wait_for_selector("#config-fields-mirrordash_calendar *", state="visible")
+    inner_html = fields.inner_html()
+    assert "Configuration Parameters" in inner_html
+
+    assert len([err for err in console_errors if "error" in err]) == 0
+
