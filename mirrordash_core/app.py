@@ -113,8 +113,38 @@ async def get_index(request: Request):
         return FileResponse(str(PACKAGE_DIR / "static" / "wifi_prompt.html"))
 
     config = load_config()
-    if "admin_auth" not in config:
-        return FileResponse(str(PACKAGE_DIR / "static" / "admin_prompt.html"))
+    auth = config.get("admin_auth")
+    auth_is_valid = bool(auth and auth.get("hash") and auth.get("salt"))
+    auth_corrupt = auth is not None and not auth_is_valid
+    setup_required = auth is None
+
+    if setup_required or auth_corrupt:
+        host = request.headers.get("host", "")
+        # Check loopback connection or Host header to verify if it's the kiosk screen
+        is_kiosk = (
+            request.client.host in ("127.0.0.1", "::1")
+            or "localhost" in host
+            or "127.0.0.1" in host
+        )
+
+        recovery_pin_str = ""
+        if auth_corrupt:
+            from mirrordash_core.api.admin_auth import get_recovery_pin
+            raw_pin = get_recovery_pin()
+            if len(raw_pin) == 6:
+                recovery_pin_str = f"{raw_pin[:3]} {raw_pin[3:]}"
+            else:
+                recovery_pin_str = raw_pin
+
+        return templates.TemplateResponse(
+            request=request,
+            name="admin_prompt.html",
+            context={
+                "auth_corrupt": auth_corrupt,
+                "is_kiosk": is_kiosk,
+                "recovery_pin": recovery_pin_str
+            }
+        )
 
     return FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
 

@@ -19,10 +19,6 @@ def test_static_js_files_served(client):
     assert resp.status_code == 200
     assert 'WiFi Setup Mode' in resp.text
 
-    # admin_prompt.html
-    resp = client.get('/static/admin_prompt.html')
-    assert resp.status_code == 200
-    assert 'Welcome to MirrorDash' in resp.text
 
     # core.js
     resp = client.get('/static/js/kiosk/core.js')

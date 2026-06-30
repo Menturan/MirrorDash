@@ -133,7 +133,7 @@ def test_index_serves_admin_prompt_when_setup_required(mock_hotspot, client):
 @patch("mirrordash_core.app.load_config")
 def test_index_serves_dashboard_when_configured(mock_load, mock_hotspot, client):
     mock_hotspot.return_value = False
-    mock_load.return_value = {"admin_auth": {"hash": "dummy_hash"}}
+    mock_load.return_value = {"admin_auth": {"hash": "dummy_hash", "salt": "dummy_salt"}}
     response = client.get("/", headers={"host": "localhost:8000"})
     assert response.status_code == 200
     assert "MirrorDash" in response.text

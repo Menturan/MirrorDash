@@ -189,6 +189,65 @@ def test_change_password_requires_auth(mock_auth_load, client):
     assert response.status_code == 401
 
 
+@patch("mirrordash_core.api.admin_auth.load_config")
+def test_recover_auth_invalid_state(mock_load, client):
+    """Recovery must be rejected if the auth state is valid or not set."""
+    # Scenario A: Auth is valid
+    mock_load.return_value = MOCK_CONFIG
+    response = client.post("/admin/auth/recover", json={"pin": "123456", "new_password": "newpass"})
+    assert response.status_code == 400
+    assert "Recovery not available" in response.json()["detail"]
+
+    # Scenario B: Setup is required (auth not set)
+    mock_load.return_value = {}
+    response = client.post("/admin/auth/recover", json={"pin": "123456", "new_password": "newpass"})
+    assert response.status_code == 400
+    assert "Recovery not available" in response.json()["detail"]
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_recover_auth_invalid_pin(mock_hotspot, mock_load, client):
+    """Recovery must be rejected with 411/401 when the PIN is incorrect."""
+    mock_hotspot.return_value = False
+    mock_load.return_value = {"admin_auth": {}} # Corrupt configuration triggers PIN generation
+
+    # Force status check to generate a PIN in memory
+    status_res = client.get("/admin/auth/status")
+    assert status_res.status_code == 200
+    
+    # Try invalid PIN
+    response = client.post("/admin/auth/recover", json={"pin": "000000", "new_password": "newpass"})
+    assert response.status_code == 401
+    assert "Invalid Recovery PIN" in response.json()["detail"]
+
+
+@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.api.admin_auth.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_auth.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+def test_recover_auth_success(mock_hotspot, mock_ro, mock_rw, mock_save, mock_load, client):
+    """Recovery must succeed when a correct PIN is provided and update the configuration."""
+    mock_hotspot.return_value = False
+    mock_load.return_value = {"admin_auth": {}} # Corrupt
+
+    from mirrordash_core.api.admin_auth import get_recovery_pin, clear_recovery_pin
+    clear_recovery_pin()
+    correct_pin = get_recovery_pin()
+
+    response = client.post("/admin/auth/recover", json={"pin": correct_pin, "new_password": "my_brand_new_pass"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+
+    mock_save.assert_called_once()
+    saved = mock_save.call_args[0][0]
+    assert "admin_auth" in saved
+    assert "hash" in saved["admin_auth"]
+    assert "salt" in saved["admin_auth"]
+
+
+
 @patch("mirrordash_core.api.admin_shared.load_config")
 @patch("mirrordash_core.api.admin_system.load_config")
 def test_auth_headers_required(mock_sys_load, mock_load, client):

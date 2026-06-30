@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome to MirrorDash</title>
+    <title>{% if auth_corrupt %}Restore Admin Password{% else %}Welcome to MirrorDash{% endif %}</title>
     <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/style.css">
     <style>
@@ -65,6 +65,20 @@
             letter-spacing: 0.04em;
             line-height: 1.5;
         }
+        .pin-box {
+            background: rgba(255, 180, 171, 0.1);
+            border: 1px dashed #ffb4ab;
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            font-family: monospace;
+            font-size: 2rem;
+            font-weight: 700;
+            color: #ffb4ab;
+            letter-spacing: 0.2em;
+            text-indent: 0.1em;
+            line-height: 1;
+        }
         .subtext {
             font-size: 0.8125rem;
             color: var(--color-dimmed-charcoal, #666666);
@@ -75,13 +89,32 @@
 </head>
 <body>
     <div class="card">
-        <div class="icon"><i data-lucide="monitor-smartphone"></i></div>
-        <h1>Welcome to MirrorDash</h1>
-        <p class="main-text">Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.</p>
-        <div class="url-box">
-            mirrordash.local/admin
-        </div>
-        <p class="subtext">Set an admin password to secure your mirror and configure modules. This message will disappear automatically once setup is complete.</p>
+        {% if auth_corrupt %}
+            <div class="icon" style="color: #ffb4ab;"><i data-lucide="shield-alert"></i></div>
+            <h1>Configuration Restore Needed</h1>
+            
+            {% if is_kiosk %}
+                <p class="main-text">The admin password configuration is damaged. Enter the Recovery PIN below in the admin dashboard to restore access.</p>
+                <div class="pin-box">
+                    {{ recovery_pin }}
+                </div>
+            {% else %}
+                <p class="main-text">The admin password configuration is damaged. Please look at the physical mirror screen to retrieve the 6-digit Recovery PIN, then enter it in the admin dashboard.</p>
+                <div class="url-box">
+                    mirrordash.local/admin
+                </div>
+            {% endif %}
+            
+            <p class="subtext">This recovery mode requires physical screen verification. Once access is restored, you will be prompted to set a new password.</p>
+        {% else %}
+            <div class="icon"><i data-lucide="monitor-smartphone"></i></div>
+            <h1>Welcome to MirrorDash</h1>
+            <p class="main-text">Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.</p>
+            <div class="url-box">
+                mirrordash.local/admin
+            </div>
+            <p class="subtext">Set an admin password to secure your mirror and configure modules. This message will disappear automatically once setup is complete.</p>
+        {% endif %}
     </div>
 
     <script src="/static/js/lucide.min.js"></script>
@@ -94,8 +127,8 @@
             try {
                 const res = await fetch('/admin/auth/status');
                 const data = await res.json();
-                // Reload if setup is complete or if wifi hotspot starts up
-                if (!data.setup_required || data.wifi_hotspot_active) {
+                // Reload if setup is complete, no longer corrupt, or if wifi hotspot starts up
+                if ((!data.setup_required && !data.auth_corrupt) || data.wifi_hotspot_active) {
                     window.location.reload();
                 }
             } catch (e) {

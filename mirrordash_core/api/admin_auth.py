@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import secrets
+import string
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from mirrordash_core.config import load_config, save_config
@@ -8,6 +9,20 @@ from mirrordash_core.system import is_wifi_hotspot_active, remount_ro, remount_r
 from mirrordash_core.api.admin_shared import hash_password, require_api_key
 
 router = APIRouter()
+
+RECOVERY_PIN: str | None = None
+
+
+def get_recovery_pin() -> str:
+    global RECOVERY_PIN
+    if RECOVERY_PIN is None:
+        RECOVERY_PIN = "".join(secrets.choice(string.digits) for _ in range(6))
+    return RECOVERY_PIN
+
+
+def clear_recovery_pin() -> None:
+    global RECOVERY_PIN
+    RECOVERY_PIN = None
 
 
 @router.get("/auth/status")
@@ -20,6 +35,10 @@ async def get_auth_status() -> dict:
     setup_required = auth is None
     # auth_corrupt = True when an entry exists but is unusable.
     auth_corrupt = auth is not None and not auth_is_valid
+
+    if auth_corrupt:
+        # Side-effect: generate/retain the recovery PIN in memory
+        get_recovery_pin()
 
     hotspot_active = await is_wifi_hotspot_active()
     return {
@@ -86,3 +105,43 @@ async def change_password(body: dict = Body(...)) -> dict:
         return {"status": "success", "message": "Admin password changed successfully"}
     finally:
         await remount_ro()
+
+
+@router.post("/auth/recover")
+async def recover_auth(body: dict = Body(...)) -> dict:
+    """Recover from a corrupt admin auth entry using the memory-stored Recovery PIN."""
+    global RECOVERY_PIN
+
+    config = load_config()
+    auth = config.get("admin_auth")
+    auth_is_valid = bool(auth and auth.get("hash") and auth.get("salt"))
+
+    # We only allow recovery if the configuration is actually corrupt
+    if auth is None or auth_is_valid:
+        raise HTTPException(status_code=400, detail="Recovery not available. Password is valid or not set.")
+
+    provided_pin = body.get("pin")
+    new_password = body.get("new_password")
+
+    if not provided_pin or not RECOVERY_PIN or provided_pin.replace(" ", "") != RECOVERY_PIN:
+        raise HTTPException(status_code=401, detail="Invalid Recovery PIN")
+
+    if not new_password or len(new_password) < 4:
+        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
+
+    salt = secrets.token_hex(16)
+    hashed_pw = hash_password(new_password, salt)
+
+    config["admin_auth"] = {
+        "hash": hashed_pw,
+        "salt": salt,
+    }
+
+    await remount_rw()
+    try:
+        save_config(config)
+        clear_recovery_pin()
+        return {"status": "success", "message": "Admin password restored successfully"}
+    finally:
+        await remount_ro()
+

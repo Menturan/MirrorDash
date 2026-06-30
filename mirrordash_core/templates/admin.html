@@ -12,6 +12,136 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fira+Code&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/admin.css">
     <link rel="stylesheet" href="/static/fontawesome/css/all.min.css">
+    <style>
+        /* Auth Screen / Card Styling */
+        .auth-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 10, 12, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .auth-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .auth-card {
+            background: rgba(20, 20, 25, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 3rem 2.5rem;
+            width: 90%;
+            max-width: 440px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.8), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+            transform: scale(0.95);
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .auth-overlay.open .auth-card {
+            transform: scale(1);
+        }
+        .auth-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+        }
+        .auth-icon.corrupt {
+            background: rgba(255, 180, 171, 0.1);
+            border: 1px solid #ffb4ab;
+            color: #ffb4ab;
+        }
+        .auth-title {
+            margin: 0 0 0.5rem 0;
+            font-size: 1.5rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            color: #ffffff;
+        }
+        .auth-desc {
+            margin: 0 0 2rem 0;
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+        .auth-form {
+            display: flex;
+            flex-direction: column;
+            gap: 1.25rem;
+        }
+        .auth-input-group {
+            position: relative;
+            text-align: left;
+        }
+        .auth-input-label {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+        .auth-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 10px;
+            padding: 0.8rem 1rem;
+            color: #ffffff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .auth-input:focus {
+            border-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+        }
+        .auth-btn {
+            width: 100%;
+            padding: 0.9rem;
+            border-radius: 10px;
+            font-size: 0.95rem;
+            font-weight: 550;
+            cursor: pointer;
+            border: none;
+            outline: none;
+            transition: background 0.2s, transform 0.1s;
+            background: #ffffff;
+            color: #121216;
+        }
+        .auth-btn:hover {
+            background: #e2e2e5;
+        }
+        .auth-btn:active {
+            transform: scale(0.98);
+        }
+        .auth-btn.corrupt-btn {
+            background: #ffb4ab;
+            color: #690005;
+        }
+        .auth-btn.corrupt-btn:hover {
+            background: #ffdad6;
+        }
+    </style>
     <!-- Marked.js and DOMPurify for secure markdown rendering of release notes -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.8/dist/purify.min.js" defer></script>
@@ -99,6 +229,32 @@
         </div>
     </div>
 
+    <!-- Premium Auth Modal Overlay -->
+    <div id="auth-overlay" class="auth-overlay" role="dialog" aria-modal="true">
+        <div class="auth-card">
+            <div class="auth-icon" id="auth-icon">
+                <i data-lucide="lock"></i>
+            </div>
+            <h2 id="auth-title" class="auth-title">Welcome to MirrorDash</h2>
+            <p id="auth-desc" class="auth-desc">Enter your password to unlock the admin dashboard.</p>
+            <form id="auth-form" class="auth-form" onsubmit="handleAuthSubmit(event)">
+                <div class="auth-input-group" id="auth-password-group">
+                    <label for="auth-password-input" class="auth-input-label">Password</label>
+                    <input type="password" id="auth-password-input" class="auth-input" placeholder="••••••••">
+                </div>
+                <div class="auth-input-group" id="auth-pin-group" style="display: none;">
+                    <label for="auth-pin-input" class="auth-input-label">Recovery PIN</label>
+                    <input type="text" id="auth-pin-input" class="auth-input" placeholder="123 456" pattern="[0-9]{3}\s?[0-9]{3}">
+                </div>
+                <div class="auth-input-group" id="auth-new-password-group" style="display: none;">
+                    <label for="auth-new-password-input" class="auth-input-label">New Password</label>
+                    <input type="password" id="auth-new-password-input" class="auth-input" placeholder="Min. 4 characters">
+                </div>
+                <button type="submit" class="auth-btn" id="auth-submit-btn">Unlock</button>
+            </form>
+        </div>
+    </div>
+
     <noscript>
         <p style="color:white;text-align:center;padding:2rem;">JavaScript is required for the admin interface.</p>
     </noscript>
@@ -108,6 +264,7 @@
     <script src="/static/js/lucide.min.js"></script>
     <script>
         let currentApiKey = localStorage.getItem('mirrordash_api_key') || localStorage.getItem('mymm_api_key') || '';
+        let authPromiseResolve;
 
         function showGlobal(msg, type = 'info') {
             const globalStatus = document.getElementById('global-status');
@@ -118,6 +275,152 @@
             setTimeout(() => { globalStatus.hidden = true; }, 5000);
         }
 
+        function showAuthModal(mode) {
+            const overlay = document.getElementById('auth-overlay');
+            const icon = document.getElementById('auth-icon');
+            const title = document.getElementById('auth-title');
+            const desc = document.getElementById('auth-desc');
+            const passwordGroup = document.getElementById('auth-password-group');
+            const newPasswordGroup = document.getElementById('auth-new-password-group');
+            const pinGroup = document.getElementById('auth-pin-group');
+            const submitBtn = document.getElementById('auth-submit-btn');
+
+            document.getElementById('auth-password-input').value = '';
+            document.getElementById('auth-new-password-input').value = '';
+            document.getElementById('auth-pin-input').value = '';
+
+            overlay.setAttribute('data-mode', mode);
+            overlay.classList.add('open');
+
+            if (mode === 'login') {
+                icon.className = 'auth-icon';
+                icon.innerHTML = '<i data-lucide="lock"></i>';
+                title.textContent = 'Enter Password';
+                desc.textContent = 'Enter your MirrorDash admin password to unlock the dashboard.';
+                passwordGroup.style.display = 'block';
+                newPasswordGroup.style.display = 'none';
+                pinGroup.style.display = 'none';
+                submitBtn.textContent = 'Unlock';
+                submitBtn.className = 'auth-btn';
+            } else if (mode === 'setup') {
+                icon.className = 'auth-icon';
+                icon.innerHTML = '<i data-lucide="monitor-smartphone"></i>';
+                title.textContent = 'Welcome to MirrorDash';
+                desc.textContent = 'Please create an admin password to secure your mirror (at least 4 characters).';
+                passwordGroup.style.display = 'block';
+                newPasswordGroup.style.display = 'none';
+                pinGroup.style.display = 'none';
+                submitBtn.textContent = 'Create Password';
+                submitBtn.className = 'auth-btn';
+            } else if (mode === 'recover') {
+                icon.className = 'auth-icon corrupt';
+                icon.innerHTML = '<i data-lucide="shield-alert"></i>';
+                title.textContent = 'Restore Access';
+                desc.textContent = 'Your configuration is corrupt. Enter the 6-digit Recovery PIN shown on your mirror screen to set a new password.';
+                passwordGroup.style.display = 'none';
+                newPasswordGroup.style.display = 'block';
+                pinGroup.style.display = 'block';
+                submitBtn.textContent = 'Restore Password';
+                submitBtn.className = 'auth-btn corrupt-btn';
+            }
+
+            if (window.lucide) lucide.createIcons({ root: icon });
+
+            return new Promise((resolve) => {
+                authPromiseResolve = resolve;
+            });
+        }
+
+        async function handleAuthSubmit(event) {
+            event.preventDefault();
+            const overlay = document.getElementById('auth-overlay');
+            const mode = overlay.getAttribute('data-mode');
+            const submitBtn = document.getElementById('auth-submit-btn');
+
+            const password = document.getElementById('auth-password-input').value;
+            const newPassword = document.getElementById('auth-new-password-input').value;
+            const pin = document.getElementById('auth-pin-input').value;
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing…';
+
+            try {
+                if (mode === 'login') {
+                    const res = await fetch('/admin/system', {
+                        headers: { 'X-API-Key': password }
+                    });
+                    if (res.status === 200 || res.status === 404) {
+                        currentApiKey = password;
+                        localStorage.setItem('mirrordash_api_key', currentApiKey);
+                        overlay.classList.remove('open');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Unlock';
+                        authPromiseResolve(true);
+                    } else {
+                        alert('Invalid password. Please try again.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Unlock';
+                    }
+                } else if (mode === 'setup') {
+                    if (password.length < 4) {
+                        alert('Password must be at least 4 characters.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Password';
+                        return;
+                    }
+                    const res = await fetch('/admin/auth/setup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ password })
+                    });
+                    if (res.ok) {
+                        currentApiKey = password;
+                        localStorage.setItem('mirrordash_api_key', currentApiKey);
+                        overlay.classList.remove('open');
+                        showGlobal('Password set successfully.', 'success');
+                        submitBtn.disabled = false;
+                        authPromiseResolve(true);
+                    } else {
+                        const err = await res.json();
+                        alert('Failed to set password: ' + (err.detail || 'Unknown error'));
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Create Password';
+                    }
+                } else if (mode === 'recover') {
+                    if (newPassword.length < 4) {
+                        alert('Password must be at least 4 characters.');
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Restore Password';
+                        return;
+                    }
+                    const res = await fetch('/admin/auth/recover', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ pin, new_password: newPassword })
+                    });
+                    if (res.ok) {
+                        currentApiKey = newPassword;
+                        localStorage.setItem('mirrordash_api_key', currentApiKey);
+                        overlay.classList.remove('open');
+                        showGlobal('Password restored successfully.', 'success');
+                        submitBtn.disabled = false;
+                        authPromiseResolve(true);
+                    } else {
+                        const err = await res.json();
+                        alert('Failed to restore password: ' + (err.detail || 'Unknown error'));
+                        submitBtn.disabled = false;
+                        submitBtn.textContent = 'Restore Password';
+                    }
+                }
+            } catch (e) {
+                alert('An error occurred during authentication: ' + e.message);
+                submitBtn.disabled = false;
+                if (mode === 'login') submitBtn.textContent = 'Unlock';
+                if (mode === 'setup') submitBtn.textContent = 'Create Password';
+                if (mode === 'recover') submitBtn.textContent = 'Restore Password';
+            }
+        }
+
         async function checkAuthStatus() {
             try {
                 const res = await fetch('/admin/auth/status');
@@ -125,53 +428,18 @@
                 const data = await res.json();
 
                 if (data.auth_corrupt) {
-                    // The admin_auth entry exists but is unusable (missing hash/salt).
-                    // We do NOT allow unauthenticated re-setup — that would let anyone
-                    // on the network claim admin access. Recovery requires the existing
-                    // password (if partially known) via /auth/change-password, or manual
-                    // config repair via SSH.
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
-                    showGlobal(
-                        '⚠️ Admin password config is corrupt. Use /auth/change-password with your existing key, or repair config.json via SSH.',
-                        'error'
-                    );
-                    return false;
+                    return await showAuthModal('recover');
                 }
 
                 if (data.setup_required) {
-                    // No auth entry at all — first-boot setup.
                     currentApiKey = '';
                     localStorage.removeItem('mirrordash_api_key');
-
-                    const pwd = prompt('Welcome! Please create an admin password for MirrorDash (at least 4 characters):');
-                    if (!pwd || pwd.length < 4) {
-                        alert('Password must be at least 4 characters. Reload to try again.');
-                        return false;
-                    }
-                    const setupRes = await fetch('/admin/auth/setup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ password: pwd })
-                    });
-
-                    if (setupRes.ok) {
-                        currentApiKey = pwd;
-                        localStorage.setItem('mirrordash_api_key', currentApiKey);
-                        showGlobal('Password set successfully.', 'success');
-                        return true;
-                    } else {
-                        const errData = await setupRes.json();
-                        alert('Failed to set password: ' + (errData.detail || 'Unknown error'));
-                        return false;
-                    }
+                    return await showAuthModal('setup');
                 } else {
                     if (!currentApiKey) {
-                        const pwd = prompt('Enter MirrorDash admin password:');
-                        if (!pwd) return false;
-                        currentApiKey = pwd;
-                        localStorage.setItem('mirrordash_api_key', currentApiKey);
-                        window.location.reload();
+                        return await showAuthModal('login');
                     }
                     return true;
                 }
