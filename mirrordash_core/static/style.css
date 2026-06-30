@@ -128,38 +128,38 @@ body, html {
 }
 
 /* ============================================================
-   Peripheral Modular Grid Layout
+   Peripheral Modular Layout — Floating Anchors
+   Regions are absolutely positioned anchor points.
+   Modules grow freely from their edge toward the screen centre.
+   No clipping, no pushing. Modules may freely overlap.
    ============================================================ */
 .container {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: repeat(3, minmax(0, 1fr));
-    grid-template-areas:
-        "top_left top_center top_right"
-        "middle_left middle_center middle_right"
-        "bottom_left bottom_center bottom_right";
+    position: relative;
     width: 100%;
     height: 100%;
-    padding: var(--safe-margin);
 }
 
 .region {
+    position: absolute;
     display: flex;
     flex-direction: column;
     gap: var(--widget-gap);
-    min-height: 0;
-    overflow: hidden;
 }
 
-#top_left      { grid-area: top_left;      align-items: flex-start; }
-#top_center    { grid-area: top_center;    align-items: center; }
-#top_right     { grid-area: top_right;     align-items: flex-end; }
-#middle_left   { grid-area: middle_left;   align-items: flex-start; justify-content: center; }
-#middle_center { grid-area: middle_center; justify-content: center; align-items: center; }
-#middle_right  { grid-area: middle_right;  align-items: flex-end;   justify-content: center; }
-#bottom_left   { grid-area: bottom_left;   align-items: flex-start; justify-content: flex-end; }
-#bottom_center { grid-area: bottom_center; align-items: center;     justify-content: flex-end; }
-#bottom_right  { grid-area: bottom_right;  align-items: flex-end;   justify-content: flex-end; }
+/* Top row — pinned to top edge, modules grow downward */
+#top_left   { top: var(--safe-margin); left: var(--safe-margin);  align-items: flex-start; }
+#top_center { top: var(--safe-margin); left: 50%; transform: translateX(-50%); align-items: center; }
+#top_right  { top: var(--safe-margin); right: var(--safe-margin); align-items: flex-end; }
+
+/* Middle row — pinned to vertical centre, modules grow downward from midpoint */
+#middle_left   { top: 50%; transform: translateY(-50%); left: var(--safe-margin);  align-items: flex-start; }
+#middle_center { top: 50%; left: 50%; transform: translate(-50%, -50%);             align-items: center; }
+#middle_right  { top: 50%; transform: translateY(-50%); right: var(--safe-margin); align-items: flex-end; }
+
+/* Bottom row — pinned to bottom edge, modules stack upward (column-reverse) */
+#bottom_left   { bottom: var(--safe-margin); left: var(--safe-margin);  flex-direction: column-reverse; align-items: flex-start; }
+#bottom_center { bottom: var(--safe-margin); left: 50%; transform: translateX(-50%); flex-direction: column-reverse; align-items: center; }
+#bottom_right  { bottom: var(--safe-margin); right: var(--safe-margin); flex-direction: column-reverse; align-items: flex-end; }
 
 /* ============================================================
    Module containers

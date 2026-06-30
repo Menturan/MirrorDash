@@ -236,16 +236,22 @@ class ModuleLoader:
             pos = "middle_center"
             carousel_group = None
             carousel_interval = 15
+            max_width = None
+            max_height = None
             if module_cfg:
                 pos = module_cfg.get("position", "middle_center")
                 carousel_group = module_cfg.get("carousel_group")
                 carousel_interval = module_cfg.get("carousel_interval", 15)
+                max_width = module_cfg.get("max_width")
+                max_height = module_cfg.get("max_height")
             await manager.broadcast({
                 "position": pos,
                 "html": html,
                 "module": name,
                 "carousel_group": carousel_group,
-                "carousel_interval": carousel_interval
+                "carousel_interval": carousel_interval,
+                "max_width": max_width,
+                "max_height": max_height,
             })
         return broadcast_func
 

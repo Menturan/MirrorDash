@@ -140,6 +140,11 @@ function connect() {
             moduleDiv.className = '';
         }
 
+        // Apply optional per-module size constraints from config (max_width / max_height).
+        // Any CSS length value is valid (e.g. "400px", "30vw"). Cleared when absent.
+        moduleDiv.style.maxWidth  = data.max_width  || '';
+        moduleDiv.style.maxHeight = data.max_height || '';
+
         const shadow = moduleDiv.shadowRoot || moduleDiv.attachShadow({ mode: 'open' });
         shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}</style>` + data.html;
         if (window.lucide) {
