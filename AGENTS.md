@@ -174,6 +174,8 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
 
 10. **No `document.write()` or `eval()`.**
 
+10a. **No browser alert popups.** Never use native browser dialogs like `alert()`, `confirm()`, or `prompt()` in the admin dashboard user interface. Use custom, sleek inline styling or custom overlays consistent with the Global Ethereal Design System instead.
+
 11. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
 
 12. **WebSocket reconnection uses exponential backoff.** Do not replace with simple `setInterval`. The existing pattern in `index.html` is correct.
