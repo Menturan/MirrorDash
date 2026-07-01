@@ -57,7 +57,8 @@ def get_default_globals() -> dict:
         "temperature_unit": "C",
         "distance_unit": "km",
         "latitude": 59.3293,
-        "longitude": 18.0686
+        "longitude": 18.0686,
+        "safe_margin": "60px"
     }
 
 def load_config() -> dict:

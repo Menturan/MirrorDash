@@ -182,6 +182,10 @@ async function loadActiveModules() {
         const response = await fetch('/api/active-modules');
         const data = await response.json();
 
+        if (data && data.safe_margin) {
+            document.documentElement.style.setProperty('--safe-margin', data.safe_margin);
+        }
+
         if (data && (data.boot_status === 'rollback' || data.boot_status === 'safe_mode')) {
             const notifyContainer = document.getElementById('top_right');
             if (notifyContainer) {

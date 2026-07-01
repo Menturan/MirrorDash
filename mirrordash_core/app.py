@@ -237,7 +237,13 @@ async def get_active_modules() -> dict:
         })
     # Read boot status from environment
     boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")
-    return {"modules": modules_list, "boot_status": boot_status}
+    
+    from mirrordash_core.config import load_config
+    cfg = load_config()
+    globals_cfg = cfg.get("globals", {})
+    safe_margin = globals_cfg.get("safe_margin", "60px")
+
+    return {"modules": modules_list, "boot_status": boot_status, "safe_margin": safe_margin}
 
 # WebSocket communication endpoint
 @app.websocket("/ws")

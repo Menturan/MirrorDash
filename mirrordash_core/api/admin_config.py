@@ -207,6 +207,12 @@ async def get_globals_schema() -> dict:
                 "default": 18.0686,
                 "title": "Decimal Longitude",
                 "description": "Longitude coordinates for weather/astronomy."
+            },
+            "safe_margin": {
+                "type": "string",
+                "default": "60px",
+                "title": "Screen Padding (Safe Margin)",
+                "description": "Safe margin distance from the physical screen edges (e.g. 60px, 3vw, 4% or any valid CSS length)."
             }
         }
     }
