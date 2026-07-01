@@ -241,10 +241,15 @@ async def get_active_modules() -> dict:
     from mirrordash_core.config import load_config
     cfg = load_config()
     globals_cfg = cfg.get("globals", {})
-    safe_margin_top = globals_cfg.get("safe_margin_top", "60px")
-    safe_margin_bottom = globals_cfg.get("safe_margin_bottom", "60px")
-    safe_margin_left = globals_cfg.get("safe_margin_left", "60px")
-    safe_margin_right = globals_cfg.get("safe_margin_right", "60px")
+    
+    safe_margin_cfg = globals_cfg.get("safe_margin", {})
+    if not isinstance(safe_margin_cfg, dict):
+        safe_margin_cfg = {}
+        
+    safe_margin_top = f"{safe_margin_cfg.get('top', 60)}px"
+    safe_margin_bottom = f"{safe_margin_cfg.get('bottom', 60)}px"
+    safe_margin_left = f"{safe_margin_cfg.get('left', 60)}px"
+    safe_margin_right = f"{safe_margin_cfg.get('right', 60)}px"
 
     return {
         "modules": modules_list,

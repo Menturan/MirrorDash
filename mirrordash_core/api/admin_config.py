@@ -208,33 +208,36 @@ async def get_globals_schema() -> dict:
                 "title": "Decimal Longitude",
                 "description": "Longitude coordinates for weather/astronomy."
             },
-            "safe_margin_top": {
-                "type": "string",
-                "default": "60px",
-                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
-                "title": "Top Screen Padding",
-                "description": "Safe margin padding from the top physical screen edge."
-            },
-            "safe_margin_bottom": {
-                "type": "string",
-                "default": "60px",
-                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
-                "title": "Bottom Screen Padding",
-                "description": "Safe margin padding from the bottom physical screen edge."
-            },
-            "safe_margin_left": {
-                "type": "string",
-                "default": "60px",
-                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
-                "title": "Left Screen Padding",
-                "description": "Safe margin padding from the left physical screen edge."
-            },
-            "safe_margin_right": {
-                "type": "string",
-                "default": "60px",
-                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
-                "title": "Right Screen Padding",
-                "description": "Safe margin padding from the right physical screen edge."
+            "safe_margin": {
+                "type": "object",
+                "title": "Screen Padding (Safe Margins)",
+                "description": "Safe margin padding (in px) from physical screen edges.",
+                "properties": {
+                    "top": {
+                        "type": "integer",
+                        "default": 60,
+                        "title": "Top Margin (px)",
+                        "description": "Top padding in pixels."
+                    },
+                    "bottom": {
+                        "type": "integer",
+                        "default": 60,
+                        "title": "Bottom Margin (px)",
+                        "description": "Bottom padding in pixels."
+                    },
+                    "left": {
+                        "type": "integer",
+                        "default": 60,
+                        "title": "Left Margin (px)",
+                        "description": "Left padding in pixels."
+                    },
+                    "right": {
+                        "type": "integer",
+                        "default": 60,
+                        "title": "Right Margin (px)",
+                        "description": "Right padding in pixels."
+                    }
+                }
             }
         }
     }

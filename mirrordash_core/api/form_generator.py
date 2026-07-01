@@ -152,6 +152,25 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                     </button>
                 </div>
             """)
+        elif prop_type == "object":
+            sub_properties = prop.get("properties", {})
+            sub_val = val if isinstance(val, dict) else {}
+            sub_form_html = render_schema_form(
+                {"properties": sub_properties},
+                sub_val,
+                name
+            )
+            html_parts.append(f"""
+                <details class="form-accordion" style="margin-bottom: 16px; border: 1px solid #27272a; border-radius: 6px; background: rgba(255,255,255,0.01); overflow: hidden;">
+                    <summary style="padding: 12px; font-weight: 600; color: white; cursor: pointer; user-select: none; background: rgba(255,255,255,0.03); outline: none;">
+                        {title}
+                    </summary>
+                    <div style="padding: 12px; border-top: 1px solid #27272a;">
+                        <p class="field-description" style="font-size:0.75rem; margin: 0 0 12px 0; color: #a1a1aa; line-height: 1.4;">{description}</p>
+                        {sub_form_html}
+                    </div>
+                </details>
+            """)
         elif prop_type in ("integer", "number"):
             step = "1" if prop_type == "integer" else "any"
             html_parts.append(f"""
