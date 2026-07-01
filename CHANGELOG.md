@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Core App
+- Add `z_index` and `opacity` per-module config properties
+- Split AGENTS.md into modular `.agents/rules/` files for token efficiency
 - Match correct final image artifact in github workflow release step (aa9604d)
 - Append Wayland, NetworkManager, and kiosk systemd architectural rules (2b3cb06)
 - Revert "docs(agents): append Wayland, NetworkManager, and kiosk systemd architectural rules"
