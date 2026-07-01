@@ -252,3 +252,55 @@ def test_parse_openweathermap(base_config):
     assert result["forecast"][0]["day_name"] == "TOMORROW"
     assert result["forecast"][0]["temp_max"] == 23.0
     assert result["forecast"][0]["icon"] == "sun"
+
+def test_parse_hourly_and_combined(base_config):
+    # SMHI Hourly Parsing
+    module = WeatherModule(base_config)
+    today = datetime.date(2026, 6, 3)
+    result = module.parse_smhi(MOCK_SMHI_DATA, today)
+    assert "hourly_forecast" in result
+    assert len(result["hourly_forecast"]) > 0
+    assert result["hourly_forecast"][0]["time_label"] == "21:00" or result["hourly_forecast"][0]["time_label"] == "09 PM"
+    assert result["hourly_forecast"][0]["temp"] == 20.5
+
+    # Open-Meteo Hourly Parsing
+    base_config["provider"] = "open_meteo"
+    om_module = WeatherModule(base_config)
+    om_data = MOCK_OPEN_METEO_DATA.copy()
+    om_data["hourly"] = {
+        "time": ["2026-06-03T19:00", "2026-06-03T20:00"],
+        "temperature_2m": [20.5, 19.5],
+        "weather_code": [1, 1]
+    }
+    om_result = om_module.parse_open_meteo(om_data, today)
+    assert len(om_result["hourly_forecast"]) == 2
+    assert om_result["hourly_forecast"][0]["time_label"] == "19:00"
+    assert om_result["hourly_forecast"][0]["temp"] == 20.5
+
+    # WeatherAPI Hourly Parsing
+    base_config["provider"] = "weatherapi"
+    wa_module = WeatherModule(base_config)
+    wa_data = MOCK_WEATHERAPI_DATA.copy()
+    wa_data["forecast"] = {
+        "forecastday": [
+            {
+                "date": "2026-06-03",
+                "day": {"maxtemp_c": 21.0, "mintemp_c": 15.0, "condition": {"code": 1003}},
+                "hour": [
+                    {"time": "2026-06-03 19:00", "temp_c": 20.5, "condition": {"code": 1003}}
+                ]
+            }
+        ]
+    }
+    wa_result = wa_module.parse_weatherapi(wa_data, today)
+    assert len(wa_result["hourly_forecast"]) == 1
+    assert wa_result["hourly_forecast"][0]["time_label"] == "19:00"
+    assert wa_result["hourly_forecast"][0]["temp"] == 20.5
+
+    # OpenWeatherMap Hourly Parsing
+    base_config["provider"] = "openweathermap"
+    owm_module = WeatherModule(base_config)
+    owm_result = owm_module.parse_openweathermap(MOCK_OPENWEATHER_DATA, today)
+    assert len(owm_result["hourly_forecast"]) > 0
+    assert owm_result["hourly_forecast"][0]["temp"] == 20.5
+
