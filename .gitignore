@@ -31,3 +31,6 @@ pishrink.sh
 # MirrorDash modules (each is an independent Git repository)
 modules/*/
 
+# Scratch folder for temporary work
+scratch/
+
