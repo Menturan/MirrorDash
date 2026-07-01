@@ -182,8 +182,11 @@ async function loadActiveModules() {
         const response = await fetch('/api/active-modules');
         const data = await response.json();
 
-        if (data && data.safe_margin) {
-            document.documentElement.style.setProperty('--safe-margin', data.safe_margin);
+        if (data) {
+            if (data.safe_margin_top) document.documentElement.style.setProperty('--safe-margin-top', data.safe_margin_top);
+            if (data.safe_margin_bottom) document.documentElement.style.setProperty('--safe-margin-bottom', data.safe_margin_bottom);
+            if (data.safe_margin_left) document.documentElement.style.setProperty('--safe-margin-left', data.safe_margin_left);
+            if (data.safe_margin_right) document.documentElement.style.setProperty('--safe-margin-right', data.safe_margin_right);
         }
 
         if (data && (data.boot_status === 'rollback' || data.boot_status === 'safe_mode')) {

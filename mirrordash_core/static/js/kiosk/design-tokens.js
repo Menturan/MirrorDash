@@ -36,6 +36,10 @@ const DESIGN_TOKENS_CSS = `
         --color-error: #ffb4ab;
         --color-status-online: #a0ffba;
         --color-status-warning: #f87171;
+        --safe-margin-top: var(--safe-margin-top, 60px);
+        --safe-margin-bottom: var(--safe-margin-bottom, 60px);
+        --safe-margin-left: var(--safe-margin-left, 60px);
+        --safe-margin-right: var(--safe-margin-right, 60px);
         --safe-margin: var(--safe-margin, 60px);
         --widget-gap: 30px;
         --internal-padding: 16px;

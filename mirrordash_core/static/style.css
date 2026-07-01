@@ -82,6 +82,10 @@
     --mirror-font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
     /* --- Layout & Spacing --- */
+    --safe-margin-top: 60px;
+    --safe-margin-bottom: 60px;
+    --safe-margin-left: 60px;
+    --safe-margin-right: 60px;
     --safe-margin: 60px;
     --widget-gap: 30px;
     --internal-padding: 16px;
@@ -147,19 +151,19 @@ body, html {
 }
 
 /* Top row — pinned to top edge, modules grow downward */
-#top_left   { top: var(--safe-margin); left: var(--safe-margin);  align-items: flex-start; }
-#top_center { top: var(--safe-margin); left: 50%; transform: translateX(-50%); align-items: center; }
-#top_right  { top: var(--safe-margin); right: var(--safe-margin); align-items: flex-end; }
+#top_left   { top: var(--safe-margin-top); left: var(--safe-margin-left);  align-items: flex-start; }
+#top_center { top: var(--safe-margin-top); left: 50%; transform: translateX(-50%); align-items: center; }
+#top_right  { top: var(--safe-margin-top); right: var(--safe-margin-right); align-items: flex-end; }
 
 /* Middle row — pinned to vertical centre, modules grow downward from midpoint */
-#middle_left   { top: 50%; transform: translateY(-50%); left: var(--safe-margin);  align-items: flex-start; }
+#middle_left   { top: 50%; transform: translateY(-50%); left: var(--safe-margin-left);  align-items: flex-start; }
 #middle_center { top: 50%; left: 50%; transform: translate(-50%, -50%);             align-items: center; }
-#middle_right  { top: 50%; transform: translateY(-50%); right: var(--safe-margin); align-items: flex-end; }
+#middle_right  { top: 50%; transform: translateY(-50%); right: var(--safe-margin-right); align-items: flex-end; }
 
 /* Bottom row — pinned to bottom edge, modules stack upward (column-reverse) */
-#bottom_left   { bottom: var(--safe-margin); left: var(--safe-margin);  flex-direction: column-reverse; align-items: flex-start; }
-#bottom_center { bottom: var(--safe-margin); left: 50%; transform: translateX(-50%); flex-direction: column-reverse; align-items: center; }
-#bottom_right  { bottom: var(--safe-margin); right: var(--safe-margin); flex-direction: column-reverse; align-items: flex-end; }
+#bottom_left   { bottom: var(--safe-margin-bottom); left: var(--safe-margin-left);  flex-direction: column-reverse; align-items: flex-start; }
+#bottom_center { bottom: var(--safe-margin-bottom); left: 50%; transform: translateX(-50%); flex-direction: column-reverse; align-items: center; }
+#bottom_right  { bottom: var(--safe-margin-bottom); right: var(--safe-margin-right); flex-direction: column-reverse; align-items: flex-end; }
 
 /* ============================================================
    Module containers

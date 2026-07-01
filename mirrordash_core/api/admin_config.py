@@ -208,11 +208,33 @@ async def get_globals_schema() -> dict:
                 "title": "Decimal Longitude",
                 "description": "Longitude coordinates for weather/astronomy."
             },
-            "safe_margin": {
+            "safe_margin_top": {
                 "type": "string",
                 "default": "60px",
-                "title": "Screen Padding (Safe Margin)",
-                "description": "Safe margin distance from the physical screen edges (e.g. 60px, 3vw, 4% or any valid CSS length)."
+                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
+                "title": "Top Screen Padding",
+                "description": "Safe margin padding from the top physical screen edge."
+            },
+            "safe_margin_bottom": {
+                "type": "string",
+                "default": "60px",
+                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
+                "title": "Bottom Screen Padding",
+                "description": "Safe margin padding from the bottom physical screen edge."
+            },
+            "safe_margin_left": {
+                "type": "string",
+                "default": "60px",
+                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
+                "title": "Left Screen Padding",
+                "description": "Safe margin padding from the left physical screen edge."
+            },
+            "safe_margin_right": {
+                "type": "string",
+                "default": "60px",
+                "enum": ["0px", "15px", "30px", "45px", "60px", "75px", "90px", "120px"],
+                "title": "Right Screen Padding",
+                "description": "Safe margin padding from the right physical screen edge."
             }
         }
     }

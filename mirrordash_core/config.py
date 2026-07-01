@@ -58,7 +58,10 @@ def get_default_globals() -> dict:
         "distance_unit": "km",
         "latitude": 59.3293,
         "longitude": 18.0686,
-        "safe_margin": "60px"
+        "safe_margin_top": "60px",
+        "safe_margin_bottom": "60px",
+        "safe_margin_left": "60px",
+        "safe_margin_right": "60px"
     }
 
 def load_config() -> dict:

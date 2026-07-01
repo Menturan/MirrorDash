@@ -241,9 +241,19 @@ async def get_active_modules() -> dict:
     from mirrordash_core.config import load_config
     cfg = load_config()
     globals_cfg = cfg.get("globals", {})
-    safe_margin = globals_cfg.get("safe_margin", "60px")
+    safe_margin_top = globals_cfg.get("safe_margin_top", "60px")
+    safe_margin_bottom = globals_cfg.get("safe_margin_bottom", "60px")
+    safe_margin_left = globals_cfg.get("safe_margin_left", "60px")
+    safe_margin_right = globals_cfg.get("safe_margin_right", "60px")
 
-    return {"modules": modules_list, "boot_status": boot_status, "safe_margin": safe_margin}
+    return {
+        "modules": modules_list,
+        "boot_status": boot_status,
+        "safe_margin_top": safe_margin_top,
+        "safe_margin_bottom": safe_margin_bottom,
+        "safe_margin_left": safe_margin_left,
+        "safe_margin_right": safe_margin_right,
+    }
 
 # WebSocket communication endpoint
 @app.websocket("/ws")
