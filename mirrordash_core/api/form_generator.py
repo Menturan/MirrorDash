@@ -5,19 +5,64 @@ import re
 
 logger = logging.getLogger("mirrordash.core.api.form_generator")
 
+# Fields owned entirely by the core — injected automatically for every module.
+# Module developers must NOT redeclare these in their config_schema.
+STANDARD_FIELDS = [
+    "enabled",
+    "position",
+    "carousel_group",
+    "carousel_interval",
+    "max_width",
+    "max_height",
+    "z_index",
+    "opacity",
+]
+
+
+def cast_standard_fields(module_cfg: dict) -> dict:
+    """Coerce standard core-owned fields to their correct Python types.
+
+    Because standard fields are NOT in the module's own config_schema, they
+    bypass cast_values_by_schema.  This function must be called explicitly on
+    the parsed form data after schema-based casting.
+    """
+    result = dict(module_cfg)
+    if "enabled" in result:
+        v = result["enabled"]
+        if isinstance(v, str):
+            result["enabled"] = v.lower() in ("true", "1", "yes")
+        else:
+            result["enabled"] = bool(v)
+    for key in ("carousel_interval",):
+        if key in result:
+            try:
+                result[key] = int(result[key])
+            except (ValueError, TypeError):
+                pass
+    for key in ("opacity",):
+        if key in result:
+            try:
+                result[key] = float(result[key])
+            except (ValueError, TypeError):
+                pass
+    for key in ("z_index",):
+        if key in result:
+            try:
+                result[key] = int(result[key])
+            except (ValueError, TypeError):
+                pass
+    # max_width, max_height, position, carousel_group stay as strings.
+    return result
+
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "") -> str:
     properties = schema.get("properties", {})
     if not properties:
         return ""
         
     html_parts = []
-    
-    # We order properties: 'enabled', 'position', then others.
-    ordered_keys = []
-    if "enabled" in properties:
-        ordered_keys.append("enabled")
-    if "position" in properties:
-        ordered_keys.append("position")
+
+    # Order: standard fields first (in defined order), then module-specific fields.
+    ordered_keys = [k for k in STANDARD_FIELDS if k in properties]
     for k in properties:
         if k not in ordered_keys:
             ordered_keys.append(k)

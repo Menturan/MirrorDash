@@ -90,32 +90,78 @@ async def get_module_config_form(module_name: str):
     if not schema:
         schema = {
             "title": module_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-            "properties": {
-                "enabled": {"type": "boolean", "default": True, "title": "Enabled"},
-                "position": {
-                    "type": "string",
-                    "default": "middle_center",
-                    "enum": ["top_left", "top_right", "middle_center", "bottom_left", "bottom_right"],
-                    "title": "Screen Position"
-                }
-            }
+            "properties": {}
         }
 
     if "properties" not in schema:
         schema["properties"] = {}
-    if "enabled" not in schema["properties"]:
-        schema["properties"]["enabled"] = {"type": "boolean", "default": True, "title": "Enabled", "description": "Enable or disable this module."}
-    if "position" not in schema["properties"]:
-        schema["properties"]["position"] = {
-            "type": "string",
-            "default": "middle_center",
-            "enum": [
-                "top_bar", "top_left", "top_center", "top_right", "upper_third",
-                "middle_left", "middle_center", "middle_right", "lower_third",
-                "bottom_left", "bottom_center", "bottom_right", "bottom_bar"
-            ],
-            "title": "Screen Position"
+
+    # --- Inject standard fields (core-owned, never declared by module devs) ---
+    std_props = schema["properties"]
+    from mirrordash_core.api.form_generator import STANDARD_FIELDS
+    # Remove any accidentally declared standard fields from the module schema
+    # so they don't appear twice after we inject the canonical versions below.
+    for sf in STANDARD_FIELDS:
+        std_props.pop(sf, None)
+
+    # Build the standard schema block
+    standard_schema = {
+        "properties": {
+            "enabled": {
+                "type": "boolean",
+                "default": True,
+                "title": "Enabled",
+                "description": "Enable or disable this module on the mirror.",
+            },
+            "position": {
+                "type": "string",
+                "default": "middle_center",
+                "enum": [
+                    "top_left", "top_center", "top_right",
+                    "middle_left", "middle_center", "middle_right",
+                    "bottom_left", "bottom_center", "bottom_right",
+                ],
+                "title": "Screen Position",
+                "description": "Which anchor region on the mirror this module floats from.",
+            },
+            "carousel_group": {
+                "type": "string",
+                "default": "",
+                "title": "Carousel Group",
+                "description": "Assign a group name to rotate this module with others in the same region.",
+            },
+            "carousel_interval": {
+                "type": "integer",
+                "default": 15,
+                "title": "Carousel Interval (s)",
+                "description": "Seconds between carousel slides.",
+            },
+            "max_width": {
+                "type": "string",
+                "default": "",
+                "title": "Max Width",
+                "description": "CSS length (e.g. 400px, 30vw). Leave blank for no constraint.",
+            },
+            "max_height": {
+                "type": "string",
+                "default": "",
+                "title": "Max Height",
+                "description": "CSS length (e.g. 300px, 50vh). Leave blank for no constraint.",
+            },
+            "z_index": {
+                "type": "integer",
+                "default": "",
+                "title": "Z-Index",
+                "description": "Stacking order when modules overlap. Higher = on top.",
+            },
+            "opacity": {
+                "type": "number",
+                "default": "",
+                "title": "Opacity",
+                "description": "Module transparency: 1 = fully visible, 0 = invisible.",
+            },
         }
+    }
 
     config = load_config()
     modules_config = config.get("modules", {})
@@ -125,16 +171,38 @@ async def get_module_config_form(module_name: str):
 
     from mirrordash_core.api.form_generator import render_schema_form
     name_prefix = f"modules[{cfg_key or module_name.replace('_', '-')}]"
-    form_html = render_schema_form(schema, module_cfg, name_prefix)
+
+    # Render standard settings section
+    standard_form_html = render_schema_form(standard_schema, module_cfg, name_prefix)
+
+    # Render module-specific settings section (excluding standard fields)
+    module_specific_form_html = render_schema_form(schema, module_cfg, name_prefix)
+
+    has_module_fields = bool(schema.get("properties"))
+    module_section_html = ""
+    if has_module_fields:
+        module_section_html = f"""
+            <div style="margin: 20px 0 12px 0; border-top: 1px solid #3f3f46; padding-top: 16px;">
+                <h5 style="margin: 0 0 12px 0; color: #a1a1aa; font-size: 0.75rem; font-weight: 600;
+                           text-transform: uppercase; letter-spacing: 0.08em;">
+                    Module Settings
+                </h5>
+                {module_specific_form_html}
+            </div>
+        """
 
     save_url = f"/admin/panels/modules/config/{module_name}/save"
     remove_url = f"/admin/panels/modules/config/{module_name}/remove"
 
     return HTMLResponse(content=f"""
         <form hx-post="{save_url}" hx-target="#global-status" hx-swap="innerHTML" style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a;">
-            <h4 style="margin: 0 0 15px 0; color: white; font-size: 1rem;"><i class="fas fa-sliders-h" style="margin-right: 6px; color: var(--accent-color);"></i>Configuration Parameters</h4>
-            {form_html}
-            
+            <h4 style="margin: 0 0 4px 0; color: white; font-size: 1rem;">
+                <i class="fas fa-sliders-h" style="margin-right: 6px; color: var(--accent-color);"></i>Standard Settings
+            </h4>
+            <p style="margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a;">These settings are provided by MirrorDash core for every module.</p>
+            {standard_form_html}
+            {module_section_html}
+
             <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
                 <button type="button" class="btn danger btn-sm"
                         hx-post="{remove_url}"
@@ -186,6 +254,9 @@ async def save_module_config_route(module_name: str, request: Request):
 
     if schema:
         module_cfg = cast_values_by_schema(module_cfg, schema)
+
+    from mirrordash_core.api.form_generator import cast_standard_fields
+    module_cfg = cast_standard_fields(module_cfg)
 
     config = load_config()
     if "modules" not in config:

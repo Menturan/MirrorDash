@@ -149,7 +149,18 @@ The layout follows a **Peripheral Modular Grid**. Content is strictly prohibited
   - Top regions: pinned to top edge, modules grow downward.
   - Middle regions: pinned to vertical centre (`transform: translateY(-50%)`), modules grow downward from the midpoint.
   - Bottom regions: pinned to bottom edge, modules stack upward (`flex-direction: column-reverse`); the first module in config always hugs the edge.
-- **Per-Module Size Constraints:** A module's config may optionally specify `max_width` and/or `max_height` (any valid CSS length, e.g. `"400px"`, `"30vw"`). These are broadcast over WebSocket and applied as inline styles on the module wrapper so the user can control how much space a verbose module (e.g. a news feed) is allowed to occupy.
+- **Standard Fields (Core-Owned):** Every module automatically receives 8 standard config fields managed entirely by MirrorDash core. Module developers must **not** redeclare these in their `config_schema`. They are always surfaced in the admin UI as a "Standard Settings" section above any module-specific fields:
+
+  | Field | Type | Description |
+  |---|---|---|
+  | `enabled` | bool | Enable/disable the module |
+  | `position` | string (enum) | Which of the 9 anchor regions to place the module in |
+  | `carousel_group` | string | Group name for rotating modules in the same region |
+  | `carousel_interval` | int | Seconds between carousel slide transitions |
+  | `max_width` | CSS length | Inline `max-width` on the module wrapper (e.g. `400px`, `30vw`) |
+  | `max_height` | CSS length | Inline `max-height` on the module wrapper |
+  | `z_index` | int | Stacking order when modules overlap — higher = on top |
+  | `opacity` | float 0–1 | Per-module transparency |
 - **Modular Rhythm:** A `30px` vertical gap is maintained between stacked widgets. 
 - **Center Void:** The horizontal and vertical center of the screen should remain unoccupied unless a temporary modal alert is triggered.
 - **Responsive Fluidity:** All module layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
