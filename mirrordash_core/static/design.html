@@ -6,6 +6,7 @@
     <title>Ethereal Mirror — Design Explorer</title>
     <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/admin.css">
     <style>
         /* Design System Explorer Overrides (avoiding breaking index.html fixed display) */
         html, body {
@@ -14,6 +15,14 @@
             height: 100%;
             background-color: #000000;
             color: #d1d1d1;
+        }
+
+        *, *::before, *::after {
+            cursor: auto !important;
+        }
+
+        button, a, label, [role="button"], input[type="range"], input[type="color"], input[type="checkbox"] {
+            cursor: pointer !important;
         }
 
         .explorer-layout {
@@ -298,6 +307,7 @@
                 <a href="#containers" class="explorer-nav-item">Containers & Glow</a>
                 <a href="#components" class="explorer-nav-item">UI Components</a>
                 <a href="#extended" class="explorer-nav-item">Extended Layouts</a>
+                <a href="#forms" class="explorer-nav-item">Configuration Forms</a>
                 <a href="#system" class="explorer-nav-item">System & Connection</a>
                 <a href="#loading" class="explorer-nav-item">Loading Skeletons</a>
             </nav>
@@ -1212,6 +1222,381 @@
 &lt;/div&gt;</code></pre>
                     </div>
                 </div>
+            </section>
+
+
+            <!-- SECTION: Configuration Forms -->
+            <section id="forms" class="explorer-section">
+                <h2 class="explorer-section-title">Configuration Form Controls</h2>
+                <p class="explorer-section-desc">
+                    MirrorDash auto-generates admin settings forms from each module's <code style="background:#1c1c1e;padding:2px 6px;border-radius:4px;font-size:0.85em;">config_schema.json</code>.
+                    The form generator reads standard JSON Schema properties and picks the correct input control automatically.
+                    Below are all supported field types — copy the schema snippet into your module's <code style="background:#1c1c1e;padding:2px 6px;border-radius:4px;font-size:0.85em;">config_schema.json</code> to get the rendered control.
+                </p>
+
+                <!-- 1. Text Input -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Text Input</span>
+                        <span class="component-tag">type: string</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">City</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">The city name to display weather for.</p>
+                                </div>
+                                <input type="text" value="Stockholm" class="form-control">
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"city": {
+  "type": "string",
+  "title": "City",
+  "description": "The city name to display weather for.",
+  "default": "Stockholm"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Toggle Switch -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Toggle Switch</span>
+                        <span class="component-tag">type: boolean</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group toggle-group" style="margin-bottom:0;display:flex;justify-content:space-between;align-items:center;">
+                                <div class="form-label-desc">
+                                    <label style="font-weight:600;color:white;">Show Seconds</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Display seconds in the clock readout.</p>
+                                </div>
+                                <label class="switch">
+                                    <input type="hidden" value="false">
+                                    <input type="checkbox" checked>
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"show_seconds": {
+  "type": "boolean",
+  "title": "Show Seconds",
+  "description": "Display seconds in the clock readout.",
+  "default": true
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 3. Number Input -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Number Input</span>
+                        <span class="component-tag">type: integer / number</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Max Events</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Maximum number of calendar events to show.</p>
+                                </div>
+                                <input type="number" step="1" value="10" class="form-control">
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"max_events": {
+  "type": "integer",
+  "title": "Max Events",
+  "description": "Maximum number of calendar events to show.",
+  "default": 10
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. Range Slider -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Range Slider</span>
+                        <span class="component-tag">type: integer / number  +  minimum  +  maximum</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Brightness</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Screen backlight brightness level (10–100%).</p>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:12px;">
+                                    <input type="range" min="10" max="100" value="85" style="flex:1;accent-color:white;" oninput="this.nextElementSibling.value=this.value">
+                                    <output style="font-family:monospace;font-size:13px;min-width:28px;text-align:right;color:white;">85</output>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"brightness": {
+  "type": "integer",
+  "title": "Brightness",
+  "description": "Screen backlight brightness level (10–100%).",
+  "minimum": 10,
+  "maximum": 100,
+  "default": 85
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 5. Dropdown -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Dropdown Select</span>
+                        <span class="component-tag">type: string  +  enum</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Language</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Display language for labels and dates.</p>
+                                </div>
+                                <select class="form-control">
+                                    <option value="sv" selected>SV</option>
+                                    <option value="en">EN</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"language": {
+  "type": "string",
+  "title": "Language",
+  "description": "Display language for labels and dates.",
+  "enum": ["sv", "en"],
+  "default": "sv"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 6. Multi-select Checkboxes -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Multi-select Checkboxes</span>
+                        <span class="component-tag">type: array  +  items.enum</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Built-in Feeds</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Select one or more preconfigured news sources.</p>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:4px;">
+                                    <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
+                                        <input type="checkbox" checked> <span>BBC NEWS</span>
+                                    </label>
+                                    <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
+                                        <input type="checkbox"> <span>SR EKOT</span>
+                                    </label>
+                                    <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
+                                        <input type="checkbox" checked> <span>CNN EDITION</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"builtin_feeds": {
+  "type": "array",
+  "title": "Built-in Feeds",
+  "description": "Select one or more preconfigured news sources.",
+  "items": {
+    "type": "string",
+    "enum": ["bbc_news", "sr_ekot", "cnn_edition"]
+  },
+  "default": ["bbc_news"]
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 7. Dynamic Object List -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Dynamic Object List</span>
+                        <span class="component-tag">type: array  +  items.type: object</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;">
+                                <div class="form-label-desc" style="margin-bottom:10px;">
+                                    <label style="font-weight:600;font-size:0.95rem;color:white;">Custom Feeds</label>
+                                    <p class="field-description" style="font-size:0.75rem;color:#a1a1aa;margin:2px 0 0 0;">Your own RSS/Atom feed URLs.</p>
+                                </div>
+                                <div style="background:#0a0a0a;border:1px solid #27272a;border-radius:6px;padding:10px;margin-bottom:8px;font-size:0.8rem;color:#a1a1aa;">
+                                    Feed #1 &nbsp;·&nbsp; <span style="color:#71717a;">https://feeds.example.com/rss</span>
+                                </div>
+                                <button type="button" class="btn secondary btn-sm" style="font-size:0.75rem;">+ Add Feed</button>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"custom_feeds": {
+  "type": "array",
+  "title": "Custom Feeds",
+  "description": "Your own RSS/Atom feed URLs.",
+  "items": {
+    "type": "object",
+    "title": "Feed",
+    "properties": {
+      "url": {
+        "type": "string",
+        "title": "Feed URL"
+      }
+    }
+  },
+  "default": []
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 8. Nested Object (Accordion) -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Nested Object (Accordion)</span>
+                        <span class="component-tag">type: object</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <details class="form-accordion" style="border:1px solid #27272a;border-radius:6px;background:rgba(255,255,255,0.01);overflow:hidden;width:100%;">
+                                <summary style="padding:12px;font-weight:600;color:white;user-select:none;background:rgba(255,255,255,0.03);outline:none;">Advanced Settings</summary>
+                                <div style="padding:12px;border-top:1px solid #27272a;">
+                                    <p style="font-size:0.75rem;margin:0 0 12px 0;color:#a1a1aa;line-height:1.4;">Fine-grained options for advanced users.</p>
+                                    <div class="form-group" style="margin-bottom:0;">
+                                        <div class="form-label-desc"><label style="font-weight:600;color:white;font-size:0.85rem;">Timeout</label></div>
+                                        <input type="number" value="30" class="form-control">
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"advanced": {
+  "type": "object",
+  "title": "Advanced Settings",
+  "description": "Fine-grained options for advanced users.",
+  "properties": {
+    "timeout": {
+      "type": "integer",
+      "title": "Timeout",
+      "default": 30
+    }
+  }
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 9. Color Picker -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Color Picker</span>
+                        <span class="component-tag">type: string  +  format: color  (or key named "color")</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Accent Color</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Override the primary highlight color.</p>
+                                </div>
+                                <div style="display:flex;align-items:center;gap:10px;">
+                                    <input type="color" id="demo-color-picker" value="#ffffff" style="border:none;background:none;width:36px;height:36px;padding:0;flex-shrink:0;" oninput="document.getElementById('demo-color-text').value=this.value">
+                                    <input type="text" id="demo-color-text" value="#ffffff" class="form-control" style="flex:1;" oninput="document.getElementById('demo-color-picker').value=this.value">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"accent_color": {
+  "type": "string",
+  "format": "color",
+  "title": "Accent Color",
+  "description": "Override the primary highlight color.",
+  "default": "#ffffff"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 10. Password / API Key -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Password / API Key</span>
+                        <span class="component-tag">type: string  +  format: password  (or key: api_key / token / secret)</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">API Key</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Your service API key. Stored locally only.</p>
+                                </div>
+                                <input type="password" value="supersecretkey" class="form-control">
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"api_key": {
+  "type": "string",
+  "format": "password",
+  "title": "API Key",
+  "description": "Your service API key. Stored locally only.",
+  "default": ""
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 11. Textarea -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Textarea</span>
+                        <span class="component-tag">type: string  +  format: textarea  (or key: description / message / text)</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Greeting Message</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Text to show as the welcome message.</p>
+                                </div>
+                                <textarea rows="3" class="form-control" style="resize:vertical;background:#09090b;border:1px solid #27272a;color:white;padding:8px;border-radius:4px;width:100%;">Good morning!</textarea>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"message": {
+  "type": "string",
+  "format": "textarea",
+  "title": "Greeting Message",
+  "description": "Text to show as the welcome message.",
+  "default": "Good morning!"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
             </section>
 
 

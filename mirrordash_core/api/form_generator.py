@@ -114,6 +114,35 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                     </select>
                 </div>
             """)
+        elif prop_type == "array" and prop.get("items", {}).get("type") == "string" and prop.get("items", {}).get("enum"):
+            enum_list = prop.get("items", {}).get("enum")
+            selected_vals = val if isinstance(val, list) else []
+            
+            checkboxes_html = []
+            for opt in enum_list:
+                checked = "checked" if opt in selected_vals else ""
+                display_opt = opt.replace("_", " ").upper()
+                field_opt_id = f"{field_id}-{opt}".replace("[", "-").replace("]", "-")
+                checkboxes_html.append(f"""
+                    <label class="checkbox-inline" style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: white; cursor: pointer;">
+                        <input type="checkbox" id="{field_opt_id}" name="{name}" value="{opt}" {checked} style="cursor: pointer;">
+                        <span>{display_opt}</span>
+                    </label>
+                """)
+            checkboxes_str = "\n".join(checkboxes_html)
+            
+            html_parts.append(f"""
+                <div class="form-group" style="margin-bottom: 12px; border-left: 2px solid #52525b; padding-left: 12px; margin-top: 10px; margin-bottom: 10px;">
+                    <div class="form-label-desc" style="margin-bottom: 8px;">
+                        <label style="font-weight:600; color: white;">{title}</label>
+                        <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0; color: #a1a1aa;">{description}</p>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 4px;">
+                        <input type="hidden" name="{name}" value="">
+                        {checkboxes_str}
+                    </div>
+                </div>
+            """)
         elif prop_type == "array" and prop.get("items", {}).get("type") == "object":
             items = val if isinstance(val, list) else []
             sub_properties = prop.get("items", {}).get("properties", {})
@@ -171,6 +200,22 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                     </div>
                 </details>
             """)
+        elif prop_type in ("integer", "number") and "minimum" in prop and "maximum" in prop:
+            step = prop.get("step", "1" if prop_type == "integer" else "any")
+            min_val = prop["minimum"]
+            max_val = prop["maximum"]
+            html_parts.append(f"""
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="form-label-desc">
+                        <label for="{field_id}" style="font-weight:600; color: white;">{title}</label>
+                        <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0; color: #a1a1aa;">{description}</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        <input type="range" min="{min_val}" max="{max_val}" step="{step}" id="{field_id}" name="{name}" value="{val}" class="form-control-range" style="flex: 1; accent-color: white;" oninput="this.nextElementSibling.value = this.value">
+                        <output style="font-family: monospace; font-size: 13px; min-width: 28px; text-align: right; color: white;">{val}</output>
+                    </div>
+                </div>
+            """)
         elif prop_type in ("integer", "number"):
             step = "1" if prop_type == "integer" else "any"
             html_parts.append(f"""
@@ -180,6 +225,39 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                         <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0;">{description}</p>
                     </div>
                     <input type="number" step="{step}" id="{field_id}" name="{name}" value="{val}" class="form-control">
+                </div>
+            """)
+        elif prop_type == "string" and (prop.get("format") == "color" or key == "color"):
+            html_parts.append(f"""
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="form-label-desc">
+                        <label for="{field_id}" style="font-weight:600; color: white;">{title}</label>
+                        <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0;">{description}</p>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <input type="color" id="{field_id}-picker" value="{val}" style="border: none; background: none; width: 36px; height: 36px; cursor: pointer; padding: 0; flex-shrink: 0;" oninput="document.getElementById('{field_id}').value = this.value">
+                        <input type="text" id="{field_id}" name="{name}" value="{val}" class="form-control" style="flex: 1;" oninput="document.getElementById('{field_id}-picker').value = this.value">
+                    </div>
+                </div>
+            """)
+        elif prop_type == "string" and (prop.get("format") == "password" or key in ("api_key", "password", "token", "secret")):
+            html_parts.append(f"""
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="form-label-desc">
+                        <label for="{field_id}" style="font-weight:600; color: white;">{title}</label>
+                        <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0;">{description}</p>
+                    </div>
+                    <input type="password" id="{field_id}" name="{name}" value="{val}" class="form-control">
+                </div>
+            """)
+        elif prop_type == "string" and (prop.get("format") == "textarea" or key in ("description", "text", "message", "preamble")):
+            html_parts.append(f"""
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <div class="form-label-desc">
+                        <label for="{field_id}" style="font-weight:600; color: white;">{title}</label>
+                        <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0;">{description}</p>
+                    </div>
+                    <textarea id="{field_id}" name="{name}" rows="3" class="form-control" style="resize: vertical; background: #09090b; border: 1px solid #27272a; color: white; padding: 8px; border-radius: 4px; width: 100%;">{val}</textarea>
                 </div>
             """)
         else:
@@ -323,16 +401,16 @@ def parse_flat_form_data(form_data: dict) -> dict:
     processed_data = {}
     for k, v in form_data.items():
         if isinstance(v, list):
-            if "true" in v:
-                processed_data[k] = True
-            elif "false" in v:
-                processed_data[k] = False
+            # If all items are boolean strings, resolve as single boolean
+            if all(isinstance(item, str) and item.lower() in ("true", "false") for item in v):
+                processed_data[k] = any(item.lower() == "true" for item in v)
             else:
-                processed_data[k] = v[-1] if v else ""
+                # Keep as a list, filtering out empty strings if any
+                processed_data[k] = [item for item in v if item != ""]
         else:
-            if v == "true":
+            if isinstance(v, str) and v.lower() == "true":
                 processed_data[k] = True
-            elif v == "false":
+            elif isinstance(v, str) and v.lower() == "false":
                 processed_data[k] = False
             else:
                 processed_data[k] = v
@@ -428,18 +506,19 @@ def cast_values_by_schema(data: dict, schema: dict) -> dict:
                 casted[k] = float(v)
             except (ValueError, TypeError):
                 casted[k] = v
-        elif prop_type == "array" and isinstance(v, list):
+        elif prop_type == "array":
             items_schema = prop_schema.get("items", {})
+            val_list = v if isinstance(v, list) else ([v] if v not in (None, "") else [])
             if items_schema.get("type") == "object":
                 casted_list = []
-                for item in v:
+                for item in val_list:
                     if isinstance(item, dict):
                         casted_list.append(cast_values_by_schema(item, items_schema))
                     else:
                         casted_list.append(item)
                 casted[k] = casted_list
             else:
-                casted[k] = v
+                casted[k] = val_list
         elif isinstance(v, dict):
             casted[k] = cast_values_by_schema(v, prop_schema)
         else:

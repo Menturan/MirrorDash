@@ -66,3 +66,91 @@ def test_cast_values_by_schema():
             {"name": "Personal", "count": 20}
         ]
     }
+
+def test_multiselect_string_array():
+    schema = {
+        "properties": {
+            "builtin_feeds": {
+                "type": "array",
+                "items": {
+                    "type": "string",
+                    "enum": ["bbc_news", "sr_ekot", "cnn_edition"]
+                }
+            }
+        }
+    }
+    
+    # 1. Render form
+    html = render_schema_form(schema, {"builtin_feeds": ["bbc_news"]})
+    assert 'name="builtin_feeds"' in html
+    assert 'value="bbc_news"' in html
+    assert 'checked' in html
+    
+    # 2. Parse submitted multi-value list
+    flat_data = {
+        "builtin_feeds": ["", "bbc_news", "sr_ekot"]
+    }
+    parsed = parse_flat_form_data(flat_data)
+    assert parsed == {"builtin_feeds": ["bbc_news", "sr_ekot"]}
+    
+    # 3. Cast values
+    casted = cast_values_by_schema(parsed, schema)
+    assert casted == {"builtin_feeds": ["bbc_news", "sr_ekot"]}
+
+    # 4. Empty resolution
+    empty_flat = {
+        "builtin_feeds": ""
+    }
+    parsed_empty = parse_flat_form_data(empty_flat)
+    casted_empty = cast_values_by_schema(parsed_empty, schema)
+    assert casted_empty == {"builtin_feeds": []}
+
+def test_extra_form_controls():
+    schema = {
+        "properties": {
+            "brightness": {
+                "type": "integer",
+                "minimum": 10,
+                "maximum": 100,
+                "default": 85
+            },
+            "bg_color": {
+                "type": "string",
+                "format": "color",
+                "default": "#000000"
+            },
+            "api_key": {
+                "type": "string",
+                "format": "password"
+            },
+            "notes": {
+                "type": "string",
+                "format": "textarea"
+            }
+        }
+    }
+    
+    html = render_schema_form(schema, {
+        "brightness": 50,
+        "bg_color": "#ffffff",
+        "api_key": "secret123",
+        "notes": "my notes"
+    })
+    
+    # Assert range slider
+    assert 'type="range"' in html
+    assert 'min="10"' in html
+    assert 'max="100"' in html
+    assert 'value="50"' in html
+    
+    # Assert color picker
+    assert 'type="color"' in html
+    assert 'value="#ffffff"' in html
+    
+    # Assert password field
+    assert 'type="password"' in html
+    assert 'value="secret123"' in html
+    
+    # Assert textarea
+    assert '<textarea' in html
+    assert 'my notes' in html
