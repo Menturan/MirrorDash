@@ -47,8 +47,6 @@ async def check_wifi_auth(x_api_key: Annotated[str | None, Header()] = None) -> 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
-        from mirrordash_core.api.admin import start_community_modules_scan, stop_community_modules_scan
-        start_community_modules_scan()
         await module_loader.start_modules()
         await display_power_manager.start()
     except Exception as e:
@@ -56,11 +54,6 @@ async def lifespan(app: FastAPI):
     yield
     await display_power_manager.stop()
     await module_loader.stop_modules()
-    try:
-        from mirrordash_core.api.admin import stop_community_modules_scan
-        stop_community_modules_scan()
-    except Exception:
-        pass
 
 app = FastAPI(lifespan=lifespan)
 

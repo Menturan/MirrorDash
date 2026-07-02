@@ -5,7 +5,6 @@ from fastapi import APIRouter
 # Re-exports for backwards compatibility
 from mirrordash_core.api.admin_shared import require_api_key, hash_password, templates
 from mirrordash_core.api.admin_config import get_panel_config
-from mirrordash_core.api.admin_modules import start_community_modules_scan, stop_community_modules_scan
 
 # Import sub-routers
 from mirrordash_core.api import (

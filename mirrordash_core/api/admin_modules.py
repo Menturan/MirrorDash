@@ -36,7 +36,6 @@ DISCOVERED_COMMUNITY_MODULES = [
         "description": "Standard clock and date widget with 12h/24h formatting, localizations, and sleek layout sizes."
     }
 ]
-_scan_task = None
 
 
 # ---------------------------------------------------------------------------
@@ -405,22 +404,6 @@ async def list_modules() -> dict:
     return {"modules": result}
 
 
-# ---------------------------------------------------------------------------
-# Background PyPI Scanner
-# ---------------------------------------------------------------------------
-
-async def run_pypi_modules_scan():
-    """Periodically scan PyPI simple index and GitHub for mirrordash-* packages."""
-    while True:
-        try:
-            await scan_community_modules_now()
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.error(f"Error scanning for community modules: {e}", exc_info=True)
-        # Run scan every 12 hours
-        await asyncio.sleep(43200)
-
 LAST_SCAN_TIMESTAMP = None
 
 async def scan_community_modules_now():
@@ -540,26 +523,15 @@ async def scan_community_modules_now():
         logger.info(f"Scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
 
 
-def start_community_modules_scan():
-    global _scan_task
-    import sys
-    if "pytest" in sys.modules:
-        return
-    if _scan_task is None:
-        _scan_task = asyncio.create_task(run_pypi_modules_scan())
-
-
-def stop_community_modules_scan():
-    global _scan_task
-    if _scan_task is not None:
-        _scan_task.cancel()
-        _scan_task = None
-
-
 @router.get("/community-modules", dependencies=[Depends(require_api_key)])
 async def list_community_modules() -> list[dict]:
     """Return a list of popular discoverable community modules on PyPI."""
-    global DISCOVERED_COMMUNITY_MODULES
+    global DISCOVERED_COMMUNITY_MODULES, LAST_SCAN_TIMESTAMP
+    if LAST_SCAN_TIMESTAMP is None:
+        try:
+            await scan_community_modules_now()
+        except Exception as e:
+            logger.error(f"Lazy scan of community modules failed: {e}")
     return DISCOVERED_COMMUNITY_MODULES
 
 @router.post("/community-modules/scan", dependencies=[Depends(require_api_key)])

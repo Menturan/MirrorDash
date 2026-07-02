@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import load_config, save_config
+from mirrordash_core.config import load_config, save_config, get_core_version
 from mirrordash_core.system import (
     apply_system_settings,
     get_available_resolutions,
@@ -149,13 +149,7 @@ async def check_core_update() -> dict:
     and a boolean indicating whether an update is available.
     """
     # Resolve the currently installed version
-    current_version = "unknown"
-    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
-        try:
-            current_version = importlib.metadata.version(pkg_name)
-            break
-        except importlib.metadata.PackageNotFoundError:
-            continue
+    current_version = get_core_version()
 
     # Fetch latest version from PyPI without blocking the event loop
     def _fetch_pypi_version() -> str:
@@ -199,13 +193,7 @@ async def update_core() -> dict:
     then triggers a server restart on success.
     """
     # Capture current version for logging / potential rollback reference
-    current_version = "unknown"
-    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
-        try:
-            current_version = importlib.metadata.version(pkg_name)
-            break
-        except importlib.metadata.PackageNotFoundError:
-            continue
+    current_version = get_core_version()
 
     swap_info = await prepare_venv_next()
     safe_env = {k: v for k, v in os.environ.items() if k in (
@@ -275,13 +263,7 @@ async def rebuild_venv() -> dict:
     await remount_rw()
     try:
         # 1. Install mirrordash
-        current_version = "unknown"
-        for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
-            try:
-                current_version = importlib.metadata.version(pkg_name)
-                break
-            except importlib.metadata.PackageNotFoundError:
-                continue
+        current_version = get_core_version()
 
         logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
 

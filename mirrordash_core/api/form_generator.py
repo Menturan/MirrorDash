@@ -29,29 +29,14 @@ def cast_standard_fields(module_cfg: dict) -> dict:
     result = dict(module_cfg)
     if "enabled" in result:
         v = result["enabled"]
-        if isinstance(v, str):
-            result["enabled"] = v.lower() in ("true", "1", "yes")
-        else:
-            result["enabled"] = bool(v)
-    for key in ("carousel_interval",):
-        if key in result:
+        result["enabled"] = v.lower() in ("true", "1", "yes") if isinstance(v, str) else bool(v)
+    
+    for key, cast_fn in (("carousel_interval", int), ("z_index", int), ("opacity", float)):
+        if key in result and result[key] not in (None, ""):
             try:
-                result[key] = int(result[key])
+                result[key] = cast_fn(result[key])
             except (ValueError, TypeError):
                 pass
-    for key in ("opacity",):
-        if key in result:
-            try:
-                result[key] = float(result[key])
-            except (ValueError, TypeError):
-                pass
-    for key in ("z_index",):
-        if key in result:
-            try:
-                result[key] = int(result[key])
-            except (ValueError, TypeError):
-                pass
-    # max_width, max_height, position, carousel_group stay as strings.
     return result
 
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "") -> str:
@@ -98,9 +83,10 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
             """)
         elif enum_list:
             options_html = []
-            for opt in enum_list:
+            enum_titles = prop.get("enum_titles") or prop.get("enumNames")
+            for idx, opt in enumerate(enum_list):
                 selected = "selected" if val == opt else ""
-                display_opt = opt.replace("_", " ").upper()
+                display_opt = enum_titles[idx] if enum_titles and idx < len(enum_titles) else opt.replace("_", " ").upper()
                 options_html.append(f'<option value="{opt}" {selected}>{display_opt}</option>')
             options_str = "\n".join(options_html)
             html_parts.append(f"""
@@ -376,10 +362,18 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
     
     return f"""
         <div class="array-item-card" style="border: 1px solid #3f3f46; border-radius: 6px; padding: 12px; margin-bottom: 12px; position: relative; background: #18181b;">
-            <button type="button" class="btn danger btn-sm" style="position: absolute; top: 8px; right: 8px; padding: 2px 6px; font-size: 0.75rem;" onclick="this.closest('.array-item-card').remove(); triggerLucide();">
-                <i class="fas fa-trash"></i>
-            </button>
-            <div style="font-size: 0.8rem; font-weight: 600; color: #e4e4e7; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;"># {index + 1}: {item_title}</div>
+            <div style="position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;">
+                <button type="button" class="btn secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="moveArrayItem(this, 'up')" title="Move Up">
+                    <i class="fas fa-arrow-up"></i>
+                </button>
+                <button type="button" class="btn secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="moveArrayItem(this, 'down')" title="Move Down">
+                    <i class="fas fa-arrow-down"></i>
+                </button>
+                <button type="button" class="btn danger btn-sm" style="padding: 2px 6px; font-size: 0.75rem;" onclick="const container = this.closest('.array-items-container'); this.closest('.array-item-card').remove(); reindexArrayContainer(container); triggerLucide();" title="Remove">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+            <div class="array-item-index-title" data-item-title="{item_title}" style="font-size: 0.8rem; font-weight: 600; color: #e4e4e7; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;"># {index + 1}: {item_title}</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                 {sub_fields_str}
             </div>

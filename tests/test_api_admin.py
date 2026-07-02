@@ -664,7 +664,7 @@ def test_get_globals_schema(mock_load, client):
 
 @patch("mirrordash_core.api.admin_system.load_config")
 @patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", side_effect=lambda pkg: "1.0.0" if "mirrordash" in pkg else (_ for _ in ()).throw(Exception("not found")))
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=False when versions match."""
     mock_load.return_value = MOCK_CONFIG
@@ -681,7 +681,7 @@ def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, c
 
 @patch("mirrordash_core.api.admin_system.load_config")
 @patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", side_effect=lambda pkg: "1.0.0" if "mirrordash" in pkg else (_ for _ in ()).throw(Exception("not found")))
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 def test_core_update_check_update_available(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=True when PyPI has a newer version."""
     mock_load.return_value = MOCK_CONFIG
@@ -698,7 +698,7 @@ def test_core_update_check_update_available(mock_version, mock_to_thread, mock_l
 
 @patch("mirrordash_core.api.admin_system.load_config")
 @patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", side_effect=lambda pkg: "1.0.0" if "mirrordash" in pkg else (_ for _ in ()).throw(Exception("not found")))
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns 502 when PyPI is unreachable."""
     mock_load.return_value = MOCK_CONFIG
@@ -716,7 +716,7 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
 @patch("mirrordash_core.api.admin_system.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", return_value="1.0.0")
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_restart,
                               mock_ro, mock_rw, mock_load, client):
     """POST /admin/core-update succeeds, triggers restart, and returns success."""
@@ -743,7 +743,7 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
 @patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", return_value="1.0.0")
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 def test_core_update_failure(mock_version, mock_create_task, mock_exec,
                               mock_ro, mock_rw, mock_load, client):
     """POST /admin/core-update returns 500 when uv pip install fails."""
@@ -796,7 +796,7 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
 @patch("mirrordash_core.api.admin_system.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.importlib.metadata.version", return_value="1.0.0")
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.api.admin_system.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.revert_venv_next", new_callable=AsyncMock)

@@ -140,3 +140,14 @@ def find_module_config(modules_config: dict, module_name: str) -> tuple[str | No
             return key, modules_config[key]
 
     return None, None
+
+def get_core_version() -> str:
+    """Resolve the currently installed version of mirrordash."""
+    import importlib.metadata
+    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
+        try:
+            return importlib.metadata.version(pkg_name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+    return "unknown"
+

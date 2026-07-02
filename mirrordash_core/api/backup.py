@@ -16,7 +16,7 @@ from typing import Annotated
 from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
 
-from mirrordash_core.config import load_config, save_config, get_base_dir
+from mirrordash_core.config import load_config, save_config, get_base_dir, get_core_version
 from mirrordash_core.system import remount_ro, remount_rw, run_restart
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import require_api_key
@@ -167,13 +167,7 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")
 
         # Resolve the currently installed version
-        core_version = "0.2.1"
-        for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
-            try:
-                core_version = importlib.metadata.version(pkg_name)
-                break
-            except importlib.metadata.PackageNotFoundError:
-                continue
+        core_version = get_core_version()
 
         # 4. Generate manifest file
         manifest = {
@@ -392,22 +386,16 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
     await remount_rw()
     try:
         with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as extract_dir_path:
-            # 2. Extract ZIP
-            cmd = ["unzip", "-o", temp_upload_path, "-d", extract_dir_path]
-            env = os.environ.copy()
-            if password:
-                env["UNZIP"] = f"-P {password}"
-
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                env=env
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                err_msg = stderr.decode().strip()
-                logger.error(f"Unzip failed during restore: {err_msg}")
+            # 2. Extract ZIP using standard zipfile
+            try:
+                def _extract():
+                    with zipfile.ZipFile(temp_upload_path) as zf:
+                        if password:
+                            zf.setpassword(password.encode('utf-8'))
+                        zf.extractall(extract_dir_path)
+                await asyncio.to_thread(_extract)
+            except Exception as e:
+                logger.error(f"Unzip failed during restore: {e}")
                 raise Exception("Failed to decrypt or extract backup file.")
 
             extract_dir = Path(extract_dir_path)

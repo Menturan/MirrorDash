@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import load_config
+from mirrordash_core.config import load_config, get_core_version
 from mirrordash_core.api.admin_system import (
     get_system_settings,
     update_system_settings,
@@ -65,13 +65,7 @@ async def get_panel_system(request: Request):
 
     minutes_list = list(range(0, 60))
 
-    current_version = "unknown"
-    for pkg_name in ("mirrordash", "mirrordash-core", "mirrordash_core"):
-        try:
-            current_version = importlib.metadata.version(pkg_name)
-            break
-        except importlib.metadata.PackageNotFoundError:
-            continue
+    current_version = get_core_version()
 
     return templates.TemplateResponse(
         request=request,

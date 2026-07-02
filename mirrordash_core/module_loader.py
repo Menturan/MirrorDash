@@ -43,6 +43,60 @@ def load_translations(package_name: str, lang: str) -> dict:
 
     return translations
 
+def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str) -> None:
+    """Inject translation and template rendering helpers into the plugin instance if missing."""
+    plugin_instance.translations = translations
+
+    if not hasattr(plugin_instance, "translate"):
+        def translate(key: str, default: str = None) -> str:
+            val = plugin_instance.translations.get(key)
+            if val is not None:
+                return val
+            return default if default is not None else key
+        plugin_instance.translate = translate
+
+    if not hasattr(plugin_instance, "render_template"):
+        try:
+            loaders = []
+            try:
+                loaders.append(PackageLoader(package_name, "templates"))
+            except Exception:
+                pass
+
+            try:
+                spec = importlib.util.find_spec(package_name)
+                if spec and spec.origin:
+                    pkg_dir = os.path.dirname(spec.origin)
+                    templates_dir = os.path.join(pkg_dir, "templates")
+                    if os.path.isdir(templates_dir):
+                        loaders.append(FileSystemLoader(templates_dir))
+            except Exception:
+                pass
+
+            if not loaders:
+                return
+
+            env = Environment(
+                loader=ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0],
+                autoescape=select_autoescape(["html", "xml"])
+            )
+
+            def render_template(template_name: str, **context) -> str:
+                if "translations" not in context and hasattr(plugin_instance, "translations"):
+                    context["translations"] = plugin_instance.translations
+                if "show_header" not in context:
+                    context["show_header"] = plugin_instance.config.get("show_header", True)
+                try:
+                    return env.get_template(template_name).render(**context)
+                except Exception as render_err:
+                    logger.error(f"Failed to render template {template_name} in {package_name}: {render_err}", exc_info=True)
+                    raise
+
+            plugin_instance.render_template = render_template
+            logger.debug(f"Auto-injected render_template helper for module '{module_name}'")
+        except Exception as e:
+            logger.warning(f"Could not auto-inject render_template helper for '{module_name}': {e}")
+
 class ModuleLoader:
     def __init__(self):
         self.tasks: dict[str, asyncio.Task] = {}
@@ -147,79 +201,7 @@ class ModuleLoader:
                 plugin_instance = plugin_class(module_cfg_copy)
                 self.instances[module_name] = plugin_instance
 
-                # Attach translations and helper to the instance
-                plugin_instance.translations = translations
-                if not hasattr(plugin_instance, "translate"):
-                    def make_translate(bound_instance):
-                        def translate(key: str, default: str = None) -> str:
-                            val = bound_instance.translations.get(key)
-                            if val is not None:
-                                return val
-                            return default if default is not None else key
-                        return translate
-                    plugin_instance.translate = make_translate(plugin_instance)
-
-                # Auto-inject render_template helper if templates/ folder exists in the module's package
-                if not hasattr(plugin_instance, "render_template"):
-                    try:
-                        from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
-
-                        loaders = []
-
-                        # 1. Try standard PackageLoader
-                        try:
-                            loaders.append(PackageLoader(package_name, "templates"))
-                        except Exception:
-                            pass
-
-                        # 2. Try resolving physical path for FileSystemLoader fallback (especially for editable installs)
-                        try:
-                            spec = importlib.util.find_spec(package_name)
-                            if spec and spec.origin:
-                                pkg_dir = os.path.dirname(spec.origin)
-                                templates_dir = os.path.join(pkg_dir, "templates")
-                                if os.path.isdir(templates_dir):
-                                    loaders.append(FileSystemLoader(templates_dir))
-                        except Exception:
-                            pass
-
-                        if not loaders:
-                            # Expected if the package has no templates directory
-                            raise ValueError(f"No templates directory found for package '{package_name}'")
-
-                        env = Environment(
-                            loader=ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0],
-                            autoescape=select_autoescape(["html", "xml"])
-                        )
-                        logger.info(f"Auto-injected templates loaders for {package_name}: {loaders}")
-                        try:
-                            # Test if widget.html can be listed or found by the loader
-                            templates_list = env.loader.list_templates()
-                            logger.info(f"Available templates for {package_name}: {templates_list}")
-                        except Exception as list_err:
-                            logger.warning(f"Failed to list templates for {package_name}: {list_err}")
-
-                        # Define a factory to avoid closure late-binding issue in loops
-                        def make_render_template(bound_env, bound_instance, bound_pkg):
-                            def render_template(template_name: str, **context) -> str:
-                                if "translations" not in context and hasattr(bound_instance, "translations"):
-                                    context["translations"] = bound_instance.translations
-                                if "show_header" not in context:
-                                    context["show_header"] = bound_instance.config.get("show_header", True)
-                                try:
-                                    return bound_env.get_template(template_name).render(**context)
-                                except Exception as render_err:
-                                    logger.error(f"Failed to render template {template_name} in {bound_pkg}: {render_err}", exc_info=True)
-                                    raise
-                            return render_template
-
-                        plugin_instance.render_template = make_render_template(env, plugin_instance, package_name)
-                        logger.debug(f"Auto-injected render_template helper for module '{module_name}'")
-                    except ValueError:
-                        # Expected if the package has no templates directory
-                        pass
-                    except Exception as e:
-                        logger.warning(f"Could not auto-inject render_template helper for '{module_name}': {e}")
+                _inject_module_helpers(plugin_instance, package_name, translations, module_name)
 
                 if hasattr(plugin_instance, "run_loop"):
                     broadcast_fn = self._make_broadcast_func(module_name)
