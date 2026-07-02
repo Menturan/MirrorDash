@@ -175,7 +175,8 @@ async def test_run_loop_missing_token():
     module.render_template.assert_called_with(
         "widget.html",
         error="API Token is missing",
-        entities=[]
+        entities=[],
+        heading=""
     )
 
 @pytest.mark.asyncio
@@ -202,5 +203,32 @@ async def test_run_loop_missing_entities():
     module.render_template.assert_called_with(
         "widget.html",
         error="No entities configured",
-        entities=[]
+        entities=[],
+        heading=""
+    )
+
+@pytest.mark.asyncio
+async def test_run_loop_custom_heading():
+    config = {
+        "url": "http://localhost:8123",
+        "token": "fake_token",
+        "heading": "My Custom Devices",
+        "entities": []
+    }
+    module = HomeassistantModule(config)
+    module.render_template = MagicMock(return_value="<div>Custom Heading</div>")
+    
+    broadcast_func = AsyncMock()
+    
+    with patch("asyncio.sleep", side_effect=asyncio.CancelledError):
+        try:
+            await module.run_loop(broadcast_func)
+        except asyncio.CancelledError:
+            pass
+            
+    module.render_template.assert_called_with(
+        "widget.html",
+        error="No entities configured",
+        entities=[],
+        heading="My Custom Devices"
     )

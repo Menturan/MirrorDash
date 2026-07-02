@@ -3,59 +3,17 @@
     <section class="card">
         <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Global Configuration</h2>
         
-        <!-- Tab Navigation -->
-        <div class="tabs" role="tablist">
-            <button class="tab-btn active" id="tab-visual" role="tab" aria-selected="true" aria-controls="panel-visual" onclick="showSubTab('tab-visual', 'tab-raw', 'panel-visual', 'panel-raw')">
-                <i class="fas fa-magic" aria-hidden="true"></i> Visual Editor
-            </button>
-            <button class="tab-btn" id="tab-raw" role="tab" aria-selected="false" aria-controls="panel-raw" onclick="showSubTab('tab-raw', 'tab-visual', 'panel-raw', 'panel-visual')">
-                <i class="fas fa-code" aria-hidden="true"></i> Raw JSON
-            </button>
-        </div>
-
-        <!-- Tab Panels -->
-        <div class="tab-panels">
-            <!-- Visual Editor Panel -->
-            <div class="tab-panel" id="panel-visual" role="tabpanel" aria-labelledby="tab-visual">
-                <p class="panel-subtitle">Configure system-wide settings inherited by all mirror modules.</p>
-                <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML">
-                    <div id="visual-form-container" class="visual-form-container">
-                        {{ visual_form_html | safe }}
-                    </div>
-                    <div class="card-actions" style="margin-top: 1.5rem;">
-                        <button type="submit" class="btn primary" aria-label="Save configuration">
-                            <i class="fas fa-save" aria-hidden="true"></i>
-                            <span>Save Visual Settings</span>
-                        </button>
-                    </div>
-                </form>
+        <p class="panel-subtitle">Configure system-wide settings inherited by all mirror modules.</p>
+        <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML">
+            <div id="visual-form-container" class="visual-form-container">
+                {{ visual_form_html | safe }}
             </div>
-
-            <!-- Raw JSON Panel -->
-            <div class="tab-panel" id="panel-raw" role="tabpanel" aria-labelledby="tab-raw" style="display: none;">
-                <p class="panel-subtitle">Edit the raw system <code>globals</code> configuration block directly.</p>
-                <form hx-post="/admin/panels/config/save-raw" hx-target="#global-status" hx-swap="innerHTML">
-                    <label for="config-editor" class="sr-only">Configuration Globals JSON</label>
-                    <textarea id="config-editor" name="raw_json" spellcheck="false" aria-label="Configuration Globals JSON editor" style="height: 300px; font-family: 'Fira Code', monospace; margin-bottom: 1.5rem;">{{ raw_json_str }}</textarea>
-                    <div class="card-actions">
-                        <button type="submit" class="btn primary" aria-label="Save configuration">
-                            <i class="fas fa-save" aria-hidden="true"></i>
-                            <span>Save Raw JSON</span>
-                        </button>
-                    </div>
-                </form>
+            <div class="card-actions" style="margin-top: 1.5rem;">
+                <button type="submit" class="btn primary" aria-label="Save configuration">
+                    <i class="fas fa-save" aria-hidden="true"></i>
+                    <span>Save Visual Settings</span>
+                </button>
             </div>
-        </div>
+        </form>
     </section>
 </div>
-
-<script>
-    function showSubTab(activeId, inactiveId, activePanelId, inactivePanelId) {
-        document.getElementById(activeId).classList.add('active');
-        document.getElementById(activeId).setAttribute('aria-selected', 'true');
-        document.getElementById(inactiveId).classList.remove('active');
-        document.getElementById(inactiveId).setAttribute('aria-selected', 'false');
-        document.getElementById(activePanelId).style.display = 'block';
-        document.getElementById(inactivePanelId).style.display = 'none';
-    }
-</script>

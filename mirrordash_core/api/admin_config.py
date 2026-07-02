@@ -159,6 +159,20 @@ async def update_config(config: dict = Body(...)) -> dict:
 @router.get("/globals-schema", dependencies=[Depends(require_api_key)])
 async def get_globals_schema() -> dict:
     """Return the JSON schema defining global configuration settings."""
+    import babel
+    try:
+        babel_locale = babel.Locale('en')
+        lang_list = sorted(
+            [(code, name) for code, name in babel_locale.languages.items() if len(code) == 2],
+            key=lambda x: x[1]
+        )
+        enum_codes = [code for code, name in lang_list]
+        enum_titles = [name for code, name in lang_list]
+    except Exception as e:
+        logger.error(f"Error loading languages from babel: {e}")
+        enum_codes = ["en", "sv", "de", "fr", "nl"]
+        enum_titles = ["English", "Swedish", "German", "French", "Dutch"]
+
     return {
         "title": "Global Settings",
         "description": "System-wide preferences inherited by all modules.",
@@ -166,8 +180,10 @@ async def get_globals_schema() -> dict:
             "language": {
                 "type": "string",
                 "default": "en",
+                "enum": enum_codes,
+                "enum_titles": enum_titles,
                 "title": "System Language",
-                "description": "Language for translations (e.g. en, sv, de, fr, nl)."
+                "description": "System translation language. Note: English is always used as a fallback if translations are missing."
             },
             "timezone": {
                 "type": "string",
@@ -299,58 +315,10 @@ async def save_panel_config_visual(request: Request):
 
     await module_loader.reload_modules()
 
-    raw_json_str = json.dumps(globals_data, indent=2).replace("`", "\\`").replace("${", "\\${")
-
     response = HTMLResponse(content=f"""
         <div class="alert alert--success">Global settings saved successfully.</div>
         <script>
             showGlobal('Global settings saved successfully.', 'success');
-            const editor = document.getElementById('config-editor');
-            if (editor) editor.value = `{raw_json_str}`;
-        </script>
-    """)
-    return response
-
-
-@router.post("/panels/config/save-raw", dependencies=[Depends(require_api_key)])
-async def save_panel_config_raw(request: Request):
-    form_data = await request.form()
-    raw_json = form_data.get("raw_json", "").strip()
-
-    try:
-        globals_data = json.loads(raw_json)
-    except json.JSONDecodeError as e:
-        return HTMLResponse(content=f'<div class="alert alert--error">Invalid JSON: {str(e)}</div>')
-
-    config = load_config()
-    config["globals"] = globals_data
-
-    try:
-        validate_config(config)
-    except ValueError as e:
-        return HTMLResponse(content=f'<div class="alert alert--error">Validation failed: {str(e)}</div>')
-
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
-
-    await module_loader.reload_modules()
-
-    globals_schema = await get_globals_schema()
-    from mirrordash_core.api.form_generator import render_schema_form
-    visual_form_html = render_schema_form(globals_schema, globals_data, "globals")
-
-    escaped_html = visual_form_html.replace("`", "\\`").replace("${", "\\${")
-
-    response = HTMLResponse(content=f"""
-        <div class="alert alert--success">Global settings saved successfully.</div>
-        <script>
-            showGlobal('Global settings saved successfully.', 'success');
-            const container = document.getElementById('visual-form-container');
-            if (container) container.innerHTML = `{escaped_html}`;
-            triggerLucide();
         </script>
     """)
     return response

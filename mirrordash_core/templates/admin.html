@@ -817,6 +817,74 @@
             });
         }
 
+        function moveArrayItem(btn, direction) {
+            const card = btn.closest('.array-item-card');
+            const container = card.closest('.array-items-container');
+            if (direction === 'up') {
+                const prev = card.previousElementSibling;
+                if (prev && prev.classList.contains('array-item-card')) {
+                    container.insertBefore(card, prev);
+                }
+            } else if (direction === 'down') {
+                const next = card.nextElementSibling;
+                if (next && next.classList.contains('array-item-card')) {
+                    container.insertBefore(next, card);
+                }
+            }
+            reindexArrayContainer(container);
+        }
+
+        function reindexArrayContainer(container) {
+            if (!container) return;
+            const cards = container.querySelectorAll('.array-item-card');
+            cards.forEach((card, idx) => {
+                const titleEl = card.querySelector('.array-item-index-title');
+                if (titleEl) {
+                    const itemTitle = titleEl.getAttribute('data-item-title') || 'Item';
+                    titleEl.textContent = `# ${idx + 1}: ${itemTitle}`;
+                }
+                
+                const inputs = card.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    const name = input.getAttribute('name');
+                    if (name) {
+                        const newName = name.replace(/(\[[a-zA-Z_-]+\])\[\d+\]/, `$1[${idx}]`);
+                        input.setAttribute('name', newName);
+                        
+                        const id = input.getAttribute('id');
+                        if (id) {
+                            const newId = `field-${newName}`.replace(/\[/g, '-').replace(/\]/g, '-').replace(/_/g, '-').replace(/--/g, '-').replace(/-$/, '');
+                            input.setAttribute('id', newId);
+                            
+                            const colorSwatchBtns = card.querySelectorAll('.color-swatch-btn');
+                            colorSwatchBtns.forEach(sw => {
+                                const onclick = sw.getAttribute('onclick');
+                                if (onclick) {
+                                    const newOnclick = onclick.replace(/selectSubFieldColor\(this,\s*'[^']+',/g, `selectSubFieldColor(this, '${newId}',`);
+                                    sw.setAttribute('onclick', newOnclick);
+                                }
+                            });
+                            const iconPickerBtns = card.querySelectorAll('.icon-picker-btn');
+                            iconPickerBtns.forEach(pb => {
+                                const onclick = pb.getAttribute('onclick');
+                                if (onclick) {
+                                    const newOnclick = onclick.replace(/selectSubFieldIcon\(this,\s*'[^']+',/g, `selectSubFieldIcon(this, '${newId}',`);
+                                    pb.setAttribute('onclick', newOnclick);
+                                }
+                            });
+                        }
+                    }
+                });
+            });
+        }
+
+        document.body.addEventListener('htmx:afterSwap', (event) => {
+            if (event.target && event.target.classList.contains('array-items-container')) {
+                reindexArrayContainer(event.target);
+                triggerLucide();
+            }
+        });
+
         document.body.addEventListener('htmx:afterRequest', (event) => {
             if (event.detail.pathInfo.requestPath === '/admin/rebuild-venv') {
                 const btn = document.getElementById('rebuild-venv-btn');

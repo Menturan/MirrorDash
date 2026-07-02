@@ -154,3 +154,29 @@ def test_extra_form_controls():
     # Assert textarea
     assert '<textarea' in html
     assert 'my notes' in html
+
+def test_dynamic_object_list_sorting():
+    schema = {
+        "properties": {
+            "feeds": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"}
+                    }
+                }
+            }
+        }
+    }
+    
+    html = render_schema_form(schema, {
+        "feeds": [{"name": "Feed 1"}]
+    })
+    
+    # Assert move controls are present
+    assert 'moveArrayItem(this, \'up\')' in html or "moveArrayItem(this, 'up')" in html
+    assert 'moveArrayItem(this, \'down\')' in html or "moveArrayItem(this, 'down')" in html
+    assert 'reindexArrayContainer' in html
+    assert 'class="array-item-index-title"' in html
+

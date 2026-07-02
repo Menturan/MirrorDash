@@ -172,8 +172,22 @@ async def get_module_config_form(module_name: str):
     from mirrordash_core.api.form_generator import render_schema_form
     name_prefix = f"modules[{cfg_key or module_name.replace('_', '-')}]"
 
-    # Render standard settings section
-    standard_form_html = render_schema_form(standard_schema, module_cfg, name_prefix)
+    # Build standard settings schema blocks:
+    # 1. Position field is kept outside the accordion.
+    position_schema = {
+        "properties": {
+            "position": standard_schema["properties"]["position"]
+        }
+    }
+    # 2. Other standard fields are inside the accordion.
+    accordion_schema = {
+        "properties": {
+            k: v for k, v in standard_schema["properties"].items() if k != "position"
+        }
+    }
+
+    position_form_html = render_schema_form(position_schema, module_cfg, name_prefix)
+    accordion_form_html = render_schema_form(accordion_schema, module_cfg, name_prefix)
 
     # Render module-specific settings section (excluding standard fields)
     module_specific_form_html = render_schema_form(schema, module_cfg, name_prefix)
@@ -195,12 +209,75 @@ async def get_module_config_form(module_name: str):
     remove_url = f"/admin/panels/modules/config/{module_name}/remove"
 
     return HTMLResponse(content=f"""
+        <style>
+            .standard-settings-accordion {{
+                margin-top: 14px; 
+                border: 1px solid #27272a; 
+                border-radius: 6px; 
+                background: rgba(0, 0, 0, 0.1); 
+                overflow: hidden;
+            }}
+            .standard-settings-accordion summary {{
+                padding: 10px 14px; 
+                color: #a1a1aa; 
+                font-size: 0.75rem; 
+                font-weight: 600; 
+                text-transform: uppercase;
+                letter-spacing: 0.05em;
+                cursor: pointer; 
+                user-select: none; 
+                display: flex; 
+                align-items: center; 
+                justify-content: space-between;
+                list-style: none; 
+                outline: none;
+                background: rgba(255, 255, 255, 0.02);
+                transition: background 0.2s ease, color 0.2s ease;
+            }}
+            .standard-settings-accordion summary::-webkit-details-marker {{
+                display: none;
+            }}
+            .standard-settings-accordion summary:hover {{
+                background: rgba(255, 255, 255, 0.05);
+                color: white;
+            }}
+            .standard-settings-accordion[open] summary {{
+                border-bottom: 1px solid #27272a;
+                background: rgba(255, 255, 255, 0.04);
+                color: white;
+            }}
+            .standard-settings-accordion .accordion-arrow {{
+                font-size: 0.75rem; 
+                color: #71717a;
+                transition: transform 0.2s ease;
+            }}
+            .standard-settings-accordion[open] .accordion-arrow {{
+                transform: rotate(180deg);
+            }}
+            .standard-settings-content {{
+                padding: 14px; 
+                background: rgba(0, 0, 0, 0.15);
+            }}
+        </style>
         <form hx-post="{save_url}" hx-target="#global-status" hx-swap="innerHTML" style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a;">
             <h4 style="margin: 0 0 4px 0; color: white; font-size: 1rem;">
                 <i class="fas fa-sliders-h" style="margin-right: 6px; color: var(--accent-color);"></i>Standard Settings
             </h4>
             <p style="margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a;">These settings are provided by MirrorDash core for every module.</p>
-            {standard_form_html}
+            {position_form_html}
+            
+            <details class="standard-settings-accordion">
+                <summary>
+                    <span style="display: flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-cog" style="color: #71717a;"></i>
+                        Other Standard Settings
+                    </span>
+                    <i class="fas fa-chevron-down accordion-arrow"></i>
+                </summary>
+                <div class="standard-settings-content">
+                    {accordion_form_html}
+                </div>
+            </details>
             {module_section_html}
 
             <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">

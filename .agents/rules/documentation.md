@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Documentation Files to Keep Updated
 
 | File | Update when... |
