@@ -49,9 +49,11 @@
 
 12. **Responsive Fluidity & Translation Safety.** All module templates/layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
 
+13. **Asynchronous Non-Blocking Panel Rendering.** To maintain a smooth and dynamic user interface, never execute blocking operations (e.g., fetching network indices, querying external APIs, or resolving update checks) inside the main panel/page load route handlers. Main pages/tabs must load and return immediately (typically < 100ms). Use async HTMX triggers (`hx-get="..." hx-trigger="load" hx-swap="..."`) or background fetches to load slow or network-dependent sections dynamically after the initial page has rendered.
+
 ## Git
 
-13. **Follow conventional commits with specific scopes for changelog generation:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
+14. **Follow conventional commits with specific scopes for changelog generation:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
     - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add updates panel`).
     - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind-seatd race`).
     - Defaults/Fallbacks: Commits without scopes default to `Core App` (unless keywords like "scripts" or "appliance" are present in the description).
