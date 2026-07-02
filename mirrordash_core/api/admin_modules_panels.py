@@ -403,6 +403,71 @@ async def check_module_update_route(module_name: str):
     package_name = ep.dist.name if ep.dist else module_name
     current_version = ep.dist.version if ep.dist else "0.0.0"
 
+    # Check PEP 610 direct_url.json for GitHub installation metadata
+    direct_url_info = None
+    if ep.dist:
+        try:
+            url_data = ep.dist.read_text('direct_url.json')
+            if url_data:
+                direct_url_info = json.loads(url_data)
+        except Exception:
+            pass
+
+    def _parse_version(v: str) -> tuple:
+        try:
+            return tuple(int(x) for x in v.split(".")[:3])
+        except ValueError:
+            return (0,)
+
+    if direct_url_info and "vcs_info" in direct_url_info:
+        vcs_info = direct_url_info["vcs_info"]
+        url = direct_url_info.get("url", "")
+        vcs = vcs_info.get("vcs", "")
+        if vcs == "git" and "github.com" in url:
+            parts = url.rstrip("/").split("github.com/")[-1].split("/")
+            if len(parts) >= 2:
+                owner = parts[0]
+                repo = parts[1].replace(".git", "")
+                
+                def _fetch_github_release() -> dict | None:
+                    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+                    req = urllib.request.Request(
+                        api_url,
+                        headers={
+                            "User-Agent": "MirrorDash/1.0",
+                            "Accept": "application/vnd.github.v3+json"
+                        }
+                    )
+                    try:
+                        with urllib.request.urlopen(req, timeout=3) as resp:
+                            return json.loads(resp.read().decode("utf-8"))
+                    except Exception:
+                        return None
+                
+                release_data = await asyncio.to_thread(_fetch_github_release)
+                if release_data and release_data.get("tag_name"):
+                    tag_name = release_data["tag_name"]
+                    latest_version = tag_name.lstrip("v")
+                    
+                    is_newer = _parse_version(latest_version) > _parse_version(current_version)
+                    if is_newer:
+                        git_install_url = f"git+{url}@{tag_name}"
+                        return HTMLResponse(content=f"""
+                            <div id="update-badge-{module_name}" hx-swap-oob="true">
+                                <span class="status-badge update-avail" style="margin-left: 8px;">Update Available (v{latest_version})</span>
+                            </div>
+                            <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
+                                <button class="btn primary btn-sm"
+                                        hx-post="/admin/panels/modules/upgrade"
+                                        hx-vals='{{"package_name": "{git_install_url}"}}'
+                                        hx-target="#global-status"
+                                        hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?">
+                                    <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
+                                </button>
+                            </div>
+                        """)
+        return HTMLResponse(content="")
+
     def _fetch_pypi_info() -> dict | None:
         url = f"https://pypi.org/pypi/{package_name}/json"
         try:
@@ -416,13 +481,6 @@ async def check_module_update_route(module_name: str):
         return HTMLResponse(content="")
 
     latest_version = pypi_data.get("info", {}).get("version", current_version)
-
-    def _parse_version(v: str) -> tuple:
-        try:
-            return tuple(int(x) for x in v.split(".")[:3])
-        except ValueError:
-            return (0,)
-
     is_newer = _parse_version(latest_version) > _parse_version(current_version)
 
     if is_newer:

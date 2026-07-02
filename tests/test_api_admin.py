@@ -3,6 +3,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
+import json
 
 from mirrordash_core.app import app
 from mirrordash_core.api.admin import hash_password
@@ -873,6 +874,151 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_ro, mock_
     assert saved_cfg["system"]["rotation"] == "left"
     assert saved_cfg["system"]["display_control"]["interval"]["start"] == "08:15"
     assert saved_cfg["system"]["display_control"]["interval"]["end"] == "22:45"
+
+
+# ---------------------------------------------------------------------------
+# GitHub Module Scanning and Enforcements Tests
+# ---------------------------------------------------------------------------
+
+@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
+@patch("mirrordash_core.api.admin_modules.load_config")
+def test_scan_community_modules_filters_releases(mock_load, mock_urlopen, client):
+    mock_load.return_value = MOCK_CONFIG
+    
+    # Mock search response (1 repo 'mirrordash-widget-ok', 1 repo 'mirrordash-widget-norelease')
+    search_data = {
+        "items": [
+            {
+                "name": "mirrordash-widget-ok",
+                "owner": {"login": "user1"},
+                "html_url": "https://github.com/user1/mirrordash-widget-ok",
+                "description": "An ok widget"
+            },
+            {
+                "name": "mirrordash-widget-norelease",
+                "owner": {"login": "user2"},
+                "html_url": "https://github.com/user2/mirrordash-widget-norelease",
+                "description": "Under construction"
+            }
+        ]
+    }
+    
+    mock_resp_search = MagicMock()
+    mock_resp_search.__enter__.return_value = mock_resp_search
+    mock_resp_search.read.return_value = json.dumps(search_data).encode("utf-8")
+    
+    mock_resp_ok_release = MagicMock()
+    mock_resp_ok_release.__enter__.return_value = mock_resp_ok_release
+    mock_resp_ok_release.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
+    
+    def urlopen_side_effect(req, *args, **kwargs):
+        url = req.full_url if hasattr(req, "full_url") else req
+        if "search/repositories" in url:
+            return mock_resp_search
+        elif "mirrordash-widget-ok/releases/latest" in url:
+            return mock_resp_ok_release
+        else:
+            raise Exception("Not Found")
+            
+    mock_urlopen.side_effect = urlopen_side_effect
+    
+    headers = {"X-API-Key": "secret"}
+    response = client.post("/admin/community-modules/scan", headers=headers)
+    assert response.status_code == 200
+    
+    # Verify ok widget is listed with tag, and norelease widget is excluded
+    get_resp = client.get("/admin/community-modules", headers=headers)
+    assert get_resp.status_code == 200
+    modules = get_resp.json()
+    
+    ok_mod = next((m for m in modules if m["name"] == "mirrordash-widget-ok"), None)
+    norelease_mod = next((m for m in modules if m["name"] == "mirrordash-widget-norelease"), None)
+    
+    assert ok_mod is not None
+    assert ok_mod["install_name"] == "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0"
+    assert norelease_mod is None
+
+
+@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
+@patch("mirrordash_core.api.admin_modules.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.system.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.asyncio.create_subprocess_exec")
+def test_install_module_enforce_releases(mock_exec, mock_ro, mock_rw, mock_restart, mock_commit, mock_prepare, mock_urlopen, client):
+    from pathlib import Path
+    headers = {"X-API-Key": "secret"}
+    mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
+    
+    mock_proc = AsyncMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate.return_value = (b"", b"")
+    mock_proc.wait.return_value = 0
+    mock_exec.return_value = mock_proc
+    
+    # Success case: repo has release
+    mock_resp_ok = MagicMock()
+    mock_resp_ok.__enter__.return_value = mock_resp_ok
+    mock_resp_ok.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
+    mock_urlopen.return_value = mock_resp_ok
+    
+    payload_ok = {"package_name": "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0"}
+    r1 = client.post("/admin/install", json=payload_ok, headers=headers)
+    assert r1.status_code == 200
+    
+    # Failure case: repo has no release (raises Exception)
+    mock_urlopen.side_effect = Exception("Not Found")
+    payload_fail = {"package_name": "git+https://github.com/user2/mirrordash-widget-norelease.git"}
+    r2 = client.post("/admin/install", json=payload_fail, headers=headers)
+    assert r2.status_code == 400
+    assert "does not have any official releases" in r2.json()["detail"]
+
+
+@patch("mirrordash_core.api.admin_modules_panels.urllib.request.urlopen")
+@patch("importlib.metadata.entry_points")
+def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
+    mock_dist = MagicMock()
+    direct_url_content = json.dumps({
+        "url": "https://github.com/user1/mirrordash-widget-ok",
+        "vcs_info": {
+            "vcs": "git",
+            "commit_id": "oldcommit"
+        }
+    })
+    mock_dist.read_text.return_value = direct_url_content
+    mock_dist.name = "mirrordash-widget-ok"
+    mock_dist.version = "1.0.0"
+    
+    mock_ep = MagicMock()
+    mock_ep.name = "mirrordash-widget-ok"
+    mock_ep.dist = mock_dist
+    
+    mock_entry_points.return_value = [mock_ep]
+    
+    headers = {"X-API-Key": "secret"}
+    
+    # Case 1: Newer release exists (v1.1.0)
+    mock_resp_new = MagicMock()
+    mock_resp_new.__enter__.return_value = mock_resp_new
+    mock_resp_new.read.return_value = json.dumps({"tag_name": "v1.1.0"}).encode("utf-8")
+    mock_urlopen.return_value = mock_resp_new
+    
+    r1 = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
+    assert r1.status_code == 200
+    assert "Update Available" in r1.text
+    assert "git+https://github.com/user1/mirrordash-widget-ok@v1.1.0" in r1.text
+    
+    # Case 2: No newer release (v1.0.0)
+    mock_resp_same = MagicMock()
+    mock_resp_same.__enter__.return_value = mock_resp_same
+    mock_resp_same.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
+    mock_urlopen.return_value = mock_resp_same
+    
+    r2 = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
+    assert r2.status_code == 200
+    assert r2.text == ""
+
 
 
 

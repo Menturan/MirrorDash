@@ -53,6 +53,37 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
     if ".." in package_name:
         raise HTTPException(status_code=400, detail="Invalid package name or URL")
 
+    # Enforce that GitHub modules must have an official release
+    if package_name.startswith("git+https://github.com/"):
+        url_part = package_name.split("github.com/")[-1].split("@")[0]
+        parts = url_part.rstrip("/").split("/")
+        if len(parts) >= 2:
+            owner = parts[0]
+            repo = parts[1].replace(".git", "")
+            
+            def _check_github_release():
+                url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+                req = urllib.request.Request(
+                    url,
+                    headers={
+                        "User-Agent": "MirrorDash/1.0",
+                        "Accept": "application/vnd.github.v3+json"
+                    }
+                )
+                try:
+                    with urllib.request.urlopen(req, timeout=3) as resp:
+                        data = json.loads(resp.read().decode("utf-8"))
+                        return bool(data.get("tag_name"))
+                except Exception:
+                    return False
+            
+            has_release = await asyncio.to_thread(_check_github_release)
+            if not has_release:
+                raise HTTPException(
+                    status_code=400, 
+                    detail="Cannot install module: The GitHub repository does not have any official releases."
+                )
+
     swap_info = await prepare_venv_next()
     await remount_rw()
     try:
@@ -491,21 +522,50 @@ async def scan_community_modules_now():
 
     github_data = await loop.run_in_executor(None, _fetch_github_repos)
     if github_data and "items" in github_data:
-        for item in github_data["items"]:
+        async def check_repo(item):
             repo_name = item.get("name", "")
             if repo_name.startswith("mirrordash-") and repo_name not in ("mirrordash", "mirrordash-core", "mirrordash-sdk"):
                 if repo_name not in scanned_names:
                     owner = item.get("owner", {}).get("login")
-                    html_url = item.get("html_url", "")
-                    install_url = f"git+{html_url}.git" if not html_url.endswith(".git") else f"git+{html_url}"
-                    scanned_modules.append({
-                        "name": repo_name,
-                        "install_name": install_url,
-                        "title": repo_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                        "description": item.get("description") or f"Community module from GitHub ({owner}).",
-                        "source": "github"
-                    })
-                    scanned_names.add(repo_name)
+                    if not owner:
+                        return None
+                    
+                    def _fetch_release():
+                        url = f"https://api.github.com/repos/{owner}/{repo_name}/releases/latest"
+                        req = urllib.request.Request(
+                            url,
+                            headers={
+                                "User-Agent": "MirrorDash/1.0",
+                                "Accept": "application/vnd.github.v3+json"
+                            }
+                        )
+                        try:
+                            with urllib.request.urlopen(req, timeout=3) as resp:
+                                data = json.loads(resp.read().decode("utf-8"))
+                                return data if data.get("tag_name") else None
+                        except Exception:
+                            return None
+                    
+                    release_data = await asyncio.to_thread(_fetch_release)
+                    if release_data:
+                        tag_name = release_data.get("tag_name")
+                        html_url = item.get("html_url", "")
+                        install_url = f"git+{html_url}.git@{tag_name}" if not html_url.endswith(".git") else f"git+{html_url}@{tag_name}"
+                        return {
+                            "name": repo_name,
+                            "install_name": install_url,
+                            "title": repo_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
+                            "description": item.get("description") or f"Community module from GitHub ({owner}).",
+                            "source": "github"
+                        }
+            return None
+
+        tasks = [check_repo(item) for item in github_data["items"]]
+        results = await asyncio.gather(*tasks)
+        for res in results:
+            if res:
+                scanned_modules.append(res)
+                scanned_names.add(res["name"])
 
     # Ensure clock is always included as fallback/pre-packaged
     if "mirrordash-clock" not in scanned_names:
