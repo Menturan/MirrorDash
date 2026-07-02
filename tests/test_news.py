@@ -128,7 +128,8 @@ async def test_run_loop_missing_feeds():
         width=420,
         height=300,
         scroll_overflow=False,
-        scroll_speed="medium"
+        scroll_speed="medium",
+        show_header=True
     )
 
 @pytest.mark.asyncio
@@ -173,7 +174,8 @@ async def test_scrolling_and_pixel_dimensions():
         scroll_overflow=True,
         scroll_speed="slow",
         error=None,
-        last_checked=ANY
+        last_checked=ANY,
+        show_header=True
     )
 
 @pytest.mark.asyncio
