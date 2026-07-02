@@ -120,47 +120,13 @@
     </section>
 
     <!-- Discover / Popular Modules -->
-    <section class="card" id="discover-modules-section" style="margin-top: 2rem; {% if not discoverable_modules %}display: none;{% endif %}">
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
-            <div>
-                <h2 style="margin-bottom: 8px;"><i class="fas fa-compass" aria-hidden="true"></i> Discover New Modules</h2>
-                <p class="panel-subtitle" style="margin-bottom: 0;">Install community-developed plugins from GitHub and PyPI directly onto your mirror.</p>
+    <div hx-get="/admin/panels/modules/discover{% if query %}?query={{ query }}{% endif %}" hx-trigger="load" hx-swap="outerHTML">
+        <section class="card" id="discover-modules-section" style="margin-top: 2rem;">
+            <div style="display: flex; align-items: center; justify-content: center; padding: 2.5rem; color: var(--text-muted); font-size: 0.9rem;">
+                <i class="fas fa-spinner fa-spin" style="margin-right: 10px; font-size: 1.1rem;"></i> Loading discoverable community modules...
             </div>
-            <div style="text-align: right;">
-                <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Last scanned: {{ last_scan }}</span>
-                <button class="btn secondary btn-sm"
-                        hx-post="/admin/community-modules/scan"
-                        hx-target="#global-status"
-                        hx-swap="innerHTML"
-                        onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Scanning...'; setTimeout(() => location.reload(), 3000);">
-                    <i class="fas fa-sync-alt"></i> Refresh Module List
-                </button>
-            </div>
-        </div>
-        
-        <div id="discover-modules-container" class="discover-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
-            {% for m in discoverable_modules %}
-                <div class="discover-card" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--card-border); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
-                    <div>
-                        <h3 style="margin: 0; font-size: 1.1rem; color: white;">{{ m.title }}</h3>
-                        <span style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">{{ m.name }}</span>
-                        <p style="margin: 10px 0 0 0; font-size: 0.85rem; color: #a1a1aa; line-height: 1.4;">{{ m.description }}</p>
-                    </div>
-                    <div style="margin-top: 15px; text-align: right;">
-                        <button class="btn primary btn-sm"
-                                hx-post="/admin/panels/modules/install"
-                                hx-vals='{"package_name": "{{ m.install_name }}"}'
-                                hx-target="#global-status"
-                                hx-confirm="Are you sure you want to install {{ m.title }}? The system will restart after installation."
-                                hx-disabled-elt="this">
-                            <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
-                            <span class="htmx-normal"><i class="fas fa-download"></i> Install</span>
-                        </button>
-                    </div>
-                </div>
-            {% endfor %}
-        </div>
-    </section>
+        </section>
+    </div>
 
     <!-- Install Custom Module -->
     <section class="card" style="margin-top: 2rem;">

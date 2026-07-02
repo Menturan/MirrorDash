@@ -1020,5 +1020,53 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     assert r2.text == ""
 
 
+@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
+def test_get_panel_and_discover_modules(mock_urlopen, client):
+    import mirrordash_core.api.admin_modules as adm_mods
+    adm_mods.LAST_SCAN_TIMESTAMP = None
+    adm_mods.DISCOVERED_COMMUNITY_MODULES = []
+    
+    headers = {"X-API-Key": "secret"}
+    
+    # 1. Test get_panel_modules (loads instantly, doesn't query github/pypi community modules)
+    r1 = client.get("/admin/panels/modules", headers=headers)
+    assert r1.status_code == 200
+    assert "Loading discoverable community modules..." in r1.text
+    
+    # 2. Test get_discover_modules (async HTMX endpoint)
+    def urlopen_mock(req, *args, **kwargs):
+        url = req.full_url if hasattr(req, "full_url") else str(req)
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        if "pypi.org/simple" in url:
+            resp.read.return_value = b""
+            resp.info.return_value.get.return_value = None
+        elif "api.github.com/search" in url:
+            resp.read.return_value = json.dumps({
+                "items": [
+                    {
+                        "name": "mirrordash-test-widget",
+                        "owner": {"login": "testowner"},
+                        "html_url": "https://github.com/testowner/mirrordash-test-widget",
+                        "description": "Test community widget description"
+                    }
+                ]
+            }).encode("utf-8")
+        elif "releases/latest" in url:
+            resp.read.return_value = json.dumps({"tag_name": "v1.2.3"}).encode("utf-8")
+        else:
+            resp.read.return_value = b""
+        return resp
+
+    mock_urlopen.side_effect = urlopen_mock
+    
+    r2 = client.get("/admin/panels/modules/discover", headers=headers)
+    assert r2.status_code == 200
+    assert "Discover New Modules" in r2.text
+    assert "mirrordash-test-widget" in r2.text
+    assert "Test community widget description" in r2.text
+
+
+
 
 

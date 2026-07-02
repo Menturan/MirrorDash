@@ -43,6 +43,25 @@ async def get_panel_modules(request: Request):
                 filtered_installed[name] = meta
         installed_modules = filtered_installed
 
+    disk_usage = await get_disk_usage()
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_modules.html",
+        context={
+            "installed_modules": installed_modules,
+            "disk_usage": disk_usage,
+            "query": query
+        }
+    )
+
+
+@router.get("/panels/modules/discover", dependencies=[Depends(require_api_key)])
+async def get_discover_modules(request: Request):
+    installed = await list_modules()
+    installed_modules = installed.get("modules", {})
+
+    query = request.query_params.get("query", "").strip().lower()
     community = await list_community_modules()
 
     discoverable = []
@@ -54,19 +73,14 @@ async def get_panel_modules(request: Request):
             if not query or (query in name.lower() or query in title.lower() or query in description.lower()):
                 discoverable.append(m)
 
-    disk_usage = await get_disk_usage()
-
     import mirrordash_core.api.admin_modules as adm_mods
     last_scan = adm_mods.LAST_SCAN_TIMESTAMP
 
     return templates.TemplateResponse(
         request=request,
-        name="admin_modules.html",
+        name="admin_discover_modules.html",
         context={
-            "installed_modules": installed_modules,
             "discoverable_modules": discoverable,
-            "disk_usage": disk_usage,
-            "query": query,
             "last_scan": last_scan or "Never"
         }
     )
