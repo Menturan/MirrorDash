@@ -192,7 +192,8 @@ def test_restore_backup_success(mock_subproc, mock_ro, mock_rw, mock_backup_dirs
 
     with patch("mirrordash_core.api.backup.tempfile.TemporaryDirectory", FakeTempDirectory), \
          patch("mirrordash_core.api.backup.run_restart", new_callable=AsyncMock) as mock_restart, \
-         patch("mirrordash_core.api.backup.save_config") as mock_save:
+         patch("mirrordash_core.api.backup.save_config") as mock_save, \
+         patch("mirrordash_core.api.backup.zipfile.ZipFile"):
          
         # Send raw json=None (since password is str | None = Body(default=None))
         r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})

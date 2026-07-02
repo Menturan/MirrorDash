@@ -6,7 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
+### Calendar Module
+- Consolidate multi-day all-day events into a single entry on their first active day in the lookahead window (formatted as "Now - [End Date]" or "[Start Date] - [End Date]"), resolving dashboard clutter from daily repetitions.
+- Add Swedish and English translations for the "Now" label.
+
+### Clock Module
+- Move clock ticking loop, date/time formatting, and timezone translation from backend Python (FastAPI/Babel/ZoneInfo) to frontend browser JS using native standard `Intl.DateTimeFormat` APIs, eliminating 1-second WebSocket push traffic and resolving Babel locale warning log spam.
+
 ### Core App
+- Move clock and calendar module tests out of core repository into their respective module repositories
 - Add `z_index` and `opacity` per-module config properties
 - Split AGENTS.md into modular `.agents/rules/` files for token efficiency
 - Match correct final image artifact in github workflow release step (aa9604d)

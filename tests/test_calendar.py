@@ -284,3 +284,112 @@ async def test_calendars_config_robustness():
     assert mod4.calendars_cfg[0]["name"] == "JSON Cal"
     assert mod4.calendars_cfg[0]["url"] == "https://example.com/json.ics"
 
+
+@pytest.mark.asyncio
+async def test_multiday_allday_event():
+    config = {
+        "globals": {
+            "timezone": "Europe/Stockholm",
+            "language": "en",
+            "time_format": "24h"
+        },
+        "calendars": [
+            {"name": "Work", "url": "http://example.com/work.ics"}
+        ],
+        "max_events": 10,
+        "maximum_days": 7
+    }
+    module = CalendarModule(config)
+    
+    # Today is June 3, 2026.
+    today_date = datetime.date(2026, 6, 3)
+    start_dt = datetime.datetime(2026, 6, 3, 0, 0, 0, tzinfo=module.tz)
+    end_dt = datetime.datetime(2026, 6, 10, 23, 59, 59, tzinfo=module.tz)
+    
+    ics_data = """BEGIN:VCALENDAR
+VERSION:2.0
+BEGIN:VEVENT
+UID:multiday-future@example.com
+DTSTART;VALUE=DATE:20260605
+DTEND;VALUE=DATE:20260608
+SUMMARY:Future Trip
+END:VEVENT
+BEGIN:VEVENT
+UID:multiday-ongoing@example.com
+DTSTART;VALUE=DATE:20260602
+DTEND;VALUE=DATE:20260605
+SUMMARY:Ongoing Trip
+END:VEVENT
+BEGIN:VEVENT
+UID:singleday@example.com
+DTSTART;VALUE=DATE:20260604
+DTEND;VALUE=DATE:20260605
+SUMMARY:Single Day Event
+END:VEVENT
+END:VCALENDAR"""
+
+    events = module.process_calendar_data(
+        ics_data.encode('utf-8'),
+        config["calendars"][0],
+        today_date,
+        start_dt,
+        end_dt
+    )
+    
+    # Check that Future Trip appears only once on June 5, with format "Jun 5 - Jun 7"
+    future_trips = [e for e in events if e["summary"] == "Future Trip"]
+    assert len(future_trips) == 1
+    assert future_trips[0]["date"] == datetime.date(2026, 6, 5)
+    assert future_trips[0]["time_str"] == "Jun 5 - Jun 7"
+    
+    # Check that Ongoing Trip appears only once on June 3 (today, since it started June 2), with format "Now - Jun 4"
+    # Note: in RFC 5545, DTEND of June 5 for all-day event means it ends on June 5 00:00:00,
+    # so end_local_date is June 4. The event spans June 2, 3, 4.
+    ongoing_trips = [e for e in events if e["summary"] == "Ongoing Trip"]
+    assert len(ongoing_trips) == 1
+    assert ongoing_trips[0]["date"] == datetime.date(2026, 6, 3)
+    assert ongoing_trips[0]["time_str"] == "Now - Jun 4"
+    
+    # Check that Single Day Event appears once on June 4, with format "All Day"
+    single_events = [e for e in events if e["summary"] == "Single Day Event"]
+    assert len(single_events) == 1
+    assert single_events[0]["date"] == datetime.date(2026, 6, 4)
+    assert single_events[0]["time_str"] == "All Day"
+
+    # Test Swedish language and custom translation translations
+    config_sv = {
+        "globals": {
+            "timezone": "Europe/Stockholm",
+            "language": "sv",
+            "time_format": "24h"
+        },
+        "calendars": [
+            {"name": "Work", "url": "http://example.com/work.ics"}
+        ],
+        "translations": {
+            "now": "Nu",
+            "all_day": "Heldag"
+        },
+        "max_events": 10,
+        "maximum_days": 7
+    }
+    module_sv = CalendarModule(config_sv)
+    
+    events_sv = module_sv.process_calendar_data(
+        ics_data.encode('utf-8'),
+        config_sv["calendars"][0],
+        today_date,
+        start_dt,
+        end_dt
+    )
+    
+    future_trips_sv = [e for e in events_sv if e["summary"] == "Future Trip"]
+    assert len(future_trips_sv) == 1
+    assert future_trips_sv[0]["time_str"] == "5 juni - 7 juni"
+    
+    ongoing_trips_sv = [e for e in events_sv if e["summary"] == "Ongoing Trip"]
+    assert len(ongoing_trips_sv) == 1
+    assert ongoing_trips_sv[0]["time_str"] == "Nu - 4 juni"
+
+
+

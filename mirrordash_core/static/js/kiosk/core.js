@@ -154,6 +154,17 @@ function connect() {
             lucide.createIcons({ root: shadow });
         }
 
+        // Execute any script tags inside the shadow DOM (since innerHTML doesn't execute them)
+        const scripts = shadow.querySelectorAll('script');
+        for (const oldScript of scripts) {
+            const newScript = document.createElement('script');
+            for (const attr of oldScript.attributes) {
+                newScript.setAttribute(attr.name, attr.value);
+            }
+            newScript.textContent = oldScript.textContent;
+            oldScript.parentNode.replaceChild(newScript, oldScript);
+        }
+
         if (oldParent && oldParent.classList.contains('carousel-group-container') && oldParent !== parentContainer) {
             updateCarouselGroup(oldParent);
             if (oldParent.children.length === 0) oldParent.remove();
