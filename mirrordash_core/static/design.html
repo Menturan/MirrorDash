@@ -1450,15 +1450,13 @@
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
-                            <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;">
+                            <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;width:100%;text-align:left;">
                                 <div class="form-label-desc" style="margin-bottom:10px;">
                                     <label style="font-weight:600;font-size:0.95rem;color:white;">Tracked Entities</label>
                                     <p class="field-description" style="font-size:0.75rem;color:#a1a1aa;margin:2px 0 0 0;">A list of devices to display with specific styling.</p>
                                 </div>
-                                <div style="background:#0a0a0a;border:1px solid #27272a;border-radius:6px;padding:10px;margin-bottom:8px;font-size:0.8rem;color:#a1a1aa;">
-                                    #1: Entity &nbsp;·&nbsp; <span style="color:#71717a;">sensor.living_room_temp</span>
-                                </div>
-                                <button type="button" class="btn secondary btn-sm" style="font-size:0.75rem;">+ Add Entity</button>
+                                <div id="demo-array-container" style="margin-bottom:12px;"></div>
+                                <button type="button" class="btn secondary btn-sm" style="font-size:0.75rem;background:#27272a;border:1px solid #3f3f46;color:white;cursor:pointer;padding:4px 10px;border-radius:4px;" onclick="addDemoArrayItem()">+ Add Entity</button>
                             </div>
                         </div>
                         <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
@@ -1813,6 +1811,93 @@
                     item.classList.add('active');
                 }
             });
+        });
+        
+        // Interactive Dynamic Object List Demo
+        function addDemoArrayItem(entityId = "") {
+            const container = document.getElementById("demo-array-container");
+            if (!container) return;
+            const idx = container.children.length;
+            const card = document.createElement("div");
+            card.className = "array-item-card";
+            card.style.cssText = "border: 1px solid #3f3f46; border-radius: 6px; padding: 12px; margin-bottom: 12px; position: relative; background: #18181b; width: 100%; text-align: left;";
+            
+            card.innerHTML = `
+                <div style="position: absolute; top: 8px; right: 8px; display: flex; gap: 4px;">
+                    <button type="button" class="btn secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background: #27272a; border: 1px solid #3f3f46; color: white; cursor: pointer; border-radius: 4px; line-height: 1;" onclick="moveDemoArrayItem(this, 'up')" title="Move Up">↑</button>
+                    <button type="button" class="btn secondary btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background: #27272a; border: 1px solid #3f3f46; color: white; cursor: pointer; border-radius: 4px; line-height: 1;" onclick="moveDemoArrayItem(this, 'down')" title="Move Down">↓</button>
+                    <button type="button" class="btn danger btn-sm" style="padding: 2px 6px; font-size: 0.75rem; background: #7f1d1d; border: 1px solid #b91c1c; color: white; cursor: pointer; border-radius: 4px; line-height: 1;" onclick="removeDemoArrayItem(this)" title="Remove">✕</button>
+                </div>
+                <div class="demo-item-index-title" style="font-size: 0.8rem; font-weight: 600; color: #e4e4e7; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em;"># ${idx + 1}: Entity</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="margin-bottom: 8px;">
+                        <label style="font-size: 0.75rem; color: #a1a1aa; display: block; margin-bottom: 4px;">Entity ID</label>
+                        <input type="text" value="${entityId}" placeholder="e.g. sensor.living_room_temp" class="form-control form-control-sm" style="width: 100%; font-size: 0.8rem; padding: 4px 8px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px;">
+                    </div>
+                    <div style="margin-bottom: 8px;">
+                        <label style="font-size: 0.75rem; color: #a1a1aa; display: block; margin-bottom: 4px;">Layout Style</label>
+                        <select class="form-control form-control-sm" style="width: 100%; font-size: 0.8rem; padding: 4px 8px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px; height: 28px;">
+                            <option value="compact" ${entityId.includes('temp') ? '' : 'selected'}>COMPACT</option>
+                            <option value="detailed" ${entityId.includes('temp') ? 'selected' : ''}>DETAILED</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 8px; grid-column: span 2;">
+                        <label style="font-size: 0.75rem; color: #a1a1aa; display: block; margin-bottom: 6px;">Indicator Color</label>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                                <button type="button" class="color-swatch" style="width: 16px; height: 16px; border-radius: 50%; border: 1px solid #52525b; background-color: #ffffff; cursor: pointer;" onclick="selectDemoColor(this, '#ffffff')"></button>
+                                <button type="button" class="color-swatch" style="width: 16px; height: 16px; border-radius: 50%; border: 1px solid #52525b; background-color: #a5f3fc; cursor: pointer;" onclick="selectDemoColor(this, 'var(--color-ice-blue)')"></button>
+                                <button type="button" class="color-swatch" style="width: 16px; height: 16px; border-radius: 50%; border: 1px solid #52525b; background-color: #fecdd3; cursor: pointer;" onclick="selectDemoColor(this, 'var(--color-rose-pink)')"></button>
+                                <button type="button" class="color-swatch" style="width: 16px; height: 16px; border-radius: 50%; border: 1px solid #52525b; background-color: #a0ffba; cursor: pointer;" onclick="selectDemoColor(this, 'var(--color-status-online)')"></button>
+                            </div>
+                            <input type="text" value="#ffffff" class="form-control form-control-sm" style="width: 90px; font-size: 0.75rem; padding: 2px 6px; background: #09090b; border: 1px solid #27272a; color: white; border-radius: 4px;">
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+            reindexDemoArrayItems();
+        }
+
+        function moveDemoArrayItem(btn, direction) {
+            const card = btn.closest(".array-item-card");
+            const container = card.parentNode;
+            if (direction === "up") {
+                const prev = card.previousElementSibling;
+                if (prev) container.insertBefore(card, prev);
+            } else {
+                const next = card.nextElementSibling;
+                if (next) container.insertBefore(next, card);
+            }
+            reindexDemoArrayItems();
+        }
+
+        function removeDemoArrayItem(btn) {
+            btn.closest(".array-item-card").remove();
+            reindexDemoArrayItems();
+        }
+
+        function reindexDemoArrayItems() {
+            const container = document.getElementById("demo-array-container");
+            if (!container) return;
+            Array.from(container.children).forEach((card, idx) => {
+                const titleDiv = card.querySelector(".demo-item-index-title");
+                if (titleDiv) {
+                    titleDiv.textContent = `# ${idx + 1}: Entity`;
+                }
+            });
+        }
+
+        function selectDemoColor(swatch, colorVal) {
+            const row = swatch.closest("div").nextElementSibling;
+            if (row) {
+                row.value = colorVal;
+            }
+        }
+
+        // Initialize with default card on load
+        window.addEventListener('DOMContentLoaded', () => {
+            addDemoArrayItem("sensor.living_room_temp");
         });
 
         // Backdrop blur toggle for demo
