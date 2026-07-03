@@ -12,9 +12,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Clock Module
 - Move clock ticking loop, date/time formatting, and timezone translation from backend Python (FastAPI/Babel/ZoneInfo) to frontend browser JS using native standard `Intl.DateTimeFormat` APIs, eliminating 1-second WebSocket push traffic and resolving Babel locale warning log spam.
+- Move clock module out of MirrorDash core into the standalone `mirrordash-modules` folder.
 
 ### Core App
-- Move clock and calendar module tests out of core repository into their respective module repositories
+- Enforce GitHub Releases requirement for community module installations, scans, and updates, blocking branch/commit installations.
+- Load community modules list asynchronously via HTMX to prevent UI freezing during tab switching.
+- Add `show_header` configuration option to all modules (Calendar, Home Assistant, News) to control title visibility.
+- Move clock and calendar module tests out of core repository into their respective module repositories.
 - Add `z_index` and `opacity` per-module config properties
 - Split AGENTS.md into modular `.agents/rules/` files for token efficiency
 - Match correct final image artifact in github workflow release step (aa9604d)
