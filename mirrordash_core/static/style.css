@@ -452,93 +452,7 @@ body, html {
    Extended UI Components
    ============================================================ */
 
-/* 1. Weather Forecast Grid */
-.forecast-grid {
-    display: flex;
-    justify-content: space-between;
-    width: 100%;
-    gap: 1rem;
-}
-.forecast-grid__day {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-}
-.forecast-grid__name {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--color-standard-gray);
-    letter-spacing: 0.05em;
-}
-.forecast-grid__icon {
-    font-size: 20px;
-    margin: 4px 0;
-}
-.forecast-grid__temp {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--color-high-contrast);
-}
-.forecast-grid__temp-low {
-    color: var(--color-dimmed-charcoal);
-    font-weight: 400;
-    margin-left: 2px;
-}
-
-/* 2. Agenda / Schedule List */
-.agenda-list {
-    display: flex;
-    flex-direction: column;
-    width: 100%;
-    gap: 0.75rem;
-}
-.agenda-list__item {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-}
-.agenda-list__date {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 48px;
-    height: 48px;
-    background: rgba(255, 255, 255, 0.05);
-    border-radius: 4px;
-    flex-shrink: 0;
-}
-.agenda-list__date-month {
-    font-size: 9px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--color-standard-gray);
-    letter-spacing: 0.05em;
-    line-height: 1;
-}
-.agenda-list__date-day {
-    font-size: 18px;
-    font-weight: 200;
-    color: var(--color-high-contrast);
-    line-height: 1.1;
-}
-.agenda-list__details {
-    display: flex;
-    flex-direction: column;
-}
-.agenda-list__title {
-    font-size: 15px;
-    font-weight: 500;
-    color: var(--color-high-contrast);
-}
-.agenda-list__subtitle {
-    font-size: 12px;
-    color: var(--color-standard-gray);
-}
-
-/* 3. Progress / Gauge Bars */
+/* 1. Progress / Gauge Bars */
 .gauge-bar {
     width: 100%;
     display: flex;
@@ -568,7 +482,7 @@ body, html {
     transition: width 0.3s ease;
 }
 
-/* 4. Stat Grid */
+/* 2. Stat Grid */
 .stats-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -597,7 +511,7 @@ body, html {
     letter-spacing: 0.05em;
 }
 
-/* 5. Alert Callouts */
+/* 3. Alert Callouts */
 .alert-callout {
     width: 100%;
     background: rgba(255, 180, 171, 0.05);
