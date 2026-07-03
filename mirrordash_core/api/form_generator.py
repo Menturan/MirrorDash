@@ -350,6 +350,24 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
                     </div>
                 </div>
             """)
+        elif sub_prop.get("enum"):
+            options_html = []
+            enum_list = sub_prop["enum"]
+            enum_titles = sub_prop.get("enum_titles") or sub_prop.get("enumNames")
+            for idx, opt in enumerate(enum_list):
+                selected = "selected" if sub_val == opt else ""
+                display_opt = enum_titles[idx] if enum_titles and idx < len(enum_titles) else opt.replace("_", " ").upper()
+                options_html.append(f'<option value="{opt}" {selected}>{display_opt}</option>')
+            options_str = "\n".join(options_html)
+            
+            sub_fields_html.append(f"""
+                <div class="sub-form-group" style="margin-bottom: 8px;">
+                    <label for="{field_id}" style="font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px;">{sub_title}</label>
+                    <select id="{field_id}" name="{name}" class="form-control form-control-sm" style="font-size: 0.85rem; height: auto; padding: 4px 8px; background: #09090b; border: 1px solid #27272a; color: white;">
+                        {options_str}
+                    </select>
+                </div>
+            """)
         else:
             sub_fields_html.append(f"""
                 <div class="sub-form-group" style="margin-bottom: 8px;">

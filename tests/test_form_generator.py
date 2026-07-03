@@ -180,3 +180,26 @@ def test_dynamic_object_list_sorting():
     assert 'reindexArrayContainer' in html
     assert 'class="array-item-index-title"' in html
 
+def test_render_array_item_enum_select():
+    sub_properties = {
+        "layout_style": {
+            "type": "string",
+            "enum": ["detailed", "compact"],
+            "title": "Layout Style"
+        }
+    }
+    
+    html = render_array_item(
+        name_prefix="test",
+        array_key="entities",
+        sub_properties=sub_properties,
+        index=0,
+        item_val={"layout_style": "compact"},
+        item_title="Entity"
+    )
+    
+    assert "<select" in html
+    assert "option value=\"detailed\"" in html or "option value='detailed'" in html
+    assert "option value=\"compact\" selected" in html or "option value='compact' selected" in html
+
+
