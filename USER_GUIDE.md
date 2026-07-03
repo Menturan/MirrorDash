@@ -131,10 +131,6 @@ All other modules in that region (e.g., a Todo list with no group name) will sta
 *   Open the **Logs** tab in the Admin panel to check for errors.
 *   Verify that your device is connected to the internet if modules depend on external feeds (like calendar files).
 
-### Calendar events are not showing up
-*   Verify that your calendar URL is public and ends with `.ics`. 
-*   Google Calendar private links must be the "Secret address in iCal format" found in your Google Calendar settings.
-
 ### System settings (brightness/rotation) are not applying
 *   On Raspberry Pi, the system volume and brightness controls require administrative hardware privileges. Ensure your user has permissions to run system control scripts.
 
