@@ -508,8 +508,8 @@ cd /home/pi/mirrordash
 rm -rf base_venv
 uv venv --allow-existing --python 3.14 base_venv
 
-# 5. Install mirrordash and mirrordash-clock from PyPI into the Golden Copy
-uv pip install --python base_venv mirrordash mirrordash-clock
+# 5. Install mirrordash (PyPI) and mirrordash-clock (GitHub) into the Golden Copy
+uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git
 
 # 6. Download the launcher script and loading HTML page
 curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh
