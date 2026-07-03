@@ -35,12 +35,32 @@ logging.basicConfig(
 
 def main() -> None:
     # Run uvicorn server targeting the FastAPI app in app.py
+    dev_mode = os.getenv("MIRRORDASH_DEV", "0") == "1"
+    
+    reload_kwargs = {}
+    if dev_mode:
+        reload_kwargs["reload"] = True
+        
+        # Watch the current working directory (core)
+        reload_dirs = [os.getcwd()]
+        
+        # Also watch sibling module folders (e.g. mirrordash-modules) if present
+        sibling_dir = os.path.abspath(os.path.join(os.getcwd(), "..", "mirrordash-modules"))
+        if os.path.exists(sibling_dir):
+            reload_dirs.append(sibling_dir)
+            
+        reload_kwargs["reload_dirs"] = reload_dirs
+        logging.info(f"Starting server in DEVELOPMENT mode. Watching directories: {reload_dirs}")
+    else:
+        logging.info("Starting server in PRODUCTION mode.")
+
     uvicorn.run(
         "mirrordash_core.app:app",
         host="0.0.0.0",
         port=8000,
         ws_ping_interval=20,
-        ws_ping_timeout=20
+        ws_ping_timeout=20,
+        **reload_kwargs
     )
 
 if __name__ == "__main__":
