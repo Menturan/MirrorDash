@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
+### Home Assistant Module
+- Support dynamic entity grouping, allowing users to bundle sensors into custom sections and mix-and-match layout styles (`"detailed"` and `"compact"`) in a single widget.
+- Implement case-insensitive nested telemetry extraction for `battery`, `humidity`, `linkquality`, and `voltage`.
+- Fix Lucide icons visibility in compact layout and battery rendering in detailed layout.
+
 ### Calendar Module
 - Consolidate multi-day all-day events into a single entry on their first active day in the lookahead window (formatted as "Now - [End Date]" or "[Start Date] - [End Date]"), resolving dashboard clutter from daily repetitions.
 - Add Swedish and English translations for the "Now" label.
