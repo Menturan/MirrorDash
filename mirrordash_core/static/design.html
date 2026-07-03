@@ -1435,6 +1435,16 @@
                         <span class="component-name">Dynamic Object List</span>
                         <span class="component-tag">type: array  +  items.type: object</span>
                     </div>
+                    <div class="component-desc" style="padding: 12px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.4; background: rgba(255,255,255,0.01);">
+                        Allows managing a list of complex objects (cards). Sub-properties within the schema items are rendered as fields.
+                        Special sub-field rules:
+                        <ul style="margin: 6px 0 0 18px; padding-left: 0;">
+                            <li>Properties named <code>"color"</code> render as horizontal color swatches.</li>
+                            <li>Properties named <code>"icon"</code> render as dynamic icon picker buttons.</li>
+                            <li>Properties defining an <code>"enum"</code> list render automatically as select dropdown menus.</li>
+                            <li>Other properties render as standard text inputs.</li>
+                        </ul>
+                    </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
                             <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;">
