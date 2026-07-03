@@ -89,7 +89,14 @@ def load_config() -> dict:
 
         _config_cache = {
             "globals": get_default_globals(),
-            "modules": {}
+            "modules": {
+                "mirrordash-clock": {
+                    "enabled": True,
+                    "position": "top_left",
+                    "show_seconds": True,
+                    "show_header": False
+                }
+            }
         }
         return copy.deepcopy(_config_cache)
 

@@ -331,8 +331,8 @@ step_installing_app() {
   rm -rf "$HOME/mirrordash/base_venv"
   uv venv --allow-existing --python 3.14 "$HOME/mirrordash/base_venv"
 
-  echo 'Installing MirrorDash from PyPI into golden venv...'
-  uv pip install --python "$HOME/mirrordash/base_venv" mirrordash
+  echo 'Installing MirrorDash and clock module from PyPI into golden venv...'
+  uv pip install --python "$HOME/mirrordash/base_venv" mirrordash mirrordash-clock
 EOF
 
   # Download or copy launch.sh and loading.html
