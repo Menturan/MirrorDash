@@ -1435,44 +1435,64 @@
                         <span class="component-name">Dynamic Object List</span>
                         <span class="component-tag">type: array  +  items.type: object</span>
                     </div>
-                    <div class="component-desc" style="padding: 12px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.4; background: rgba(255,255,255,0.01);">
-                        Allows managing a list of complex objects (cards). Sub-properties within the schema items are rendered as fields.
-                        Special sub-field rules:
-                        <ul style="margin: 6px 0 0 18px; padding-left: 0;">
-                            <li>Properties named <code>"color"</code> render as horizontal color swatches.</li>
-                            <li>Properties named <code>"icon"</code> render as dynamic icon picker buttons.</li>
-                            <li>Properties defining an <code>"enum"</code> list render automatically as select dropdown menus.</li>
-                            <li>Other properties render as standard text inputs.</li>
+                    <div class="component-desc" style="padding: 16px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.5; background: rgba(255,255,255,0.015);">
+                        <p style="margin-bottom: 10px;">
+                            Allows administrators to manage a list of structured items. Each item is rendered inside an expandable card. 
+                            The layout features built-in controls to re-order items (Move Up / Move Down buttons) and delete entries dynamically.
+                        </p>
+                        <p style="font-weight: 600; color: white; margin-bottom: 6px;">Dynamic Sub-field Types & Naming Conventions:</p>
+                        <ul style="margin: 0 0 14px 18px; padding-left: 0; display: flex; flex-direction: column; gap: 4px;">
+                            <li><strong>Color Swatches:</strong> A property named exactly <code>"color"</code> triggers a grid of preset swatches (White, Ice Blue, Rose Pink, Green, Red, Gray, Charcoal) along with a text box for custom Hex/CSS values.</li>
+                            <li><strong>Icon Picker:</strong> A property named exactly <code>"icon"</code> or ending in <code>"_icon"</code> renders a visual grid of outline icon picker buttons (Calendar, Clock, Home, etc.) plus a text box for custom Lucide icon keywords.</li>
+                            <li><strong>Dropdown Selection:</strong> Any property defining an <code>"enum"</code> array of options automatically renders as a selection dropdown (<code>&lt;select&gt;</code>) instead of a text entry box.</li>
+                            <li><strong>Default Inputs:</strong> All other schema properties of type <code>"string"</code>, <code>"number"</code>, or <code>"integer"</code> default to standard text input fields.</li>
                         </ul>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
                             <div class="form-group" style="margin-bottom:0;border-left:2px solid #52525b;padding-left:12px;">
                                 <div class="form-label-desc" style="margin-bottom:10px;">
-                                    <label style="font-weight:600;font-size:0.95rem;color:white;">Custom Feeds</label>
-                                    <p class="field-description" style="font-size:0.75rem;color:#a1a1aa;margin:2px 0 0 0;">Your own RSS/Atom feed URLs.</p>
+                                    <label style="font-weight:600;font-size:0.95rem;color:white;">Tracked Entities</label>
+                                    <p class="field-description" style="font-size:0.75rem;color:#a1a1aa;margin:2px 0 0 0;">A list of devices to display with specific styling.</p>
                                 </div>
                                 <div style="background:#0a0a0a;border:1px solid #27272a;border-radius:6px;padding:10px;margin-bottom:8px;font-size:0.8rem;color:#a1a1aa;">
-                                    Feed #1 &nbsp;·&nbsp; <span style="color:#71717a;">https://feeds.example.com/rss</span>
+                                    #1: Entity &nbsp;·&nbsp; <span style="color:#71717a;">sensor.living_room_temp</span>
                                 </div>
-                                <button type="button" class="btn secondary btn-sm" style="font-size:0.75rem;">+ Add Feed</button>
+                                <button type="button" class="btn secondary btn-sm" style="font-size:0.75rem;">+ Add Entity</button>
                             </div>
                         </div>
                         <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
                             <button class="copy-btn" onclick="copyCode(this)">Copy</button>
-                            <pre><code>"custom_feeds": {
+                            <pre><code>"entities": {
   "type": "array",
-  "title": "Custom Feeds",
-  "description": "Your own RSS/Atom feed URLs.",
+  "title": "Tracked Entities",
+  "description": "Configure a list of devices to display.",
   "items": {
     "type": "object",
-    "title": "Feed",
+    "title": "Entity",
     "properties": {
-      "url": {
+      "entity_id": {
         "type": "string",
-        "title": "Feed URL"
+        "title": "Entity ID",
+        "description": "The full Home Assistant entity ID."
+      },
+      "layout": {
+        "type": "string",
+        "title": "Layout Style",
+        "default": "compact",
+        "enum": ["detailed", "compact"]
+      },
+      "custom_icon": {
+        "type": "string",
+        "title": "Custom Icon"
+      },
+      "color": {
+        "type": "string",
+        "title": "Indicator Color",
+        "default": "#ffffff"
       }
-    }
+    },
+    "required": ["entity_id"]
   },
   "default": []
 }</code></pre>
