@@ -2,6 +2,10 @@
 
 This file provides AI coding agents with everything they need to work effectively on the MirrorDash codebase. See `.agents/rules/` for detailed rule files.
 
+
+> [!IMPORTANT]
+> **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and aesthetic/contrast guidelines is critical. See `DESIGN.md` and `mirrordash_core/static/style.css` for details.
+
 ## Overview
 
 MirrorDash is a modular, ambient information display system designed for Raspberry Pi running in Kiosk mode. The backend is a FastAPI/Python server. The frontend is pure HTML, CSS, and JavaScript served to Cog (WebKit) in full-screen kiosk mode.
