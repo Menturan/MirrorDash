@@ -88,7 +88,8 @@ def validate_config(config: dict) -> None:
 
             # Perform schema-based property type and enum validation with normalized matching
             schema = None
-            norm_name = name.replace('-', '_')
+            module_type = cfg.get("module", name)
+            norm_name = module_type.replace('-', '_')
             for s_name, s_val in schemas.items():
                 if s_name.replace('-', '_') == norm_name:
                     schema = s_val
@@ -329,7 +330,8 @@ async def add_array_item_route(
     name_prefix: str,
     array_key: str,
     index: int,
-    item_title: str
+    item_title: str,
+    module_name: str = None
 ):
     sub_properties = {}
     if name_prefix == "globals":
@@ -338,7 +340,12 @@ async def add_array_item_route(
     elif name_prefix.startswith("modules["):
         match = re.match(r"^modules\[([^\]]+)\]", name_prefix)
         if match:
-            module_name = match.group(1)
+            instance_id = match.group(1)
+            if not module_name:
+                from mirrordash_core.config import load_config
+                config = load_config()
+                inst_cfg = config.get("modules", {}).get(instance_id, {})
+                module_name = inst_cfg.get("module", instance_id)
             import importlib.metadata
             eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
             ep = eps_dict.get(module_name) or eps_dict.get(module_name.replace("-", "_"))

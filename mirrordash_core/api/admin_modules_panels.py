@@ -87,7 +87,8 @@ async def get_discover_modules(request: Request):
 
 
 @router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
-async def get_module_config_form(module_name: str):
+@router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
+async def get_module_config_form(module_name: str, instance_id: str = None):
     eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
     ep = eps_dict.get(module_name)
@@ -179,12 +180,29 @@ async def get_module_config_form(module_name: str):
 
     config = load_config()
     modules_config = config.get("modules", {})
-    cfg_key, module_cfg = find_module_config(modules_config, module_name)
+
+    if not instance_id:
+        has_existing = False
+        for k, cfg in modules_config.items():
+            if isinstance(cfg, dict) and cfg.get("module") == module_name:
+                has_existing = True
+                break
+        if not has_existing and module_name not in modules_config:
+            instance_id = module_name
+        else:
+            counter = 2
+            while True:
+                instance_id = f"{module_name}-{counter}"
+                if instance_id not in modules_config:
+                    break
+                counter += 1
+
+    module_cfg = modules_config.get(instance_id)
     if module_cfg is None:
         module_cfg = {}
 
     from mirrordash_core.api.form_generator import render_schema_form
-    name_prefix = f"modules[{cfg_key or module_name.replace('_', '-')}]"
+    name_prefix = f"modules[{instance_id}]"
 
     # Build standard settings schema blocks:
     # 1. Position field is kept outside the accordion.
@@ -200,11 +218,11 @@ async def get_module_config_form(module_name: str):
         }
     }
 
-    position_form_html = render_schema_form(position_schema, module_cfg, name_prefix)
-    accordion_form_html = render_schema_form(accordion_schema, module_cfg, name_prefix)
+    position_form_html = render_schema_form(position_schema, module_cfg, name_prefix, module_name)
+    accordion_form_html = render_schema_form(accordion_schema, module_cfg, name_prefix, module_name)
 
     # Render module-specific settings section (excluding standard fields)
-    module_specific_form_html = render_schema_form(schema, module_cfg, name_prefix)
+    module_specific_form_html = render_schema_form(schema, module_cfg, name_prefix, module_name)
 
     has_module_fields = bool(schema.get("properties"))
     module_section_html = ""
@@ -219,8 +237,8 @@ async def get_module_config_form(module_name: str):
             </div>
         """
 
-    save_url = f"/admin/panels/modules/config/{module_name}/save"
-    remove_url = f"/admin/panels/modules/config/{module_name}/remove"
+    save_url = f"/admin/panels/modules/config/{module_name}/save?instance_id={instance_id}"
+    remove_url = f"/admin/panels/modules/config/{module_name}/remove?instance_id={instance_id}"
 
     return HTMLResponse(content=f"""
         <style>
@@ -298,7 +316,7 @@ async def get_module_config_form(module_name: str):
                 <button type="button" class="btn danger btn-sm"
                         hx-post="{remove_url}"
                         hx-target="#global-status"
-                        hx-confirm="Are you sure you want to deactivate and remove this module from the mirror screen?">
+                        hx-confirm="Are you sure you want to deactivate and remove this module instance from the mirror screen?">
                     <i class="fas fa-times"></i> Remove from Mirror
                 </button>
                 <button type="submit" class="btn primary btn-sm">
@@ -311,7 +329,7 @@ async def get_module_config_form(module_name: str):
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
-async def save_module_config_route(module_name: str, request: Request):
+async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
     form_data = await request.form()
     flat_data = {}
     for k, v in form_data.multi_items():
@@ -330,8 +348,8 @@ async def save_module_config_route(module_name: str, request: Request):
     if not modules_dict:
         raise HTTPException(status_code=400, detail="Invalid form data structure")
 
-    cfg_key = list(modules_dict.keys())[0]
-    module_cfg = modules_dict[cfg_key]
+    cfg_key = instance_id if instance_id else list(modules_dict.keys())[0]
+    module_cfg = modules_dict.get(cfg_key, {})
 
     eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
     ep = eps_dict.get(module_name)
@@ -348,6 +366,7 @@ async def save_module_config_route(module_name: str, request: Request):
 
     from mirrordash_core.api.form_generator import cast_standard_fields
     module_cfg = cast_standard_fields(module_cfg)
+    module_cfg["module"] = module_name
 
     config = load_config()
     if "modules" not in config:
@@ -380,10 +399,12 @@ async def save_module_config_route(module_name: str, request: Request):
 
 
 @router.post("/panels/modules/config/{module_name}/remove", dependencies=[Depends(require_api_key)])
-async def remove_module_config_route(module_name: str):
+async def remove_module_config_route(module_name: str, instance_id: str = None):
     config = load_config()
     modules_config = config.get("modules", {})
-    cfg_key, _ = find_module_config(modules_config, module_name)
+    cfg_key = instance_id
+    if not cfg_key:
+        cfg_key, _ = find_module_config(modules_config, module_name)
 
     if cfg_key in modules_config:
         del modules_config[cfg_key]

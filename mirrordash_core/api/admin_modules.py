@@ -297,13 +297,16 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
         modules_config = config.get("modules", {})
         norm_pkg = package_name.replace('-', '_')
         keys_to_delete = []
-        for key in list(modules_config.keys()):
-            if key == package_name or key.replace('-', '_') == norm_pkg:
+        for key, cfg in list(modules_config.items()):
+            if not isinstance(cfg, dict):
+                continue
+            mod_type = cfg.get("module", key)
+            if mod_type == package_name or mod_type.replace('-', '_') == norm_pkg:
                 keys_to_delete.append(key)
 
         for key in keys_to_delete:
             del modules_config[key]
-            logger.info(f"Removing configuration for module '{key}' on uninstall")
+            logger.info(f"Removing configuration for module instance '{key}' on uninstall")
 
         if keys_to_delete:
             save_config(config)
@@ -420,17 +423,28 @@ async def list_modules() -> dict:
                 "description": "Where to display this module on the mirror screen."
             }
 
-        cfg_key, module_cfg = find_module_config(modules_config, name)
-        if module_cfg is None:
-            module_cfg = {}
+        instances = []
+        for inst_id, inst_cfg in modules_config.items():
+            if not isinstance(inst_cfg, dict):
+                continue
+            mod_type = inst_cfg.get("module", inst_id)
+            if mod_type == name or mod_type.replace('-', '_') == name.replace('-', '_'):
+                instances.append({
+                    "id": inst_id,
+                    "enabled": inst_cfg.get("enabled", True),
+                    "position": inst_cfg.get("position", "middle_center"),
+                    "title": inst_cfg.get("title", inst_id.replace("mirrordash_", "").replace("_", " ").title())
+                })
+
         result[name] = {
             "installed": True,
-            "configured": cfg_key is not None,
-            "enabled": module_cfg.get("enabled", True),
-            "position": module_cfg.get("position", None),
+            "configured": len(instances) > 0,
+            "enabled": instances[0]["enabled"] if instances else False,
+            "position": instances[0]["position"] if instances else None,
             "package_name": ep.dist.name if ep.dist else name,
             "version": ep.dist.version if ep.dist else "0.0.0",
-            "schema": schema
+            "schema": schema,
+            "instances": instances
         }
     return {"modules": result}
 

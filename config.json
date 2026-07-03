@@ -18,7 +18,8 @@
       "enabled": true,
       "format": "24h",
       "show_seconds": false,
-      "show_header": false
+      "show_header": false,
+      "module": "mirrordash-clock"
     }
   },
   "system": {

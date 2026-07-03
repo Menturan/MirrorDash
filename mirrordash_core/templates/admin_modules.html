@@ -71,11 +71,7 @@
                                 <span class="module-identifier" style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">{{ name }} <span style="margin-left:8px;">v{{ meta.version }}</span></span>
                                 <div style="display:flex; align-items:center; margin-top:6px; flex-wrap:wrap; gap:4px;">
                                     {% if is_configured %}
-                                        {% if is_enabled %}
-                                            <span class="status-badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2);">Active on Mirror</span>
-                                        {% else %}
-                                            <span class="status-badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2);">Disabled</span>
-                                        {% endif %}
+                                        <span class="status-badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2);">{{ meta.instances|length }} configured</span>
                                     {% else %}
                                         <span class="status-badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1);">Inactive</span>
                                     {% endif %}
@@ -84,13 +80,23 @@
                             </div>
                             <div style="display: flex; gap: 8px; align-items: center;">
                                 <div id="update-actions-{{ name }}" style="display: flex; gap: 8px; align-items: center;"></div>
-                                <button class="{% if is_configured %}btn secondary btn-sm{% else %}btn primary btn-sm{% endif %}"
-                                        hx-get="/admin/panels/modules/config/{{ name }}"
-                                        hx-target="#config-fields-{{ name }}"
-                                        onclick="toggleConfigureModule('{{ name }}')"
-                                        id="config-btn-{{ name }}">
-                                    {% if is_configured %}<i class="fas fa-cog"></i> Configure{% else %}<i class="fas fa-plus"></i> Add to Mirror{% endif %}
-                                </button>
+                                {% if is_configured %}
+                                    <button class="btn secondary btn-sm"
+                                            hx-get="/admin/panels/modules/config/{{ name }}"
+                                            hx-target="#config-fields-{{ name }}"
+                                            onclick="openConfigureModule('{{ name }}')"
+                                            id="config-btn-{{ name }}">
+                                        <i class="fas fa-plus"></i> Add Instance
+                                    </button>
+                                {% else %}
+                                    <button class="btn primary btn-sm"
+                                            hx-get="/admin/panels/modules/config/{{ name }}"
+                                            hx-target="#config-fields-{{ name }}"
+                                            onclick="openConfigureModule('{{ name }}')"
+                                            id="config-btn-{{ name }}">
+                                        <i class="fas fa-plus"></i> Add to Mirror
+                                    </button>
+                                {% endif %}
                                 <button class="btn danger btn-sm"
                                         hx-post="/admin/panels/modules/uninstall"
                                         hx-vals='{"package_name": "{{ meta.package_name }}"}'
@@ -102,6 +108,34 @@
                         </div>
                         <div class="module-card-body" style="padding-top: 10px;">
                             <p style="margin: 0; font-size: 0.88rem; color: #a1a1aa;">{{ meta.schema.description or 'No description available for this module.' }}</p>
+                            
+                            {% if meta.instances %}
+                            <div class="module-instances-list" style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 8px;">
+                                <h4 style="margin: 0 0 4px 0; font-size: 0.8rem; color: #71717a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Configured Instances</h4>
+                                {% for inst in meta.instances %}
+                                <div class="instance-row" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.01); padding: 10px 14px; border-radius: 6px; border: 1px solid #27272a;">
+                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                                        <span style="font-size: 0.95rem; font-weight: 500; color: white;">{{ inst.title }}</span>
+                                        <span style="font-family: monospace; font-size: 0.75rem; color: #71717a;">({{ inst.id }})</span>
+                                        <span class="status-badge" style="background: rgba(255, 255, 255, 0.03); color: #a1a1aa; border: 1px solid rgba(255,255,255,0.08); font-size: 0.72rem; padding: 2px 6px;">
+                                            {{ inst.position.replace('_', ' ').title() }}
+                                        </span>
+                                        {% if not inst.enabled %}
+                                            <span class="status-badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); font-size: 0.72rem; padding: 2px 6px;">Disabled</span>
+                                        {% endif %}
+                                    </div>
+                                    <div style="display: flex; gap: 8px;">
+                                        <button class="btn secondary btn-sm"
+                                                hx-get="/admin/panels/modules/config/{{ name }}?instance_id={{ inst.id }}"
+                                                hx-target="#config-fields-{{ name }}"
+                                                onclick="openConfigureModule('{{ name }}')">
+                                            <i class="fas fa-cog"></i> Edit Settings
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </div>
                         
                         <!-- Expanding config drawer -->
@@ -110,7 +144,7 @@
                                 <!-- Renders single module configuration forms -->
                             </div>
                         </div>
-
+ 
                         <!-- Async update check trigger -->
                         <div hx-get="/admin/panels/modules/check-update/{{ name }}" hx-trigger="load" style="display: none;"></div>
                     </div>

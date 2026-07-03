@@ -39,7 +39,7 @@ def cast_standard_fields(module_cfg: dict) -> dict:
                 pass
     return result
 
-def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "") -> str:
+def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "") -> str:
     properties = schema.get("properties", {})
     if not properties:
         return ""
@@ -160,7 +160,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                     </div>
                     <button type="button" class="btn secondary btn-sm"
                             hx-get="/admin/panels/config/add-array-item"
-                            hx-vals='js:{{index: document.querySelectorAll("#{container_id} .array-item-card").length, name_prefix: "{name_prefix}", array_key: "{key}", item_title: "{item_title}"}}'
+                            hx-vals='js:{{index: document.querySelectorAll("#{container_id} .array-item-card").length, name_prefix: "{name_prefix}", array_key: "{key}", item_title: "{item_title}", module_name: "{module_name}"}}'
                             hx-target="#{container_id}"
                             hx-swap="beforeend">
                         <i class="fas fa-plus"></i> Add {item_title}
@@ -173,7 +173,8 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
             sub_form_html = render_schema_form(
                 {"properties": sub_properties},
                 sub_val,
-                name
+                name,
+                module_name
             )
             html_parts.append(f"""
                 <details class="form-accordion" style="margin-bottom: 16px; border: 1px solid #27272a; border-radius: 6px; background: rgba(255,255,255,0.01); overflow: hidden;">

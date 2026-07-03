@@ -37,8 +37,8 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Allows third-party modules to be developed, packaged, and installed completely independently as standard Python wheels or editable packages. The core platform discovers them implicitly on startup.
 
 ## 4. Config-Driven Lifespan & Hot Reloading
-* **Decision**: System configurations stored in `config.json` dictate module coordinates, custom properties, and enabled states. Changes to the config trigger a soft reload: stopping, cancelling, and garbage-collecting running loops, and then spinning up newly configured instances.
-* **Rationale**: Users can customize their mirror layouts and parameters dynamically without restarting the Uvicorn web server or causing full browser disconnects.
+* **Decision**: System configurations stored in `config.json` dictate module coordinates, custom properties, and enabled states. The config has been expanded to support multiple instances of the same module type. Each instance is indexed by a unique `instance_id` and contains a `"module"` property to identify the module type. Changes to the config trigger a soft reload: stopping, cancelling, and garbage-collecting running loops, and then spinning up newly configured instances.
+* **Rationale**: Users can run multiple instances of modules (e.g. clocks in different timezones or positions) and customize their mirror layouts and parameters dynamically without restarting the Uvicorn web server or causing full browser disconnects.
 
 ## 5. OverlayFS and Hardware Remounting Integration
 * **Decision**: Admin/system modification commands (such as module installations or configuration updates) execute remounting scripts (`mount -o remount,rw /`) before performing operations, and switch back to read-only (`remount,ro`) immediately after completion.
@@ -73,8 +73,8 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Allows the core platform to be installed and run cleanly as a standard PyPI package. User configurations and custom module directories are preserved across upgrades, while still allowing developers to run from a local cloned git workspace via fallbacks.
 
 ## 13. Primary Persistent Storage Path (Directory Contract)
-* **Decision**: Adjusted the primary persistent configuration storage path to `~/.mirrordash/data/config.json` and module persistent data to `~/.mirrordash/data/<module-name>/`. High-frequency ephemeral cache files are placed in `~/.mirrordash/cache/<module-name>/`.
-* **Rationale**: Aligns the platform with the locked read-only system blueprint (OverlayFS). Under read-only systems, `~/.mirrordash/cache/` is mapped directly to a RAM-disk tmpfs buffer to eliminate physical SD card wear and ensure crash immunity. `~/.mirrordash/data/` acts as the persistent sector.
+* **Decision**: Adjusted the primary persistent configuration storage path to `~/.mirrordash/data/config.json` and module persistent data to `~/.mirrordash/data/<instance-id>/`. High-frequency ephemeral cache files are placed in `~/.mirrordash/cache/<instance-id>/`.
+* **Rationale**: Aligns the platform with the locked read-only system blueprint (OverlayFS). Under read-only systems, `~/.mirrordash/cache/` is mapped directly to a RAM-disk tmpfs buffer to eliminate physical SD card wear and ensure crash immunity. `~/.mirrordash/data/` acts as the persistent sector. Isolating directory paths per instance ID prevents separate instances of the same module type from clobbering each other's data.
 
 ## 14. WiFi Fallback / Captive Portal State Machine
 * **Decision**: Implemented an automated fallback WiFi captive portal setup state machine. If network connectivity is not verified within 30 seconds of system boot, NetworkManager shifts `wlan0` to an autonomous Access Point (AP) setup hotspot. The FastAPI backend detects requests to `10.42.0.1` (or `?captive=true`) and redirects the user to `/wifi-setup`. Submitting credentials remounts the filesystem read-write, saves the new NetworkManager profiles, remounts read-only, and reboots the OS back into client mode.

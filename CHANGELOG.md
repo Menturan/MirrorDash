@@ -20,6 +20,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move clock module out of MirrorDash core into the standalone `mirrordash-modules` folder.
 
 ### Core App
+- Support running multiple instances of the same module on a single mirror screen (e.g. multiple clocks/calendars).
+- Implement config file format migration to add a `"module"` type specifier for each module instance configuration block.
+- Isolate and separate persistent data and cache directory storage paths per module instance.
 - Enforce GitHub Releases requirement for community module installations, scans, and updates, blocking branch/commit installations.
 - Load community modules list asynchronously via HTMX to prevent UI freezing during tab switching.
 - Add `show_header` configuration option to all modules (Calendar, Home Assistant, News) to control title visibility.

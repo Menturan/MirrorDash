@@ -213,7 +213,8 @@ async def get_active_modules() -> dict:
         config = getattr(instance, "config", {})
         position = config.get("position", "middle_center")
 
-        default_title = name.replace("mirrordash_", "").replace("_", " ").title()
+        module_type = config.get("module", name)
+        default_title = module_type.replace("mirrordash_", "").replace("_", " ").title()
         if hasattr(instance, "translate"):
             title = instance.translate("title", default_title)
         elif hasattr(instance, "translations"):

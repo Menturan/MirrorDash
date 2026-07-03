@@ -103,6 +103,7 @@ The mirror display is split into a **3x3 Grid** with nine regions:
 +---------------+-----------------+---------------+
 ```
 *   **Default Stacking**: If you assign multiple modules to the same position (e.g., both Clock and Name Day to `top_right`), they will stack vertically.
+*   **Multiple Instances**: You can add and run multiple instances of a module on the mirror. For example, you can add two separate clock modules with different positions, different timezone offsets, or different formatting. Each instance can be configured independently and has isolated data directories.
 *   **Center Void**: By default, the `middle_center` region is kept empty to preserve the physical reflective surface of the mirror.
 
 ---

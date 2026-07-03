@@ -64,9 +64,22 @@ def get_default_globals() -> dict:
         "safe_margin_right": "60px"
     }
 
+def migrate_config(data: dict) -> bool:
+    """Migrates old module configurations to the new format containing a 'module' property."""
+    changed = False
+    if "modules" not in data or not isinstance(data["modules"], dict):
+        return False
+    for instance_id, module_cfg in list(data["modules"].items()):
+        if isinstance(module_cfg, dict):
+            if "module" not in module_cfg:
+                module_cfg["module"] = instance_id
+                changed = True
+    return changed
+
 def load_config() -> dict:
     """Load config from memory cache, or disk if cache is cold. Returns a deep copy."""
     global _config_cache
+    need_save = False
     with _config_lock:
         if _config_cache is not None:
             return copy.deepcopy(_config_cache)
@@ -82,22 +95,34 @@ def load_config() -> dict:
                         data["modules"] = {}
                     if "globals" not in data:
                         data["globals"] = get_default_globals()
+                    if migrate_config(data):
+                        need_save = True
                     _config_cache = data
-                    return copy.deepcopy(_config_cache)
             except json.JSONDecodeError as e:
                 logger.error(f"{config_path.name} is malformed: {e}. Using empty config.")
 
-        _config_cache = {
-            "globals": get_default_globals(),
-            "modules": {
-                "mirrordash-clock": {
-                    "enabled": True,
-                    "position": "top_left",
-                    "show_seconds": True,
-                    "show_header": False
+        if _config_cache is None:
+            _config_cache = {
+                "globals": get_default_globals(),
+                "modules": {
+                    "mirrordash-clock": {
+                        "module": "mirrordash-clock",
+                        "enabled": True,
+                        "position": "top_left",
+                        "show_seconds": True,
+                        "show_header": False
+                    }
                 }
             }
-        }
+            need_save = True
+
+    if need_save:
+        try:
+            save_config(_config_cache)
+        except Exception as e:
+            logger.error(f"Failed to save migrated configuration: {e}")
+
+    with _config_lock:
         return copy.deepcopy(_config_cache)
 
 def save_config(config: dict) -> None:
@@ -134,17 +159,20 @@ def invalidate_config_cache() -> None:
         _config_cache = None
 
 def find_module_config(modules_config: dict, module_name: str) -> tuple[str | None, dict | None]:
-    """Finds the configuration key and dictionary for a module name, allowing underscore/hyphen mismatches."""
+    """Finds the configuration key and dictionary for a module name, checking 'module' key first."""
     if not isinstance(modules_config, dict):
         return None, None
-    if module_name in modules_config:
-        return module_name, modules_config[module_name]
-
-    # Try normalized lookup (converting hyphens to underscores)
+    
     norm_target = module_name.replace('-', '_')
-    for key in modules_config:
-        if key.replace('-', '_') == norm_target:
-            return key, modules_config[key]
+    for key, cfg in modules_config.items():
+        if not isinstance(cfg, dict):
+            continue
+        mod_type = cfg.get("module")
+        if mod_type and (mod_type == module_name or mod_type.replace('-', '_') == norm_target):
+            return key, cfg
+        # Fallback in case migration hasn't happened yet in this dict instance
+        elif not mod_type and (key == module_name or key.replace('-', '_') == norm_target):
+            return key, cfg
 
     return None, None
 
@@ -157,4 +185,5 @@ def get_core_version() -> str:
         except importlib.metadata.PackageNotFoundError:
             continue
     return "unknown"
+
 

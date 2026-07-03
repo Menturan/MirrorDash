@@ -152,39 +152,55 @@ class ModuleLoader:
         # Discover modules via entry points
         eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
 
+        # Helper to find entry point by name, allowing normalization
+        def find_entry_point(name: str):
+            norm_name = name.replace('-', '_')
+            for ep in eps:
+                if ep.name == name or ep.name.replace('-', '_') == norm_name:
+                    return ep
+            return None
+
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
 
-        for ep in eps:
-            module_name = ep.name
-            config_key, module_cfg = find_module_config(modules_config, module_name)
-            if config_key is None:
+        for instance_id, module_cfg in modules_config.items():
+            if not isinstance(module_cfg, dict):
+                continue
+
+            module_name = module_cfg.get("module")
+            if not module_name:
+                # If no module name is set, fall back to instance_id (e.g. legacy/direct config)
+                module_name = instance_id
+
+            ep = find_entry_point(module_name)
+            if ep is None:
                 logger.warning(
-                    f"Module '{module_name}' is installed but not in config.json — skipping. "
-                    "Add it to config.json to enable it."
+                    f"Configuration '{instance_id}' references module '{module_name}', which is not installed — skipping."
                 )
                 continue
+
             if not module_cfg.get("enabled", True):
-                logger.info(f"Module '{module_name}' is disabled in config — skipping.")
+                logger.info(f"Instance '{instance_id}' is disabled in config — skipping.")
                 continue
+
             try:
-                logger.info(f"Loading module: {module_name}")
+                logger.info(f"Loading module: {module_name} (instance: {instance_id})")
                 plugin_class = ep.load()
 
                 # Pre-create and inject writeable data and cache directory paths
                 module_cfg_copy = module_cfg.copy()
                 base_dir = get_base_dir()
-                data_dir = os.path.join(base_dir, "data", module_name)
-                cache_dir = os.path.join(base_dir, "cache", module_name)
+                data_dir = os.path.join(base_dir, "data", instance_id)
+                cache_dir = os.path.join(base_dir, "cache", instance_id)
                 try:
                     os.makedirs(data_dir, exist_ok=True)
                     module_cfg_copy["data_dir"] = data_dir
                 except Exception as e:
-                    logger.warning(f"Could not create writeable data directory '{data_dir}' for '{module_name}': {e}")
+                    logger.warning(f"Could not create writeable data directory '{data_dir}' for '{instance_id}': {e}")
                 try:
                     os.makedirs(cache_dir, exist_ok=True)
                     module_cfg_copy["cache_dir"] = cache_dir
                 except Exception as e:
-                    logger.warning(f"Could not create writeable cache directory '{cache_dir}' for '{module_name}': {e}")
+                    logger.warning(f"Could not create writeable cache directory '{cache_dir}' for '{instance_id}': {e}")
 
                 # Inject event bus for inter-module communication
                 module_cfg_copy["event_bus"] = event_bus
@@ -199,22 +215,22 @@ class ModuleLoader:
                 module_cfg_copy["translations"] = translations
 
                 plugin_instance = plugin_class(module_cfg_copy)
-                self.instances[module_name] = plugin_instance
+                self.instances[instance_id] = plugin_instance
 
-                _inject_module_helpers(plugin_instance, package_name, translations, module_name)
+                _inject_module_helpers(plugin_instance, package_name, translations, instance_id)
 
                 if hasattr(plugin_instance, "run_loop"):
-                    broadcast_fn = self._make_broadcast_func(module_name)
-                    self._start_module_task(module_name, plugin_instance, broadcast_fn)
+                    broadcast_fn = self._make_broadcast_func(instance_id, module_name)
+                    self._start_module_task(instance_id, plugin_instance, broadcast_fn)
             except Exception as e:
-                logger.error(f"Failed to load module {module_name}: {e}", exc_info=True)
+                logger.error(f"Failed to load module {module_name} (instance: {instance_id}): {e}", exc_info=True)
 
-    def _make_broadcast_func(self, name: str):
+    def _make_broadcast_func(self, instance_id: str, module_name: str):
         """Return a broadcast function that reads position from the cached config."""
         async def broadcast_func(module_html_name: str, html: str) -> None:
             current_config = load_config()  # Returns from cache — no disk I/O
             modules_cfg = current_config.get("modules", {})
-            _, module_cfg = find_module_config(modules_cfg, name)
+            module_cfg = modules_cfg.get(instance_id)
             pos = "middle_center"
             carousel_group = None
             carousel_interval = 15
@@ -233,7 +249,7 @@ class ModuleLoader:
             await manager.broadcast({
                 "position": pos,
                 "html": html,
-                "module": name,
+                "module": instance_id,
                 "carousel_group": carousel_group,
                 "carousel_interval": carousel_interval,
                 "max_width": max_width,
@@ -243,7 +259,7 @@ class ModuleLoader:
             })
         return broadcast_func
 
-    def _start_module_task(self, module_name: str, plugin_instance, broadcast_fn) -> None:
+    def _start_module_task(self, instance_id: str, plugin_instance, broadcast_fn) -> None:
         """Create and register an asyncio task for a module, with auto-restart on crash."""
         import inspect
         loop = asyncio.get_running_loop()
@@ -253,7 +269,7 @@ class ModuleLoader:
             backoff = MODULE_RESTART_DELAY
             while True:
                 try:
-                    logger.info(f"Starting {'async' if is_async else 'sync'} run_loop for {module_name}")
+                    logger.info(f"Starting {'async' if is_async else 'sync'} run_loop for {instance_id}")
                     if is_async:
                         await plugin_instance.run_loop(broadcast_fn)
                     else:
@@ -266,19 +282,19 @@ class ModuleLoader:
                     # Reset backoff on successful execution
                     backoff = MODULE_RESTART_DELAY
                 except asyncio.CancelledError:
-                    logger.info(f"Module '{module_name}' task cancelled.")
+                    logger.info(f"Module '{instance_id}' task cancelled.")
                     raise
                 except Exception as e:
                     logger.error(
-                        f"Module '{module_name}' run_loop crashed: {e}. "
+                        f"Module '{instance_id}' run_loop crashed: {e}. "
                         f"Restarting in {backoff}s...",
                         exc_info=True
                     )
                     await asyncio.sleep(backoff)
                     backoff = min(backoff * 2, 300)  # Double delay, capped at 5 minutes
 
-        task = asyncio.create_task(run_with_recovery(), name=f"module-{module_name}")
-        self.tasks[module_name] = task
+        task = asyncio.create_task(run_with_recovery(), name=f"module-{instance_id}")
+        self.tasks[instance_id] = task
 
     async def stop_modules(self) -> None:
         logger.info("Stopping all module tasks...")

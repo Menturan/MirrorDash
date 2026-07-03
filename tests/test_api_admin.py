@@ -1067,6 +1067,81 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
     assert "Test community widget description" in r2.text
 
 
+def test_config_migration():
+    from mirrordash_core.config import migrate_config
+    cfg = {
+        "modules": {
+            "mirrordash-clock": {
+                "enabled": True,
+                "position": "top_left"
+            }
+        }
+    }
+    assert migrate_config(cfg) is True
+    assert cfg["modules"]["mirrordash-clock"]["module"] == "mirrordash-clock"
+    
+    # Running it again should not make changes
+    assert migrate_config(cfg) is False
+
+
+@patch("mirrordash_core.api.admin_modules_panels.load_config")
+@patch("mirrordash_core.api.admin_modules_panels.save_config")
+@patch("mirrordash_core.api.admin_modules_panels.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+def test_save_module_instance_config(mock_reload, mock_ro, mock_rw, mock_save, mock_load, client):
+    headers = {"X-API-Key": "secret"}
+    mock_load.return_value = {
+        "globals": {},
+        "modules": {}
+    }
+    
+    # Form data prefixing the instance key modules[clock-one]
+    payload = {
+        "modules[clock-one][enabled]": "true",
+        "modules[clock-one][position]": "top_right",
+        "modules[clock-one][show_seconds]": "true"
+    }
+    
+    # Post with instance_id query parameter
+    r = client.post("/admin/panels/modules/config/mirrordash-clock/save?instance_id=clock-one", data=payload, headers=headers)
+    assert r.status_code == 200
+    
+    mock_save.assert_called_once()
+    saved = mock_save.call_args[0][0]
+    assert "clock-one" in saved["modules"]
+    assert saved["modules"]["clock-one"]["module"] == "mirrordash-clock"
+    assert saved["modules"]["clock-one"]["position"] == "top_right"
+    assert saved["modules"]["clock-one"]["enabled"] is True
+    assert saved["modules"]["clock-one"]["show_seconds"] is True
+
+
+@patch("mirrordash_core.api.admin_modules_panels.load_config")
+@patch("mirrordash_core.api.admin_modules_panels.save_config")
+@patch("mirrordash_core.api.admin_modules_panels.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+def test_remove_module_instance_config(mock_reload, mock_ro, mock_rw, mock_save, mock_load, client):
+    headers = {"X-API-Key": "secret"}
+    mock_load.return_value = {
+        "globals": {},
+        "modules": {
+            "clock-one": {"module": "mirrordash-clock", "position": "top_right"},
+            "clock-two": {"module": "mirrordash-clock", "position": "bottom_left"}
+        }
+    }
+    
+    # Post to remove clock-one
+    r = client.post("/admin/panels/modules/config/mirrordash-clock/remove?instance_id=clock-one", headers=headers)
+    assert r.status_code == 200
+    
+    mock_save.assert_called_once()
+    saved = mock_save.call_args[0][0]
+    assert "clock-one" not in saved["modules"]
+    assert "clock-two" in saved["modules"]
+
+
+
 
 
 

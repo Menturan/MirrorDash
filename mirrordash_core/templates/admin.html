@@ -656,6 +656,12 @@
             }
         };
 
+        window.openConfigureModule = function(name) {
+            const drawer = document.getElementById('config-drawer-' + name);
+            if (!drawer) return;
+            drawer.style.display = 'block';
+        };
+
         window.showRestartOverlay = function(title, message) {
             const overlay = document.getElementById('restart-overlay');
             if (overlay) {
