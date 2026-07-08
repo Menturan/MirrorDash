@@ -1,4 +1,8 @@
 {
+  "admin_auth": {
+    "hash": "a65c192e8b4400430eef4ef24e88ff036c19b393286a2f49c16cfe26c543f827",
+    "salt": "0123456789abcdef"
+  },
   "globals": {
     "language": "en",
     "timezone": "Europe/Stockholm",
@@ -6,26 +10,45 @@
     "temperature_unit": "C",
     "distance_unit": "km",
     "latitude": 59.3293,
-    "longitude": 18.0686,
-    "safe_margin_top": "60px",
-    "safe_margin_bottom": "60px",
-    "safe_margin_left": "60px",
-    "safe_margin_right": "60px"
+    "longitude": 18.0686
+  },
+  "system": {
+    "rotation": "right",
+    "resolution": "auto",
+    "brightness": 85,
+    "volume": 80,
+    "ssh": true,
+    "display_control": {
+      "mode": "manual",
+      "interval": {
+        "start": "07:00",
+        "end": "22:00"
+      },
+      "pir": {
+        "pin": 18,
+        "timeout_minutes": 5
+      },
+      "button": {
+        "pin": 23
+      }
+    }
   },
   "modules": {
     "mirrordash-clock": {
-      "position": "top_right",
       "enabled": true,
+      "position": "top_right",
       "format": "24h",
-      "show_seconds": false,
-      "show_header": false,
       "module": "mirrordash-clock"
+    },
+    "mirrordash_krisinformation": {
+      "enabled": true,
+      "position": "middle_center",
+      "interval": 300,
+      "show_header": true,
+      "county": "",
+      "max_items": 3,
+      "show_preamble": true,
+      "module": "mirrordash_krisinformation"
     }
-  },
-  "system": {
-    "rotation": "normal",
-    "resolution": "auto",
-    "brightness": 100,
-    "volume": 87
   }
 }

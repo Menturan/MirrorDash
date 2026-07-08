@@ -20,6 +20,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move clock module out of MirrorDash core into the standalone `mirrordash-modules` folder.
 
 ### Core App
+- Add asynchronous, click-through system and module update alerts to the admin dashboard overview tab.
+- Add system memory (RAM), NTP sync, connection diagnostics, uptime, and under-voltage power telemetry to the admin dashboard overview.
+- Fix admin dashboard initial load mismatch by adding a Dashboard tab to the sidebar navigation menu.
+- Re-architect the active modules interface as an interactive community-style App Store.
+- Implement slide-over modal configuration drawers with localized CSS transit rules.
+- Add active and configured tag indicators and client-side category pill-based filtering.
+- Rebuild the administration control panel using a unified, responsive glassmorphic layout.
+- Add an interactive 3x3 Screen Layout Matrix and System Analytics telemetry metrics dashboard.
+- Update layout elements, buttons, and navigation menus to support fluid mobile layout responsiveness.
 - Support running multiple instances of the same module on a single mirror screen (e.g. multiple clocks/calendars).
 - Implement config file format migration to add a `"module"` type specifier for each module instance configuration block.
 - Isolate and separate persistent data and cache directory storage paths per module instance.

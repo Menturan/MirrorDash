@@ -141,73 +141,592 @@
         .auth-btn.corrupt-btn:hover {
             background: #ffdad6;
         }
+
+        /* Complete Layout & Theme Redesign Overrides */
+        :root {
+            --bg-base: #09090b;
+            --bg-sidebar: #020203;
+            --bg-card: rgba(20, 20, 25, 0.7);
+            --bg-input: #121217;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.16);
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.25);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #475569;
+            --sidebar-width: 260px;
+        }
+
+        body {
+            background-color: var(--bg-base) !important;
+            color: var(--text-primary) !important;
+            min-height: 100vh;
+            display: flex;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 40%);
+        }
+
+        /* Disable old container constraints */
+        .admin-container {
+            display: none !important; /* Hide old markup */
+        }
+
+        /* RECOVERY BANNER */
+        .recovery-banner {
+            background: linear-gradient(90deg, #b91c1c 0%, #ef4444 100%);
+            color: white;
+            padding: 10px 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1100;
+            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+        }
+
+        .recovery-banner .btn-action {
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            padding: 4px 12px;
+            border-radius: 6px;
+            color: white;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: 700;
+            transition: background 0.3s;
+        }
+
+        .recovery-banner .btn-action:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        /* SIDEBAR LAYOUT */
+        aside {
+            width: var(--sidebar-width);
+            background-color: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            z-index: 1000;
+            padding: 24px 16px;
+        }
+
+        body.has-banner aside {
+            top: 42px; /* Pull down for recovery banner */
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 35px;
+            padding: 0 8px;
+        }
+
+        .logo-area i {
+            font-size: 1.5rem;
+            color: var(--primary);
+            filter: drop-shadow(0 0 8px var(--primary-glow));
+        }
+
+        .logo-area h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: white;
+        }
+
+        .nav-menu {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            flex-grow: 1;
+        }
+
+        .nav-item {
+            background: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 14px;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-align: left;
+            width: 100%;
+            transition: all 0.2s ease;
+            outline: none;
+        }
+
+        .nav-item:hover {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .nav-item.active {
+            color: var(--text-primary);
+            background-color: rgba(99, 102, 241, 0.12);
+            border-left: 3px solid var(--primary);
+            border-radius: 0 10px 10px 0;
+            padding-left: 11px;
+        }
+
+        .sidebar-footer {
+            border-top: 1px solid var(--border-color);
+            padding-top: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sys-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success-glow);
+        }
+
+        .sys-indicator-text {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* MAIN CONTENT AREA */
+        .content-container {
+            margin-left: var(--sidebar-width);
+            flex-grow: 1;
+            padding: 40px;
+            max-width: 1200px;
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+            margin-top: 0;
+        }
+
+        body.has-banner .content-container {
+            margin-top: 42px; /* Push down for banner */
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: none !important;
+            padding-bottom: 0 !important;
+            margin-bottom: 0 !important;
+        }
+
+        .header-title-desc h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.75rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: white;
+        }
+
+        .header-title-desc p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        /* BUTTON STYLES (Accessible, clean, high UX contrast) */
+        .btn {
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+            padding: 10px 18px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+
+        .btn:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: var(--border-hover);
+        }
+
+        .btn-primary {
+            background-color: var(--primary) !important;
+            border-color: var(--primary) !important;
+            color: white !important;
+            box-shadow: 0 4px 12px var(--primary-glow) !important;
+        }
+
+        .btn-primary:hover {
+            background-color: #4f46e5 !important;
+            box-shadow: 0 6px 16px var(--primary-glow) !important;
+        }
+
+        .btn.danger {
+            background-color: transparent !important;
+            color: var(--danger) !important;
+            border: 1px solid rgba(239, 68, 68, 0.25) !important;
+        }
+
+        .btn.danger:hover {
+            background-color: rgba(239, 68, 68, 0.08) !important;
+            border-color: var(--danger) !important;
+        }
+
+        /* SLIDE OVER / DRAWER FOR CONFIGURATION */
+        .config-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .config-sheet {
+            position: fixed;
+            top: 0;
+            right: -600px;
+            width: 550px;
+            height: 100vh;
+            background: #09090b;
+            border-left: 1px solid var(--border-color);
+            z-index: 2100;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+            transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .config-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .config-overlay.open + .config-sheet {
+            right: 0;
+        }
+
+        .sheet-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sheet-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .sheet-close:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+        }
+
+        .sheet-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+        }
+
+        /* App Profile Section */
+        .app-profile {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            padding: 16px;
+            border-radius: 12px;
+        }
+
+        .profile-icon {
+            width: 58px;
+            height: 58px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+        }
+
+        .profile-title {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+        }
+
+        .profile-desc {
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+            margin-top: 4px;
+        }
+
+        /* MOBILE RESPONSIVENESS AND ERGONOMICS */
+        @media (max-width: 900px) {
+            .config-sheet {
+                width: 100%;
+                right: -100%;
+            }
+            :root {
+                --sidebar-width: 0px;
+            }
+
+            body {
+                flex-direction: column;
+                padding-bottom: 80px; /* Space for bottom nav bar */
+            }
+
+            aside {
+                position: fixed;
+                top: auto !important;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                width: 100%;
+                height: 70px;
+                border-right: none;
+                border-top: 1px solid var(--border-color);
+                flex-direction: row;
+                justify-content: space-around;
+                align-items: center;
+                padding: 0 10px;
+                background-color: rgba(2, 2, 3, 0.95);
+                backdrop-filter: blur(15px);
+                z-index: 1050;
+            }
+
+            .logo-area, .sidebar-footer {
+                display: none; /* Hide header logo & system indicator in bottom bar */
+            }
+
+            .nav-menu {
+                flex-direction: row;
+                width: 100%;
+                justify-content: space-around;
+                gap: 0;
+                height: 100%;
+                align-items: center;
+            }
+
+            .nav-item {
+                flex-direction: column;
+                gap: 4px;
+                padding: 6px 10px;
+                border-radius: 8px;
+                font-size: 0.65rem;
+                flex: 1;
+                align-items: center;
+                text-align: center;
+                color: var(--text-secondary);
+            }
+
+            .nav-item i {
+                font-size: 1.15rem;
+            }
+
+            .nav-item.active {
+                border-left: none;
+                border-bottom: 2px solid var(--primary);
+                background-color: transparent;
+                border-radius: 0;
+                color: var(--text-primary);
+                padding-left: 10px;
+                padding-bottom: 4px;
+            }
+
+            .content-container {
+                margin-left: 0;
+                padding: 24px 16px;
+                gap: 20px;
+                margin-top: 50px;
+            }
+
+            body.has-banner .content-container {
+                margin-top: 110px; /* More space for wrapped top banner on mobile */
+            }
+
+            .recovery-banner {
+                position: fixed;
+                top: 0;
+                left: 0;
+                right: 0;
+                font-size: 0.75rem;
+                padding: 8px 12px;
+                flex-direction: column;
+                gap: 8px;
+                text-align: center;
+            }
+
+            .recovery-banner span {
+                display: block;
+            }
+
+            header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 12px;
+            }
+
+            .quick-actions {
+                width: 100%;
+            }
+
+            .quick-actions .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
     <!-- Marked.js and DOMPurify for secure markdown rendering of release notes -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.4.8/dist/purify.min.js" defer></script>
 </head>
-<body>
-    <div class="admin-container">
-        <header>
-            <h1><i class="fas fa-cog" aria-hidden="true"></i> MirrorDash Admin</h1>
-            <button id="restart-btn" class="btn danger" aria-label="Restart system" onclick="triggerRestart()">
-                <i class="fas fa-power-off" aria-hidden="true"></i> Restart
-            </button>
-        </header>
-
-        <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
-        
-        {% if boot_status == "safe_mode" or boot_status == "rollback" %}
-        <div id="system-alert-banner" class="system-alert {% if boot_status == 'safe_mode' %}system-alert--error{% else %}system-alert--warning{% endif %}" style="display: flex;">
-            <div class="system-alert-header">
-                <i class="{% if boot_status == 'safe_mode' %}fas fa-shield-alt{% else %}fas fa-history{% endif %}"></i>
-                <h3 class="system-alert-title">{% if boot_status == 'safe_mode' %}Safe Mode Active{% else %}System Rollback Triggered{% endif %}</h3>
-            </div>
-            <p class="system-alert-body">
+<body {% if boot_status == "safe_mode" or boot_status == "rollback" %}class="has-banner"{% endif %}>
+    <!-- SAFE MODE / CRASH RECOVERY ALERT BANNER (Golden Rule) -->
+    {% if boot_status == "safe_mode" or boot_status == "rollback" %}
+    <div class="recovery-banner" id="system-alert-banner">
+        <div>
+            <i class="{% if boot_status == 'safe_mode' %}fas fa-shield-alt{% else %}fas fa-history{% endif %}" style="margin-right: 8px;"></i>
+            <span>
                 {% if boot_status == 'safe_mode' %}
-                MirrorDash has booted from the read-only Golden Copy (safe backup environment) because the primary virtual environment failed to launch. Custom modules and updates are currently disabled.
+                <strong>Safe Mode Active</strong>: MirrorDash booted from Golden Copy. Custom modules are disabled.
                 {% else %}
-                MirrorDash recovered from a critical startup crash by automatically rolling back the last update. Some of your recent changes may have been reverted to restore stability.
+                <strong>System Rollback Triggered</strong>: Recovered from critical crash. Recent changes may be reverted.
                 {% endif %}
-            </p>
-            <div class="system-alert-actions">
-                <button id="rebuild-venv-btn" class="btn {% if boot_status == 'safe_mode' %}danger{% else %}secondary{% endif %}"
-                        hx-post="/admin/rebuild-venv"
-                        hx-confirm="Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes."
-                        hx-swap="none"
-                        onclick="this.disabled = true; this.innerHTML = '<i class=&quot;fas fa-spinner fa-spin&quot;></i> Rebuilding...';">
-                    <i class="fas fa-tools"></i> Rebuild Active Environment
-                </button>
-            </div>
+            </span>
         </div>
-        {% endif %}
+        <button id="rebuild-venv-btn" class="btn-action"
+                hx-post="/admin/rebuild-venv"
+                hx-confirm="Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes."
+                hx-swap="none"
+                onclick="this.disabled = true; this.innerHTML = '<i class=&quot;fas fa-spinner fa-spin&quot;></i> Rebuilding...';">
+            <i class="fas fa-tools"></i> Rebuild Active Environment
+        </button>
+    </div>
+    {% endif %}
 
-        <!-- Page-Level Tabs -->
-        <nav class="page-tabs" role="tablist">
-            <button class="page-tab-btn active" id="page-tab-config" role="tab" aria-selected="true" aria-controls="tab-content"
+    <!-- SIDEBAR / BOTTOM NAVIGATION BAR -->
+    <aside>
+        <div class="logo-area">
+            <i class="fas fa-cog"></i>
+            <h2>MirrorDash Admin</h2>
+        </div>
+
+        <nav class="nav-menu" role="tablist">
+            <button class="nav-item active" id="page-tab-dashboard" role="tab" aria-selected="true" aria-controls="tab-content"
+                    hx-get="/admin/panels/dashboard" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                <i class="fas fa-chart-line"></i>
+                <span>Dashboard</span>
+            </button>
+            <button class="nav-item" id="page-tab-config" role="tab" aria-selected="false" aria-controls="tab-content"
                     hx-get="/admin/panels/config" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
-                <i class="fas fa-sliders-h"></i> Configuration
+                <i class="fas fa-sliders-h"></i>
+                <span>Settings</span>
             </button>
-            <button class="page-tab-btn" id="page-tab-modules" role="tab" aria-selected="false" aria-controls="tab-content"
+            <button class="nav-item" id="page-tab-modules" role="tab" aria-selected="false" aria-controls="tab-content"
                     hx-get="/admin/panels/modules" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
-                <i class="fas fa-puzzle-piece"></i> Modules
+                <i class="fas fa-puzzle-piece"></i>
+                <span>Modules</span>
             </button>
-            <button class="page-tab-btn" id="page-tab-logs" role="tab" aria-selected="false" aria-controls="tab-content"
+            <button class="nav-item" id="page-tab-logs" role="tab" aria-selected="false" aria-controls="tab-content"
                     hx-get="/admin/panels/logs" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
-                <i class="fas fa-file-alt"></i> Logs
+                <i class="fas fa-file-alt"></i>
+                <span>Logs</span>
             </button>
-            <button class="page-tab-btn" id="page-tab-backup" role="tab" aria-selected="false" aria-controls="tab-content"
+            <button class="nav-item" id="page-tab-backup" role="tab" aria-selected="false" aria-controls="tab-content"
                     hx-get="/admin/panels/backup" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
-                <i class="fas fa-hdd"></i> Backup & Restore
+                <i class="fas fa-hdd"></i>
+                <span>Backup</span>
             </button>
-            <button class="page-tab-btn" id="page-tab-system" role="tab" aria-selected="false" aria-controls="tab-content"
+            <button class="nav-item" id="page-tab-system" role="tab" aria-selected="false" aria-controls="tab-content"
                     hx-get="/admin/panels/system" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
-                <i class="fas fa-desktop"></i> System Settings
+                <i class="fas fa-desktop"></i>
+                <span>Hardware</span>
+            </button>
+            <button class="nav-item" id="page-tab-power" role="tab" aria-selected="false" aria-controls="tab-content"
+                    hx-get="/admin/panels/power" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                <i class="fas fa-bolt"></i>
+                <span>Power</span>
             </button>
         </nav>
 
+        <div class="sidebar-footer">
+            <div class="sys-indicator"></div>
+            <span class="sys-indicator-text">Connected</span>
+        </div>
+    </aside>
+
+    <!-- CONTENT WRAPPER -->
+    <div class="content-container">
+        <header>
+            <div class="header-title-desc">
+                <h1 id="tab-headline">Dashboard Overview</h1>
+                <p>Observe screen matrix layout and real-time environment telemetry.</p>
+            </div>
+            <div class="quick-actions">
+                <button id="restart-btn" class="btn danger" aria-label="Restart system" onclick="triggerRestart()">
+                    <i class="fas fa-power-off" aria-hidden="true"></i> Restart
+                </button>
+            </div>
+        </header>
+
+        <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
+
         <div class="page-panels" id="tab-content">
-            {{ config_panel_html | safe }}
+            {{ dashboard_panel_html | safe }}
         </div>
     </div>
 
@@ -215,6 +734,53 @@
     <div id="notes-modal" class="modal-overlay" role="dialog" aria-modal="true" style="display: none;">
         <div class="modal-content" id="notes-modal-content-container">
             <!-- Populated via HTMX -->
+        </div>
+    </div>
+
+    <!-- Reimagined Module Config Slide-over Drawer -->
+    <div class="config-overlay" id="configOverlay" onclick="window.closeConfigSheet()"></div>
+    <div class="config-sheet" id="configSheet">
+        <div class="sheet-header">
+            <h2 id="sheetTitle" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.25rem;">Configure Module</h2>
+            <button class="sheet-close" onclick="window.closeConfigSheet()"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="sheet-body">
+            <!-- App Profile Card -->
+            <div class="app-profile">
+                <div class="profile-icon" id="profileIcon" style="background: rgba(99, 102, 241, 0.08); color: var(--primary);">
+                    <i class="fas fa-puzzle-piece"></i>
+                </div>
+                <div style="flex: 1;">
+                    <h3 class="profile-title" id="profileTitle">Module Name</h3>
+                    <p class="profile-desc" id="profileDesc">Description</p>
+                </div>
+                <div>
+                    <button class="btn danger btn-sm" id="uninstall-btn-global"
+                            hx-post="/admin/panels/modules/uninstall"
+                            hx-target="#global-status"
+                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
+                        <i class="fas fa-trash-alt"></i> Uninstall
+                    </button>
+                </div>
+            </div>
+
+            <!-- Instances Switcher Section -->
+            <div class="instances-section" id="instancesSection" style="display: none; margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px;">
+                <div class="instances-header" style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <span>Active Instances</span>
+                    <button class="btn secondary btn-sm" id="add-new-instance-btn" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 6px;">
+                        <i class="fas fa-plus"></i> Add New
+                    </button>
+                </div>
+                <div id="instances-list-global" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- Dynamic instances rows populated by JavaScript -->
+                </div>
+            </div>
+
+            <!-- Configuration fields loaded via HTMX -->
+            <div id="config-fields-global">
+                <!-- Injected config form -->
+            </div>
         </div>
     </div>
 
@@ -586,12 +1152,40 @@
         }
 
         function setActiveTab(btn) {
-            document.querySelectorAll('.page-tab-btn').forEach(b => {
+            document.querySelectorAll('.nav-item').forEach(b => {
                 const active = b === btn;
                 b.classList.toggle('active', active);
                 b.setAttribute('aria-selected', active ? 'true' : 'false');
             });
             const tabName = btn.id.replace('page-tab-', '');
+            
+            const headlineEl = document.getElementById('tab-headline');
+            const descEl = headlineEl ? headlineEl.nextElementSibling : null;
+            if (headlineEl && descEl) {
+                if (tabName === 'dashboard') {
+                    headlineEl.innerText = 'Dashboard Overview';
+                    descEl.innerText = 'Observe screen matrix layout and real-time environment telemetry.';
+                } else if (tabName === 'config') {
+                    headlineEl.innerText = 'Settings';
+                    descEl.innerText = 'Manage global configuration, localized timezone properties, and core updates.';
+                } else if (tabName === 'modules') {
+                    headlineEl.innerText = 'Active Modules';
+                    descEl.innerText = 'Manage, add, and configure settings for individual module instances.';
+                } else if (tabName === 'logs') {
+                    headlineEl.innerText = 'System Logs';
+                    descEl.innerText = 'Inspect real-time log records from core servers and background loops.';
+                } else if (tabName === 'backup') {
+                    headlineEl.innerText = 'Backup & Recovery';
+                    descEl.innerText = 'Export config files or restore a previously saved MirrorDash state.';
+                } else if (tabName === 'system') {
+                    headlineEl.innerText = 'Hardware';
+                    descEl.innerText = 'Manage hardware outputs, screen brightness, volume, and display orientation.';
+                } else if (tabName === 'power') {
+                    headlineEl.innerText = 'Power';
+                    descEl.innerText = 'Manage how your display turns on and off to save energy and extend screen life.';
+                }
+            }
+            
             window.location.hash = tabName;
         }
 
@@ -604,7 +1198,7 @@
                     tabBtn.click();
                 }
             } else {
-                const tabBtn = document.getElementById('page-tab-config');
+                const tabBtn = document.getElementById('page-tab-dashboard');
                 if (tabBtn && !tabBtn.classList.contains('active')) {
                     tabBtn.click();
                 }
@@ -644,23 +1238,171 @@
             });
         }
 
-        window.toggleConfigureModule = function(name) {
-            const drawer = document.getElementById('config-drawer-' + name);
-            if (!drawer) return;
-            if (drawer.style.display === 'none') {
-                drawer.style.display = 'block';
-            } else {
-                drawer.style.display = 'none';
-                const fields = document.getElementById('config-fields-' + name);
-                if (fields) fields.innerHTML = '';
+        window.openConfigSheet = function(name, title, description, iconHtml, color, textColor, packageName, activeInstanceId) {
+            document.getElementById('sheetTitle').innerText = `Configure ${title}`;
+            document.getElementById('profileTitle').innerText = title;
+            document.getElementById('profileDesc').innerText = description || 'Configure instance properties.';
+            
+            const profileIcon = document.getElementById('profileIcon');
+            if (profileIcon) {
+                profileIcon.style.background = color || 'rgba(99, 102, 241, 0.08)';
+                profileIcon.style.color = textColor || '#818cf8';
+                profileIcon.innerHTML = iconHtml || '<i class="fas fa-puzzle-piece"></i>';
             }
+            
+            const uninstallBtn = document.getElementById('uninstall-btn-global');
+            if (uninstallBtn) {
+                if (packageName) {
+                    uninstallBtn.style.display = 'inline-flex';
+                    uninstallBtn.setAttribute('hx-vals', `{"package_name": "${packageName}"}`);
+                    uninstallBtn.setAttribute('hx-confirm', `Are you sure you want to uninstall ${title}? This will remove the package and restart the mirror.`);
+                    htmx.process(uninstallBtn);
+                } else {
+                    uninstallBtn.style.display = 'none';
+                }
+            }
+
+            // Render instances list
+            const card = document.getElementById('module-card-' + name);
+            const instancesSection = document.getElementById('instancesSection');
+            const instancesList = document.getElementById('instances-list-global');
+            const addNewBtn = document.getElementById('add-new-instance-btn');
+
+            if (card && instancesSection && instancesList && addNewBtn) {
+                let instancesData = [];
+                try {
+                    instancesData = JSON.parse(card.getAttribute('data-instances') || '[]');
+                } catch (e) {
+                    console.error("Failed to parse instances JSON", e);
+                }
+                if (!instancesData) instancesData = [];
+                
+                if (Array.isArray(instancesData) && instancesData.length > 0) {
+                    instancesSection.style.display = 'block';
+                    instancesList.innerHTML = '';
+
+                    // Configure Add New button to load blank config form and highlight itself
+                    addNewBtn.onclick = function() {
+                        // De-select list items
+                        instancesList.querySelectorAll('.instance-item').forEach(el => {
+                            el.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                            el.style.background = 'rgba(255, 255, 255, 0.01)';
+                        });
+                        addNewBtn.className = 'btn primary btn-sm';
+                        htmx.ajax('GET', `/admin/panels/modules/config/${name}`, {target: '#config-fields-global', source: addNewBtn});
+                    };
+
+                    instancesData.forEach(inst => {
+                        const row = document.createElement('div');
+                        row.className = 'instance-item';
+                        row.style.display = 'flex';
+                        row.style.justifyContent = 'space-between';
+                        row.style.alignItems = 'center';
+                        row.style.padding = '10px 14px';
+                        row.style.borderRadius = '8px';
+                        row.style.cursor = 'pointer';
+                        row.style.transition = 'all 0.2s';
+                        
+                        const isActive = inst.id === activeInstanceId;
+                        if (isActive) {
+                            row.style.border = '1px solid var(--primary)';
+                            row.style.background = 'rgba(99, 102, 241, 0.06)';
+                            addNewBtn.className = 'btn secondary btn-sm';
+                        } else {
+                            row.style.border = '1px solid rgba(255, 255, 255, 0.05)';
+                            row.style.background = 'rgba(255, 255, 255, 0.01)';
+                        }
+
+                        const posVal = inst.position || 'middle_center';
+                        const positionLabel = posVal.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+                        row.innerHTML = `
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <div style="width: 6px; height: 6px; border-radius: 50%; background-color: ${inst.enabled ? 'var(--success)' : 'var(--text-muted)'}; box-shadow: ${inst.enabled ? '0 0 6px var(--success-glow)' : 'none'};"></div>
+                                <span style="font-size: 0.85rem; font-weight: 500; color: white;">${inst.title || inst.id}</span>
+                            </div>
+                            <span style="display: inline-flex; align-items: center; gap: 12px;">
+                                <span class="status-badge" style="background: rgba(255, 255, 255, 0.04); color: #a1a1aa; border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">
+                                    ${positionLabel}
+                                </span>
+                                <label class="switch" onclick="event.stopPropagation()" style="transform: scale(0.8); margin: 0; display: inline-block;">
+                                    <input type="checkbox" ${inst.enabled ? 'checked' : ''} 
+                                           hx-post="/admin/panels/modules/config/${name}/toggle?instance_id=${inst.id}"
+                                           hx-swap="none">
+                                    <span class="slider round"></span>
+                                </label>
+                                <i class="fas fa-pen-to-square" style="color: var(--text-muted); font-size: 0.7rem; opacity: 0.6; transition: opacity 0.2s;"></i>
+                            </span>
+                        `;
+
+                        row.onclick = function() {
+                            // Update active states
+                            instancesList.querySelectorAll('.instance-item').forEach(el => {
+                                el.style.borderColor = 'rgba(255, 255, 255, 0.05)';
+                                el.style.background = 'rgba(255, 255, 255, 0.01)';
+                            });
+                            row.style.border = '1px solid var(--primary)';
+                            row.style.background = 'rgba(99, 102, 241, 0.06)';
+                            addNewBtn.className = 'btn secondary btn-sm';
+                            
+                            htmx.ajax('GET', `/admin/panels/modules/config/${name}?instance_id=${inst.id}`, {target: '#config-fields-global', source: row});
+                        };
+
+                        instancesList.appendChild(row);
+                        htmx.process(row);
+                    });
+                } else {
+                    instancesSection.style.display = 'none';
+                }
+            }
+
+            document.getElementById('configOverlay').classList.add('open');
         };
 
-        window.openConfigureModule = function(name) {
-            const drawer = document.getElementById('config-drawer-' + name);
-            if (!drawer) return;
-            drawer.style.display = 'block';
+        window.closeConfigSheet = function() {
+            document.getElementById('configOverlay').classList.remove('open');
+            const fields = document.getElementById('config-fields-global');
+            if (fields) fields.innerHTML = '';
         };
+
+        // Keep backwards compatibility for toggle/open calls
+        window.toggleConfigureModule = function(name) {
+            window.openConfigureModule(name);
+        };
+
+        window.openConfigureModule = function(name, packageName, activeInstanceId) {
+            const card = document.getElementById('module-card-' + name);
+            if (!card) return;
+            
+            const titleEl = card.querySelector('h3');
+            const title = titleEl ? titleEl.innerText : name;
+            
+            const descEl = card.querySelector('p');
+            const description = descEl ? descEl.innerText : '';
+            
+            const iconContainer = card.querySelector('.module-card-icon-container');
+            let iconHtml = '<i class="fas fa-puzzle-piece"></i>';
+            if (iconContainer) {
+                iconHtml = iconContainer.innerHTML;
+            }
+
+            // Resolve initial default instance ID if none is active
+            if (activeInstanceId === undefined || activeInstanceId === null) {
+                let instancesData = [];
+                try {
+                    instancesData = JSON.parse(card.getAttribute('data-instances') || '[]');
+                } catch (e) {}
+                if (!instancesData) instancesData = [];
+                activeInstanceId = instancesData.length > 0 ? instancesData[0].id : '';
+            }
+            
+            window.openConfigSheet(name, title, description, iconHtml, null, null, packageName, activeInstanceId);
+        };
+
+        // Close on refreshModules trigger
+        document.body.addEventListener('refreshModules', function() {
+            window.closeConfigSheet();
+        });
 
         window.showRestartOverlay = function(title, message) {
             const overlay = document.getElementById('restart-overlay');

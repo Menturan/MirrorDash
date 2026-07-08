@@ -1330,3 +1330,11 @@ input:checked + .slider:before {
     margin-top: 4px;
 }
 
+/* Inline SVG custom module icons scaling */
+.module-card-icon-container svg,
+.profile-icon svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+}
+

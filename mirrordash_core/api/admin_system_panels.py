@@ -87,6 +87,61 @@ async def get_panel_system(request: Request):
     )
 
 
+@router.get("/panels/power", dependencies=[Depends(require_api_key)])
+async def get_panel_power(request: Request):
+    config = load_config()
+    globals_cfg = config.get("globals", {})
+    time_format = globals_cfg.get("time_format", "24h")
+
+    settings_data = await get_system_settings()
+    settings = settings_data.get("settings", {})
+
+    # Parse current active times
+    display_control = settings.get("display_control", {})
+    interval = display_control.get("interval", {"start": "07:00", "end": "22:00"})
+    start_time_str = interval.get("start", "07:00")
+    end_time_str = interval.get("end", "22:00")
+
+    def parse_time_to_format(time_str: str, fmt: str):
+        try:
+            h_str, m_str = time_str.split(":")
+            h, m = int(h_str), int(m_str)
+        except Exception:
+            h, m = 7, 0
+
+        if fmt == "12h":
+            ampm = "PM" if h >= 12 else "AM"
+            h_12 = h % 12
+            if h_12 == 0:
+                h_12 = 12
+            return h_12, m, ampm
+        else:
+            return h, m, None
+
+    start_h, start_m, start_ampm = parse_time_to_format(start_time_str, time_format)
+    end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
+
+    hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
+    minutes_list = list(range(0, 60))
+
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_power.html",
+        context={
+            "settings": settings,
+            "time_format": time_format,
+            "start_h": start_h,
+            "start_m": start_m,
+            "start_ampm": start_ampm,
+            "end_h": end_h,
+            "end_m": end_m,
+            "end_ampm": end_ampm,
+            "hours_list": hours_list,
+            "minutes_list": minutes_list
+        }
+    )
+
+@router.post("/panels/power/save", dependencies=[Depends(require_api_key)])
 @router.post("/panels/system/save", dependencies=[Depends(require_api_key)])
 async def save_system_settings_route(request: Request):
     form_data = await request.form()
@@ -131,11 +186,16 @@ async def save_system_settings_route(request: Request):
             display_control["interval"] = {}
         display_control["interval"]["end"] = f"{h:02d}:{m}"
 
-    try:
-        parsed["brightness"] = int(parsed.get("brightness", 100))
-        parsed["volume"] = int(parsed.get("volume", 80))
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=400, detail="Brightness and volume must be integers")
+    if "brightness" in parsed:
+        try:
+            parsed["brightness"] = int(parsed["brightness"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Brightness must be an integer")
+    if "volume" in parsed:
+        try:
+            parsed["volume"] = int(parsed["volume"])
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Volume must be an integer")
 
     if "pir" in display_control:
         pir = display_control["pir"]
@@ -161,6 +221,7 @@ async def save_system_settings_route(request: Request):
     """)
 
 
+@router.post("/panels/power/screen", dependencies=[Depends(require_api_key)])
 @router.post("/panels/system/screen", dependencies=[Depends(require_api_key)])
 async def post_panel_screen(request: Request):
     form_data = await request.form()

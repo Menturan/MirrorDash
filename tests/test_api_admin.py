@@ -835,7 +835,7 @@ def test_get_panel_system(mock_res, mock_load, client):
     
     response = client.get("/admin/panels/system", headers=headers)
     assert response.status_code == 200
-    assert "System Settings" in response.text
+    assert "Hardware Settings" in response.text
     assert "sys-rotation" in response.text
 
 
@@ -1139,6 +1139,119 @@ def test_remove_module_instance_config(mock_reload, mock_ro, mock_rw, mock_save,
     saved = mock_save.call_args[0][0]
     assert "clock-one" not in saved["modules"]
     assert "clock-two" in saved["modules"]
+
+
+@patch("mirrordash_core.api.admin_modules_panels.load_config")
+@patch("mirrordash_core.api.admin_modules_panels.save_config")
+@patch("mirrordash_core.api.admin_modules_panels.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+def test_toggle_module_instance_config(mock_reload, mock_ro, mock_rw, mock_save, mock_load, client):
+    headers = {"X-API-Key": "secret"}
+    mock_load.return_value = {
+        "globals": {},
+        "modules": {
+            "clock-one": {"module": "mirrordash-clock", "position": "top_right", "enabled": True},
+            "clock-two": {"module": "mirrordash-clock", "position": "bottom_left", "enabled": False}
+        }
+    }
+
+    # Post to toggle clock-one (True -> False)
+    r = client.post("/admin/panels/modules/config/mirrordash-clock/toggle?instance_id=clock-one", headers=headers)
+    assert r.status_code == 200
+    assert "disabled" in r.text
+
+    # Post to toggle clock-two (False -> True)
+    r2 = client.post("/admin/panels/modules/config/mirrordash-clock/toggle?instance_id=clock-two", headers=headers)
+    assert r2.status_code == 200
+    assert "enabled" in r2.text
+
+    assert mock_save.call_count == 2
+
+    # First save should have disabled clock-one
+    saved_first = mock_save.call_args_list[0][0][0]
+    assert saved_first["modules"]["clock-one"]["enabled"] is False
+
+    # Second save should have enabled clock-two
+    saved_second = mock_save.call_args_list[1][0][0]
+    assert saved_second["modules"]["clock-two"]["enabled"] is True
+
+
+@patch("mirrordash_core.system.telemetry.get_undervoltage_detected", new_callable=AsyncMock)
+@patch("mirrordash_core.system.telemetry.get_wifi_info", new_callable=AsyncMock)
+@patch("mirrordash_core.system.telemetry.get_ntp_status", new_callable=AsyncMock)
+@patch("mirrordash_core.system.telemetry.get_ram_usage")
+@patch("mirrordash_core.system.telemetry.get_uptime_string")
+@patch("mirrordash_core.api.admin_system.get_disk_usage")
+@patch("mirrordash_core.app.module_loader")
+def test_get_panel_dashboard(
+    mock_loader, mock_disk_usage, mock_uptime, mock_ram, mock_ntp, mock_wifi, mock_under, client
+):
+    headers = {"X-API-Key": "secret"}
+    mock_disk_usage.return_value = {
+        "total_bytes": 10000000000,
+        "used_bytes": 3000000000,
+        "free_bytes": 7000000000,
+        "percent_used": 30.0
+    }
+    
+    mock_uptime.return_value = "5d 12h 30m"
+    mock_ram.return_value = {
+        "total_mb": 4096,
+        "used_mb": 2048,
+        "percent_used": 50.0
+    }
+    mock_ntp.return_value = True
+    mock_wifi.return_value = {"ssid": "Home-WiFi", "signal": 85, "type": "wifi"}
+    mock_under.return_value = True
+    
+    mock_inst = MagicMock()
+    mock_inst.config = {"module": "mirrordash-clock", "position": "top_left"}
+    mock_loader.instances = {"clock-one": mock_inst}
+    mock_loader.tasks = {"clock-one": MagicMock()}
+
+    response = client.get("/admin/panels/dashboard", headers=headers)
+    assert response.status_code == 200
+    assert "Screen Layout Matrix" in response.text
+    assert "System Analytics" in response.text
+    assert "TL" in response.text
+    assert "Memory (RAM)" in response.text
+    assert "50.0% Used" in response.text
+    assert "Home-WiFi" in response.text
+    assert "5d 12h 30m" in response.text
+    assert "Synchronized" in response.text
+    assert "Power Warning: Under-voltage Detected" in response.text
+
+
+@patch("mirrordash_core.system.telemetry.check_all_updates")
+def test_get_dashboard_updates_available(mock_check, client):
+    headers = {"X-API-Key": "secret"}
+    mock_check.return_value = {
+        "core": {"update_available": True, "latest_version": "0.3.5", "current_version": "0.3.4"},
+        "modules": [
+            {"name": "mirrordash_weather", "title": "Weather", "current_version": "1.1.2", "latest_version": "1.2.0"}
+        ]
+    }
+    response = client.get("/admin/panels/dashboard/updates", headers=headers)
+    assert response.status_code == 200
+    assert "Update Available: MirrorDash Core" in response.text
+    assert "v0.3.5" in response.text
+    assert "Go to System Settings" in response.text
+    assert "Update Available: Weather Module" in response.text
+    assert "v1.2.0" in response.text
+    assert "Go to Modules" in response.text
+
+
+@patch("mirrordash_core.system.telemetry.check_all_updates")
+def test_get_dashboard_updates_none(mock_check, client):
+    headers = {"X-API-Key": "secret"}
+    mock_check.return_value = {
+        "core": {"update_available": False, "latest_version": "0.3.4", "current_version": "0.3.4"},
+        "modules": []
+    }
+    response = client.get("/admin/panels/dashboard/updates", headers=headers)
+    assert response.status_code == 200
+    assert response.text.strip() == ""
 
 
 

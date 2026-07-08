@@ -12,145 +12,159 @@
     }
 </style>
 <div class="page-panel active" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules">
-    <!-- Search Bar -->
-    <div class="search-bar-container" style="position: relative; margin-bottom: 2rem;">
-        <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem;"></i>
-        <input type="text" id="module-search-input" name="query" placeholder="Search installed modules or discover new ones to install..." class="form-control" style="padding-left: 2.8rem; font-size: 1.05rem; height: 3rem; background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; color: white; width: 100%;"
-               hx-get="/admin/panels/modules"
-               hx-trigger="keyup changed delay:300ms"
-               hx-target="#tab-content"
-               value="{{ query or '' }}"
-               onfocus="this.setSelectionRange(this.value.length, this.value.length);"
-               autofocus>
+    <!-- Hero Banner (App Store Style) -->
+    <div class="hero-banner" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.05) 50%, rgba(0, 0, 0, 0) 100%); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; margin-bottom: 24px; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px);">
+        <div class="hero-content" style="position: relative; z-index: 1;">
+            <span class="hero-tag" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;">Explore Modules</span>
+            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; margin: 0 0 8px 0; color: white;">MirrorDash Module Store</h2>
+            <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Customize your screen layouts or discover new widgets to add. Configured instances run concurrently in their own isolated storage spaces.</p>
+        </div>
+    </div>
+
+    <!-- Filter & Search Row -->
+    <div class="filter-row" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
+        <div class="category-pills" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+            <button class="category-pill active" onclick="filterModules('all', this)" style="background-color: var(--primary); border-color: transparent; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);">All</button>
+            <button class="category-pill" onclick="filterModules('utility', this)">Utility</button>
+            <button class="category-pill" onclick="filterModules('iot', this)">Smart Home</button>
+            <button class="category-pill" onclick="filterModules('info', this)">Information</button>
+            <button class="category-pill" onclick="filterModules('installed', this)">Installed</button>
+        </div>
+        <div class="search-bar-container" style="position: relative; flex: 1; min-width: 250px; margin-bottom: 0 !important;">
+            <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem;"></i>
+            <input type="text" id="module-search-input" name="query" placeholder="Search modules..." class="form-control" style="padding-left: 2.8rem; font-size: 0.95rem; height: 2.6rem; background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; color: white; width: 100%;"
+                   hx-get="/admin/panels/modules"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#tab-content"
+                   value="{{ query or '' }}"
+                   onfocus="this.setSelectionRange(this.value.length, this.value.length);"
+                   autofocus>
+        </div>
+    </div>
+
+    <!-- Disk Space Usage Gauge -->
+    <div id="disk-usage-section" style="margin-bottom: 2rem; padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 12px; border: 1px solid rgba(255,255,255,0.04);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 500; color: white; display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-database" style="color: var(--primary);"></i>
+                <span>Persistent Storage (Modules & Config)</span>
+            </h3>
+            <span id="disk-usage-summary" style="font-size: 0.85rem; color: var(--text-secondary); font-family: var(--mono-family);">
+                {{ (disk_usage.used_bytes / 1024 / 1024 / 1024)|round(1) }} GB used of {{ (disk_usage.total_bytes / 1024 / 1024 / 1024)|round(1) }} GB ({{ disk_usage.percent_used }}% used)
+            </span>
+        </div>
+
+        <div class="gauge-bar" style="margin-top: 0; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden;">
+            <div id="disk-usage-fill" style="height: 100%; border-radius: 3px; background-color: {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}var(--danger){% else %}var(--primary){% endif %}; width: {{ disk_usage.percent_used }}%;"></div>
+        </div>
+
+        {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
+        <div id="disk-usage-warning" style="display: flex; margin-top: 10px; font-size: 0.8rem; color: var(--danger); align-items: center; gap: 6px;">
+            <i class="fas fa-exclamation-triangle"></i>
+            <span>Disk space is critically low (less than 500MB free). Deactivate or uninstall unused modules.</span>
+        </div>
+        {% endif %}
     </div>
 
     <!-- Installed Modules List -->
-    <section class="card">
-        <h2><i class="fas fa-puzzle-piece" aria-hidden="true"></i> Installed Modules</h2>
-        <p class="panel-subtitle">Manage, configure, update, or uninstall modules currently installed in the mirror's environment.</p>
-
-        <!-- Disk Space Usage Gauge -->
-        <div id="disk-usage-section" style="margin-bottom: 2rem; padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--card-border); border-radius: 10px;">
-            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-                <h3 style="margin: 0; font-size: 0.95rem; font-weight: 500; color: white; display: flex; align-items: center; gap: 8px;">
-                    <i class="fas fa-database" style="color: var(--accent-color);"></i>
-                    <span>Persistent Storage (Modules & Config)</span>
-                </h3>
-                <span id="disk-usage-summary" style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--mono-family);">
-                    {{ (disk_usage.used_bytes / 1024 / 1024 / 1024)|round(1) }} GB used of {{ (disk_usage.total_bytes / 1024 / 1024 / 1024)|round(1) }} GB ({{ disk_usage.percent_used }}% used)
-                </span>
-            </div>
-
-            <div class="gauge-bar" style="margin-top: 0;">
-                <div class="gauge-bar__track">
-                    <div id="disk-usage-fill" class="gauge-bar__fill {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}warning{% endif %}" style="width: {{ disk_usage.percent_used }}%;"></div>
-                </div>
-            </div>
-
-            {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
-            <div id="disk-usage-warning" style="display: flex; margin-top: 10px; font-size: 0.8rem; color: var(--error-color); align-items: center; gap: 6px;">
-                <i class="fas fa-exclamation-triangle"></i>
-                <span>Disk space is critically low (less than 500MB free). Deactivate or uninstall unused modules.</span>
-            </div>
-            {% endif %}
-        </div>
+    <section class="card" style="background: transparent; border: none; padding: 0; box-shadow: none; margin-bottom: 0;">
         
-        <div id="installed-modules-container" class="installed-modules-container" style="display: flex; flex-direction: column; gap: 1.5rem; margin-top: 1.5rem;"
+        <div id="installed-modules-container" class="installed-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin-top: 1.5rem;"
              hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body" hx-select="#installed-modules-container" hx-swap="outerHTML">
             {% if not installed_modules %}
-                <div class="no-modules-msg" style="text-align:center; color: var(--text-muted); padding:2rem;">No installed modules match your query.</div>
+                <div class="no-modules-msg" style="text-align:center; color: var(--text-muted); padding:2rem; grid-column: span 12;">No installed modules match your query.</div>
             {% else %}
                 {% for name, meta in installed_modules.items() %}
                     {% set is_configured = meta.configured %}
                     {% set is_enabled = meta.enabled %}
                     {% set title = meta.schema.title or name %}
-                    <div class="module-card {% if is_configured and not is_enabled %}disabled-module{% endif %}" id="module-card-{{ name }}" hx-disinherit="*">
-                        <div class="module-card-header" style="display: flex; justify-content: space-between; align-items: flex-start; padding-bottom: 12px; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                            <div>
-                                <h3 style="margin: 0; font-size: 1.15rem; color: white;">{{ title }}</h3>
-                                <span class="module-identifier" style="font-family: monospace; font-size: 0.8rem; color: var(--text-muted);">{{ name }} <span style="margin-left:8px;">v{{ meta.version }}</span></span>
-                                <div style="display:flex; align-items:center; margin-top:6px; flex-wrap:wrap; gap:4px;">
-                                    {% if is_configured %}
-                                        <span class="status-badge" style="background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16,185,129,0.2);">{{ meta.instances|length }} configured</span>
+                    {% set icon_class = meta.schema.icon or "" %}
+                    {% if not icon_class %}
+                        {% set icon_class = "fa-puzzle-piece" %}
+                        {% if "clock" in name %}{% set icon_class = "fa-clock" %}
+                        {% elif "calendar" in name %}{% set icon_class = "fa-calendar-days" %}
+                        {% elif "weather" in name %}{% set icon_class = "fa-cloud-sun" %}
+                        {% elif "news" in name %}{% set icon_class = "fa-newspaper" %}
+                        {% elif "homeassistant" in name %}{% set icon_class = "fa-house-signal" %}
+                        {% elif "namnsdag" in name %}{% set icon_class = "fa-calendar-check" %}
+                        {% endif %}
+                    {% endif %}
+                    {% set categories = ["utility"] %}
+                    {% if "homeassistant" in name or "iot" in name %}
+                        {% set categories = ["iot"] %}
+                    {% elif "weather" in name or "namnsdag" in name or "news" in name %}
+                        {% set categories = ["info"] %}
+                    {% endif %}
+                    
+                    <div class="module-card {% if is_configured and not is_enabled %}disabled-module{% endif %}" 
+                         id="module-card-{{ name }}" 
+                         hx-disinherit="*"
+                         data-installed="{% if is_configured %}true{% else %}false{% endif %}"
+                         data-categories="{{ ' '.join(categories) }}"
+                          data-instances="{{ meta.instances | tojson | forceescape }}"
+                         style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); position: relative;">
+                        
+                        <div>
+                            <div class="module-card-header" style="display: flex; gap: 16px; margin-bottom: 16px;">
+                                <div class="module-card-icon-container" style="width: 50px; height: 50px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--primary);">
+                                    {% if icon_class.startswith('<svg') %}
+                                        {{ icon_class | safe }}
                                     {% else %}
-                                        <span class="status-badge" style="background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border: 1px solid rgba(255,255,255,0.1);">Inactive</span>
+                                        <i class="fas {{ icon_class }}"></i>
                                     {% endif %}
-                                    <div id="update-badge-{{ name }}" style="display: inline-block;"></div>
+                                </div>
+                                <div style="flex: 1;">
+                                    <h3 style="margin: 0; font-size: 1.05rem; color: white; font-weight: 600;">{{ title }}</h3>
+                                    <span class="module-identifier" style="font-family: monospace; font-size: 0.75rem; color: var(--text-secondary);">{{ name }} <span style="margin-left:6px;">v{{ meta.version }}</span></span>
                                 </div>
                             </div>
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <div id="update-actions-{{ name }}" style="display: flex; gap: 8px; align-items: center;"></div>
+                            
+                            <p style="margin: 12px 0 0 0; font-size: 0.85rem; color: #a1a1aa; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; height: 3.7em;">
+                                {{ meta.schema.description or 'No description available for this module.' }}
+                            </p>
+
+                        </div>
+                        
+                        <div class="module-card-footer" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.04); padding-top: 16px;">
+                            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                                 {% if is_configured %}
-                                    <button class="btn secondary btn-sm"
-                                            hx-get="/admin/panels/modules/config/{{ name }}"
-                                            hx-target="#config-fields-{{ name }}"
-                                            onclick="openConfigureModule('{{ name }}')"
+                                    <span class="badge badge-installed" style="background-color: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Installed</span>
+                                    <span class="badge badge-instances" style="background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">{{ meta.instances|length }} Instance{% if meta.instances|length > 1 %}s{% endif %}</span>
+                                {% else %}
+                                    <span class="badge" style="background-color: rgba(255, 255, 255, 0.03); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
+                                {% endif %}
+                            </div>
+                            
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <div id="update-actions-{{ name }}" style="display: inline-block;"></div>
+                                {% if is_configured %}
+                                    {% set default_inst_id = meta.instances[0].id if meta.instances else '' %}
+                                    <button class="btn primary btn-sm"
+                                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 30px;"
+                                            hx-get="/admin/panels/modules/config/{{ name }}?instance_id={{ default_inst_id }}"
+                                            hx-target="#config-fields-global"
+                                            onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '{{ default_inst_id }}')"
                                             id="config-btn-{{ name }}">
-                                        <i class="fas fa-plus"></i> Add Instance
+                                        Configure
                                     </button>
                                 {% else %}
                                     <button class="btn primary btn-sm"
+                                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 30px;"
                                             hx-get="/admin/panels/modules/config/{{ name }}"
-                                            hx-target="#config-fields-{{ name }}"
-                                            onclick="openConfigureModule('{{ name }}')"
+                                            hx-target="#config-fields-global"
+                                            onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '')"
                                             id="config-btn-{{ name }}">
-                                        <i class="fas fa-plus"></i> Add to Mirror
+                                        Add to Mirror
                                     </button>
                                 {% endif %}
-                                <button class="btn danger btn-sm"
-                                        hx-post="/admin/panels/modules/uninstall"
-                                        hx-vals='{"package_name": "{{ meta.package_name }}"}'
-                                        hx-target="#global-status"
-                                        hx-confirm="Are you sure you want to uninstall {{ name }}? This will remove the package and restart the mirror.">
-                                    <i class="fas fa-trash-alt"></i> Uninstall
-                                </button>
                             </div>
                         </div>
-                        <div class="module-card-body" style="padding-top: 10px;">
-                            <p style="margin: 0; font-size: 0.88rem; color: #a1a1aa;">{{ meta.schema.description or 'No description available for this module.' }}</p>
-                            
-                            {% if meta.instances %}
-                            <div class="module-instances-list" style="margin-top: 1.25rem; display: flex; flex-direction: column; gap: 8px;">
-                                <h4 style="margin: 0 0 4px 0; font-size: 0.8rem; color: #71717a; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Configured Instances</h4>
-                                {% for inst in meta.instances %}
-                                <div class="instance-row" style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.01); padding: 10px 14px; border-radius: 6px; border: 1px solid #27272a;">
-                                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-                                        <span style="font-size: 0.95rem; font-weight: 500; color: white;">{{ inst.title }}</span>
-                                        <span style="font-family: monospace; font-size: 0.75rem; color: #71717a;">({{ inst.id }})</span>
-                                        <span class="status-badge" style="background: rgba(255, 255, 255, 0.03); color: #a1a1aa; border: 1px solid rgba(255,255,255,0.08); font-size: 0.72rem; padding: 2px 6px;">
-                                            {{ inst.position.replace('_', ' ').title() }}
-                                        </span>
-                                        {% if not inst.enabled %}
-                                            <span class="status-badge" style="background: rgba(239, 68, 68, 0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); font-size: 0.72rem; padding: 2px 6px;">Disabled</span>
-                                        {% endif %}
-                                    </div>
-                                    <div style="display: flex; gap: 8px;">
-                                        <button class="btn secondary btn-sm"
-                                                hx-get="/admin/panels/modules/config/{{ name }}?instance_id={{ inst.id }}"
-                                                hx-target="#config-fields-{{ name }}"
-                                                onclick="openConfigureModule('{{ name }}')">
-                                            <i class="fas fa-cog"></i> Edit Settings
-                                        </button>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            {% endif %}
-                        </div>
-                        
-                        <!-- Expanding config drawer -->
-                        <div id="config-drawer-{{ name }}" class="config-drawer" style="display: none; padding-top: 15px; border-top: 1px dashed #27272a; margin-top: 15px;">
-                            <div id="config-fields-{{ name }}">
-                                <!-- Renders single module configuration forms -->
-                            </div>
-                        </div>
- 
+
                         <!-- Async update check trigger -->
                         <div hx-get="/admin/panels/modules/check-update/{{ name }}" hx-trigger="load" style="display: none;"></div>
                     </div>
                 {% endfor %}
             {% endif %}
-        </div>
     </section>
 
     <!-- Discover / Popular Modules -->
@@ -182,5 +196,32 @@
         </form>
     </section>
 </div>
+
+<script>
+    window.filterModules = function(cat, btn) {
+        document.querySelectorAll('.category-pill').forEach(b => {
+            b.classList.remove('active');
+            b.style.backgroundColor = '';
+            b.style.borderColor = '';
+            b.style.color = '';
+            b.style.boxShadow = '';
+        });
+        btn.classList.add('active');
+        btn.style.backgroundColor = 'var(--primary)';
+        btn.style.borderColor = 'transparent';
+        btn.style.color = 'white';
+        btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.25)';
+
+        document.querySelectorAll('.module-card').forEach(card => {
+            const isInstalled = card.getAttribute('data-installed') === 'true';
+            const categories = card.getAttribute('data-categories').split(' ');
+            if (cat === 'all' || (cat === 'installed' && isInstalled) || categories.includes(cat)) {
+                card.style.display = 'flex';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    };
+</script>
 
 

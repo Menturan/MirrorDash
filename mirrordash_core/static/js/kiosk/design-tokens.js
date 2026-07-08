@@ -64,4 +64,17 @@ const DESIGN_TOKENS_CSS = `
         line-height: 1;
         text-rendering: auto;
     }
+    h2, .module-header {
+        font-size: 0.875rem;
+        font-weight: 600;
+        line-height: 1.0;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--color-standard-gray, #999999);
+        border-bottom: 1px solid var(--color-dimmed-charcoal, #666666);
+        padding-bottom: var(--label-gap, 8px);
+        margin-bottom: var(--internal-padding, 16px);
+        display: block;
+        width: 100%;
+    }
 `;

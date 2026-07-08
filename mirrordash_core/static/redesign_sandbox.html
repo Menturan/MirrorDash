@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MirrorDash — Next-Gen Modules Redesign</title>
+    <!-- Premium Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --bg-base: #030303;
+            --bg-surface: #0a0a0c;
+            --bg-card: rgba(18, 18, 22, 0.65);
+            --bg-card-hover: rgba(26, 26, 32, 0.85);
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.18);
+            
+            /* Tailored Neon Colors */
+            --primary: #6366f1; /* Indigo */
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981; /* Emerald */
+            --success-glow: rgba(16, 185, 129, 0.25);
+            --accent-cyan: #06b6d4; /* Cyan */
+            --accent-pink: #ec4899; /* Pink */
+            
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Outfit', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 40%);
+        }
+
+        header {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .logo-section h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: -0.03em;
+        }
+
+        .logo-section p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+            margin-top: 4px;
+        }
+
+        .theme-selector {
+            display: flex;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 4px;
+            border-radius: 30px;
+            gap: 4px;
+        }
+
+        .theme-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 8px 18px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .theme-btn.active {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        main {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 20px 80px;
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 40px;
+        }
+
+        @media (max-width: 1024px) {
+            main {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* LEFT SIDEBAR: Visual 3x3 Grid & Tools */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+
+        .glass-panel {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .glass-panel::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+        }
+
+        .panel-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-primary);
+        }
+
+        .panel-title i {
+            color: var(--primary);
+        }
+
+        /* 3x3 Grid Visualizer */
+        .grid-visualizer {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 80px);
+            gap: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 12px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .grid-cell {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+        }
+
+        .grid-cell:hover {
+            background: rgba(99, 102, 241, 0.08);
+            border-color: rgba(99, 102, 241, 0.3);
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+        }
+
+        .grid-cell.active {
+            background: rgba(99, 102, 241, 0.15);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--primary-glow);
+        }
+
+        .grid-cell.active::after {
+            content: '';
+            width: 6px;
+            height: 6px;
+            background: var(--primary);
+            border-radius: 50%;
+            position: absolute;
+            bottom: 8px;
+            box-shadow: 0 0 8px var(--primary);
+        }
+
+        .grid-cell span {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            pointer-events: none;
+            margin-top: 4px;
+        }
+
+        .grid-cell i {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            pointer-events: none;
+        }
+
+        .grid-cell.active i {
+            color: var(--text-primary);
+        }
+
+        /* Stats & Quick Actions */
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .stat-row:last-child {
+            border-bottom: none;
+        }
+
+        .stat-label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        .stat-value {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+
+        /* RIGHT PANEL: Module Styles Grid */
+        .workspace {
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .section-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            letter-spacing: -0.02em;
+        }
+
+        .badge {
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            color: #a5b4fc;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+
+        .modules-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+        }
+
+        /* ================= STYLE 1: NEON GLASSMORPHIC ACCENTS ================= */
+        .style-card-neon {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 28px;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .style-card-neon:hover {
+            background: var(--bg-card-hover);
+            border-color: var(--border-hover);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+        }
+
+        .style-card-neon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            border-radius: 20px;
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1), transparent, rgba(255, 255, 255, 0.03));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        .module-meta-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .module-info-left {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .module-icon-wrapper {
+            width: 52px;
+            height: 52px;
+            border-radius: 14px;
+            background: rgba(99, 102, 241, 0.08);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: var(--primary);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .module-title-desc h3 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .module-title-desc p {
+            color: var(--text-secondary);
+            font-size: 0.85rem;
+            margin-top: 2px;
+        }
+
+        /* Instances pill list */
+        .instances-section {
+            background: rgba(0, 0, 0, 0.15);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .instances-section-header {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .instances-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .instance-row {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 10px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.3s ease;
+        }
+
+        .instance-row:hover {
+            background: rgba(255, 255, 255, 0.04);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .instance-ident {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: var(--success);
+            box-shadow: 0 0 10px var(--success-glow);
+            position: relative;
+        }
+
+        .status-dot.inactive {
+            background-color: var(--text-muted);
+            box-shadow: none;
+        }
+
+        .instance-name {
+            font-weight: 500;
+            font-size: 0.9rem;
+        }
+
+        .instance-pos {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            background: rgba(255, 255, 255, 0.04);
+            padding: 2px 8px;
+            border-radius: 4px;
+            margin-left: 6px;
+        }
+
+        .instance-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Buttons */
+        .btn-glow {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 14px var(--primary-glow);
+            transition: all 0.3s ease;
+        }
+
+        .btn-glow:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px var(--primary-glow);
+            filter: brightness(1.1);
+        }
+
+        .btn-outline {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn-danger-outline {
+            background: transparent;
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-danger-outline:hover {
+            background: rgba(239, 68, 68, 0.08);
+            border-color: #ef4444;
+        }
+
+        /* ================= STYLE 2: GRID-CENTRIC MINIMALIST ================= */
+        .style-card-gridcentric {
+            background: #09090b;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 16px;
+            overflow: hidden;
+            display: grid;
+            grid-template-columns: 240px 1fr;
+            transition: all 0.3s ease;
+        }
+
+        .style-card-gridcentric:hover {
+            border-color: rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        }
+
+        .card-left-brand {
+            background: linear-gradient(180deg, #111115 0%, #060608 100%);
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .brand-top {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon-mini {
+            width: 38px;
+            height: 38px;
+            border-radius: 10px;
+            background: rgba(6, 182, 212, 0.08);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.15rem;
+            color: var(--accent-cyan);
+        }
+
+        .brand-title {
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 600;
+            font-size: 1.05rem;
+        }
+
+        .brand-meta-info {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        .card-right-instances {
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        /* Horizontal mini widget representation */
+        .widget-representation-row {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed rgba(255, 255, 255, 0.06);
+            border-radius: 8px;
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .rep-info {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .rep-preview-icon {
+            font-size: 0.8rem;
+            color: var(--accent-cyan);
+            background: rgba(6, 182, 212, 0.1);
+            padding: 6px 10px;
+            border-radius: 6px;
+        }
+
+        .rep-text {
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+
+        /* ================= STYLE 3: SPLIT INTERACTIVE PANEL ================= */
+        .style-card-split {
+            background: rgba(12, 12, 16, 0.8);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .style-card-split:hover {
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            border-color: rgba(255,255,255,0.12);
+        }
+
+        .split-header {
+            padding: 24px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .split-title-group {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .split-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: rgba(236, 72, 153, 0.08);
+            border: 1px solid rgba(236, 72, 153, 0.2);
+            color: var(--accent-pink);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.25rem;
+        }
+
+        .split-title-text h4 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.15rem;
+            font-weight: 600;
+        }
+
+        .split-title-text p {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        .split-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+        }
+
+        @media (max-width: 768px) {
+            .split-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .split-col {
+            padding: 24px;
+        }
+
+        .split-col:first-child {
+            border-right: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .split-col-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 14px;
+        }
+
+        /* Config fields inside split layout */
+        .mini-form-group {
+            margin-bottom: 14px;
+        }
+
+        .mini-form-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            display: block;
+        }
+
+        .mini-select, .mini-input {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 8px;
+            color: white;
+            font-size: 0.85rem;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .mini-select:focus, .mini-input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 10px var(--primary-glow);
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            background: rgba(10, 10, 12, 0.95);
+            border: 1px solid var(--primary);
+            border-radius: 12px;
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 1000;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast i {
+            color: var(--success);
+            font-size: 1.2rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-section">
+            <h1>Module Control Center</h1>
+            <p>Interactive playground exploring module administration redesigns.</p>
+        </div>
+        <div class="theme-selector">
+            <button class="theme-btn active" onclick="switchTheme('default')">Dark Glass</button>
+            <button class="theme-btn" onclick="switchTheme('amoled')">Pure Black</button>
+            <button class="theme-btn" onclick="switchTheme('cyber')">Cyberpunk</button>
+        </div>
+    </header>
+
+    <main>
+        <!-- Sidebar container -->
+        <div class="sidebar">
+            <!-- 3x3 Grid panel -->
+            <div class="glass-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-table-cells-large"></i>
+                    <span>Layout Matrix</span>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;">
+                    Click a region to highlight modules configured in that screen area.
+                </p>
+                <div class="grid-visualizer">
+                    <div class="grid-cell active" onclick="toggleGridCell(this, 'top-left')">
+                        <i class="fa-solid fa-cloud-sun"></i>
+                        <span>TL</span>
+                    </div>
+                    <div class="grid-cell" onclick="toggleGridCell(this, 'top-center')">
+                        <span>TC</span>
+                    </div>
+                    <div class="grid-cell active" onclick="toggleGridCell(this, 'top-right')">
+                        <i class="fa-solid fa-clock"></i>
+                        <span>TR</span>
+                    </div>
+                    <div class="grid-cell" onclick="toggleGridCell(this, 'middle-left')">
+                        <span>ML</span>
+                    </div>
+                    <div class="grid-cell" onclick="toggleGridCell(this, 'middle-center')">
+                        <span>MC</span>
+                    </div>
+                    <div class="grid-cell" onclick="toggleGridCell(this, 'middle-right')">
+                        <span>MR</span>
+                    </div>
+                    <div class="grid-cell active" onclick="toggleGridCell(this, 'bottom-left')">
+                        <i class="fa-solid fa-calendar-days"></i>
+                        <span>BL</span>
+                    </div>
+                    <div class="grid-cell active" onclick="toggleGridCell(this, 'bottom-center')">
+                        <i class="fa-solid fa-newspaper"></i>
+                        <span>BC</span>
+                    </div>
+                    <div class="grid-cell active" onclick="toggleGridCell(this, 'bottom-right')">
+                        <i class="fa-solid fa-house-signal"></i>
+                        <span>BR</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Stats panel -->
+            <div class="glass-panel">
+                <div class="panel-title">
+                    <i class="fa-solid fa-circle-nodes"></i>
+                    <span>System Analytics</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Active Subprocesses</span>
+                    <span class="stat-value">6 Running</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">Cache Space</span>
+                    <span class="stat-value">12.4 MB</span>
+                </div>
+                <div class="stat-row">
+                    <span class="stat-label">CPU Temperature</span>
+                    <span class="stat-value">46°C</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main workspace -->
+        <div class="workspace">
+            <!-- Style 1 -->
+            <div>
+                <div class="section-header">
+                    <h2 class="section-title">Design Style 1: Floating Neon & Instances Drawer</h2>
+                    <span class="badge">Recommended</span>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; max-width: 700px;">
+                    Combines elegant glassmorphic cards with a compact, dedicated instances subsection showing live statuses, individual edit toggles, and position tags.
+                </p>
+
+                <div class="modules-grid">
+                    <div class="style-card-neon">
+                        <div class="module-meta-header">
+                            <div class="module-info-left">
+                                <div class="module-icon-wrapper">
+                                    <i class="fa-solid fa-clock"></i>
+                                </div>
+                                <div class="module-title-desc">
+                                    <h3>Clock Module</h3>
+                                    <p>Displays time, date, name days, and customizable timezone ticking offsets.</p>
+                                </div>
+                            </div>
+                            <button class="btn-glow" onclick="showToast('Clock instance added!')">
+                                <i class="fa-solid fa-plus"></i> Add Clock
+                            </button>
+                        </div>
+
+                        <!-- Instances subsection -->
+                        <div class="instances-section">
+                            <div class="instances-section-header">
+                                <span>Running Instances (2)</span>
+                                <span>Status & Location</span>
+                            </div>
+                            <div class="instances-list">
+                                <div class="instance-row">
+                                    <div class="instance-ident">
+                                        <div class="status-dot"></div>
+                                        <span class="instance-name">Clock Main</span>
+                                        <span class="instance-pos">Top Right</span>
+                                    </div>
+                                    <div class="instance-actions">
+                                        <button class="btn-outline" onclick="showToast('Opening settings for Clock Main')">
+                                            <i class="fa-solid fa-sliders"></i> Edit
+                                        </button>
+                                        <button class="btn-danger-outline" onclick="showToast('Removed Clock Main')">
+                                            <i class="fa-solid fa-trash-can"></i> Delete
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="instance-row">
+                                    <div class="instance-ident">
+                                        <div class="status-dot"></div>
+                                        <span class="instance-name">Stockholm Time</span>
+                                        <span class="instance-pos">Bottom Left</span>
+                                    </div>
+                                    <div class="instance-actions">
+                                        <button class="btn-outline" onclick="showToast('Opening settings for Stockholm Time')">
+                                            <i class="fa-solid fa-sliders"></i> Edit
+                                        </button>
+                                        <button class="btn-danger-outline" onclick="showToast('Removed Stockholm Time')">
+                                            <i class="fa-solid fa-trash-can"></i> Delete
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Style 2 -->
+            <div>
+                <div class="section-header">
+                    <h2 class="section-title">Design Style 2: Grid-Centric Dense Split</h2>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; max-width: 700px;">
+                    Optimized for desktop sizing. It segments the brand branding summary on the left and wraps instance items horizontally on the right to preserve vertical space.
+                </p>
+
+                <div class="modules-grid">
+                    <div class="style-card-gridcentric">
+                        <div class="card-left-brand">
+                            <div class="brand-top">
+                                <div class="brand-icon-mini">
+                                    <i class="fa-solid fa-cloud-sun"></i>
+                                </div>
+                                <div class="brand-title">Weather Module</div>
+                            </div>
+                            <div class="brand-meta-info">
+                                Uses SMHI/OpenWeatherAPI with real-time temperature updates and hourly/daily forecasting templates.
+                            </div>
+                        </div>
+                        <div class="card-right-instances">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:0.75rem; font-weight:600; color:var(--text-muted); text-transform:uppercase;">Configured Instances</span>
+                                <button class="btn-outline" style="padding:4px 10px; font-size:0.75rem;" onclick="showToast('Weather instance added!')">
+                                    <i class="fa-solid fa-plus"></i> Add New
+                                </button>
+                            </div>
+                            
+                            <div class="widget-representation-row">
+                                <div class="rep-info">
+                                    <i class="fa-solid fa-location-dot rep-preview-icon"></i>
+                                    <div>
+                                        <div class="rep-text">Home Weather (SMHI)</div>
+                                        <div style="font-size:0.7rem; color:var(--text-muted); margin-top:2px;">Position: Top Left &bull; Interval: 15m</div>
+                                    </div>
+                                </div>
+                                <div style="display:flex; gap:6px;">
+                                    <button class="btn-outline" style="padding:4px 8px;" onclick="showToast('Editing Home Weather')"><i class="fa-solid fa-cog"></i></button>
+                                    <button class="btn-danger-outline" style="padding:4px 8px;" onclick="showToast('Removed Home Weather')"><i class="fa-solid fa-trash"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Style 3 -->
+            <div>
+                <div class="section-header">
+                    <h2 class="section-title">Design Style 3: Embedded Fast-Config Layout</h2>
+                </div>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 20px; max-width: 700px;">
+                    Integrates standard controls (like layout positions or tick speeds) directly inside the expansion panel. Best for modules that are edited frequently.
+                </p>
+
+                <div class="modules-grid">
+                    <div class="style-card-split">
+                        <div class="split-header">
+                            <div class="split-title-group">
+                                <div class="split-icon">
+                                    <i class="fa-solid fa-newspaper"></i>
+                                </div>
+                                <div class="split-title-text">
+                                    <h4>News Feed Module</h4>
+                                    <p>Configures custom RSS/Atom scrolling tickers for the mirror.</p>
+                                </div>
+                            </div>
+                            <span class="badge" style="background:rgba(236,72,153,0.1); border-color:rgba(236,72,153,0.2); color:#fbcfe8;">1 Instance Active</span>
+                        </div>
+
+                        <div class="split-content">
+                            <!-- Column 1: Config details -->
+                            <div class="split-col">
+                                <div class="split-col-title">Quick Settings</div>
+                                <div class="mini-form-group">
+                                    <label class="mini-form-label">Display Position</label>
+                                    <select class="mini-select">
+                                        <option>bottom_center</option>
+                                        <option>bottom_left</option>
+                                        <option>top_center</option>
+                                    </select>
+                                </div>
+                                <div class="mini-form-group">
+                                    <label class="mini-form-label">Scroll Speed</label>
+                                    <select class="mini-select">
+                                        <option>Slow</option>
+                                        <option selected>Medium</option>
+                                        <option>Fast</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- Column 2: Feeds & Actions -->
+                            <div class="split-col">
+                                <div class="split-col-title">RSS Feed Links</div>
+                                <div class="mini-form-group">
+                                    <label class="mini-form-label">Active RSS Feed</label>
+                                    <input type="text" class="mini-input" value="https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml" readonly>
+                                </div>
+                                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px;">
+                                    <button class="btn-outline" onclick="showToast('News settings saved!')">Save Config</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast">
+        <i class="fa-solid fa-circle-check"></i>
+        <span id="toast-message">Operation successful</span>
+    </div>
+
+    <!-- JS Logic -->
+    <script>
+        function switchTheme(theme) {
+            const btns = document.querySelectorAll('.theme-btn');
+            btns.forEach(btn => btn.classList.remove('active'));
+            
+            // Toggle active state on buttons
+            event.target.classList.add('active');
+
+            const root = document.documentElement;
+            
+            if (theme === 'default') {
+                root.style.setProperty('--bg-base', '#030303');
+                root.style.setProperty('--bg-surface', '#0a0a0c');
+                root.style.setProperty('--bg-card', 'rgba(18, 18, 22, 0.65)');
+                root.style.setProperty('--primary', '#6366f1');
+                root.style.setProperty('--primary-glow', 'rgba(99, 102, 241, 0.35)');
+            } else if (theme === 'amoled') {
+                root.style.setProperty('--bg-base', '#000000');
+                root.style.setProperty('--bg-surface', '#050505');
+                root.style.setProperty('--bg-card', '#09090b');
+                root.style.setProperty('--primary', '#4f46e5');
+                root.style.setProperty('--primary-glow', 'rgba(79, 70, 229, 0.2)');
+            } else if (theme === 'cyber') {
+                root.style.setProperty('--bg-base', '#0f0c1b');
+                root.style.setProperty('--bg-surface', '#17122e');
+                root.style.setProperty('--bg-card', 'rgba(30, 24, 61, 0.85)');
+                root.style.setProperty('--primary', '#ec4899');
+                root.style.setProperty('--primary-glow', 'rgba(236, 72, 153, 0.4)');
+            }
+            showToast(`Theme switched to: ${theme.toUpperCase()}`);
+        }
+
+        function toggleGridCell(cell, region) {
+            cell.classList.toggle('active');
+            showToast(`Highlighted region: ${region}`);
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            const toastMsg = document.getElementById('toast-message');
+            toastMsg.innerText = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

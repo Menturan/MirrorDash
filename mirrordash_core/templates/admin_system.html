@@ -1,7 +1,7 @@
-<!-- System Settings Tab Panel -->
+<!-- Hardware Settings Tab Panel -->
 <div class="page-panel active" id="page-panel-system" role="tabpanel" aria-labelledby="page-tab-system">
     <section class="card">
-        <h2><i class="fas fa-desktop" aria-hidden="true"></i> System Settings</h2>
+        <h2><i class="fas fa-desktop" aria-hidden="true"></i> Hardware Settings</h2>
         <p class="panel-subtitle">Manage screen brightness, volume, rotation, and resolution directly from the dashboard.</p>
         
         <form id="system-settings-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML">
@@ -79,162 +79,18 @@
                 </div>
             </div>
 
-            <!-- Display Power Management Mode -->
-            <div class="form-group" style="margin-bottom: 20px;">
-                <div class="form-label-desc" style="margin-bottom: 8px;">
-                    <label for="sys-display-mode" style="font-weight: 500; font-size: 0.9rem; color: white;">Display Power Management</label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--color-standard-gray); margin: 0;">Choose how the screen is turned on/off automatically.</p>
-                </div>
-                <select id="sys-display-mode" name="display_control[mode]" class="form-control" style="margin-bottom: 12px;" onchange="toggleDisplayModeGroups(this.value)">
-                    <option value="manual" {% if settings.display_control.mode == "manual" %}selected{% endif %}>Manual / Always On</option>
-                    <option value="interval" {% if settings.display_control.mode == "interval" %}selected{% endif %}>Time of Day Schedule</option>
-                    <option value="pir" {% if settings.display_control.mode == "pir" %}selected{% endif %}>PIR Motion Detector</option>
-                    <option value="button" {% if settings.display_control.mode == "button" %}selected{% endif %}>Physical GPIO Button</option>
-                </select>
-
-                <!-- Interval Settings Group -->
-                <div id="display-mode-interval-group" class="sub-form-group" style="{% if settings.display_control.mode == 'interval' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
-                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
-                        <div style="flex: 1;">
-                            <span style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Active Start Time</span>
-                            <div style="display: flex; gap: 6px; align-items: center;">
-                                <select name="display_control[interval][start_h]" class="form-control" style="width: 70px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                    {% for h in hours_list %}
-                                        <option value="{{ h }}" {% if start_h == h %}selected{% endif %}>{{ "%02d"|format(h) if time_format == "24h" else h }}</option>
-                                    {% endfor %}
-                                </select>
-                                <span style="color: white; font-weight: bold;">:</span>
-                                <select name="display_control[interval][start_m]" class="form-control" style="width: 70px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                    {% for m in minutes_list %}
-                                        <option value="{{ "%02d"|format(m) }}" {% if start_m == m %}selected{% endif %}>{{ "%02d"|format(m) }}</option>
-                                    {% endfor %}
-                                </select>
-                                {% if time_format == "12h" %}
-                                    <select name="display_control[interval][start_ampm]" class="form-control" style="width: 75px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                        <option value="AM" {% if start_ampm == "AM" %}selected{% endif %}>AM</option>
-                                        <option value="PM" {% if start_ampm == "PM" %}selected{% endif %}>PM</option>
-                                    </select>
-                                {% endif %}
-                            </div>
-                        </div>
-                        <div style="flex: 1;">
-                            <span style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Active End Time</span>
-                            <div style="display: flex; gap: 6px; align-items: center;">
-                                <select name="display_control[interval][end_h]" class="form-control" style="width: 70px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                    {% for h in hours_list %}
-                                        <option value="{{ h }}" {% if end_h == h %}selected{% endif %}>{{ "%02d"|format(h) if time_format == "24h" else h }}</option>
-                                    {% endfor %}
-                                </select>
-                                <span style="color: white; font-weight: bold;">:</span>
-                                <select name="display_control[interval][end_m]" class="form-control" style="width: 70px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                    {% for m in minutes_list %}
-                                        <option value="{{ "%02d"|format(m) }}" {% if end_m == m %}selected{% endif %}>{{ "%02d"|format(m) }}</option>
-                                    {% endfor %}
-                                </select>
-                                {% if time_format == "12h" %}
-                                    <select name="display_control[interval][end_ampm]" class="form-control" style="width: 75px; padding: 4px 8px; font-size: 0.85rem; height: 32px; background: #222; color: white;">
-                                        <option value="AM" {% if end_ampm == "AM" %}selected{% endif %}>AM</option>
-                                        <option value="PM" {% if end_ampm == "PM" %}selected{% endif %}>PM</option>
-                                    </select>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- PIR Settings Group -->
-                <div id="display-mode-pir-group" class="sub-form-group" style="{% if settings.display_control.mode == 'pir' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
-                    <div style="display: flex; gap: 15px; margin-bottom: 10px;">
-                        <div style="flex: 1;">
-                            <label for="sys-display-pir-pin" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">GPIO Input Pin (BCM)</label>
-                            <input type="number" id="sys-display-pir-pin" name="display_control[pir][pin]" class="form-control" min="1" max="40" value="{{ settings.display_control.pir.pin or 18 }}">
-                        </div>
-                        <div style="flex: 1;">
-                            <label for="sys-display-pir-timeout" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Timeout (Minutes)</label>
-                            <input type="number" id="sys-display-pir-timeout" name="display_control[pir][timeout_minutes]" class="form-control" min="1" max="1440" value="{{ settings.display_control.pir.timeout_minutes or 5 }}">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Button Settings Group -->
-                <div id="display-mode-button-group" class="sub-form-group" style="{% if settings.display_control.mode == 'button' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
-                    <div>
-                        <label for="sys-display-button-pin" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">GPIO Button Pin (BCM)</label>
-                        <input type="number" id="sys-display-button-pin" name="display_control[button][pin]" class="form-control" min="1" max="40" value="{{ settings.display_control.button.pin or 23 }}">
-                    </div>
-                </div>
-            </div>
-
-            <!-- Screen Power Control -->
-            <div class="form-group" style="margin-bottom: 25px;">
-                <div class="form-label-desc" style="margin-bottom: 8px;">
-                    <label style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Power</label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Turn the mirror display output ON or OFF.</p>
-                </div>
-                <div style="display: flex; gap: 12px; width: 100%;">
-                    <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;"
-                            hx-post="/admin/panels/system/screen"
-                            hx-vals='{"state": "on"}'
-                            hx-target="#global-status"
-                            hx-swap="innerHTML"
-                            onclick="this.disabled=true; setTimeout(() => this.disabled=false, 3000)">
-                        <i class="fas fa-desktop" aria-hidden="true"></i> Turn Screen ON
-                    </button>
-                    <button type="button" id="screen-off-btn" class="btn danger" style="flex: 1; justify-content: center;"
-                            hx-post="/admin/panels/system/screen"
-                            hx-vals='{"state": "off"}'
-                            hx-target="#global-status"
-                            hx-swap="innerHTML"
-                            onclick="this.disabled=true; setTimeout(() => this.disabled=false, 3000)">
-                        <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
-                    </button>
-                </div>
-            </div>
-
             <div class="card-actions">
-                <button type="submit" id="save-system-btn" class="btn primary" aria-label="Apply system settings">
+                <button type="submit" id="save-system-btn" class="btn primary" aria-label="Apply hardware settings">
                     <i class="fas fa-save" aria-hidden="true"></i>
                     <span id="save-system-label">Apply Settings</span>
                 </button>
             </div>
         </form>
     </section>
-
-    <!-- MirrorDash Core Update -->
-    <section class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Core Update</h2>
-        <p class="panel-subtitle">Check whether a newer version of the MirrorDash core framework is available on PyPI and upgrade it here.</p>
-
-        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
-            <div>
-                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Installed Version</span>
-                <div id="core-current-version" style="font-size: 1rem; font-weight: 600; color: white; margin-top: 2px;">{{ current_version }}</div>
-            </div>
-            <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;"
-                    hx-get="/admin/panels/system/update-check"
-                    hx-target="#core-update-result"
-                    hx-swap="innerHTML"
-                    onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Checking...';">
-                <i class="fas fa-search" aria-hidden="true"></i>
-                <span id="core-check-label">Check for Updates</span>
-            </button>
-        </div>
-
-        <!-- Dynamic result area -->
-        <div id="core-update-result" style="display: block;">
-            <!-- populated by check -->
-        </div>
-    </section>
 </div>
 
 <script>
     let initialSshState = {% if settings.ssh %}true{% else %}false{% endif %};
-    
-    function toggleDisplayModeGroups(mode) {
-        document.getElementById('display-mode-interval-group').style.display = mode === 'interval' ? 'block' : 'none';
-        document.getElementById('display-mode-pir-group').style.display = mode === 'pir' ? 'block' : 'none';
-        document.getElementById('display-mode-button-group').style.display = mode === 'button' ? 'block' : 'none';
-    }
     
     function toggleSSHPasswordGroup(checked) {
         if (checked && !initialSshState) {

@@ -1,0 +1,1353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MirrorDash — App Store Reimagined Module Tab</title>
+    <!-- FontAwesome & Outfit/Space Grotesk Fonts -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-base: #070709;
+            --bg-card: rgba(20, 20, 25, 0.6);
+            --bg-input: #121216;
+            --border-color: rgba(255, 255, 255, 0.08);
+            --border-hover: rgba(255, 255, 255, 0.16);
+            --primary: #6366f1;
+            --primary-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+            --success: #10b981;
+            --success-glow: rgba(16, 185, 129, 0.2);
+            --warning: #f59e0b;
+            --danger: #ef4444;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #475569;
+        }
+
+        body {
+            background-color: var(--bg-base);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            overflow-x: hidden;
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.04) 0%, transparent 45%),
+                radial-gradient(circle at 90% 80%, rgba(168, 85, 247, 0.04) 0%, transparent 45%);
+        }
+
+        /* CONTAINER */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* HEADER */
+        .header-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header-bar h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2rem;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            margin: 0;
+            background: linear-gradient(to right, #ffffff, #94a3b8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header-bar p {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin: 4px 0 0 0;
+        }
+
+        /* DISCOVER HERO BANNER */
+        .hero-banner {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.05) 50%, rgba(0, 0, 0, 0) 100%);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 40px;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+        }
+
+        .hero-banner::before {
+            content: '';
+            position: absolute;
+            top: -20%;
+            right: -10%;
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, rgba(168, 85, 247, 0.15) 0%, transparent 70%);
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        .hero-content {
+            position: relative;
+            z-index: 1;
+            max-width: 600px;
+        }
+
+        .hero-tag {
+            background: rgba(99, 102, 241, 0.2);
+            color: #c7d2fe;
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            padding: 4px 10px;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            display: inline-block;
+            margin-bottom: 12px;
+        }
+
+        .hero-banner h2 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 1.5rem;
+            margin: 0 0 10px 0;
+            color: white;
+        }
+
+        .hero-banner p {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            margin: 0;
+            line-height: 1.5;
+        }
+
+        /* SEARCH & FILTER AREA */
+        .filter-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .search-wrapper {
+            position: relative;
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .search-wrapper i {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .search-input {
+            width: 100%;
+            background-color: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 12px 16px 12px 48px;
+            color: white;
+            font-family: inherit;
+            font-size: 0.95rem;
+            box-sizing: border-box;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .category-pills {
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            padding-bottom: 4px;
+        }
+
+        .category-pill {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 8px 16px;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s ease;
+        }
+
+        .category-pill:hover {
+            color: white;
+            border-color: var(--border-hover);
+            background-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .category-pill.active {
+            background: var(--primary-gradient);
+            border-color: transparent;
+            color: white;
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);
+        }
+
+        /* APP STORE GRID */
+        .app-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 24px;
+        }
+
+        /* CARD */
+        .app-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 18px;
+            padding: 24px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+        }
+
+        .app-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--border-hover);
+            box-shadow: 0 12px 30px rgba(99, 102, 241, 0.06);
+        }
+
+        .app-info {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .app-icon-box {
+            width: 58px;
+            height: 58px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.6rem;
+            position: relative;
+            box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.05);
+        }
+
+        .app-meta {
+            flex: 1;
+        }
+
+        .app-title-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .app-title {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: white;
+            margin: 0;
+        }
+
+        .app-version {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin: 2px 0 0 0;
+            font-family: monospace;
+        }
+
+        .app-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin: 12px 0 0 0;
+            line-height: 1.45;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+
+        .app-footer {
+            margin-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-top: 1px solid rgba(255, 255, 255, 0.04);
+            padding-top: 16px;
+        }
+
+        .status-indicators {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .badge {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .badge-installed {
+            background-color: rgba(16, 185, 129, 0.1);
+            color: #34d399;
+            border: 1px solid rgba(16, 185, 129, 0.15);
+        }
+
+        .badge-instances {
+            background-color: rgba(99, 102, 241, 0.1);
+            color: #818cf8;
+            border: 1px solid rgba(99, 102, 241, 0.15);
+        }
+
+        /* APP STORE BUTTONS */
+        .btn-store {
+            font-family: inherit;
+            font-size: 0.82rem;
+            font-weight: 600;
+            padding: 8px 18px;
+            border-radius: 30px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn-get {
+            background-color: white;
+            color: black;
+        }
+
+        .btn-get:hover {
+            background-color: #e2e8f0;
+            transform: scale(1.03);
+        }
+
+        .btn-configure {
+            background-color: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+
+        .btn-configure:hover {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: var(--border-hover);
+        }
+
+        /* SLIDE OVER / DRAWER FOR CONFIGURATION */
+        .config-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .config-sheet {
+            position: fixed;
+            top: 0;
+            right: -600px;
+            width: 550px;
+            height: 100vh;
+            background: #09090b;
+            border-left: 1px solid var(--border-color);
+            z-index: 2100;
+            display: flex;
+            flex-direction: column;
+            box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
+            transition: right 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .config-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .config-overlay.open + .config-sheet {
+            right: 0;
+        }
+
+        .sheet-header {
+            padding: 24px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .sheet-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+
+        .sheet-close:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: white;
+        }
+
+        .sheet-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            gap: 28px;
+        }
+
+        .sheet-footer {
+            padding: 20px 24px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 12px;
+            background: #0b0b0e;
+        }
+
+        /* APP PROFILE SECTION */
+        .app-profile {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .profile-icon {
+            width: 72px;
+            height: 72px;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+        }
+
+        .profile-title {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: white;
+            margin: 0;
+        }
+
+        .profile-desc {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-top: 4px;
+        }
+
+        /* INSTANCES BLOCK */
+        .instances-section {
+            background: rgba(255, 255, 255, 0.015);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 16px;
+        }
+
+        .instances-header {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .instance-item-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 8px;
+        }
+
+        .instance-item-row:last-child {
+            margin-bottom: 0;
+        }
+
+        /* LIVE PREVIEW COMPONENT */
+        .preview-pane {
+            background: #020203;
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .preview-pane-header {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* CONFIGURATION FORMS */
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            font-size: 0.88rem;
+            font-weight: 500;
+            color: white;
+        }
+
+        .form-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: -4px;
+        }
+
+        .form-control {
+            background-color: var(--bg-input);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: white;
+            font-family: inherit;
+            font-size: 0.9rem;
+            box-sizing: border-box;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+        }
+
+        /* SWITCH CONTROL */
+        .switch-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+        }
+
+        .switch-label-area {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .switch-title {
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: white;
+        }
+
+        .switch-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 24px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.08);
+            transition: .3s;
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 16px;
+            width: 16px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .3s;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+        }
+
+        input:checked + .slider {
+            background-color: var(--primary);
+            border-color: transparent;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(20px);
+        }
+
+        /* POSITION GRID IN DRAW */
+        .position-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 44px);
+            gap: 4px;
+            max-width: 160px;
+            background: rgba(0, 0, 0, 0.2);
+            padding: 4px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .pos-btn {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .pos-btn:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .pos-btn.active {
+            background: var(--primary);
+            border-color: transparent;
+            box-shadow: 0 0 6px var(--primary);
+        }
+
+        /* DEMO MOCK PREVIEWS */
+        .mock-clock {
+            text-align: center;
+            padding: 10px;
+        }
+
+        .mock-clock-time {
+            font-size: 2.2rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            letter-spacing: -0.03em;
+        }
+
+        .mock-clock-date {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .mock-weather {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            padding: 10px;
+        }
+
+        .mock-weather-temp {
+            font-size: 2.5rem;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+        }
+
+        .mock-weather-icon {
+            font-size: 2.8rem;
+            color: var(--warning);
+            text-shadow: 0 0 15px rgba(245, 158, 11, 0.3);
+        }
+
+        .mock-weather-desc {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <!-- HEADER -->
+        <div class="header-bar">
+            <div>
+                <h1>Module Store</h1>
+                <p>Discover community layouts or customize your current dashboard widgets.</p>
+            </div>
+            <button class="category-pill" onclick="window.history.back()" style="display: flex; align-items: center; gap: 8px;">
+                <i class="fas fa-arrow-left"></i> Back to Admin
+            </button>
+        </div>
+
+        <!-- HERO DISCOVER BANNER -->
+        <div class="hero-banner">
+            <div class="hero-content">
+                <span class="hero-tag">Featured Module</span>
+                <h2>Home Assistant Integration</h2>
+                <p>Render interactive sensor grids, switch indicators, and smart home scenes directly on your ambient dashboard layout. Now with detailed card layouts.</p>
+            </div>
+        </div>
+
+        <!-- FILTERS ROW -->
+        <div class="filter-row">
+            <div class="category-pills">
+                <button class="category-pill active" onclick="filterCategory('all', this)">All</button>
+                <button class="category-pill" onclick="filterCategory('utility', this)">Utility</button>
+                <button class="category-pill" onclick="filterCategory('iot', this)">Smart Home</button>
+                <button class="category-pill" onclick="filterCategory('info', this)">Information</button>
+                <button class="category-pill" onclick="filterCategory('installed', this)">Installed</button>
+            </div>
+            <div class="search-wrapper">
+                <i class="fas fa-search"></i>
+                <input type="text" class="search-input" id="searchBar" placeholder="Search modules..." onkeyup="searchModules()">
+            </div>
+        </div>
+
+        <!-- MODULES APP GRID -->
+        <div class="app-grid" id="moduleGrid">
+            
+            <!-- Clock Card -->
+            <div class="app-card" data-category="utility installed" data-name="Clock Module">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.2); color: #818cf8;">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">Clock Module</h3>
+                            </div>
+                            <p class="app-version">mirrordash-clock v1.2.0</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Highly accurate clock and date layout with custom timezones, english/swedish locale support, and smooth updates.</p>
+                </div>
+                <div class="app-footer">
+                    <div class="status-indicators">
+                        <span class="badge badge-installed">Installed</span>
+                        <span class="badge badge-instances">1 Instance</span>
+                    </div>
+                    <button class="btn-store btn-configure" onclick="openConfig('clock')">Configure</button>
+                </div>
+            </div>
+
+            <!-- Calendar Card -->
+            <div class="app-card" data-category="utility installed" data-name="Calendar Card">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); color: #34d399;">
+                            <i class="fas fa-calendar-days"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">Calendar Module</h3>
+                            </div>
+                            <p class="app-version">mirrordash-calendar v1.0.5</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Aggregates lookahead iCal schedules, formatting all-day entries to reduce repititive dashboard clutter.</p>
+                </div>
+                <div class="app-footer">
+                    <div class="status-indicators">
+                        <span class="badge badge-installed">Installed</span>
+                        <span class="badge badge-instances">1 Instance</span>
+                    </div>
+                    <button class="btn-store btn-configure" onclick="openConfig('calendar')">Configure</button>
+                </div>
+            </div>
+
+            <!-- Home Assistant Card -->
+            <div class="app-card" data-category="iot installed" data-name="Home Assistant">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(245, 158, 11, 0.08); border: 1px solid rgba(245, 158, 11, 0.2); color: #fbbf24;">
+                            <i class="fas fa-house-signal"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">Home Assistant</h3>
+                            </div>
+                            <p class="app-version">mirrordash-homeassistant v2.1.0</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Renders grouped smart sensors, toggle status cards, and mix-and-match entities in compact or detailed list blocks.</p>
+                </div>
+                <div class="app-footer">
+                    <div class="status-indicators">
+                        <span class="badge badge-installed">Installed</span>
+                        <span class="badge badge-instances">2 Instances</span>
+                    </div>
+                    <button class="btn-store btn-configure" onclick="openConfig('homeassistant')">Configure</button>
+                </div>
+            </div>
+
+            <!-- Weather Card -->
+            <div class="app-card" data-category="info" data-name="OpenWeather Widget">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(6, 182, 212, 0.08); border: 1px solid rgba(6, 182, 212, 0.2); color: #22d3ee;">
+                            <i class="fas fa-cloud-sun"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">OpenWeather Widget</h3>
+                            </div>
+                            <p class="app-version">mirrordash-weather v0.9.1</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Renders local daily forecast, high/low wind speed tracking, and real-time precipitation gauges.</p>
+                </div>
+                <div class="app-footer">
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Not Installed</span>
+                    <button class="btn-store btn-get" onclick="simulateInstall(this, 'OpenWeather Widget')">Get</button>
+                </div>
+            </div>
+
+            <!-- Swedish Name Day Card -->
+            <div class="app-card" data-category="info installed" data-name="Namnsdag Module">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(236, 72, 153, 0.08); border: 1px solid rgba(236, 72, 153, 0.2); color: #f472b6;">
+                            <i class="fas fa-calendar-check"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">Swedish Name Day</h3>
+                            </div>
+                            <p class="app-version">mirrordash-namnsdag v1.0.0</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Fetches today's name day celebrants from the Swedish Academy databases. Includes locale mapping rules.</p>
+                </div>
+                <div class="app-footer">
+                    <div class="status-indicators">
+                        <span class="badge badge-installed">Installed</span>
+                    </div>
+                    <button class="btn-store btn-configure" onclick="openConfig('namnsdag')">Configure</button>
+                </div>
+            </div>
+
+            <!-- Spotify Player Card -->
+            <div class="app-card" data-category="info" data-name="Spotify Player">
+                <div>
+                    <div class="app-info">
+                        <div class="app-icon-box" style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.2); color: #10b981;">
+                            <i class="fab fa-spotify"></i>
+                        </div>
+                        <div class="app-meta">
+                            <div class="app-title-row">
+                                <h3 class="app-title">Spotify Player</h3>
+                            </div>
+                            <p class="app-version">mirrordash-spotify v1.3.1</p>
+                        </div>
+                    </div>
+                    <p class="app-desc">Exposes currently playing album art, progress tracks, and control callbacks using official Web API keys.</p>
+                </div>
+                <div class="app-footer">
+                    <span style="font-size: 0.8rem; color: var(--text-muted);">Not Installed</span>
+                    <button class="btn-store btn-get" onclick="simulateInstall(this, 'Spotify Player')">Get</button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- CONFIGURATION SLIDE OVER -->
+    <div class="config-overlay" id="configOverlay" onclick="closeConfig()"></div>
+    <div class="config-sheet" id="configSheet">
+        
+        <div class="sheet-header">
+            <h2 id="sheetTitle" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.25rem;">Configure Module</h2>
+            <button class="sheet-close" onclick="closeConfig()"><i class="fas fa-times"></i></button>
+        </div>
+
+        <div class="sheet-body">
+            
+            <!-- App Profile Card -->
+            <div class="app-profile">
+                <div class="profile-icon" id="profileIcon" style="background: rgba(99, 102, 241, 0.08); color: var(--primary);">
+                    <i class="fas fa-clock"></i>
+                </div>
+                <div>
+                    <h3 class="profile-title" id="profileTitle">Clock Module</h3>
+                    <p class="profile-desc" id="profileDesc">Create and manage instances for the local mirror clock widget.</p>
+                </div>
+            </div>
+
+            <!-- Instances Section -->
+            <div class="instances-section" id="instancesSection">
+                <div class="instances-header">
+                    <span>Active Instances</span>
+                    <span style="color: var(--primary); cursor: pointer;" onclick="addNewInstance()"><i class="fas fa-plus"></i> Add New</span>
+                </div>
+                <div id="instancesListContainer">
+                    <!-- Dynamic instances rows loaded here -->
+                </div>
+            </div>
+
+            <!-- LIVE PREVIEW CONTAINER -->
+            <div class="preview-pane">
+                <div class="preview-pane-header">
+                    <i class="fas fa-eye"></i> Live Widget Mockup
+                </div>
+                <div id="livePreviewContainer" style="display: flex; align-items: center; justify-content: center; min-height: 100px;">
+                    <!-- Preview content loaded here -->
+                </div>
+            </div>
+
+            <!-- CONFIGURATION FORMS -->
+            <div id="configFormContainer">
+                
+                <!-- Position Select -->
+                <div class="form-group">
+                    <label>Grid Position</label>
+                    <p class="form-desc">Choose which zone of the mirror display this instance renders in.</p>
+                    <div class="position-grid">
+                        <button class="pos-btn" onclick="selectPos('top_left', this)" title="Top Left"></button>
+                        <button class="pos-btn" onclick="selectPos('top_center', this)" title="Top Center"></button>
+                        <button class="pos-btn" onclick="selectPos('top_right', this)" title="Top Right"></button>
+                        <button class="pos-btn" onclick="selectPos('middle_left', this)" title="Middle Left"></button>
+                        <button class="pos-btn active" onclick="selectPos('middle_center', this)" title="Middle Center"></button>
+                        <button class="pos-btn" onclick="selectPos('middle_right', this)" title="Middle Right"></button>
+                        <button class="pos-btn" onclick="selectPos('bottom_left', this)" title="Bottom Left"></button>
+                        <button class="pos-btn" onclick="selectPos('bottom_center', this)" title="Bottom Center"></button>
+                        <button class="pos-btn" onclick="selectPos('bottom_right', this)" title="Bottom Right"></button>
+                    </div>
+                </div>
+
+                <!-- Custom inputs generated dynamically depending on module selection -->
+                <div id="dynamicInputs"></div>
+
+            </div>
+
+        </div>
+
+        <div class="sheet-footer">
+            <button class="btn-store btn-configure" style="border-radius: 8px;" onclick="closeConfig()">Cancel</button>
+            <button class="btn-store btn-get" style="border-radius: 8px; font-weight: 600;" onclick="saveMockConfig()">Save Settings</button>
+        </div>
+
+    </div>
+
+    <script>
+        // Fake Config Data Store
+        const moduleConfigs = {
+            clock: {
+                title: "Clock Module",
+                icon: "fa-clock",
+                color: "rgba(99, 102, 241, 0.08)",
+                textColor: "#818cf8",
+                desc: "Highly accurate clock and date layout with timezone and local support.",
+                instances: [
+                    { id: "clock-1", title: "Main Clock", position: "middle_center", enabled: true, show_seconds: true, display_24h: true }
+                ]
+            },
+            calendar: {
+                title: "Calendar Module",
+                icon: "fa-calendar-days",
+                color: "rgba(16, 185, 129, 0.08)",
+                textColor: "#34d399",
+                desc: "Aggregates lookahead iCal schedules, formatting all-day entries.",
+                instances: [
+                    { id: "calendar-1", title: "Family Calendar", position: "top_right", enabled: true, max_events: 5 }
+                ]
+            },
+            homeassistant: {
+                title: "Home Assistant",
+                icon: "fa-house-signal",
+                color: "rgba(245, 158, 11, 0.08)",
+                textColor: "#fbbf24",
+                desc: "Renders grouped smart sensors, toggle status cards, and mix-and-match entities.",
+                instances: [
+                    { id: "ha-1", title: "Living Room Lights", position: "bottom_left", enabled: true },
+                    { id: "ha-2", title: "Climate Sensors", position: "bottom_right", enabled: true }
+                ]
+            },
+            namnsdag: {
+                title: "Swedish Name Day",
+                icon: "fa-calendar-check",
+                color: "rgba(236, 72, 153, 0.08)",
+                textColor: "#f472b6",
+                desc: "Fetches today's name day celebrants from the Swedish Academy databases.",
+                instances: []
+            }
+        };
+
+        let currentModuleKey = 'clock';
+        let currentInstanceIndex = 0;
+
+        function filterCategory(cat, btn) {
+            // Update Active Pill
+            document.querySelectorAll('.category-pill').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // Filter cards
+            document.querySelectorAll('.app-card').forEach(card => {
+                const categories = card.getAttribute('data-category').split(' ');
+                if (cat === 'all' || categories.includes(cat)) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        function searchModules() {
+            const query = document.getElementById('searchBar').value.toLowerCase();
+            document.querySelectorAll('.app-card').forEach(card => {
+                const name = card.getAttribute('data-name').toLowerCase();
+                if (name.includes(query)) {
+                    card.style.display = 'flex';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        }
+
+        function openConfig(key) {
+            currentModuleKey = key;
+            const data = moduleConfigs[key];
+            
+            // Set Header and Profiler
+            document.getElementById('sheetTitle').innerText = `Configure ${data.title}`;
+            document.getElementById('profileTitle').innerText = data.title;
+            document.getElementById('profileDesc').innerText = data.desc;
+            
+            const profileIcon = document.getElementById('profileIcon');
+            profileIcon.className = `profile-icon`;
+            profileIcon.style.background = data.color;
+            profileIcon.style.color = data.textColor;
+            profileIcon.innerHTML = `<i class="fas ${data.icon}"></i>`;
+
+            // Load instances
+            currentInstanceIndex = 0;
+            renderInstancesList();
+
+            // Open Sheet
+            document.getElementById('configOverlay').classList.add('open');
+        }
+
+        function closeConfig() {
+            document.getElementById('configOverlay').classList.remove('open');
+        }
+
+        function renderInstancesList() {
+            const data = moduleConfigs[currentModuleKey];
+            const listContainer = document.getElementById('instancesListContainer');
+            listContainer.innerHTML = '';
+
+            if (data.instances.length === 0) {
+                listContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); font-size: 0.85rem; padding: 12px;">No active instances. Click Add New to configure one.</div>`;
+                document.getElementById('livePreviewContainer').innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">Create an instance to preview</span>`;
+                document.getElementById('dynamicInputs').innerHTML = '';
+                return;
+            }
+
+            data.instances.forEach((inst, index) => {
+                const activeClass = index === currentInstanceIndex ? 'border-color: var(--primary);' : '';
+                const row = document.createElement('div');
+                row.className = 'instance-row';
+                row.innerHTML = `
+                    <div class="instance-item-row" style="${activeClass} cursor: pointer;" onclick="selectInstance(${index})">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <div style="width: 8px; height: 8px; border-radius: 50%; background-color: ${inst.enabled ? 'var(--success)' : 'var(--text-muted)'};"></div>
+                            <span style="font-size: 0.9rem; font-weight: 500; color: white;">${inst.title}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <span class="badge badge-instances" style="text-transform: uppercase; font-size: 0.65rem;">${inst.position}</span>
+                            <span style="color: var(--danger); cursor: pointer;" onclick="deleteInstance(event, ${index})"><i class="fas fa-trash-can"></i></span>
+                        </div>
+                    </div>
+                `;
+                listContainer.appendChild(row);
+            });
+
+            // Load settings and preview for the active instance index
+            loadInstanceSettings();
+        }
+
+        function selectInstance(index) {
+            currentInstanceIndex = index;
+            renderInstancesList();
+        }
+
+        function addNewInstance() {
+            const data = moduleConfigs[currentModuleKey];
+            const newId = `${currentModuleKey}-${data.instances.length + 1}`;
+            const newInst = {
+                id: newId,
+                title: `${data.title} ${data.instances.length + 1}`,
+                position: "middle_center",
+                enabled: true
+            };
+
+            // Custom initial keys
+            if (currentModuleKey === 'clock') {
+                newInst.show_seconds = true;
+                newInst.display_24h = true;
+            } else if (currentModuleKey === 'calendar') {
+                newInst.max_events = 5;
+            }
+
+            data.instances.push(newInst);
+            currentInstanceIndex = data.instances.length - 1;
+            renderInstancesList();
+        }
+
+        function deleteInstance(event, index) {
+            event.stopPropagation();
+            const data = moduleConfigs[currentModuleKey];
+            data.instances.splice(index, 1);
+            currentInstanceIndex = 0;
+            renderInstancesList();
+        }
+
+        function loadInstanceSettings() {
+            const data = moduleConfigs[currentModuleKey];
+            const inst = data.instances[currentInstanceIndex];
+            
+            // Set position grid
+            document.querySelectorAll('.pos-btn').forEach(btn => btn.classList.remove('active'));
+            const posTitleMap = {
+                top_left: 0, top_center: 1, top_right: 2,
+                middle_left: 3, middle_center: 4, middle_right: 5,
+                bottom_left: 6, bottom_center: 7, bottom_right: 8
+            };
+            const index = posTitleMap[inst.position];
+            const posButtons = document.querySelectorAll('.pos-btn');
+            if (posButtons[index]) {
+                posButtons[index].classList.add('active');
+            }
+
+            // Render custom forms
+            const formContainer = document.getElementById('dynamicInputs');
+            formContainer.innerHTML = '';
+
+            // Instance Title Input
+            const titleGroup = document.createElement('div');
+            titleGroup.className = 'form-group';
+            titleGroup.innerHTML = `
+                <label>Instance Name</label>
+                <input type="text" class="form-control" value="${inst.title}" oninput="updateLiveField('title', this.value)">
+            `;
+            formContainer.appendChild(titleGroup);
+
+            // Enabled toggle switch
+            const enableSwitch = document.createElement('div');
+            enableSwitch.className = 'switch-row';
+            enableSwitch.innerHTML = `
+                <div class="switch-label-area">
+                    <span class="switch-title">Enable Instance</span>
+                    <span class="switch-desc">Displays widget on layout screen if checked.</span>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" ${inst.enabled ? 'checked' : ''} onchange="updateLiveToggle('enabled', this.checked)">
+                    <span class="slider"></span>
+                </label>
+            `;
+            formContainer.appendChild(enableSwitch);
+
+            // Clock settings
+            if (currentModuleKey === 'clock') {
+                const secondSwitch = document.createElement('div');
+                secondSwitch.className = 'switch-row';
+                secondSwitch.innerHTML = `
+                    <div class="switch-label-area">
+                        <span class="switch-title">Show Seconds Ticking</span>
+                        <span class="switch-desc">Toggles display of seconds timer.</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="showSecondsCheck" ${inst.show_seconds ? 'checked' : ''} onchange="updateLiveToggle('show_seconds', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                `;
+                formContainer.appendChild(secondSwitch);
+
+                const hoursSwitch = document.createElement('div');
+                hoursSwitch.className = 'switch-row';
+                hoursSwitch.innerHTML = `
+                    <div class="switch-label-area">
+                        <span class="switch-title">24-Hour Format</span>
+                        <span class="switch-desc">Renders clock using 24 hours standard.</span>
+                    </div>
+                    <label class="switch">
+                        <input type="checkbox" id="24hCheck" ${inst.display_24h ? 'checked' : ''} onchange="updateLiveToggle('display_24h', this.checked)">
+                        <span class="slider"></span>
+                    </label>
+                `;
+                formContainer.appendChild(hoursSwitch);
+            }
+
+            // Calendar settings
+            if (currentModuleKey === 'calendar') {
+                const maxEvents = document.createElement('div');
+                maxEvents.className = 'form-group';
+                maxEvents.innerHTML = `
+                    <label>Maximum Event Count</label>
+                    <p class="form-desc">Limit showing items in the agenda.</p>
+                    <input type="number" class="form-control" value="${inst.max_events}" oninput="updateLiveField('max_events', parseInt(this.value))">
+                `;
+                formContainer.appendChild(maxEvents);
+            }
+
+            // Update live preview card
+            updateLivePreview();
+        }
+
+        function selectPos(pos, btn) {
+            document.querySelectorAll('.pos-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const inst = moduleConfigs[currentModuleKey].instances[currentInstanceIndex];
+            inst.position = pos;
+            
+            // Sync status badge in instances list row
+            renderInstancesList();
+        }
+
+        function updateLiveField(field, value) {
+            const inst = moduleConfigs[currentModuleKey].instances[currentInstanceIndex];
+            inst[field] = value;
+            
+            if (field === 'title') {
+                // Instantly update instance list without losing focus
+                const rowTitle = document.querySelector(`.instance-item-row.border-color\\:var\\(\\-\\-primary\\) span`);
+                if (rowTitle) rowTitle.innerText = value;
+            }
+            
+            updateLivePreview();
+        }
+
+        function updateLiveToggle(field, checked) {
+            const inst = moduleConfigs[currentModuleKey].instances[currentInstanceIndex];
+            inst[field] = checked;
+            
+            // Re-render instance list row dots
+            renderInstancesList();
+        }
+
+        function updateLivePreview() {
+            const previewContainer = document.getElementById('livePreviewContainer');
+            const inst = moduleConfigs[currentModuleKey].instances[currentInstanceIndex];
+
+            if (!inst) return;
+
+            if (currentModuleKey === 'clock') {
+                const format24 = inst.display_24h;
+                const timeStr = format24 ? "16:13" : "4:13 PM";
+                const secStr = inst.show_seconds ? ":06" : "";
+                
+                previewContainer.innerHTML = `
+                    <div class="mock-clock">
+                        <div class="mock-clock-time">${timeStr}${secStr}</div>
+                        <div class="mock-clock-date">Friday, July 3</div>
+                    </div>
+                `;
+            } else if (currentModuleKey === 'calendar') {
+                previewContainer.innerHTML = `
+                    <div style="width: 100%; font-size: 0.85rem;">
+                        <h4 style="margin: 0 0 10px 0; color: #a1a1aa;">Agenda — Max ${inst.max_events || 5} events</h4>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
+                            <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 4px;">
+                                <span>Weekly Review meeting</span>
+                                <span style="color: var(--text-secondary);">10:00 AM</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span>Dinner with Parents</span>
+                                <span style="color: var(--text-secondary);">7:00 PM</span>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (currentModuleKey === 'homeassistant') {
+                previewContainer.innerHTML = `
+                    <div style="width: 100%; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 10px; border-radius: 6px;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Living Room Light</div>
+                            <div style="font-size: 0.95rem; font-weight: 600; color: #34d399; margin-top: 2px;">ON</div>
+                        </div>
+                        <div style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05); padding: 10px; border-radius: 6px;">
+                            <div style="font-size: 0.7rem; color: var(--text-secondary);">Room Temp</div>
+                            <div style="font-size: 0.95rem; font-weight: 600; margin-top: 2px;">21.4°C</div>
+                        </div>
+                    </div>
+                `;
+            } else {
+                previewContainer.innerHTML = `<span style="color: var(--text-muted); font-size: 0.85rem;">Standard preview for ${inst.title}</span>`;
+            }
+        }
+
+        function simulateInstall(btn, name) {
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Getting...`;
+            setTimeout(() => {
+                btn.innerHTML = `<i class="fas fa-check"></i> Installed`;
+                btn.style.background = 'rgba(16, 185, 129, 0.1)';
+                btn.style.color = '#10b981';
+                btn.style.border = '1px solid rgba(16, 185, 129, 0.2)';
+            }, 1500);
+        }
+
+        function saveMockConfig() {
+            closeConfig();
+            alert("Settings Mock-Saved! In production, this saves the settings directly to config.json and pushes live update events to the mirror via WebSockets.");
+        }
+    </script>
+</body>
+</html>

@@ -1,7 +1,7 @@
-<!-- Configuration Tab Panel -->
+<!-- Settings Tab Panel -->
 <div class="page-panel active" id="page-panel-config" role="tabpanel" aria-labelledby="page-tab-config">
     <section class="card">
-        <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Global Configuration</h2>
+        <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Settings</h2>
         
         <p class="panel-subtitle">Configure system-wide settings inherited by all mirror modules.</p>
         <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML">
@@ -15,5 +15,31 @@
                 </button>
             </div>
         </form>
+    </section>
+
+    <!-- MirrorDash Core Update -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Core Update</h2>
+        <p class="panel-subtitle">Check whether a newer version of the MirrorDash core framework is available on PyPI and upgrade it here.</p>
+
+        <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
+            <div>
+                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Installed Version</span>
+                <div id="core-current-version" style="font-size: 1rem; font-weight: 600; color: white; margin-top: 2px;">{{ current_version }}</div>
+            </div>
+            <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;"
+                    hx-get="/admin/panels/system/update-check"
+                    hx-target="#core-update-result"
+                    hx-swap="innerHTML"
+                    onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Checking...';">
+                <i class="fas fa-search" aria-hidden="true"></i>
+                <span id="core-check-label">Check for Updates</span>
+            </button>
+        </div>
+
+        <!-- Dynamic result area -->
+        <div id="core-update-result" style="display: block;">
+            <!-- populated by check -->
+        </div>
     </section>
 </div>

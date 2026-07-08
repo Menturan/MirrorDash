@@ -427,6 +427,39 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     return response
 
 
+@router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
+async def toggle_module_instance(module_name: str, instance_id: str = None):
+    config = load_config()
+    modules_config = config.get("modules", {})
+    cfg_key = instance_id
+    if not cfg_key:
+        cfg_key, _ = find_module_config(modules_config, module_name)
+
+    if cfg_key in modules_config:
+        current_state = modules_config[cfg_key].get("enabled", True)
+        new_state = not current_state
+        modules_config[cfg_key]["enabled"] = new_state
+
+        await remount_rw()
+        try:
+            save_config(config)
+        finally:
+            await remount_ro()
+
+        await module_loader.reload_modules()
+
+        status_text = "enabled" if new_state else "disabled"
+        response = HTMLResponse(content=f"""
+            <script>
+                showGlobal('Module instance {status_text} successfully.', 'success');
+                htmx.trigger("#installed-modules-container", "refreshModules");
+            </script>
+        """)
+        return response
+    else:
+        raise HTTPException(status_code=404, detail="Instance not found")
+
+
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
 async def check_module_update_route(module_name: str):
     eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}

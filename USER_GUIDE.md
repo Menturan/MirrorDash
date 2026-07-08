@@ -49,9 +49,16 @@ For subsequent visits, simply log in using your admin password.
 
 ## 4. Using the Admin Dashboard
 
-The Admin Dashboard is organized into five main tabs:
+The Admin Dashboard is organized into six main tabs:
 
-### 4.1. Modules Tab
+### 4.1. Dashboard Tab
+Provides a high-level overview of the mirror's current status:
+*   **Screen Layout Matrix**: A 3x3 grid showing which screen regions (Top Left, Top Center, etc.) are currently occupied by active module instances.
+*   **System Analytics**: Real-time telemetry cards showing CPU temperature, persistent storage disk usage, system memory (RAM) usage, active modules running, local IP address, network connection status (SSID and signal strength), system uptime, and NTP time synchronization status.
+*   **Power Throttling Warning**: Displayed automatically if Raspberry Pi under-voltage is detected (dropping below 4.63V), warning the user of potential system instability or file system corruption.
+*   **Update Banners**: Displayed dynamically if there is a pending update to the core software or any installed module. Clicking the banner redirects you directly to the correct management tab (System Settings or Modules) to trigger the upgrade.
+
+### 4.2. Modules Tab
 This is where you manage the widgets displayed on your mirror.
 *   **Root Partition Storage (Virtual Env)**: Displays a real-time disk usage gauge showing the total, used, and free space on the system's root partition. Since modules and their dependencies are installed in the A/B virtual environments, this gauge helps you monitor the 6GB boundary. A warning will appear if free space drops below 500MB.
 *   **Failsafe Recovery & Rebuild**: If the system is running in rollback mode or Safe Mode due to a startup crash, a warning banner will be displayed at the top of the Admin dashboard. You can click the **Rebuild Active Environment** button to trigger a fresh rebuild of the virtual environment, reinstalling the core system and configured modules.
@@ -59,7 +66,7 @@ This is where you manage the widgets displayed on your mirror.
 *   **Install New Modules**: Search the community module database. Click **Details** on any module to read its setup guide and view screenshots. Click **Install** to add it to your system.
 *   **Uninstalling**: If you no longer need a module, click **Uninstall** to cleanly remove it from the system and configuration.
 
-### 4.2. Configuration Tab
+### 4.3. Configuration Tab
 Controls global settings shared by all modules. Adjust these to localize your mirror:
 *   **Language**: Set display language (e.g., `en` for English, `sv` for Swedish).
 *   **Timezone**: Your region's timezone identifier (e.g., `Europe/Stockholm`).
@@ -67,7 +74,7 @@ Controls global settings shared by all modules. Adjust these to localize your mi
 *   **Units**: Change temperature units (`C` or `F`) and distance (`km` or `mi`).
 *   **Coordinates**: Latitude and longitude (used by weather modules to locate your mirror).
 
-### 4.3. System Tab
+### 4.4. System Tab
 Allows you to adjust physical display properties and automate display power directly from your browser:
 *   **Screen Rotation**: Rotate the screen layout (`normal`, `left`, `right`, or `inverted`) to support portrait-oriented mirrors.
 *   **Screen Resolution**: Set display resolution or keep it on `auto`.
@@ -80,12 +87,12 @@ Allows you to adjust physical display properties and automate display power dire
     *   *Physical GPIO Button*: Connect a momentary push button to a BCM GPIO pin (e.g. `23`) to toggle the display power state manually by pressing it.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
 
-### 4.4. Backup Tab
+### 4.5. Backup Tab
 Protect your configurations and personal data files:
 *   **Create Backup**: Downloads a single `.zip` file containing your entire setup, module settings, and authentication details.
 *   **Restore Backup**: Upload a previously saved backup file to restore your mirror to that state instantly.
 
-### 4.5. Logs Tab
+### 4.6. Logs Tab
 Displays real-time system logs. If a module fails to fetch data or the screen behaves unexpectedly, open this tab to inspect the error messages.
 
 ---

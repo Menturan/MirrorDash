@@ -1,0 +1,170 @@
+<div class="page-panel active" id="page-panel-dashboard" role="tabpanel" aria-labelledby="page-tab-dashboard">
+    <div style="display: grid; grid-template-columns: repeat(12, 1fr); gap: 24px;">
+        
+        <!-- Storage Warning banner (Golden Rule) -->
+        {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
+        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.35); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-triangle-exclamation" style="font-size: 1.6rem; color: #ef4444; animation: pulse 2s infinite;"></i>
+            <div>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Storage Warning: High Disk Space Usage</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    Remaining persistent storage on <code>/storage</code> is 
+                    <strong>{{ (disk_usage.free_bytes / 1024 / 1024)|round(1) }} MB</strong> 
+                    (under the 500MB safety margin). Module installations or upgrades may fail.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Power Warning banner (Raspberry Pi Throttling Warning) -->
+        {% if undervoltage_detected %}
+        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.35); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-bolt" style="font-size: 1.6rem; color: #ef4444; animation: pulse 2s infinite;"></i>
+            <div>
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Power Warning: Under-voltage Detected</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    Your Raspberry Pi power supply voltage drops below 4.63V. The CPU may be throttled to prevent instability. Please use a high-quality 5V/3A power supply.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Asynchronous Update Alert Banner -->
+        <div style="grid-column: span 12;" hx-get="/admin/panels/dashboard/updates" hx-trigger="load" hx-swap="outerHTML"></div>
+
+        <!-- Screen Layout Matrix -->
+        <section class="card" style="grid-column: span 5; display: flex; flex-direction: column;">
+            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <i class="fas fa-th-large" style="color: var(--primary);"></i> Screen Layout Matrix
+            </h2>
+            <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
+                Visualizes screen positions currently populated with active modules.
+            </p>
+            
+            {% set filled_positions = [] %}
+            {% for inst in active_instances %}
+                {% if inst.position not in filled_positions %}
+                    {% set _ = filled_positions.append(inst.position) %}
+                {% endif %}
+            {% endfor %}
+
+            <div class="matrix-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 75px); gap: 6px; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.03);">
+                {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
+                    {% set is_filled = pos in filled_positions %}
+                    <div class="matrix-cell {% if is_filled %}filled{% endif %}" 
+                         style="background: {% if is_filled %}rgba(99, 102, 241, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %}; 
+                                border: 1px solid {% if is_filled %}var(--primary){% else %}rgba(255, 255, 255, 0.04){% endif %}; 
+                                border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; position: relative;"
+                         title="{{ pos.replace('_', ' ').title() }}{% if is_filled %} (Active Modules Running){% endif %}">
+                        <span style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 600;">
+                            {% if pos == 'top_left' %}TL{% elif pos == 'top_center' %}TC{% elif pos == 'top_right' %}TR
+                            {% elif pos == 'middle_left' %}ML{% elif pos == 'middle_center' %}MC{% elif pos == 'middle_right' %}MR
+                            {% elif pos == 'bottom_left' %}BL{% elif pos == 'bottom_center' %}BC{% elif pos == 'bottom_right' %}BR{% endif %}
+                        </span>
+                        {% if is_filled %}
+                            <div style="width: 6px; height: 6px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 6px var(--primary); position: absolute; bottom: 6px;"></div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        <!-- System Analytics -->
+        <section class="card" style="grid-column: span 7; display: flex; flex-direction: column;">
+            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+                <i class="fas fa-chart-line" style="color: var(--primary);"></i> System Analytics
+            </h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex-grow: 1;">
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">CPU Temperature</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if cpu_temp and cpu_temp > 60 %}var(--warning){% else %}var(--success){% endif %};">
+                        {% if cpu_temp %}{{ cpu_temp }}°C{% else %}N/A (Dev Mode){% endif %}
+                    </span>
+                </div>
+                
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Persistent Storage</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if disk_usage.percent_used > 90 %}var(--danger){% else %}var(--text-primary){% endif %};">
+                        {{ disk_usage.percent_used }}% Used
+                    </span>
+                    <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; margin-top: 4px;">
+                        <div style="height: 100%; border-radius: 3px; background-color: {% if disk_usage.percent_used > 90 %}var(--danger){% else %}var(--primary){% endif %}; width: {{ disk_usage.percent_used }}%;"></div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Memory (RAM)</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if ram_usage.percent_used > 85 %}var(--warning){% else %}var(--text-primary){% endif %};">
+                        {{ ram_usage.percent_used }}% Used
+                    </span>
+                    <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; margin-top: 4px;">
+                        <div style="height: 100%; border-radius: 3px; background-color: {% if ram_usage.percent_used > 85 %}var(--warning){% else %}var(--primary){% endif %}; width: {{ ram_usage.percent_used }}%;"></div>
+                    </div>
+                    <span style="font-size: 0.7rem; color: var(--text-secondary); margin-top: 2px;">{{ ram_usage.used_mb }} MB / {{ ram_usage.total_mb }} MB</span>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Active Modules</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600;">
+                        {{ active_count }} Running
+                    </span>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Local IP Address</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px;">
+                        {{ local_ip }}
+                    </span>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Network Connection</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
+                        {% if network_info.type == 'wifi' %}
+                            <i class="fas fa-wifi" style="color: var(--success); font-size: 0.9rem;"></i> {{ network_info.ssid }} ({{ network_info.signal }}%)
+                        {% elif network_info.type == 'ethernet' %}
+                            <i class="fas fa-ethernet" style="color: var(--success); font-size: 0.9rem;"></i> {{ network_info.ssid }}
+                        {% elif network_info.type == 'hotspot' %}
+                            <i class="fas fa-broadcast-tower" style="color: var(--warning); font-size: 0.9rem;"></i> Setup Hotspot
+                        {% else %}
+                            <i class="fas fa-times-circle" style="color: var(--danger); font-size: 0.9rem;"></i> Disconnected
+                        {% endif %}
+                    </span>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">System Uptime</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600;">
+                        {{ uptime_str }}
+                    </span>
+                </div>
+
+                <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
+                    <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Time Sync (NTP)</span>
+                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
+                        {% if ntp_synchronized %}
+                            <i class="fas fa-check-circle" style="color: var(--success); font-size: 0.9rem;"></i> Synchronized
+                        {% else %}
+                            <i class="fas fa-exclamation-circle" style="color: var(--warning); font-size: 0.9rem;"></i> Unsynchronized
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+<style>
+    @media (max-width: 900px) {
+        .page-panel > div {
+            grid-template-columns: 1fr !important;
+        }
+        .page-panel section.card {
+            grid-column: span 12 !important;
+        }
+        .analytics-grid, .page-panel section.card > div {
+            grid-template-columns: 1fr !important;
+        }
+    }
+</style>

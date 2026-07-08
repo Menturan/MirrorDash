@@ -1,0 +1,91 @@
+{% if has_updates %}
+<div class="banner-container" style="grid-column: span 12; display: flex; flex-direction: column; gap: 12px; margin-bottom: 12px; width: 100%;">
+    <style>
+        .update-banner {
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.12) 0%, rgba(99, 102, 241, 0.02) 100%);
+            border: 1px solid rgba(99, 102, 241, 0.25);
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.05);
+            border-radius: 12px;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            text-decoration: none;
+        }
+        .update-banner:hover {
+            transform: translateY(-2px);
+            border-color: rgba(99, 102, 241, 0.5) !important;
+            box-shadow: 0 15px 35px rgba(99, 102, 241, 0.15) !important;
+            background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(99, 102, 241, 0.04) 100%) !important;
+        }
+        .update-banner i.fa-arrow-alt-circle-up {
+            font-size: 1.6rem;
+            color: #818cf8;
+            transition: transform 0.3s ease;
+        }
+        .update-banner:hover i.fa-arrow-alt-circle-up {
+            transform: scale(1.1);
+        }
+        .update-banner h4 {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #c7d2fe;
+            margin: 0;
+        }
+        .update-banner p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            margin: 2px 0 0 0;
+        }
+        .update-banner .action-text {
+            font-size: 0.8rem;
+            color: #818cf8;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            transition: color 0.3s ease;
+        }
+        .update-banner:hover .action-text {
+            color: #c7d2fe !important;
+        }
+        .update-banner:hover .action-text i {
+            transform: translateX(4px);
+            transition: transform 0.3s ease;
+        }
+    </style>
+
+    {% if updates.core.update_available %}
+    <div class="update-banner" onclick="document.getElementById('page-tab-system').click()">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-arrow-alt-circle-up"></i>
+            <div>
+                <h4>Update Available: MirrorDash Core</h4>
+                <p>Version <strong>v{{ updates.core.latest_version }}</strong> is now available (currently running v{{ updates.core.current_version }}).</p>
+            </div>
+        </div>
+        <div class="action-text">
+            Go to System Settings <i class="fas fa-arrow-right"></i>
+        </div>
+    </div>
+    {% endif %}
+
+    {% for mod in updates.modules %}
+    <div class="update-banner" onclick="document.getElementById('page-tab-modules').click()">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-arrow-alt-circle-up" style="color: #a78bfa;"></i>
+            <div>
+                <h4>Update Available: {{ mod.title }} Module</h4>
+                <p>Version <strong>v{{ mod.latest_version }}</strong> is now available (currently running v{{ mod.current_version }}).</p>
+            </div>
+        </div>
+        <div class="action-text" style="color: #a78bfa;">
+            Go to Modules <i class="fas fa-arrow-right"></i>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}

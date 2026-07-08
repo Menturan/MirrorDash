@@ -153,9 +153,9 @@ def navigate_authenticated(page, server_url):
 def test_admin_dashboard_navigation_and_drawer(page, server_url):
     navigate_authenticated(page, server_url)
 
-    # 1. Verify we land on the default configuration page
+    # 1. Verify we land on the default dashboard page
     page.wait_for_selector("h1")
-    assert page.locator("#page-tab-config").is_visible()
+    assert page.locator("#page-tab-dashboard").is_visible()
     
     # 2. Click through to the Modules tab
     page.click("#page-tab-modules")
@@ -172,15 +172,15 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     # Click to expand
     config_btn.click()
     
-    # Wait for the config fields inside the drawer to load and expand
-    drawer = page.locator("#config-drawer-mirrordash_clock")
-    page.wait_for_selector("#config-drawer-mirrordash_clock", state="visible")
-    assert drawer.is_visible()
+    # Wait for the config overlay inside the drawer to load and expand
+    overlay = page.locator("#configOverlay")
+    page.wait_for_selector("#configOverlay.open", state="visible")
+    assert overlay.is_visible()
 
-    # Click again to collapse
-    config_btn.click()
-    page.wait_for_selector("#config-drawer-mirrordash_clock", state="hidden")
-    assert not drawer.is_visible()
+    # Click close button to collapse
+    page.click(".sheet-close")
+    page.wait_for_selector("#configOverlay.open", state="hidden")
+    assert "open" not in overlay.get_attribute("class")
 
 def test_admin_dashboard_restart_overlay(page, server_url):
     navigate_authenticated(page, server_url)
@@ -210,19 +210,12 @@ def test_admin_configuration_panel(page, server_url):
     navigate_authenticated(page, server_url)
     page.wait_for_selector("h1")
 
+    # Navigate to Configuration panel
+    page.click("#page-tab-config")
+    page.wait_for_selector("#visual-form-container")
+
     # Verify Visual Editor is visible
-    assert page.locator("#panel-visual").is_visible()
-    
-    # Switch to Raw JSON tab
-    page.click("#tab-raw")
-    page.wait_for_selector("#panel-raw", state="visible")
-    assert page.locator("#panel-raw").is_visible()
-    assert not page.locator("#panel-visual").is_visible()
-    
-    # Switch back to Visual Editor
-    page.click("#tab-visual")
-    page.wait_for_selector("#panel-visual", state="visible")
-    assert page.locator("#panel-visual").is_visible()
+    assert page.locator("#visual-form-container").is_visible()
 
 def test_admin_logs_panel(page, server_url):
     navigate_authenticated(page, server_url)
@@ -331,15 +324,15 @@ def test_add_to_mirror(page, server_url):
     config_btn.click()
 
     # Verify drawer opens
-    drawer = page.locator("#config-drawer-mirrordash_calendar")
-    page.wait_for_selector("#config-drawer-mirrordash_calendar", state="visible")
-    assert drawer.is_visible()
+    overlay = page.locator("#configOverlay")
+    page.wait_for_selector("#configOverlay.open", state="visible")
+    assert overlay.is_visible()
 
     # Wait for the config fields inside the drawer to load and contain Configuration Parameters
-    fields = page.locator("#config-fields-mirrordash_calendar")
-    page.wait_for_selector("#config-fields-mirrordash_calendar *", state="visible")
+    fields = page.locator("#config-fields-global")
+    page.wait_for_selector("#config-fields-global form", state="visible")
     inner_html = fields.inner_html()
-    assert "Configuration Parameters" in inner_html
+    assert "Standard Settings" in inner_html
 
     assert len([err for err in console_errors if "error" in err]) == 0
 

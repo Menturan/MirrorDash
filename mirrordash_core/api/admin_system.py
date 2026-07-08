@@ -394,12 +394,32 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     config = load_config()
     system_cfg = config.setdefault("system", {})
 
-    rotation = settings.get("rotation", "normal")
-    resolution = settings.get("resolution", "auto")
-    brightness = settings.get("brightness", 100)
-    volume = settings.get("volume", 80)
-    ssh_enabled = settings.get("ssh", True)
-    display_control = settings.get("display_control", {})
+    # Use existing values as defaults if not provided in the incoming request
+    rotation = settings.get("rotation", system_cfg.get("rotation", "normal"))
+    resolution = settings.get("resolution", system_cfg.get("resolution", "auto"))
+    brightness = settings.get("brightness", system_cfg.get("brightness", 100))
+    volume = settings.get("volume", system_cfg.get("volume", 80))
+    ssh_enabled = settings.get("ssh", system_cfg.get("ssh", True))
+    
+    # Merge display_control securely
+    current_dc = system_cfg.get("display_control", {
+        "mode": "manual",
+        "interval": {"start": "07:00", "end": "22:00"},
+        "pir": {"pin": 18, "timeout_minutes": 5},
+        "button": {"pin": 23}
+    })
+    incoming_dc = settings.get("display_control", {})
+    
+    display_control = dict(current_dc)
+    if incoming_dc:
+        if "mode" in incoming_dc:
+            display_control["mode"] = incoming_dc["mode"]
+        if "interval" in incoming_dc:
+            display_control["interval"] = {**display_control.get("interval", {}), **incoming_dc["interval"]}
+        if "pir" in incoming_dc:
+            display_control["pir"] = {**display_control.get("pir", {}), **incoming_dc["pir"]}
+        if "button" in incoming_dc:
+            display_control["button"] = {**display_control.get("button", {}), **incoming_dc["button"]}
 
     # Validation
     if rotation not in ("normal", "left", "right", "inverted"):

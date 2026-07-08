@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import find_module_config, load_config, save_config
+from mirrordash_core.config import find_module_config, load_config, save_config, get_core_version
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.system import remount_ro, remount_rw
 
@@ -26,30 +26,53 @@ VALID_POSITIONS = {
 
 def get_module_schema(plugin_class) -> dict | None:
     """Resolve module config schema from the plugin class variable or a standalone json file next to it."""
-    # 1. Check for class variable config_schema
-    schema = getattr(plugin_class, "config_schema", None)
-    if callable(schema):
-        schema = schema()
-    if schema and isinstance(schema, dict):
-        return schema
-
-    # 2. Check for standalone config_schema.json or schema.json next to the module file
     import sys
+
+    # Try to find the directory where the plugin file is located
+    plugin_dir = None
     try:
         module_name = plugin_class.__module__
         module_obj = sys.modules.get(module_name)
         if module_obj and getattr(module_obj, "__file__", None):
             plugin_dir = os.path.dirname(os.path.abspath(module_obj.__file__))
-            for filename in ("config_schema.json", "schema.json"):
-                filepath = os.path.join(plugin_dir, filename)
-                if os.path.isfile(filepath):
+    except Exception:
+        pass
+
+    schema = None
+    # 1. Check for class variable config_schema
+    class_schema = getattr(plugin_class, "config_schema", None)
+    if callable(class_schema):
+        class_schema = class_schema()
+    if class_schema and isinstance(class_schema, dict):
+        schema = class_schema.copy()
+
+    # 2. Check for standalone config_schema.json or schema.json next to the module file
+    if not schema and plugin_dir:
+        for filename in ("config_schema.json", "schema.json"):
+            filepath = os.path.join(plugin_dir, filename)
+            if os.path.isfile(filepath):
+                try:
                     with open(filepath, "r", encoding="utf-8") as f:
                         data = json.load(f)
                         if isinstance(data, dict):
-                            return data
-    except Exception as e:
-        logger.warning(f"Error loading standalone schema for {plugin_class}: {e}")
-    return None
+                            schema = data
+                            break
+                except Exception as e:
+                    logger.warning(f"Error loading standalone schema {filepath}: {e}")
+
+    # 3. If we resolved a schema and have a plugin_dir, check for icon.svg next to it
+    if schema and plugin_dir:
+        svg_path = os.path.join(plugin_dir, "icon.svg")
+        if os.path.isfile(svg_path):
+            try:
+                with open(svg_path, "r", encoding="utf-8") as svg_f:
+                    svg_content = svg_f.read().strip()
+                    if svg_content.startswith("<svg"):
+                        schema["icon"] = svg_content
+            except Exception as svg_err:
+                logger.warning(f"Error loading icon.svg next to schema: {svg_err}")
+
+    return schema
 
 
 def validate_config(config: dict) -> None:
@@ -270,12 +293,15 @@ async def get_panel_config(request: Request):
     visual_form_html = render_schema_form(globals_schema, globals_data, "globals")
     raw_json_str = json.dumps(globals_data, indent=2)
 
+    current_version = get_core_version()
+
     return templates.TemplateResponse(
         request=request,
         name="admin_config.html",
         context={
             "visual_form_html": visual_form_html,
-            "raw_json_str": raw_json_str
+            "raw_json_str": raw_json_str,
+            "current_version": current_version
         }
     )
 
@@ -368,3 +394,89 @@ async def add_array_item_route(
         item_title=item_title
     )
     return HTMLResponse(content=html)
+
+
+@router.get("/panels/dashboard", dependencies=[Depends(require_api_key)])
+async def get_panel_dashboard(request: Request):
+    from mirrordash_core.api.admin_system import get_disk_usage
+    from mirrordash_core.system.telemetry import (
+        get_uptime_string,
+        get_ram_usage,
+        get_ntp_status,
+        get_wifi_info,
+        get_undervoltage_detected
+    )
+    import socket
+    
+    disk_usage = await get_disk_usage()
+    
+    # Get active modules from module_loader
+    active_instances = []
+    for name, instance in module_loader.instances.items():
+        inst_cfg = getattr(instance, "config", {})
+        active_instances.append({
+            "id": name,
+            "module": inst_cfg.get("module", name),
+            "position": inst_cfg.get("position", "middle_center")
+        })
+        
+    # Get CPU Temperature (e.g. Raspberry Pi)
+    cpu_temp = None
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            cpu_temp = round(int(f.read().strip()) / 1000.0, 1)
+    except Exception:
+        pass
+        
+    # Get local routing IP address
+    local_ip = "127.0.0.1"
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        pass
+
+    uptime_str = get_uptime_string()
+    ram_usage = get_ram_usage()
+    ntp_synchronized = await get_ntp_status()
+    network_info = await get_wifi_info()
+    undervoltage_detected = await get_undervoltage_detected()
+        
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_dashboard.html",
+        context={
+            "active_instances": active_instances,
+            "disk_usage": disk_usage,
+            "cpu_temp": cpu_temp,
+            "local_ip": local_ip,
+            "active_count": len(module_loader.tasks),
+            "uptime_str": uptime_str,
+            "ram_usage": ram_usage,
+            "ntp_synchronized": ntp_synchronized,
+            "network_info": network_info,
+            "undervoltage_detected": undervoltage_detected
+        }
+    )
+
+
+@router.get("/panels/dashboard/updates", dependencies=[Depends(require_api_key)])
+async def get_dashboard_updates(request: Request):
+    from mirrordash_core.system.telemetry import check_all_updates
+    try:
+        updates = await check_all_updates()
+    except Exception:
+        updates = {"core": {"update_available": False}, "modules": []}
+        
+    has_updates = updates["core"]["update_available"] or len(updates["modules"]) > 0
+    
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_dashboard_updates.html",
+        context={
+            "updates": updates,
+            "has_updates": has_updates
+        }
+    )
