@@ -166,6 +166,14 @@ step_setting_hostname() {
   raspi-config nonint do_wifi_country US 2>/dev/null || true
   rfkill unblock wifi 2>/dev/null || true
 
+  # brcmfmac power save on Pi 3/4 stalls traffic for tens of seconds while staying associated
+  echo "Disabling Wi-Fi power save..."
+  mkdir -p /etc/NetworkManager/conf.d
+  cat << 'EOF' > /etc/NetworkManager/conf.d/mirrordash-wifi-powersave.conf
+[connection]
+wifi.powersave = 2
+EOF
+
   echo "Enabling avahi-daemon service..."
   systemctl --root=/ enable avahi-daemon.service
 }
@@ -218,7 +226,7 @@ step_setting_up_wayland() {
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-start.service seatd.service
-Wants=seatd.service cog-kiosk.service
+Wants=seatd.service
 Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
 
 [Service]
@@ -298,7 +306,22 @@ RestartSec=2
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl --root=/ enable cog-kiosk.service
+
+  # labwc has no readiness notification, so start cog when its Wayland socket appears
+  # (otherwise cog races labwc and aborts with "preferred module 'wl' not supported").
+  # PathExists re-triggers after labwc restarts, since BindsTo stops cog with it.
+  cat << 'EOF' > /etc/systemd/system/cog-kiosk.path
+[Unit]
+Description=Start Cog once the labwc Wayland socket exists
+
+[Path]
+PathExists=/run/user/1000/wayland-0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl --root=/ disable cog-kiosk.service 2>/dev/null || true
+  systemctl --root=/ enable cog-kiosk.path
 
   echo "Setting up hourly OS safeguard to purge browser cache from RAM overlay..."
   cat << 'EOF' > /etc/cron.hourly/mirrordash-cache-purge
@@ -575,6 +598,8 @@ Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
 Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/home/pi/mirrordash/launch.sh
+# The app restarts itself via SIGTERM (exit 143); that is not a failure
+SuccessExitStatus=143
 Restart=always
 RestartSec=3
 StandardOutput=journal

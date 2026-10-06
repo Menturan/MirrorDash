@@ -308,6 +308,14 @@ sudo sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
 # Enable and start the mDNS daemon
 sudo systemctl enable avahi-daemon
 sudo systemctl start avahi-daemon
+
+# Disable Wi-Fi power save: brcmfmac power save on Pi 3/4 stalls traffic for
+# tens of seconds while the link stays associated
+sudo mkdir -p /etc/NetworkManager/conf.d
+sudo tee /etc/NetworkManager/conf.d/mirrordash-wifi-powersave.conf << 'EOF'
+[connection]
+wifi.powersave = 2
+EOF
 ```
 
 > [!NOTE]
@@ -415,7 +423,7 @@ sudo tee /etc/systemd/system/labwc-kiosk.service << 'EOF'
 [Unit]
 Description=Labwc Kiosk Wayland Compositor
 After=systemd-user-sessions.service plymouth-start.service seatd.service
-Wants=seatd.service cog-kiosk.service
+Wants=seatd.service
 Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
 
 [Service]
@@ -459,6 +467,20 @@ RestartSec=2
 WantedBy=graphical.target
 EOF
 
+# 8b. Start Cog only once labwc's Wayland socket exists. labwc has no readiness
+# notification, so starting Cog directly races it and aborts with
+# "preferred module 'wl' not supported". PathExists re-triggers after labwc restarts.
+sudo tee /etc/systemd/system/cog-kiosk.path << 'EOF'
+[Unit]
+Description=Start Cog once the labwc Wayland socket exists
+
+[Path]
+PathExists=/run/user/1000/wayland-0
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 # 9. Set up an hourly OS safeguard to purge browser cache from the RAM overlay
 sudo tee /etc/cron.hourly/mirrordash-cache-purge << 'EOF'
 #!/bin/sh
@@ -469,7 +491,7 @@ EOF
 sudo chmod +x /etc/cron.hourly/mirrordash-cache-purge
 
 # 10. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
-sudo systemctl enable labwc-kiosk.service cog-kiosk.service
+sudo systemctl enable labwc-kiosk.service cog-kiosk.path
 sudo systemctl mask getty@tty1.service autologin@tty1.service
 ```
 
@@ -803,6 +825,8 @@ Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
 Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/home/pi/mirrordash/launch.sh
+# The app restarts itself via SIGTERM (exit 143); that is not a failure
+SuccessExitStatus=143
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -876,7 +900,7 @@ ls -la /home/pi/.mirrordash/data/
 
 # Verify MirrorDash services are enabled and getty is masked
 sudo systemctl is-enabled mirrordash-storage-init.service
-sudo systemctl is-enabled labwc-kiosk.service cog-kiosk.service
+sudo systemctl is-enabled labwc-kiosk.service cog-kiosk.path
 sudo systemctl is-enabled mirrordash.service
 sudo systemctl is-enabled mirrordash-wifi-fallback.service
 sudo systemctl is-enabled systemd-time-wait-sync.service
