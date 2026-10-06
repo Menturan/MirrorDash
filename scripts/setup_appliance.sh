@@ -571,7 +571,9 @@ After=NetworkManager.service
 Before=mirrordash.service
 
 [Service]
-Type=simple
+# oneshot: mirrordash.service (Before=) only starts once the client-vs-hotspot decision
+# is made, so the first page the kiosk loads already reflects the real network state.
+Type=oneshot
 ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
 RemainAfterExit=yes
 TimeoutStartSec=90

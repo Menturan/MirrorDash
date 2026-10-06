@@ -162,3 +162,28 @@ def test_captive_portal_redirects_remote_client(mock_hotspot, client):
     response = client.get("/static/style.css", headers={"host": "10.42.0.1"}, follow_redirects=False)
     assert response.status_code != 302
 
+
+
+def test_hotspot_check_is_not_cached_forever():
+    """Boot race: the first check runs before the hotspot is up and must not stick."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from mirrordash_core.system import network
+
+    def nmcli_result(names):
+        proc = MagicMock(returncode=0)
+        proc.communicate = AsyncMock(return_value=(names.encode(), b""))
+        return proc
+
+    network._hotspot_active_cached = None
+    clock = [1000.0]
+    with patch("mirrordash_core.system.network.time.monotonic", side_effect=lambda: clock[0]), \
+         patch("asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
+        mock_exec.side_effect = [nmcli_result("lo\n"), nmcli_result("lo\nMirrorDash-Setup\n")]
+        assert asyncio.run(network.is_wifi_hotspot_active()) is False
+        clock[0] += 1  # within TTL: cached, no new nmcli call
+        assert asyncio.run(network.is_wifi_hotspot_active()) is False
+        assert mock_exec.call_count == 1
+        clock[0] += network.HOTSPOT_CACHE_TTL  # TTL expired: hotspot is now seen
+        assert asyncio.run(network.is_wifi_hotspot_active()) is True
+    network._hotspot_active_cached = None

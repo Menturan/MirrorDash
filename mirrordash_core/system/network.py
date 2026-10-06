@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import time
 from mirrordash_core.system.os import remount_rw, remount_ro
 
 logger = logging.getLogger("mirrordash.core.system.network")
@@ -185,11 +186,16 @@ async def set_ssh_status(enabled: bool) -> bool:
         return False
 
 _hotspot_active_cached = None
+_hotspot_checked_at = 0.0
+# ponytail: short TTL so the captive-portal middleware doesn't spawn nmcli on every request.
+# It must never be permanent: the hotspot comes up ~40 s after boot, and a cached early
+# "False" kept the kiosk on the admin setup page. Upgrade path: NM D-Bus signal subscription.
+HOTSPOT_CACHE_TTL = 5.0
 
 async def is_wifi_hotspot_active() -> bool:
     """Check if the MirrorDash-Setup WiFi hotspot is currently active in NetworkManager."""
-    global _hotspot_active_cached
-    if _hotspot_active_cached is not None:
+    global _hotspot_active_cached, _hotspot_checked_at
+    if _hotspot_active_cached is not None and time.monotonic() - _hotspot_checked_at < HOTSPOT_CACHE_TTL:
         return _hotspot_active_cached
 
     # Fast path: read active connections without sudo (no TTY needed)
@@ -208,6 +214,7 @@ async def is_wifi_hotspot_active() -> bool:
                 lines = stdout.decode("utf-8", errors="ignore").splitlines()
                 active = "MirrorDash-Setup" in lines
                 _hotspot_active_cached = active
+                _hotspot_checked_at = time.monotonic()
                 return active
         except asyncio.TimeoutError:
             continue
@@ -219,8 +226,9 @@ async def is_wifi_hotspot_active() -> bool:
 
 async def _teardown_captive_ap() -> None:
     """Delete and deactivate the captive-portal AP connection so wlan0 can become a client."""
-    global _hotspot_active_cached
+    global _hotspot_active_cached, _hotspot_checked_at
     _hotspot_active_cached = False
+    _hotspot_checked_at = time.monotonic()
     for cmd in (
         ["sudo", "nmcli", "connection", "down", "MirrorDash-Setup"],
         ["sudo", "nmcli", "connection", "delete", "MirrorDash-Setup"],
