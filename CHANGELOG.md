@@ -4,7 +4,7 @@ All notable changes to the MirrorDash project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-## [0.4.0] - 2026-10-06
+## [0.4.0-os1] - 2026-10-06
 
 ### Core App
 - Simplify and clean up over-engineered components (25ffa35)
@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Make Dynamic Object List preview interactive in /design playground (74938ba)
 - Support multiple instances of a module on a single screen (d8522b6)
 - Implement custom module icons, multi-instance settings, and design token styling (be2809b)
+- Bump version to 0.4.0 (c5208b2)
 ## [0.3.4-os1] - 2026-07-01
 
 ### Core App
