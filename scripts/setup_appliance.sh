@@ -692,22 +692,23 @@ if ! mountpoint -q /etc/NetworkManager/system-connections; then
     mount --bind /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
 fi
 
-# Only hydrate if venv_a is missing
-if [ ! -d "/storage/mirrordash/venv_a" ]; then
-    echo "Hydrating /storage with golden base_venv..."
-    rm -rf /storage/mirrordash/venv_a.tmp
-    cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
-    mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
-    chown -R pi:pi /storage/mirrordash/venv_a
-fi
-
 # Clean up active venv if it is a real directory instead of a symlink
 if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
     rm -rf /storage/mirrordash/venv
 fi
 
-# Always ensure the active venv symlink is correct (extremely fast, no filesystem traversal)
-ln -sfT venv_a /storage/mirrordash/venv
+# Seed venv_a only when the active link is missing or dangling (first boot / wiped storage).
+# A valid link is owned by the A/B updater and may point at venv_b — never reset it.
+if [ ! -d /storage/mirrordash/venv ]; then
+    if [ ! -d "/storage/mirrordash/venv_a" ]; then
+        echo "Hydrating /storage with golden base_venv..."
+        rm -rf /storage/mirrordash/venv_a.tmp
+        cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
+        mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
+        chown -R pi:pi /storage/mirrordash/venv_a
+    fi
+    ln -sfT venv_a /storage/mirrordash/venv
+fi
 chown pi:pi /storage/mirrordash /storage/mirrordash/venv
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh

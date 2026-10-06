@@ -86,7 +86,7 @@ This document records the core architectural decisions made during the design, d
 
 ## 16. Failsafe A/B Virtual Environment Updates
 * **Decision**: Redirected the virtual environment `.venv` from the read-only root partition to the persistent writeable `/storage` partition via a symlink. When updates or module installations/removals are performed, they are staged in a cloned alternative directory (`venv_a` or `venv_b`). Once successful, the symlink is atomically updated.
-* **Rationale**: Prevents package upgrades from bricking the system in the event of an update failure (network drops, syntax errors, or incompatible package versions).
+* **Rationale**: Prevents package upgrades from bricking the system in the event of an update failure (network drops, syntax errors, or incompatible package versions). The boot-time hydration script only seeds `venv_a` and the link when the link is missing or dangling; it never resets a valid link, otherwise every reboot would silently revert A/B updates to the factory `base_venv`.
 
 ## 17. Boot Fallback Launcher and Settings Restoration
 * **Decision**: Implemented a boot launcher script (`launch.sh`) that monitors the startup lifespan of the application. If the primary virtual environment fails to boot successfully within 10 seconds, it automatically rolls back to the previous stable state (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode), alerting the user via UI status banners. Additionally, user configurations (SSH state, timezone, and shadow-crypt password hash) are programmatically re-applied on boot.

@@ -525,26 +525,32 @@ sudo chown -R pi:pi /home/pi/mirrordash
 To ensure the persistent storage partition is properly initialized with a functional virtual environment on the first boot, configure the storage hydration service:
 
 1. **Write hydration script**:
-   Create `/usr/local/bin/mirrordash-hydrate.sh` to copy `base_venv` to the persistent `/storage/mirrordash/venv_a` directory on boot if it is missing:
+   Create `/usr/local/bin/mirrordash-hydrate.sh`. On first boot (or when the active `venv` link is missing or dangling) it seeds `/storage/mirrordash/venv_a` from `base_venv` and points `venv` at it. A valid link is never touched, because the A/B updater may have switched it to `venv_b`:
    ```bash
    sudo tee /usr/local/bin/mirrordash-hydrate.sh << 'EOF'
    #!/bin/bash
    set -euo pipefail
 
+   # Defensive mount check: if the partition exists but is not mounted, force-mount it
+   if [ -b "/dev/disk/by-label/mirrordash-data" ]; then
+       if ! mountpoint -q /storage; then
+           echo "Warning: /storage is not mounted but the partition exists. Mounting it..."
+           mount /storage || mount /dev/disk/by-label/mirrordash-data /storage
+       fi
+   fi
+
    # Ensure parent directory and subdirectories exist on mounted /storage
    mkdir -p /storage/mirrordash/data
    mkdir -p /storage/mirrordash/system-connections
-   chown -R pi:pi /storage/mirrordash
+   chown pi:pi /storage/mirrordash
+   chown pi:pi /storage/mirrordash/data
    chown root:root /storage/mirrordash/system-connections
    chmod 700 /storage/mirrordash/system-connections
 
-   # Only hydrate if venv_a is missing
-   if [ ! -d "/storage/mirrordash/venv_a" ]; then
-       echo "Hydrating /storage with golden base_venv..."
-       rm -rf /storage/mirrordash/venv_a.tmp
-       cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
-       mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
-       chown -R pi:pi /storage/mirrordash/venv_a
+   # Bind mount the NetworkManager connections directory to bypass symlink security restrictions
+   if ! mountpoint -q /etc/NetworkManager/system-connections; then
+       mkdir -p /etc/NetworkManager/system-connections
+       mount --bind /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
    fi
 
    # Clean up active venv if it is a real directory instead of a symlink
@@ -552,8 +558,18 @@ To ensure the persistent storage partition is properly initialized with a functi
        rm -rf /storage/mirrordash/venv
    fi
 
-   # Always ensure the active venv symlink is correct (extremely fast, no filesystem traversal)
-   ln -sfT venv_a /storage/mirrordash/venv
+   # Seed venv_a only when the active link is missing or dangling (first boot / wiped storage).
+   # A valid link is owned by the A/B updater and may point at venv_b — never reset it.
+   if [ ! -d /storage/mirrordash/venv ]; then
+       if [ ! -d "/storage/mirrordash/venv_a" ]; then
+           echo "Hydrating /storage with golden base_venv..."
+           rm -rf /storage/mirrordash/venv_a.tmp
+           cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
+           mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
+           chown -R pi:pi /storage/mirrordash/venv_a
+       fi
+       ln -sfT venv_a /storage/mirrordash/venv
+   fi
    chown pi:pi /storage/mirrordash /storage/mirrordash/venv
    EOF
    sudo chmod +x /usr/local/bin/mirrordash-hydrate.sh
