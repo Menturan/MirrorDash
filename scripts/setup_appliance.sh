@@ -57,6 +57,9 @@ PI_USER="pi"
 PI_HOME="/home/$PI_USER"
 GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
 STATE_FILE="/var/lib/mirrordash-setup-state"
+# Pinned so a given tag always produces the same image. Bump deliberately.
+UV_VERSION="0.12.23"
+CLOCK_REF="v1.0.0"
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
@@ -313,7 +316,7 @@ EOF
 step_installing_app() {
   # Install uv globally (standalone binary) securely via release artifact
   echo "Downloading uv binary securely to /usr/local/bin..."
-  curl -sSLf https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  curl -sSLf "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
   chmod +x /usr/local/bin/uv
 
   # Create app directory
@@ -323,16 +326,27 @@ step_installing_app() {
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/venv "$PI_HOME/mirrordash/.venv"
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/data "$PI_HOME/.mirrordash"
 
-  # Create base_venv (Golden Copy), then install from PyPI
-  sudo -u "$PI_USER" HOME="$PI_HOME" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
+  # Create base_venv (Golden Copy), then install the app into it
+  sudo -u "$PI_USER" HOME="$PI_HOME" CLOCK_REF="$CLOCK_REF" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
   cd "$HOME/mirrordash"
 
   echo 'Creating golden backup virtual environment base_venv...'
   rm -rf "$HOME/mirrordash/base_venv"
   uv venv --allow-existing --python 3.14 "$HOME/mirrordash/base_venv"
 
-  echo 'Installing MirrorDash (PyPI) and clock module (GitHub) into golden venv...'
-  uv pip install --python "$HOME/mirrordash/base_venv" mirrordash git+https://github.com/Menturan/mirrordash-clock.git
+  # Image builds install the checked-out source so the image matches its tag;
+  # a standalone run (no repo copy) falls back to the latest PyPI release.
+  CORE_PKG=mirrordash
+  if [ -f /opt/MirrorDash/pyproject.toml ]; then
+    echo 'Building MirrorDash wheel from the repository...'
+    rm -rf "$HOME/mirrordash-dist"
+    uv build --wheel --out-dir "$HOME/mirrordash-dist" /opt/MirrorDash
+    CORE_PKG=$(ls "$HOME"/mirrordash-dist/mirrordash-*.whl)
+  fi
+
+  echo "Installing $CORE_PKG and clock module ($CLOCK_REF) into golden venv..."
+  uv pip install --python "$HOME/mirrordash/base_venv" "$CORE_PKG" "git+https://github.com/Menturan/mirrordash-clock.git@${CLOCK_REF}"
+  rm -rf "$HOME/mirrordash-dist"
 EOF
 
   # Download or copy launch.sh and loading.html
@@ -731,6 +745,34 @@ EOF
   systemctl --root=/ enable mirrordash-storage-init.service
 }
 
+step_first_boot_lock() {
+  # raspi-config builds the overlay initramfs for the running kernel (uname -r), so it
+  # cannot run in the build container. Image builds lock once on the Pi's first boot;
+  # manual (on-device) builds lock explicitly via mirrordash-finalize.sh instead.
+  if [ -z "${BUILDING_IMAGE:-}" ]; then
+    echo "Not an image build — skipping (run mirrordash-finalize.sh to lock)."
+    return 0
+  fi
+
+  cat << 'EOF' > /etc/systemd/system/mirrordash-lock.service
+[Unit]
+Description=MirrorDash First-Boot OverlayFS Lock
+After=multi-user.target mirrordash-storage-init.service
+ConditionKernelCommandLine=!boot=overlay
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/raspi-config nonint enable_overlayfs
+# Disabled on the still-writable root, so it never runs again once locked
+ExecStart=/usr/bin/systemctl disable mirrordash-lock.service
+ExecStart=/usr/bin/systemctl reboot
+
+[Install]
+WantedBy=graphical.target
+EOF
+  systemctl --root=/ enable mirrordash-lock.service
+}
+
 step_system_cleanup() {
   echo "Restoring update-initramfs diversion..."
   rm -f /usr/sbin/update-initramfs || true
@@ -818,7 +860,8 @@ run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_sy
 run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
 run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
-run_step "17" "system_cleanup" "Performing System Cleanup" step_system_cleanup
+run_step "17" "first_boot_lock" "Creating First-Boot OverlayFS Lock Service" step_first_boot_lock
+run_step "18" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 
 END_TIME_TOTAL=$SECONDS
 DURATION_TOTAL=$((END_TIME_TOTAL - START_TIME_TOTAL))

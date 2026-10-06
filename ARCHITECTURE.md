@@ -42,7 +42,7 @@ This document records the core architectural decisions made during the design, d
 
 ## 5. OverlayFS and Hardware Remounting Integration
 * **Decision**: Admin/system modification commands (such as module installations or configuration updates) execute remounting scripts (`mount -o remount,rw /`) before performing operations, and switch back to read-only (`remount,ro`) immediately after completion.
-* **Rationale**: Protects SD card longevity when deployed on Raspberry Pi systems running OverlayFS (Read-Only OS configuration), while still allowing seamless software administration.
+* **Rationale**: Protects SD card longevity when deployed on Raspberry Pi systems running OverlayFS (Read-Only OS configuration), while still allowing seamless software administration. Automated images enable OverlayFS on their first boot via a one-shot `mirrordash-lock.service`, because `raspi-config` must build the overlay initramfs for the device's running kernel and cannot do so in the build container.
 
 ## 6. Hybrid Template Loader Resolution
 * **Decision**: Implemented a `ChoiceLoader` combining standard Jinja2 `PackageLoader` with a fallback `FileSystemLoader` that resolves physical package paths on disk using `importlib.util.find_spec`.

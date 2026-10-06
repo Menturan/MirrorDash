@@ -30,8 +30,9 @@ DOWNLOAD_DIR="$BUILD_DIR/downloads"
 mkdir -p "$BUILD_DIR" "$MOUNT_DIR" "$DOWNLOAD_DIR"
 cd "$BUILD_DIR"
 
-LATEST_URL_BASE="https://downloads.raspberrypi.org/raspios_lite_arm64_latest"
-TARGET_URL=$(curl -sLI -o /dev/null -w '%{url_effective}' "$LATEST_URL_BASE")
+# Pinned base image so a given tag always builds the same OS. Bump deliberately
+# (current: curl -sLI -o /dev/null -w '%{url_effective}' https://downloads.raspberrypi.org/raspios_lite_arm64_latest).
+TARGET_URL="${BASE_IMAGE_URL:-https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2026-10-06/2026-10-06-raspios-trixie-arm64-lite.img.xz}"
 IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "${IMAGE_NAME%.xz}" ]; then
@@ -70,6 +71,9 @@ find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename
 
 echo -e "\e[34m[INFO] Executing setup_appliance.sh via systemd-nspawn...\e[0m"
 systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
+
+# The repo copy is only build input — never ship source or the dev config.json
+rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
 # --- Unmount & Shrink ---
 echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"

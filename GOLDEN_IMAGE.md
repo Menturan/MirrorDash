@@ -40,7 +40,7 @@ This document provides **two build tracks** for producing the MirrorDash Golden 
 
 ## Track A: Automated Build (Recommended)
 
-The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions whenever a tag matching `v*-os*` (e.g. `v0.2.4-os1`) is pushed. This eliminates QEMU emulation bugs and produces a locked, compressed `.img.gz` ready for flashing.
+The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions whenever a tag matching `v*-os*` (e.g. `v0.2.4-os1`) is pushed. This eliminates QEMU emulation bugs and produces a compressed `.img.xz` ready for flashing. The image locks itself (OverlayFS) on its first boot, see below.
 
 ### Triggering a Build
 
@@ -53,8 +53,14 @@ The complete production-ready SD card image is built automatically on real ARM h
 1. **Free disk space** on the runner (`EisBear/free-disk-space-ubuntu-runners@v1`).
 2. **Checkout** the repository.
 3. **Install minimal dependencies**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, plus `pishrink.sh`.
-4. **Run `scripts/build_image.sh`** natively on ARM — no emulation. Produces `build_workspace/mirrordash-os-vX.Y.Z.img.gz` + `.sha256`.
+4. **Run `scripts/build_image.sh`** natively on ARM — no emulation. Produces `build_workspace/mirrordash-os-vX.Y.Z.img.xz` + `.sha256`.
 5. **Upload** both files as GitHub Release assets.
+
+### Reproducibility & First-Boot Lock
+
+- **Pinned inputs**: the base Raspberry Pi OS image (`BASE_IMAGE_URL` in `build_image.sh`), uv (`UV_VERSION`) and the clock module (`CLOCK_REF`) in `setup_appliance.sh`, and the PiShrink commit in the workflow. Bump them deliberately.
+- **Core app from source**: the core is installed from a wheel built from the checked-out repository, not from PyPI, so the image contains exactly the tagged code. The repository copy (`/opt/MirrorDash`) is deleted from the image after setup, so no source code or dev `config.json` ships.
+- **First-boot lock**: `raspi-config nonint enable_overlayfs` builds an initramfs for the *running* kernel (`uname -r`), so it cannot run inside the build container. Image builds install `mirrordash-lock.service` instead. On the Pi's first boot (after `multi-user.target`, so first-boot user/SSH-key setup has finished) it enables OverlayFS, disables itself on the still-writable root and reboots once. `ConditionKernelCommandLine=!boot=overlay` guarantees it never runs on a locked system. Manual builds (no `BUILDING_IMAGE`) skip this service and lock via Section 7.
 
 ### Requirements
 
@@ -492,7 +498,7 @@ In production, the active virtual environment resides on the persistent `/storag
 
 ```bash
 # 1. Download and install uv binary globally
-sudo curl -sSLf https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+sudo curl -sSLf https://github.com/astral-sh/uv/releases/download/0.12.23/uv-aarch64-unknown-linux-gnu.tar.gz | sudo tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
 sudo chmod +x /usr/local/bin/uv
 
 # 2. Create the application directory
@@ -508,8 +514,10 @@ cd /home/pi/mirrordash
 rm -rf base_venv
 uv venv --allow-existing --python 3.14 base_venv
 
-# 5. Install mirrordash (PyPI) and mirrordash-clock (GitHub) into the Golden Copy
-uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git
+# 5. Install mirrordash and the pinned mirrordash-clock (GitHub) into the Golden Copy
+# (build_image.sh installs a wheel built from the checked-out repo instead of PyPI,
+#  so the image always contains exactly the tagged code)
+uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v1.0.0
 
 # 6. Download the launcher script and loading HTML page
 curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh

@@ -36,7 +36,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build_workspace/downloads/
-          key: rpi-os-lite-base-v1
+          key: rpi-os-lite-base-${{ hashFiles('scripts/build_image.sh') }}
 
       - name: Install dependencies
         run: |
@@ -50,7 +50,7 @@ jobs:
             curl \
             systemd-container \
             zerofree
-          sudo wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/master/pishrink.sh
+          sudo wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/5f358d03eed4b7334657ee93867826a2b42f112a/pishrink.sh
           sudo chmod +x /usr/local/bin/pishrink.sh
 
       - name: Build OS image
