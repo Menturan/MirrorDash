@@ -104,13 +104,22 @@ def find_gpio_key_devices() -> list[str]:
 
 class GpioInputs:
     """Reads the gpio-keys input devices: the push button (KEY_PROG1) and the PIR motion
-    sensor (KEY_PROG2, "key down" while the sensor reports motion)."""
+    sensor (KEY_PROG2, "key down" while the sensor reports motion), and polls the DHT11.
+
+    Publishes on the event bus, for modules:
+      hardware.button   {"press": "single"|"double"|"triple"|"long", "action": str}
+      hardware.motion   {"motion": bool}                        when motion starts / stops
+      hardware.climate  {"temperature_c": float, "humidity": int}  every CLIMATE_INTERVAL s
+    """
+
+    CLIMATE_INTERVAL = 60.0
 
     EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit: timeval, type, code, value
     EV_KEY = 1
 
     def __init__(self):
         self.task: asyncio.Task | None = None
+        self.climate_task: asyncio.Task | None = None
         self.fds: dict[str, int] = {}
         self.classifier = PressClassifier()
         self.button_seen = False
@@ -120,15 +129,17 @@ class GpioInputs:
     async def start(self) -> None:
         if self.task is None:
             self.task = asyncio.create_task(self._watch())
+            self.climate_task = asyncio.create_task(self._publish_climate())
 
     async def stop(self) -> None:
-        if self.task:
-            self.task.cancel()
-            try:
-                await self.task
-            except asyncio.CancelledError:
-                pass
-            self.task = None
+        for task in (self.task, self.climate_task):
+            if task:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        self.task = self.climate_task = None
         for device in list(self.fds):
             self._close(device)
 
@@ -185,6 +196,15 @@ class GpioInputs:
             elif code == PIR_KEYCODE:
                 self.motion_active = value == 1
                 self.last_motion_at = time.monotonic()
+                event_bus.publish("hardware.motion", {"motion": self.motion_active})
+
+    async def _publish_climate(self) -> None:
+        while True:
+            if load_config().get("system", {}).get("dht11", {}).get("pin") is not None:
+                reading = await read_dht11()
+                if reading:
+                    event_bus.publish("hardware.climate", dict(reading))
+            await asyncio.sleep(self.CLIMATE_INTERVAL)
 
     def _on_button(self, pressed: bool) -> None:
         loop = asyncio.get_running_loop()

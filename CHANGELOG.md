@@ -13,6 +13,7 @@ There are two kinds of releases:
 - Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting, which is moved over automatically.
 - Connect a DHT11 sensor and see the room's temperature and humidity on the dashboard.
 - Restart and shut down the mirror from the Power tab.
+- Modules can react to the push button, the motion sensor and the room climate (for module developers: the `hardware.button`, `hardware.motion` and `hardware.climate` events).
 - A button on GPIO 3 can also start the mirror again after it has been shut down (shown as a tip in the Hardware tab).
 
 ### Changed

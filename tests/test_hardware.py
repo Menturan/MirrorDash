@@ -149,3 +149,43 @@ def test_gpio_problem_does_not_block_other_settings():
         assert res["gpio_error"] is None and save.called  # Hardware tab: pins not touched
         res = asyncio.run(update_system_settings(settings={"display_control": {"mode": "pir"}}))
         assert "too old" in res["gpio_error"] and save.call_count == 2  # Power tab: saved, warned
+
+
+def test_motion_and_climate_are_published_on_the_event_bus():
+    import asyncio
+    import os
+    from mirrordash_core.event_bus import event_bus
+
+    async def scenario():
+        received = []
+        on_motion = lambda data: received.append(("motion", data))
+        on_climate = lambda data: received.append(("climate", data))
+        event_bus.subscribe("hardware.motion", on_motion)
+        event_bus.subscribe("hardware.climate", on_climate)
+        inputs = hardware.GpioInputs()
+        inputs.CLIMATE_INTERVAL = 0.05
+        r, w = os.pipe()
+        os.set_blocking(r, False)
+        inputs.fds["dev"] = r
+        ev = hardware.GpioInputs.EVENT
+        try:
+            os.write(w, ev.pack(0, 0, 1, hardware.PIR_KEYCODE, 1) + ev.pack(0, 0, 1, hardware.PIR_KEYCODE, 0))
+            inputs._on_readable("dev")
+            with patch("mirrordash_core.hardware.load_config", return_value={"system": {"dht11": {"pin": 4}}}), \
+                 patch("mirrordash_core.hardware.read_dht11", new_callable=AsyncMock,
+                       return_value={"temperature_c": 21.5, "humidity": 40}):
+                task = asyncio.create_task(inputs._publish_climate())
+                await asyncio.sleep(0.02)
+                task.cancel()
+        finally:
+            event_bus.unsubscribe("hardware.motion", on_motion)
+            event_bus.unsubscribe("hardware.climate", on_climate)
+            os.close(r)
+            os.close(w)
+        return received
+
+    assert asyncio.run(scenario()) == [
+        ("motion", {"motion": True}),
+        ("motion", {"motion": False}),
+        ("climate", {"temperature_c": 21.5, "humidity": 40}),
+    ]
