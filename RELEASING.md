@@ -34,15 +34,7 @@ This document outlines the release, testing, and deployment workflows for Mirror
   - `minor` (e.g. `0.2.x` -> `0.3.0`) for new, backward-compatible features.
   - `major` (e.g. `0.x.x` -> `1.0.0`) for API-breaking changes.
 - **Do Not Manually Tag Locally**: Let the GitHub Release interface create the git tag. This ensures that the GitHub Release, git tag, and PyPI package version are always perfectly aligned.
-- **Changelog Automation & Commit Scopes**: We use `git-cliff` (configured in `cliff.toml`) to automatically group and generate the changelog. To ensure commits are correctly sorted, you must follow the Conventional Commits specification and specify one of the following scopes:
-  - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add new modules endpoint`).
-  - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind race condition`).
-  - Commits without conventional scopes will fallback to `Core App` (unless keywords like "scripts" or "appliance" are detected in the description).
-
-To run `git-cliff` manually to update or re-generate `CHANGELOG.md`:
-```bash
-git-cliff -o CHANGELOG.md
-```
+- **Hand-written Changelog**: `CHANGELOG.md` is written for mirror owners, not developers. Add an entry under `## [Unreleased]` in the same commit as any change a user would notice, in plain language (what changed for them, not how it was implemented). Use `### Added`, `### Changed` and `### Fixed`; put changes that only reach users through a new SD card image under `### OS image`. Leave out internal work (refactors, tests, docs, CI). The release scripts only move these entries into a version section; they refuse to release when there is nothing to move. To see what has changed since the last release: `git log --oneline vX.Y.Z..HEAD`.
 
 ---
 
@@ -55,11 +47,11 @@ MirrorDash produces **two independent artifacts** from the same repository. They
 | **Artifact** | `mirrordash` Python package (PyPI) | `mirrordash-os-vX.Y.Z.img.gz` (GitHub Release asset) |
 | **Trigger** | Push tag `vX.Y.Z` | Push tag `vX.Y.Z-osN` |
 | **Build** | GitHub Actions `publish.yml` (x86_64, build sdist/wheel) | GitHub Actions `build-os-image.yml` (ARM64, native build) |
-| **CHANGELOG** | Move `[Unreleased]` Core App entries → `[X.Y.Z]` section | Move `[Unreleased]` System OS entries → new `[X.Y.Z-osN]` section (see Track 2 below) |
+| **CHANGELOG** | Move `[Unreleased]` entries → `[X.Y.Z]` section (`### OS image` stays under `[Unreleased]`) | Move all `[Unreleased]` entries → new `[X.Y.Z-osN]` section (see Track 2 below) |
 | **When to use** | Every release with code changes | Only when OS-level changes (packages, scripts, boot config) need a new golden image |
 
 > [!IMPORTANT]
-> **CHANGELOG discipline**: `[X.Y.Z]` sections contain **only** Core App changes. System OS appliance changes **must remain under `[Unreleased]`** until the golden image is tested and released with its own `vX.Y.Z-osN` tag. Never mix System OS entries into a Core App version block.
+> **CHANGELOG discipline**: `[X.Y.Z]` sections contain **only** app changes. OS image changes stay under `[Unreleased]` → `### OS image` until the golden image is tested and released with its own `vX.Y.Z-osN` tag. `release_core.py` enforces this automatically.
 
 ---
 
@@ -83,7 +75,7 @@ The script will:
 2. Ensure you are on `master` and pull latest
 3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
 4. Bump `version` in `pyproject.toml`
-5. Reorganize `CHANGELOG.md` (Core App entries → `[0.2.5]`, System OS stays under `[Unreleased]`)
+5. Move the `[Unreleased]` entries in `CHANGELOG.md` to `[0.2.5]` (`### OS image` stays under `[Unreleased]`)
 6. Commit and push to `origin/master`
 
 > [!NOTE]
@@ -128,7 +120,7 @@ The script will:
 1. Validate the `X.Y.Z-osN` version argument
 2. Ensure you are on `master` and pull latest
 3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
-4. Reorganize `CHANGELOG.md` (System OS entries → `[0.2.4-os1]`, Core App stays in `[0.2.4]`)
+4. Move all `[Unreleased]` entries in `CHANGELOG.md` to `[0.2.4-os1]`
 5. Commit and push to `origin/master`
 
 > [!NOTE]
@@ -210,9 +202,8 @@ If you need to perform release steps without the automation scripts (e.g. debugg
    - Ensure you are on `master` and up to date
    - Run `.venv/bin/pytest` — all tests must pass
    - Bump `version` in `pyproject.toml`
-   - Move Core App entries under `[Unreleased]` → new `## [X.Y.Z] - YYYY-MM-DD` section
-   - Leave System OS entries under `[Unreleased]`
-   - Update comparison links at the bottom of CHANGELOG.md
+   - Move the entries under `[Unreleased]` → new `## [X.Y.Z] - YYYY-MM-DD` section
+   - Leave the `### OS image` subsection under `[Unreleased]`
 
 2. **Commit and Push**:
    ```bash
@@ -226,8 +217,7 @@ If you need to perform release steps without the automation scripts (e.g. debugg
 ### Track 2: System OS Image (Manual)
 
 1. **Update CHANGELOG.md**:
-   - Move System OS entries from `[Unreleased]` → new `## [X.Y.Z-osN] - YYYY-MM-DD` section
-   - Core App entries stay in `[X.Y.Z]`
+   - Move all entries from `[Unreleased]` → new `## [X.Y.Z-osN] - YYYY-MM-DD` section, starting with `OS image with MirrorDash X.Y.Z.`
 
 2. **Commit and Push**:
    ```bash

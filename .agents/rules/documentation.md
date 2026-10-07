@@ -14,5 +14,5 @@ trigger: always_on
 | `modules/<name>/README.md` | A specific module's config keys, providers, API key instructions, or features change |
 | `USER_GUIDE.md` | Any end-user features, settings tabs, configuration keys, or layout rules change |
 | `AGENTS.md` | New coding rules, patterns, or constraints are established |
-| `CHANGELOG.md` | Any notable feature, bug fix, or codebase change is committed |
+| `CHANGELOG.md` | A change a mirror owner would notice is committed — add a plain-language entry under `[Unreleased]` (`### OS image` for image-only changes). Hand-written; never generated from commits. |
 | `RELEASING.md` | The release workflow, OIDC configurations, or pre-release checklists change |

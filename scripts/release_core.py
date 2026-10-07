@@ -9,7 +9,8 @@ What it does:
     2. Ensures you are on the master branch and up to date
     3. Runs the full test suite — halts on failure
     4. Bumps version in pyproject.toml
-    5. Reorganizes CHANGELOG.md (Core App entries → [X.Y.Z], System OS stays under [Unreleased])
+    5. Moves the [Unreleased] entries in CHANGELOG.md to a new [X.Y.Z] section
+       (the "### OS image" subsection stays under [Unreleased] for the next OS release)
     6. Commits and pushes to origin/master
 
 What it does NOT do (intentional — requires human decision):
@@ -20,9 +21,9 @@ What it does NOT do (intentional — requires human decision):
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import sys
+from datetime import date
 
 
 def run(cmd, check=True):
@@ -73,6 +74,40 @@ def bump_version(version):
     with open("pyproject.toml", "w") as f:
         f.write(new_content)
     print(f"  Bumped pyproject.toml to {version}")
+
+
+def release_changelog(version, intro="", keep_os_image=False, path="CHANGELOG.md"):
+    """Move the hand-written [Unreleased] entries into a new [version] section.
+
+    keep_os_image leaves the "### OS image" subsection under [Unreleased], since an app
+    release doesn't change the OS image. Exits if there is nothing to release.
+    """
+    with open(path, "r") as f:
+        content = f.read()
+    head, marker, rest = content.partition("## [Unreleased]\n")
+    if not marker:
+        print(f"  ERROR: No '## [Unreleased]' section in {path}")
+        sys.exit(1)
+    if re.search(rf"^## \[{re.escape(version)}\]", content, re.MULTILINE):
+        print(f"  ERROR: {path} already has a [{version}] section")
+        sys.exit(1)
+
+    next_section = re.search(r"^## \[", rest, re.MULTILINE)
+    body, tail = (rest[:next_section.start()], rest[next_section.start():]) if next_section else (rest, "")
+    kept = ""
+    if keep_os_image and "### OS image" in body:
+        body, kept = body.split("### OS image", 1)
+        kept = "### OS image" + kept
+    if not body.strip():
+        print(f"  ERROR: Nothing to release under [Unreleased] in {path}.")
+        print("  Describe the changes there first, in plain language for mirror owners.")
+        sys.exit(1)
+
+    section = f"## [{version}] - {date.today().isoformat()}\n\n" + (f"{intro}\n\n" if intro else "") + body.strip()
+    unreleased = marker + "\n" + (kept.strip() + "\n\n" if kept.strip() else "")
+    with open(path, "w") as f:
+        f.write(head + unreleased + section + "\n\n" + tail)
+    print(f"  Moved [Unreleased] entries to [{version}] in {path}")
 
 
 def commit_and_push(version):
@@ -283,23 +318,8 @@ def main():
     print("\n[3/5] Bumping version...")
     bump_version(VERSION)
 
-    print("\n[4/5] Reorganizing CHANGELOG.md using git-cliff...")
-    if shutil.which("git-cliff"):
-        git_cliff_cmd = ["git-cliff"]
-    elif shutil.which("npx"):
-        git_cliff_cmd = ["npx", "--yes", "git-cliff"]
-    else:
-        print("  ERROR: git-cliff or npx not found in PATH.")
-        print("  Please install git-cliff (e.g. via cargo: `cargo install git-cliff` or npm: `npm install -g git-cliff`).")
-        sys.exit(1)
-
-    result = subprocess.run(
-        git_cliff_cmd + ["-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
-        cwd=repos_dir,
-    )
-    if result.returncode != 0:
-        print("  ERROR: git-cliff failed to reorganize CHANGELOG.md")
-        sys.exit(1)
+    print("\n[4/5] Updating CHANGELOG.md...")
+    release_changelog(VERSION, keep_os_image=True)
 
     print("\n[5/5] Committing and pushing...")
     commit_and_push(VERSION)

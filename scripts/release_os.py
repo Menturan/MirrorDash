@@ -8,7 +8,7 @@ What it does:
     1. Validates the version argument (format: X.Y.Z-osN)
     2. Ensures you are on the master branch and up to date
     3. Runs the full test suite — halts on failure
-    4. Reorganizes CHANGELOG.md (System OS entries → [X.Y.Z-osN], Core App stays in [X.Y.Z])
+    4. Moves the [Unreleased] entries in CHANGELOG.md to a new [X.Y.Z-osN] section
     5. Commits and pushes to origin/master
 
 What it does NOT do (intentional — requires human decision):
@@ -19,9 +19,10 @@ What it does NOT do (intentional — requires human decision):
 from __future__ import annotations
 
 import re
-import shutil
 import subprocess
 import sys
+
+from release_core import release_changelog
 
 
 def run(cmd, check=True):
@@ -145,23 +146,9 @@ def main():
     print("\n[2/4] Running test suite...")
     run_tests()
 
-    print("\n[3/4] Reorganizing CHANGELOG.md using git-cliff...")
-    if shutil.which("git-cliff"):
-        git_cliff_cmd = ["git-cliff"]
-    elif shutil.which("npx"):
-        git_cliff_cmd = ["npx", "--yes", "git-cliff"]
-    else:
-        print("  ERROR: git-cliff or npx not found in PATH.")
-        print("  Please install git-cliff (e.g. via cargo: `cargo install git-cliff` or npm: `npm install -g git-cliff`).")
-        sys.exit(1)
-
-    result = subprocess.run(
-        git_cliff_cmd + ["-t", f"v{VERSION}", "-o", "CHANGELOG.md"],
-        cwd=repos_dir,
-    )
-    if result.returncode != 0:
-        print("  ERROR: git-cliff failed to reorganize CHANGELOG.md")
-        sys.exit(1)
+    print("\n[3/4] Updating CHANGELOG.md...")
+    core_version = VERSION.rsplit("-os", 1)[0]
+    release_changelog(VERSION, intro=f"OS image with MirrorDash {core_version}.")
 
     print("\n[4/4] Committing and pushing...")
     commit_and_push(VERSION)

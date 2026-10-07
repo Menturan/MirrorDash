@@ -53,7 +53,6 @@
 
 ## Git
 
-14. **Follow conventional commits with specific scopes for changelog generation:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
+14. **Follow conventional commits with specific scopes:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
     - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add updates panel`).
     - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind-seatd race`).
-    - Defaults/Fallbacks: Commits without scopes default to `Core App` (unless keywords like "scripts" or "appliance" are present in the description).
