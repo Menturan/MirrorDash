@@ -93,94 +93,31 @@ def render_password_prompt(filename: str, is_local: bool) -> str:
     """
 
 
+async def _list_backups() -> list[dict]:
+    from datetime import datetime
+    from mirrordash_core.api.backup import list_backups
+    backups = []
+    for backup in (await list_backups()).get("backups", []):
+        created = backup["created_at"]
+        try:
+            created = datetime.fromisoformat(created).strftime("%Y-%m-%d %H:%M")
+        except ValueError:
+            pass
+        backups.append({**backup, "created_at_formatted": created,
+                        "size_formatted": f"{backup['size_bytes'] / 1024:.1f} KB"})
+    return backups
+
+
 @router.get("/panels/backup", dependencies=[Depends(require_api_key)])
 async def get_panel_backup(request: Request):
-    from mirrordash_core.api.backup import list_backups
-    data = await list_backups()
-    backups = data.get("backups", [])
-
-    # Process backup list for formatting
-    processed_backups = []
-    for backup in backups:
-        from datetime import datetime
-        created_at_formatted = backup["created_at"]
-        try:
-            dt = datetime.fromisoformat(backup["created_at"])
-            created_at_formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            pass
-
-        size_formatted = f"{backup['size_bytes'] / 1024:.1f} KB"
-
-        processed_backups.append({
-            "filename": backup["filename"],
-            "created_at_formatted": created_at_formatted,
-            "size_formatted": size_formatted,
-            "encrypted": backup["encrypted"]
-        })
-
-    return templates.TemplateResponse(
-        request=request,
-        name="admin_backup.html",
-        context={
-            "backups": processed_backups
-        }
-    )
+    return templates.TemplateResponse(request=request, name="admin_backup.html",
+                                      context={"backups": await _list_backups()})
 
 
 @router.get("/panels/backup/list", dependencies=[Depends(require_api_key)])
 async def get_panel_backups_list(request: Request):
-    from mirrordash_core.api.backup import list_backups
-    data = await list_backups()
-    backups = data.get("backups", [])
-    if not backups:
-        return HTMLResponse(content='<tr><td colspan="5" style="text-align: center; color: #999;">No backups saved.</td></tr>')
-
-    rows = []
-    for backup in backups:
-        from datetime import datetime
-        created_at_formatted = backup["created_at"]
-        try:
-            dt = datetime.fromisoformat(backup["created_at"])
-            created_at_formatted = dt.strftime("%Y-%m-%d %H:%M:%S")
-        except Exception:
-            pass
-
-        size_formatted = f"{backup['size_bytes'] / 1024:.1f} KB"
-        is_enc_badge = (
-            '<span class="status-badge" style="background-color: #ffb300; color: #000; padding: 2px 6px; border-radius: 4px; font-size: 0.8rem;"><i class="fas fa-lock"></i> Yes</span>'
-            if backup["encrypted"]
-            else '<span style="color: #666;"><i class="fas fa-unlock"></i> No</span>'
-        )
-
-        rows.append(f"""
-            <tr>
-                <td><strong>{backup['filename']}</strong></td>
-                <td>{created_at_formatted}</td>
-                <td>{size_formatted}</td>
-                <td>{is_enc_badge}</td>
-                <td style="text-align: right;">
-                    <a class="btn secondary btn-sm" href="/admin/backup/download/{backup['filename']}" download title="Download file"><i class="fas fa-download"></i></a>
-                    <button class="btn primary btn-sm"
-                            hx-post="/admin/panels/backup/validate-local"
-                            hx-vals=\'{{"filename": "{backup['filename']}"}}\'
-                            hx-target="#backup-upload-target"
-                            hx-swap="innerHTML"
-                            title="Restore from local">
-                        <i class="fas fa-undo"></i> Restore
-                    </button>
-                    <button class="btn btn-sm" style="background-color: #ff3333; color: white;"
-                            hx-post="/admin/panels/backup/delete/{backup['filename']}"
-                            hx-confirm="Are you sure you want to delete backup {backup['filename']}?"
-                            hx-target="closest tr"
-                            hx-swap="outerHTML"
-                            title="Delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </td>
-            </tr>
-        """)
-    return HTMLResponse(content="\n".join(rows))
+    return templates.TemplateResponse(request=request, name="admin_backup_rows.html",
+                                      context={"backups": await _list_backups()})
 
 
 @router.post("/panels/backup/delete/{filename}", dependencies=[Depends(require_api_key)])
@@ -330,4 +267,4 @@ async def create_panel_backup(request: Request):
     res = await create_backup(payload=payload)
     filename = res.get("filename")
 
-    return notify(f"Backup {filename} generated successfully.", refreshBackups=True, **{"backup-created": True})
+    return notify(f"Backup {filename} created.", refreshBackups=True, **{"backup-created": True})

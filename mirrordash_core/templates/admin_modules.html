@@ -1,22 +1,13 @@
 <!-- Modules Tab Panel -->
 <div class="page-panel active" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules">
-    <!-- Hero Banner (App Store Style) -->
-    <div class="hero-banner" style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.05) 50%, rgba(0, 0, 0, 0) 100%); border: 1px solid var(--border-color); border-radius: 20px; padding: 24px; margin-bottom: 24px; position: relative; overflow: hidden; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); backdrop-filter: blur(10px);">
-        <div class="hero-content" style="position: relative; z-index: 1;">
-            <span class="hero-tag" style="background: rgba(99, 102, 241, 0.2); color: #c7d2fe; border: 1px solid rgba(99, 102, 241, 0.3); padding: 4px 10px; border-radius: 30px; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; display: inline-block; margin-bottom: 8px;">Explore Modules</span>
-            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; margin: 0 0 8px 0; color: white;">MirrorDash Module Store</h2>
-            <p style="font-size: 0.88rem; color: var(--text-secondary); margin: 0; line-height: 1.5;">Customize your screen layouts or discover new widgets to add. Configured instances run concurrently in their own isolated storage spaces.</p>
-        </div>
-    </div>
-
     <!-- Filter & Search Row -->
     <div class="filter-row" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
         <div class="category-pills" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
-            <button class="category-pill active" onclick="filterModules('all', this)" style="background-color: var(--primary); border-color: transparent; color: white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.25);">All</button>
-            <button class="category-pill" onclick="filterModules('utility', this)">Utility</button>
-            <button class="category-pill" onclick="filterModules('iot', this)">Smart Home</button>
-            <button class="category-pill" onclick="filterModules('info', this)">Information</button>
-            <button class="category-pill" onclick="filterModules('installed', this)">Installed</button>
+            <button class="category-pill active" aria-pressed="true" onclick="filterModules('all', this)">All</button>
+            <button class="category-pill" aria-pressed="false" onclick="filterModules('installed', this)">On the mirror</button>
+            <button class="category-pill" aria-pressed="false" onclick="filterModules('info', this)">Information</button>
+            <button class="category-pill" aria-pressed="false" onclick="filterModules('iot', this)">Smart Home</button>
+            <button class="category-pill" aria-pressed="false" onclick="filterModules('utility', this)">Utility</button>
         </div>
         <div class="search-bar-container" style="position: relative; flex: 1; min-width: 250px; margin-bottom: 0 !important;">
             <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem;"></i>
@@ -30,29 +21,13 @@
         </div>
     </div>
 
-    <!-- Disk Space Usage Gauge -->
-    <div id="disk-usage-section" style="margin-bottom: 2rem; padding: 1.25rem; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 12px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
-            <h3 style="margin: 0; font-size: 0.95rem; font-weight: 500; color: white; display: flex; align-items: center; gap: 8px;">
-                <i class="fas fa-database" style="color: var(--primary);"></i>
-                <span>Persistent Storage (Modules & Config)</span>
-            </h3>
-            <span id="disk-usage-summary" style="font-size: 0.85rem; color: var(--text-secondary); font-family: var(--mono-family);">
-                {{ (disk_usage.used_bytes / 1024 / 1024 / 1024)|round(1) }} GB used of {{ (disk_usage.total_bytes / 1024 / 1024 / 1024)|round(1) }} GB ({{ disk_usage.percent_used }}% used)
-            </span>
-        </div>
-
-        <div class="gauge-bar" style="margin-top: 0; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden;">
-            <div id="disk-usage-fill" style="height: 100%; border-radius: 3px; background-color: {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}var(--danger){% else %}var(--primary){% endif %}; width: {{ disk_usage.percent_used }}%;"></div>
-        </div>
-
-        {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
-        <div id="disk-usage-warning" style="display: flex; margin-top: 10px; font-size: 0.8rem; color: var(--danger); align-items: center; gap: 6px;">
-            <i class="fas fa-exclamation-triangle"></i>
-            <span>Disk space is critically low (less than 500MB free). Deactivate or uninstall unused modules.</span>
-        </div>
-        {% endif %}
+    {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
+    <!-- Only shown when space runs low; the Dashboard always shows storage -->
+    <div id="disk-usage-warning" class="alert error" style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;">
+        <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+        <span>Only {{ (disk_usage.free_bytes / 1024 / 1024)|round|int }} MB of storage left. Installing or updating modules may fail; remove modules you don't use.</span>
     </div>
+    {% endif %}
 
     <!-- Installed Modules List -->
     <section class="card" style="background: transparent; border: none; padding: 0; box-shadow: none; margin-bottom: 0;">
@@ -73,8 +48,9 @@
                         {% elif "calendar" in name %}{% set icon_class = "fa-calendar-days" %}
                         {% elif "weather" in name %}{% set icon_class = "fa-cloud-sun" %}
                         {% elif "news" in name %}{% set icon_class = "fa-newspaper" %}
-                        {% elif "homeassistant" in name %}{% set icon_class = "fa-house-signal" %}
+                        {% elif "homeassistant" in name %}{% set icon_class = "fa-house" %}
                         {% elif "namnsdag" in name %}{% set icon_class = "fa-calendar-check" %}
+                        {% elif "krisinformation" in name %}{% set icon_class = "fa-triangle-exclamation" %}
                         {% endif %}
                     {% endif %}
                     {% set categories = ["utility"] %}
@@ -103,12 +79,12 @@
                                 </div>
                                 <div style="flex: 1;">
                                     <h3 style="margin: 0; font-size: 1.05rem; color: white; font-weight: 600;">{{ title }}</h3>
-                                    <span class="module-identifier" style="font-family: monospace; font-size: 0.75rem; color: var(--text-secondary);">{{ name }} <span style="margin-left:6px;">v{{ meta.version }}</span></span>
+                                    <span class="module-identifier" style="font-size: 0.75rem; color: var(--text-secondary);" title="{{ meta.package_name }}">Version {{ meta.version }}</span>
                                 </div>
                             </div>
                             
                             <p style="margin: 12px 0 0 0; font-size: 0.85rem; color: #a1a1aa; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; height: 3.7em;">
-                                {{ meta.schema.description or 'No description available for this module.' }}
+                                {{ meta.schema.description or meta.summary or 'No description available for this module.' }}
                             </p>
 
                         </div>
@@ -188,17 +164,9 @@
 <script>
     window.filterModules = function(cat, btn) {
         document.querySelectorAll('.category-pill').forEach(b => {
-            b.classList.remove('active');
-            b.style.backgroundColor = '';
-            b.style.borderColor = '';
-            b.style.color = '';
-            b.style.boxShadow = '';
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-pressed', b === btn);
         });
-        btn.classList.add('active');
-        btn.style.backgroundColor = 'var(--primary)';
-        btn.style.borderColor = 'transparent';
-        btn.style.color = 'white';
-        btn.style.boxShadow = '0 4px 12px rgba(99, 102, 241, 0.25)';
 
         document.querySelectorAll('.module-card').forEach(card => {
             const isInstalled = card.getAttribute('data-installed') === 'true';

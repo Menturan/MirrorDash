@@ -443,6 +443,7 @@ async def list_modules() -> dict:
             "position": instances[0]["position"] if instances else None,
             "package_name": ep.dist.name if ep.dist else name,
             "version": ep.dist.version if ep.dist else "0.0.0",
+            "summary": ep.dist.metadata["Summary"] if ep.dist else None,  # fallback when the schema has no description
             "schema": schema,
             "instances": instances
         }

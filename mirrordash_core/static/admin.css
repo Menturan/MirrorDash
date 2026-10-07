@@ -414,7 +414,6 @@ select:focus-visible {
 }
 
 .module-identifier {
-    font-family: var(--mono-family);
     font-size: 0.75rem;
     color: var(--text-muted);
 }
@@ -1104,31 +1103,47 @@ input:checked + .slider:before {
     color: var(--text-primary);
 }
 
-.backup-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
+.backup-list {
+    list-style: none;
+    margin: 10px 0 0;
+    padding: 0;
 }
 
-.backup-table th {
-    text-align: left;
+/* One row per backup; on a phone the buttons wrap below the name instead of running off-screen */
+.backup-item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--card-border);
+}
+
+.backup-item-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+.backup-item-info strong {
+    overflow-wrap: anywhere;
+}
+
+.backup-item-info span,
+.backup-empty {
     font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-dim);
-    border-bottom: 1px solid var(--card-border);
-    padding: 10px 15px;
+    color: var(--text-secondary);
 }
 
-.backup-table td {
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--card-border);
-    padding: 12px 15px;
-    vertical-align: middle;
+.backup-empty {
+    padding: 14px 0;
 }
 
-.backup-table tr:hover {
-    background: rgba(255, 255, 255, 0.01);
+.backup-item-actions {
+    display: flex;
+    gap: 8px;
 }
 
 /* Validation Panel Styles */
@@ -1353,3 +1368,26 @@ input:checked + .slider:before {
 
 /* Make the hidden attribute win over inline display styles (e.g. display: grid) */
 [hidden] { display: none !important; }
+
+/* Module filter chips */
+.category-pill {
+    background: transparent;
+    border: 1px solid var(--border-hover, rgba(255, 255, 255, 0.16));
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 6px 14px;
+    font: inherit;
+    font-size: 0.85rem;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.category-pill:hover {
+    color: var(--text-primary);
+}
+
+.category-pill.active {
+    background: var(--primary);
+    border-color: transparent;
+    color: white;
+}

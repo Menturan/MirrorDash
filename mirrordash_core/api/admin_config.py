@@ -342,7 +342,7 @@ async def save_panel_config_visual(request: Request):
 
     await module_loader.reload_modules()
 
-    return notify("Global settings saved successfully.")
+    return notify("Saved.")
 
 
 @router.get("/panels/config/add-array-item", dependencies=[Depends(require_api_key)])

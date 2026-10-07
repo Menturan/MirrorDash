@@ -3,24 +3,19 @@
     <section class="card">
         <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Settings</h2>
         
-        <p class="panel-subtitle">Configure system-wide settings inherited by all mirror modules.</p>
-        <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML">
+        <p class="panel-subtitle">Language, units and location shared by all modules. Changes are saved right away.</p>
+        <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML"
+              hx-trigger="change delay:400ms, submit">
             <div id="visual-form-container" class="visual-form-container">
                 {{ visual_form_html | safe }}
-            </div>
-            <div class="card-actions" style="margin-top: 1.5rem;">
-                <button type="submit" class="btn primary" aria-label="Save configuration">
-                    <i class="fas fa-save" aria-hidden="true"></i>
-                    <span>Save Visual Settings</span>
-                </button>
             </div>
         </form>
     </section>
 
-    <!-- MirrorDash Core Update -->
+    <!-- MirrorDash Updates -->
     <section class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Core Update</h2>
-        <p class="panel-subtitle">Check whether a newer version of the MirrorDash core framework is available on PyPI and upgrade it here.</p>
+        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Updates</h2>
+        <p class="panel-subtitle">Check for a newer version of MirrorDash and install it.</p>
 
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
             <div>

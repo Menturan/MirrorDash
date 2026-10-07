@@ -90,7 +90,7 @@
                 <i class="fas fa-chart-line" style="color: var(--primary);"></i> System Analytics
             </h2>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex-grow: 1;">
+            <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; flex-grow: 1;">
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">CPU Temperature</span>
                     <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if cpu_temp and cpu_temp > 60 %}var(--warning){% else %}var(--success){% endif %};">
@@ -143,7 +143,7 @@
                         {% elif network_info.type == 'hotspot' %}
                             <i class="fas fa-broadcast-tower" style="color: var(--warning); font-size: 0.9rem;"></i> Setup Hotspot
                         {% else %}
-                            <i class="fas fa-times-circle" style="color: var(--danger); font-size: 0.9rem;"></i> Disconnected
+                            <i class="fas fa-times-circle" style="color: var(--danger); font-size: 0.9rem;"></i> Not connected
                         {% endif %}
                     </span>
                 </div>
@@ -159,9 +159,9 @@
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Time Sync (NTP)</span>
                     <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
                         {% if ntp_synchronized %}
-                            <i class="fas fa-check-circle" style="color: var(--success); font-size: 0.9rem;"></i> Synchronized
+                            <i class="fas fa-check-circle" style="color: var(--success); font-size: 0.9rem;"></i> In sync
                         {% else %}
-                            <i class="fas fa-exclamation-circle" style="color: var(--warning); font-size: 0.9rem;"></i> Unsynchronized
+                            <i class="fas fa-exclamation-circle" style="color: var(--warning); font-size: 0.9rem;"></i> Not synced yet
                         {% endif %}
                     </span>
                 </div>
@@ -178,8 +178,19 @@
         .page-panel section.card {
             grid-column: span 12 !important;
         }
-        .analytics-grid, .page-panel section.card > div:not(.matrix-grid) { /* the matrix mirrors the 3×3 screen */
+        .page-panel section.card > div:not(.matrix-grid):not(.analytics-grid) { /* the matrix mirrors the 3×3 screen */
             grid-template-columns: 1fr !important;
+        }
+        /* Two short values per row instead of one long column on phones */
+        .analytics-grid {
+            gap: 10px !important;
+        }
+        .analytics-grid > div {
+            padding: 12px !important;
+            overflow-wrap: break-word;
+        }
+        .analytics-grid > div > span:nth-child(2) {
+            font-size: 1.05rem !important;
         }
     }
 </style>

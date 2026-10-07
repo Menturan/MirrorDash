@@ -1,8 +1,8 @@
 <!-- Power Tab Panel -->
 <div class="page-panel active" id="page-panel-power" role="tabpanel" aria-labelledby="page-tab-power">
     <section class="card">
-        <h2><i class="fas fa-bolt" aria-hidden="true"></i> Power Management</h2>
-        <p class="panel-subtitle">Manage how your display turns on and off to save energy and extend screen life.</p>
+        <h2><i class="fas fa-bolt" aria-hidden="true"></i> Screen Schedule</h2>
+        <p class="panel-subtitle">Turning the screen off when nobody looks saves energy and screen life. Changes are saved right away.</p>
         
         <!-- Saves on every change; no Apply button -->
         <form id="power-settings-form" hx-post="/admin/panels/power/save" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
@@ -132,11 +132,47 @@
         </form>
     </section>
 
+    <!-- Screen Power Control -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-tv" aria-hidden="true"></i> Screen Right Now</h2>
+        <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn the screen on or off right now. When the setting above has the screen off, ON wakes it for the screen timeout.</p>
+                <div id="screen-status" hx-get="/admin/panels/power/screen-status" hx-trigger="load, every 5s" hx-target="this"
+                     style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"></div>
+            </div>
+            <div style="display: flex; gap: 12px; width: 100%; flex-wrap: wrap;">
+                <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;"
+                        hx-post="/admin/panels/system/screen"
+                        hx-vals='{"state": "on"}'
+                        hx-target="#global-status"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this">
+                    <i class="fas fa-desktop" aria-hidden="true"></i> Turn Screen ON
+                </button>
+                <button type="button" id="screen-off-btn" class="btn secondary" style="flex: 1; justify-content: center;"
+                        hx-post="/admin/panels/system/screen"
+                        hx-vals='{"state": "off"}'
+                        hx-target="#global-status"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this">
+                    <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
+                </button>
+            </div>
+        </div>
+    </section>
+
     <!-- Restart / shut down the whole mirror -->
     <section class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-power-off" aria-hidden="true"></i> Mirror Power</h2>
-        <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 15px 0;">Shut the mirror down before unplugging it, so the SD card is never damaged. A button connected under Hardware can do the same.</p>
+        <h2><i class="fas fa-power-off" aria-hidden="true"></i> Restart &amp; Shut Down</h2>
+        <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 15px 0;">
+            <strong>Restart MirrorDash</strong> takes a few seconds and is usually enough when something looks wrong.
+            <strong>Restart Mirror</strong> restarts the whole Raspberry Pi (about a minute), needed after connecting sensors.
+            Shut down before unplugging, so the SD card is never damaged. A button connected under Hardware can do the same.</p>
         <div style="display: flex; gap: 12px; width: 100%; flex-wrap: wrap;">
+            <button type="button" id="restart-btn" class="btn secondary" style="flex: 1; justify-content: center;" onclick="triggerRestart()">
+                <i class="fas fa-sync-alt" aria-hidden="true"></i> Restart MirrorDash
+            </button>
             <button type="button" id="reboot-mirror-btn" class="btn secondary" style="flex: 1; justify-content: center;"
                     hx-post="/admin/panels/power/reboot" hx-target="#global-status" hx-disabled-elt="this"
                     hx-confirm="Restart the mirror? The screen will be off for about a minute.">
@@ -147,36 +183,6 @@
                     hx-confirm="Shut down the mirror? To start it again, unplug the power and plug it back in.">
                 <i class="fas fa-power-off" aria-hidden="true"></i> Shut Down
             </button>
-        </div>
-    </section>
-
-    <!-- Screen Power Control -->
-    <section class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-tv" aria-hidden="true"></i> Immediate Action</h2>
-        <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
-            <div class="form-label-desc" style="margin-bottom: 8px;">
-                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn the screen on or off right now. When the setting above has the screen off, ON wakes it for the screen timeout.</p>
-                <div id="screen-status" hx-get="/admin/panels/power/screen-status" hx-trigger="load, every 5s" hx-target="this"
-                     style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"></div>
-            </div>
-            <div style="display: flex; gap: 12px; width: 100%;">
-                <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;"
-                        hx-post="/admin/panels/system/screen"
-                        hx-vals='{"state": "on"}'
-                        hx-target="#global-status"
-                        hx-swap="innerHTML"
-                        hx-disabled-elt="this">
-                    <i class="fas fa-desktop" aria-hidden="true"></i> Turn Screen ON
-                </button>
-                <button type="button" id="screen-off-btn" class="btn danger" style="flex: 1; justify-content: center;"
-                        hx-post="/admin/panels/system/screen"
-                        hx-vals='{"state": "off"}'
-                        hx-target="#global-status"
-                        hx-swap="innerHTML"
-                        hx-disabled-elt="this">
-                    <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
-                </button>
-            </div>
         </div>
     </section>
 </div>

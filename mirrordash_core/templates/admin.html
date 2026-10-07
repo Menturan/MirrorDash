@@ -157,7 +157,7 @@
             --danger: #ef4444;
             --text-primary: #f8fafc;
             --text-secondary: #94a3b8;
-            --text-muted: #475569;
+            --text-muted: #8b97a8; /* ≥ 4.5:1 (WCAG AA) on every card colour; #475569 was 2.3:1 */
             --sidebar-width: 260px;
         }
 
@@ -355,11 +355,6 @@
             font-size: 0.9rem;
             color: var(--text-secondary);
             margin-top: 4px;
-        }
-
-        .quick-actions {
-            display: flex;
-            gap: 10px;
         }
 
         /* BUTTON STYLES (Accessible, clean, high UX contrast) */
@@ -631,15 +626,6 @@
                 align-items: flex-start;
                 gap: 12px;
             }
-
-            .quick-actions {
-                width: 100%;
-            }
-
-            .quick-actions .btn {
-                width: 100%;
-                justify-content: center;
-            }
         }
     </style>
     <!-- Marked.js and DOMPurify for secure markdown rendering of release notes -->
@@ -677,39 +663,41 @@
             <h2>MirrorDash Admin</h2>
         </div>
 
+        <!-- hx-sync on the tabs: a newer tab click aborts a slower earlier one, so a late
+             Dashboard response can never overwrite the tab you picked -->
         <nav class="nav-menu" role="tablist">
             <button class="nav-item active" id="page-tab-dashboard" role="tab" aria-selected="true" aria-controls="tab-content"
-                    hx-get="/admin/panels/dashboard" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/dashboard" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-chart-line"></i>
                 <span>Dashboard</span>
             </button>
             <button class="nav-item" id="page-tab-config" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/config" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/config" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-sliders-h"></i>
                 <span>Settings</span>
             </button>
             <button class="nav-item" id="page-tab-modules" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/modules" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/modules" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-puzzle-piece"></i>
                 <span>Modules</span>
             </button>
             <button class="nav-item" id="page-tab-logs" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/logs" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/logs" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-file-alt"></i>
                 <span>Logs</span>
             </button>
             <button class="nav-item" id="page-tab-backup" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/backup" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/backup" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-hdd"></i>
                 <span>Backup</span>
             </button>
             <button class="nav-item" id="page-tab-system" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/system" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/system" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-desktop"></i>
                 <span>Hardware</span>
             </button>
             <button class="nav-item" id="page-tab-power" role="tab" aria-selected="false" aria-controls="tab-content"
-                    hx-get="/admin/panels/power" hx-target="#tab-content" hx-trigger="click" onclick="setActiveTab(this)">
+                    hx-get="/admin/panels/power" hx-target="#tab-content" hx-trigger="click" hx-sync="closest nav:replace" onclick="setActiveTab(this)">
                 <i class="fas fa-bolt"></i>
                 <span>Power</span>
             </button>
@@ -725,13 +713,8 @@
     <div class="content-container">
         <header>
             <div class="header-title-desc">
-                <h1 id="tab-headline">Dashboard Overview</h1>
-                <p>Observe screen matrix layout and real-time environment telemetry.</p>
-            </div>
-            <div class="quick-actions">
-                <button id="restart-btn" class="btn danger" aria-label="Restart system" onclick="triggerRestart()">
-                    <i class="fas fa-power-off" aria-hidden="true"></i> Restart
-                </button>
+                <h1 id="tab-headline">Dashboard</h1>
+                <p id="tab-description">How the mirror is doing right now.</p>
             </div>
         </header>
 
@@ -1161,6 +1144,16 @@
             }
         }
 
+        const TAB_HEADINGS = {
+            dashboard: ['Dashboard', 'How the mirror is doing right now.'],
+            config: ['Settings', 'Language, units, location and updates.'],
+            modules: ['Modules', 'Choose what the mirror shows, and where.'],
+            logs: ['Logs', 'What the mirror has been doing. Useful when something goes wrong.'],
+            backup: ['Backup', 'Save your setup to a file, or restore it.'],
+            system: ['Hardware', 'Screen, sound and things connected to the Pi.'],
+            power: ['Power', 'When the screen is on, and restarting or shutting down.'],
+        };
+
         function setActiveTab(btn) {
             document.querySelectorAll('.nav-item').forEach(b => {
                 const active = b === btn;
@@ -1169,33 +1162,10 @@
             });
             const tabName = btn.id.replace('page-tab-', '');
             
-            const headlineEl = document.getElementById('tab-headline');
-            const descEl = headlineEl ? headlineEl.nextElementSibling : null;
-            if (headlineEl && descEl) {
-                if (tabName === 'dashboard') {
-                    headlineEl.innerText = 'Dashboard Overview';
-                    descEl.innerText = 'Observe screen matrix layout and real-time environment telemetry.';
-                } else if (tabName === 'config') {
-                    headlineEl.innerText = 'Settings';
-                    descEl.innerText = 'Manage global configuration, localized timezone properties, and core updates.';
-                } else if (tabName === 'modules') {
-                    headlineEl.innerText = 'Active Modules';
-                    descEl.innerText = 'Manage, add, and configure settings for individual module instances.';
-                } else if (tabName === 'logs') {
-                    headlineEl.innerText = 'System Logs';
-                    descEl.innerText = 'Inspect real-time log records from core servers and background loops.';
-                } else if (tabName === 'backup') {
-                    headlineEl.innerText = 'Backup & Recovery';
-                    descEl.innerText = 'Export config files or restore a previously saved MirrorDash state.';
-                } else if (tabName === 'system') {
-                    headlineEl.innerText = 'Hardware';
-                    descEl.innerText = 'Manage hardware outputs, screen brightness, volume, and display orientation.';
-                } else if (tabName === 'power') {
-                    headlineEl.innerText = 'Power';
-                    descEl.innerText = 'Manage how your display turns on and off to save energy and extend screen life.';
-                }
-            }
-            
+            const [headline, desc] = TAB_HEADINGS[tabName] || TAB_HEADINGS.dashboard;
+            document.getElementById('tab-headline').innerText = headline;
+            document.getElementById('tab-description').innerText = desc;
+
             window.location.hash = tabName;
         }
 
@@ -1211,8 +1181,8 @@
 
         async function triggerRestart() {
             const confirmed = await showConfirm(
-                "Restart System?",
-                "Are you sure you want to restart the mirror system? This will temporarily interrupt the display.",
+                "Restart MirrorDash?",
+                "The screen goes blank for a few seconds while MirrorDash starts again.",
                 "Restart",
                 true
             );
@@ -1228,18 +1198,18 @@
             } catch (_) {
                 showGlobal('Restart request failed.', 'error');
                 btn.disabled = false;
-                btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                btn.innerHTML = '<i class="fas fa-sync-alt" aria-hidden="true"></i> Restart MirrorDash';
                 return;
             }
 
             window.pollRestartAndReload({
                 bootId,
-                successMsg: 'System restarted successfully.',
+                successMsg: 'MirrorDash restarted.',
                 title: 'Restarting MirrorDash',
                 message: 'Waiting for the backend server to come back online...',
                 onFinish: () => {
                     btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                    btn.innerHTML = '<i class="fas fa-sync-alt" aria-hidden="true"></i> Restart MirrorDash';
                 }
             });
         }

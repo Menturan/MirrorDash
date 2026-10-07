@@ -1,0 +1,28 @@
+{% for backup in backups %}
+<li class="backup-item">
+    <div class="backup-item-info">
+        <strong>{{ backup.filename }}</strong>
+        <span>{{ backup.created_at_formatted }} · {{ backup.size_formatted }}{% if backup.encrypted %} · <i class="fas fa-lock" aria-hidden="true"></i> Password protected{% endif %}</span>
+    </div>
+    <div class="backup-item-actions">
+        <a class="btn secondary btn-sm" href="/admin/backup/download/{{ backup.filename }}" download aria-label="Download {{ backup.filename }}" title="Download"><i class="fas fa-download"></i></a>
+        <button class="btn primary btn-sm"
+                hx-post="/admin/panels/backup/validate-local"
+                hx-vals='{{ {"filename": backup.filename}|tojson }}'
+                hx-target="#backup-upload-target"
+                hx-swap="innerHTML">
+            <i class="fas fa-undo"></i> Restore
+        </button>
+        <button class="btn danger btn-sm"
+                hx-post="/admin/panels/backup/delete/{{ backup.filename }}"
+                hx-confirm="Delete the backup {{ backup.filename }}? This can't be undone."
+                hx-target="closest li"
+                hx-swap="outerHTML"
+                aria-label="Delete {{ backup.filename }}" title="Delete">
+            <i class="fas fa-trash"></i>
+        </button>
+    </div>
+</li>
+{% else %}
+<li class="backup-empty">No backups yet. Create one above.</li>
+{% endfor %}

@@ -25,10 +25,18 @@ There are two kinds of releases:
 - The admin page opens faster, also when the mirror has no internet connection.
 - Update checks are remembered for 10 minutes instead of being repeated on every page view.
 - The System Analytics values on the dashboard (temperature, memory, network, uptime and more) update every 10 seconds while the Dashboard tab is open.
+- Settings are saved as soon as you change them, like Hardware and Power.
+- Restart MirrorDash has moved from the top of every page to the Power tab, next to Restart Mirror and Shut Down, with a short explanation of the difference.
+- Clearer, plain-language headings and descriptions on every tab, including what a backup does and doesn't contain.
+- The Modules tab gets straight to the point: no banner, clearer filter buttons, and storage is only mentioned when it runs low.
+- Modules without their own description show their package description.
 
 ### Fixed
 - Loading spinners no longer keep spinning after a task has finished or was cancelled.
 - On phones, all tabs fit in the bottom bar, only the selected tab is highlighted, and the Backup page no longer hides the tab bar.
+- On phones, the saved backups' Restore, Download and Delete buttons are no longer cut off, the dashboard values fit two per row, and the screen buttons in the Power tab no longer run off the edge.
+- Help texts are easier to read (higher contrast).
+- Switching tabs quickly no longer sometimes shows the previous tab.
 - The screen layout overview on the dashboard shows the real 3×3 grid on phones.
 - Confirmation questions use the admin page's own dialog instead of the browser's pop-up.
 - The admin page no longer shows system details (network, IP address, modules) before you have logged in.

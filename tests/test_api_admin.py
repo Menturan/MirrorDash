@@ -1224,7 +1224,7 @@ def test_get_panel_dashboard(
     assert "50.0% Used" in response.text
     assert "Home-WiFi" in response.text
     assert "5d 12h 30m" in response.text
-    assert "Synchronized" in response.text
+    assert "In sync" in response.text
     assert "Power Warning: Under-voltage Detected" in response.text
 
 

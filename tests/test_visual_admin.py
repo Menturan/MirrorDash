@@ -192,7 +192,9 @@ def test_admin_dashboard_restart_overlay(page, server_url):
     navigate_authenticated(page, server_url)
     page.wait_for_selector("h1")
 
-    # Click the main Restart button in the header
+    # Restart MirrorDash lives in the Power tab
+    page.click("#page-tab-power")
+    page.wait_for_selector("#restart-btn")
     restart_btn = page.locator("#restart-btn")
     assert restart_btn.is_visible()
     restart_btn.click()
@@ -222,6 +224,12 @@ def test_admin_configuration_panel(page, server_url):
 
     # Verify Visual Editor is visible
     assert page.locator("#visual-form-container").is_visible()
+
+    # Settings save on change; there is no Save button any more
+    assert page.locator("#page-panel-config button[type=submit]").count() == 0
+    page.locator("#visual-form-container select").first.dispatch_event("change")
+    page.wait_for_selector("#global-status", state="visible")
+    assert "Saved." in page.locator("#global-status").text_content()
 
 def test_admin_logs_panel(page, server_url):
     navigate_authenticated(page, server_url)
@@ -255,10 +263,16 @@ def test_admin_backup_panel(page, server_url):
 
     # Click Backup & Restore tab
     page.click("#page-tab-backup")
-    page.wait_for_selector("#backups-list-tbody")
+    page.wait_for_selector("#backups-list")
 
     # Verify mock backup is rendered in list
     assert page.locator("text=backup_2026-06-29.mirror").is_visible()
+
+    # On a phone the row's buttons must stay on screen (they used to scroll off to the right)
+    page.set_viewport_size({"width": 390, "height": 844})
+    box = page.locator("#backups-list button:has-text('Restore')").bounding_box()
+    assert box["x"] + box["width"] <= 390
+    page.set_viewport_size({"width": 1280, "height": 800})
 
     # Toggle Password Protection
     assert not page.locator("#backup-password-container").is_visible()
@@ -272,7 +286,7 @@ def test_admin_backup_panel(page, server_url):
 
     # Verify alert/success messaging gets displayed in global status
     page.wait_for_selector("#global-status", state="visible")
-    assert "generated successfully" in page.locator("#global-status").text_content()
+    assert "created" in page.locator("#global-status").text_content()
 
 def test_admin_system_panel(page, server_url):
     navigate_authenticated(page, server_url)
