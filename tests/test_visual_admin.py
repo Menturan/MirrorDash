@@ -378,3 +378,29 @@ def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):
     page.clock.run_for(30000)
     page.wait_for_timeout(500)
     assert len(polls) == 2  # another tab: no more refreshes
+
+
+def test_wifi_setup_flow(page, server_url):
+    """First boot on a phone: pick a network, type (and reveal) the password, see where to go next."""
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.route("**/admin/auth/status", lambda r: r.fulfill(json={"setup_required": True}))
+    page.route("**/api/wifi/scan", lambda r: r.fulfill(json={"networks": ["Hemma-5G", "Grannen <b>x</b>"]}))
+    page.route("**/api/wifi/setup", lambda r: r.fulfill(json={"status": "success", "message": "Connected."}))
+    page.goto(f"{server_url}/wifi-setup")
+
+    page.wait_for_selector("#network-list button")
+    assert page.locator("#network-list").text_content().count("Grannen <b>x</b>") == 1  # names are text, never markup
+    page.click("#network-list button:has-text('Hemma-5G')")
+    assert page.locator("#chosen-ssid").text_content() == "Hemma-5G"
+
+    page.fill("#password", "hemligt")
+    page.click("[data-reveal=password]")
+    assert page.locator("#password").get_attribute("type") == "text"
+    page.click("[data-reveal=password]")
+    assert page.locator("#password").get_attribute("type") == "password"
+
+    page.click("#connect-btn")
+    page.wait_for_selector("#step-done:not([hidden])")
+    assert page.locator("#done-ssid").text_content() == "Hemma-5G"
+    assert page.locator(".address").get_attribute("href") == "http://mirrordash.local/admin"
+    assert page.evaluate("document.documentElement.scrollWidth") <= 390

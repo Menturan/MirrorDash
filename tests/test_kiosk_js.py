@@ -17,7 +17,7 @@ def test_static_js_files_served(client):
     # wifi_prompt.html
     resp = client.get('/static/wifi_prompt.html')
     assert resp.status_code == 200
-    assert 'WiFi Setup Mode' in resp.text
+    assert 'Connect the mirror to Wi-Fi' in resp.text
 
 
     # core.js

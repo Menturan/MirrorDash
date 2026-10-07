@@ -3,339 +3,418 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MirrorDash - WiFi Configuration</title>
+    <title>MirrorDash Wi-Fi Setup</title>
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
-    <link rel="stylesheet" href="/static/admin.css">
+    <!-- Self-contained on purpose: the phone has no internet here, and the admin styles must not leak in -->
+    <link rel="stylesheet" href="/static/fonts/inter.css">
     <style>
+        /* The phone page speaks the mirror's language (DESIGN.md): black glass, thin light type */
+        :root {
+            color-scheme: dark;
+            --void: #000000;
+            --light: #ffffff;
+            --gray: #999999;
+            --line: #333333;
+            --ice: #a8c7fa;
+            --rose: #ffb4ab;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
         body {
-            align-items: center;
-            padding: 20px;
+            margin: 0;
+            background: var(--void);
+            color: var(--light);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 17px;
+            line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }
-        .setup-card {
-            width: 100%;
-            max-width: 480px;
-            margin: auto;
+
+        main {
+            max-width: 28rem;
+            margin: 0 auto;
+            padding: 56px 24px 48px;
         }
-        .setup-header {
-            text-align: center;
-            margin-bottom: 24px;
+
+        .brand {
+            margin: 0 0 48px;
+            font-size: 15px;
+            font-weight: 300;
+            letter-spacing: 0.02em;
+            color: var(--gray);
         }
-        .setup-header svg {
-            width: 48px;
-            height: 48px;
-            color: var(--accent-color);
-            margin-bottom: 12px;
+
+        h1 {
+            margin: 0 0 8px;
+            font-size: 28px;
+            font-weight: 200;
+            line-height: 1.2;
+            letter-spacing: -0.01em;
+            overflow-wrap: anywhere;
         }
-        .setup-header h1 {
-            justify-content: center;
-            font-size: 1.6rem;
-            margin-bottom: 8px;
-        }
-        .input-row {
-            display: flex;
-            gap: 8px;
-        }
-        .btn-icon {
-            padding: 10px;
-            width: 42px;
-            height: 42px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .mode-toggle {
-            font-size: 0.8rem;
-            color: var(--text-muted);
-            cursor: pointer;
-            text-decoration: underline;
-            background: none;
-            border: none;
+
+        p { margin: 0 0 16px; }
+        .lead, .hint { color: var(--gray); }
+        .lead { margin-bottom: 32px; }
+        .hint { font-size: 14px; margin-top: 8px; }
+        strong { font-weight: 500; color: var(--light); }
+
+        /* Network list: big rows instead of a dropdown, which is awkward in captive-portal browsers */
+        .networks {
+            list-style: none;
+            margin: 0 0 8px;
             padding: 0;
-            margin-top: 4px;
-            text-align: left;
-            width: max-content;
+            border-top: 1px solid var(--line);
         }
-        .mode-toggle:hover {
-            color: white;
-        }
-        .status-box {
-            margin-top: 16px;
-            padding: 12px 16px;
-            border-radius: 10px;
-            font-size: 0.9rem;
-            display: none;
-        }
-        .status-box.info { display: flex; align-items: center; gap: 8px; background: rgba(245, 158, 11, 0.08); border: 1px solid var(--warning-color); color: var(--warning-color); }
-        .status-box.success { display: flex; align-items: center; gap: 8px; background: rgba(160, 255, 186, 0.08); border: 1px solid var(--success-color); color: var(--success-color); }
-        .status-box.error { display: flex; align-items: center; gap: 8px; background: rgba(255, 180, 171, 0.08); border: 1px solid var(--error-color); color: var(--error-color); }
-        
-        input[type="password"], input[type="text"] {
+
+        .networks button {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
             width: 100%;
-            background: rgba(0, 0, 0, 0.4);
-            border: 1px solid var(--card-border);
-            border-radius: 10px;
-            color: white;
-            padding: 11px 15px;
-            font-family: var(--font-family);
-            font-size: 0.9rem;
+            min-height: 56px;
+            padding: 12px 0;
+            background: none;
+            border: 0;
+            border-bottom: 1px solid var(--line);
+            color: var(--light);
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .networks button span:first-child { overflow-wrap: anywhere; }
+        .networks button span:last-child { color: var(--gray); font-size: 22px; font-weight: 200; }
+        .networks button:hover, .networks button:focus-visible { color: var(--ice); }
+
+        .status { color: var(--gray); min-height: 1.5em; margin: 16px 0; }
+
+        label {
+            display: block;
+            margin: 24px 0 8px;
+            color: var(--gray);
+            font-size: 15px;
+        }
+
+        .field {
+            display: flex;
+            align-items: stretch;
+            border-bottom: 1px solid var(--gray);
+        }
+
+        /* Focus is shown by the underline turning ice and thicker, not a box around the input */
+        .field:focus-within { border-bottom-color: var(--ice); box-shadow: 0 1px 0 var(--ice); }
+        .field input:focus-visible { outline: none; }
+
+        input, select {
+            flex: 1;
+            min-width: 0;
+            width: 100%;
+            padding: 12px 0;
+            background: none;
+            border: 0;
+            border-radius: 0;
+            color: var(--light);
+            font: inherit; /* 17px: iOS doesn't zoom into the field */
             outline: none;
-            transition: border-color 0.2s;
-            box-sizing: border-box;
         }
-        input[type="password"]:focus-visible, input[type="text"]:focus-visible {
-            border-color: var(--accent-color);
-            outline: 2px solid var(--accent-color);
-            outline-offset: 2px;
+
+        select { padding: 12px 0; border-bottom: 1px solid var(--gray); }
+        select option { background: var(--void); }
+
+        .text-btn {
+            background: none;
+            border: 0;
+            padding: 12px 0;
+            color: var(--gray);
+            font: inherit;
+            font-size: 15px;
+            text-decoration: underline;
+            text-underline-offset: 3px;
+            cursor: pointer;
         }
+
+        .text-btn:hover { color: var(--light); }
+        .field .text-btn { padding: 12px 0 12px 16px; text-decoration: none; }
+
+        .timezone {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            margin-top: 24px;
+            color: var(--gray);
+            font-size: 15px;
+        }
+
+        .timezone span { overflow-wrap: anywhere; }
+
+        .primary {
+            display: block;
+            width: 100%;
+            min-height: 52px;
+            margin: 40px 0 8px;
+            background: var(--light);
+            border: 0;
+            border-radius: 4px;
+            color: var(--void);
+            font: inherit;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        .primary:disabled { background: var(--gray); cursor: progress; }
+
+        .error { color: var(--rose); margin: 16px 0 0; }
+        .error:empty { display: none; }
+
+        :focus-visible {
+            outline: 2px solid var(--ice);
+            outline-offset: 3px;
+        }
+
+        /* The one bold moment: the address, set like the clock on the glass */
+        .address {
+            display: block;
+            margin: 24px 0 32px;
+            color: var(--light);
+            font-size: clamp(2rem, 10vw, 3.5rem);
+            font-weight: 100;
+            line-height: 1.05;
+            letter-spacing: -0.03em;
+            text-decoration: none;
+            overflow-wrap: anywhere;
+            animation: appear 1.2s ease-out both;
+        }
+
+        @keyframes appear {
+            from { opacity: 0; letter-spacing: 0.04em; }
+            to { opacity: 1; letter-spacing: -0.03em; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .address { animation: none; }
+        }
+
+        [hidden] { display: none !important; }
     </style>
 </head>
 <body>
-    <div class="admin-container">
-        <div class="card setup-card">
-            <div class="setup-header">
-                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" x2="12.01" y1="20" y2="20"/></svg>
-                <h1>WiFi Setup</h1>
-                <p>Configure the network connection for your MirrorDash display.</p>
-            </div>
-            
-            <form id="wifi-form" onsubmit="handleSubmit(event)">
-                <div class="form-group" style="margin-bottom: 20px;">
-                    <label for="ssid-select" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Network SSID</label>
-                    <div id="select-container" class="input-row">
-                        <select id="ssid-select" class="form-control" style="flex: 1; height: 42px;">
-                            <option value="">Scanning for networks...</option>
-                        </select>
-                        <button type="button" id="scan-btn" class="btn secondary btn-icon" onclick="scanNetworks()" title="Scan again">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                        </button>
-                    </div>
-                    <div id="manual-container" style="display: none;">
-                        <input type="text" id="ssid-input" class="form-control" placeholder="Enter network SSID" style="height: 42px; width: 100%;">
-                    </div>
-                    <button type="button" id="toggle-mode-btn" class="mode-toggle" onclick="toggleSSIDMode()">Or enter SSID manually</button>
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 24px;">
-                    <label for="password" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Password</label>
-                    <input type="password" id="password" placeholder="Enter WiFi password">
-                </div>
-                
-                <div class="form-group" style="margin-bottom: 24px;">
-                    <label for="timezone" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">System Timezone</label>
-                    <select id="timezone" class="form-control" style="width: 100%; height: 42px;">
-                        <option value="Europe/Stockholm">Europe/Stockholm (Default)</option>
-                        <option value="UTC">UTC</option>
-                        <option value="Europe/London">Europe/London</option>
-                        <option value="Europe/Paris">Europe/Paris</option>
-                        <option value="Europe/Berlin">Europe/Berlin</option>
-                        <option value="America/New_York">America/New_York (US Eastern)</option>
-                        <option value="America/Chicago">America/Chicago (US Central)</option>
-                        <option value="America/Denver">America/Denver (US Mountain)</option>
-                        <option value="America/Los_Angeles">America/Los_Angeles (US Pacific)</option>
-                        <option value="Asia/Tokyo">Asia/Tokyo</option>
-                        <option value="Asia/Shanghai">Asia/Shanghai</option>
-                        <option value="Asia/Singapore">Asia/Singapore</option>
-                        <option value="Australia/Sydney">Australia/Sydney</option>
-                    </select>
-                </div>
-                
-                <div id="admin-auth-group" class="form-group" style="margin-bottom: 24px; display: none;">
-                    <label for="admin-password" style="font-weight: 500; font-size: 0.9rem; color: white; margin-bottom: 6px;">Admin Password</label>
-                    <input type="password" id="admin-password" placeholder="Enter admin password to authorize">
-                </div>
+<main>
+    <p class="brand">MirrorDash</p>
 
-                <button type="submit" id="submit-btn" class="btn primary" style="width: 100%; height: 44px;">
-                    Connect & Reboot
-                </button>
-            </form>
-            
-            <div id="status-box" class="status-box">
-                <span id="status-message"></span>
+    <!-- Only when the mirror is already set up: changing Wi-Fi needs the admin password -->
+    <section id="step-auth" hidden>
+        <h1>Change the mirror's Wi-Fi</h1>
+        <p class="lead">This mirror is already set up. Enter its admin password to continue.</p>
+        <form id="auth-form">
+            <label for="admin-password">Admin password</label>
+            <div class="field">
+                <input type="password" id="admin-password" autocomplete="current-password" required>
+                <button type="button" class="text-btn" data-reveal="admin-password" aria-controls="admin-password" aria-pressed="false">Show</button>
             </div>
-        </div>
-    </div>
+            <p class="error" id="auth-error" role="alert"></p>
+            <button type="submit" class="primary">Continue</button>
+        </form>
+    </section>
 
-    <script>
-        let manualMode = false;
-        let setupRequired = true;
-        
-        async function checkAuthStatus() {
-            try {
-                const response = await fetch("/admin/auth/status");
-                const data = await response.json();
-                setupRequired = data.setup_required;
-                if (!setupRequired) {
-                    document.getElementById("admin-auth-group").style.display = "block";
-                }
-            } catch (err) {
-                console.error("Failed to check auth status", err);
-            }
-        }
-        
-        function toggleSSIDMode() {
-            manualMode = !manualMode;
-            const selectContainer = document.getElementById("select-container");
-            const manualContainer = document.getElementById("manual-container");
-            const toggleBtn = document.getElementById("toggle-mode-btn");
-            
-            if (manualMode) {
-                selectContainer.style.display = "none";
-                manualContainer.style.display = "block";
-                toggleBtn.innerText = "Or select from nearby networks";
-            } else {
-                selectContainer.style.display = "flex";
-                manualContainer.style.display = "none";
-                toggleBtn.innerText = "Or enter SSID manually";
-                scanNetworks();
-            }
-        }
-        
-        async function scanNetworks() {
-            const select = document.getElementById("ssid-select");
-            const scanBtn = document.getElementById("scan-btn");
-            
-            select.innerHTML = '<option value="">Scanning for networks...</option>';
-            scanBtn.disabled = true;
-            
-            const icon = scanBtn.querySelector("svg");
-            if (icon) icon.style.animation = "spin 1s linear infinite";
-            
-            try {
-                const headers = {};
-                if (!setupRequired) {
-                    const adminPw = document.getElementById("admin-password").value;
-                    headers["X-API-Key"] = adminPw;
-                }
-                const response = await fetch("/api/wifi/scan", { headers });
-                if (response.status === 401) {
-                    select.innerHTML = '<option value="">Authentication required to scan</option>';
-                    showStatus("Admin password is required to scan nearby networks.", "error");
-                    return;
-                }
-                const data = await response.json();
-                
-                select.innerHTML = '';
-                if (data.networks && data.networks.length > 0) {
-                    data.networks.forEach(net => {
-                        const opt = document.createElement("option");
-                        opt.value = net;
-                        opt.textContent = net;
-                        select.appendChild(opt);
-                    });
-                } else {
-                    const opt = document.createElement("option");
-                    opt.value = "";
-                    opt.textContent = "No networks found";
-                    select.appendChild(opt);
-                }
-            } catch (err) {
-                console.error("Scan failed", err);
-                select.innerHTML = '<option value="">Failed to scan networks</option>';
-            } finally {
-                scanBtn.disabled = false;
-                if (icon) icon.style.animation = "";
-            }
-        }
-        
-        async function handleSubmit(event) {
-            event.preventDefault();
-            
-            const ssid = manualMode 
-                ? document.getElementById("ssid-input").value.trim()
-                : document.getElementById("ssid-select").value;
-            const password = document.getElementById("password").value;
-            const timezone = document.getElementById("timezone").value;
-            
-            const submitBtn = document.getElementById("submit-btn");
-            
-            if (!ssid) {
-                showStatus("Please enter or select a network SSID.", "error");
+    <section id="step-network" hidden>
+        <h1>Choose your Wi-Fi</h1>
+        <p class="lead">The mirror connects to the network you pick here.</p>
+        <ul class="networks" id="network-list" aria-label="Wi-Fi networks nearby"></ul>
+        <p class="status" id="scan-status" role="status">Looking for networks…</p>
+        <button type="button" class="text-btn" id="scan-btn">Scan again</button><br>
+        <button type="button" class="text-btn" id="manual-btn">Network not listed?</button>
+    </section>
+
+    <section id="step-password" hidden>
+        <form id="connect-form">
+            <h1 id="chosen-ssid"></h1>
+            <div id="manual-ssid" hidden>
+                <h1>Your network</h1>
+                <label for="ssid-input">Network name</label>
+                <div class="field">
+                    <input type="text" id="ssid-input" autocomplete="off" autocapitalize="off" spellcheck="false">
+                </div>
+            </div>
+
+            <label for="password">Password</label>
+            <div class="field">
+                <input type="password" id="password" autocomplete="off" autocapitalize="off" spellcheck="false">
+                <button type="button" class="text-btn" data-reveal="password" aria-controls="password" aria-pressed="false">Show</button>
+            </div>
+            <p class="hint">Leave empty if the network has no password.</p>
+
+            <div class="timezone">
+                <span>Time zone: <strong id="timezone-label"></strong></span>
+                <button type="button" class="text-btn" id="timezone-btn" aria-controls="timezone">Change</button>
+            </div>
+            <label for="timezone" hidden id="timezone-select-label">Time zone</label>
+            <select id="timezone" hidden></select>
+
+            <p class="error" id="connect-error" role="alert"></p>
+            <button type="submit" class="primary" id="connect-btn">Connect the mirror</button>
+            <button type="button" class="text-btn" id="back-btn">Choose another network</button>
+        </form>
+    </section>
+
+    <section id="step-done" hidden aria-live="polite">
+        <h1>The mirror is connecting</h1>
+        <p class="lead">It restarts and shows its clock in about a minute.</p>
+        <p>Reconnect your phone to <strong id="done-ssid"></strong>, then open</p>
+        <a class="address" href="http://mirrordash.local/admin">mirrordash.local</a>
+        <p class="hint">If the mirror can't connect, for example because of a wrong password, the network
+            MirrorDash-Setup appears again within a few minutes. Connect to it and try again.</p>
+    </section>
+</main>
+
+<script>
+    const TIMEZONES = ["Europe/Stockholm", "Europe/London", "Europe/Paris", "Europe/Berlin", "UTC",
+        "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
+        "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Australia/Sydney"];
+    // On the setup hotspot the mirror drops the hotspot to connect, so the phone never gets an answer
+    const viaHotspot = location.hostname === "10.42.0.1";
+    const $ = id => document.getElementById(id);
+    let adminPassword = "";
+    let manual = false;
+
+    function show(step) {
+        for (const id of ["step-auth", "step-network", "step-password", "step-done"]) $(id).hidden = id !== step;
+        window.scrollTo(0, 0);
+    }
+
+    function authHeaders() {
+        return adminPassword ? { "X-API-Key": adminPassword } : {};
+    }
+
+    // Show / Hide for every password field
+    document.querySelectorAll("[data-reveal]").forEach(btn => btn.addEventListener("click", () => {
+        const input = $(btn.dataset.reveal);
+        const reveal = input.type === "password";
+        input.type = reveal ? "text" : "password";
+        btn.textContent = reveal ? "Hide" : "Show";
+        btn.setAttribute("aria-pressed", reveal);
+        input.focus();
+    }));
+
+    async function scan() {
+        const list = $("network-list");
+        list.replaceChildren();
+        $("scan-status").textContent = "Looking for networks…";
+        $("scan-btn").disabled = true;
+        try {
+            const res = await fetch("/api/wifi/scan", { headers: authHeaders() });
+            if (res.status === 401) {
+                $("auth-error").textContent = "That password isn't right.";
+                show("step-auth");
                 return;
             }
-            
-            submitBtn.disabled = true;
-            showStatus("Connecting to network... This may take up to 30 seconds.", "info");
-            
-            try {
-                const headers = { "Content-Type": "application/json" };
-                if (!setupRequired) {
-                    const adminPw = document.getElementById("admin-password").value;
-                    if (!adminPw) {
-                        showStatus("Admin password is required to authorize WiFi setup.", "error");
-                        submitBtn.disabled = false;
-                        return;
-                    }
-                    headers["X-API-Key"] = adminPw;
-                }
-                const response = await fetch("/api/wifi/setup", {
-                    method: "POST",
-                    headers: headers,
-                    body: JSON.stringify({ ssid, password, timezone })
-                });
-                
-                const data = await response.json();
-                if (response.status === 401) {
-                    showStatus("Invalid admin password.", "error");
-                    submitBtn.disabled = false;
-                } else if (data.status === "success") {
-                    showStatus(data.message, "success");
-                    document.getElementById("wifi-form").querySelectorAll("input, select, button").forEach(el => el.disabled = true);
-                } else {
-                    showStatus(data.message || "Failed to connect to network.", "error");
-                    submitBtn.disabled = false;
-                }
-            } catch (err) {
-                console.error("Submit failed", err);
-                showStatus("Network request failed.", "error");
-                submitBtn.disabled = false;
+            const { networks = [] } = await res.json();
+            for (const ssid of networks) {
+                const li = document.createElement("li");
+                const btn = document.createElement("button");
+                btn.type = "button";
+                const name = document.createElement("span");
+                name.textContent = ssid;
+                const chevron = document.createElement("span");
+                chevron.textContent = "›";
+                chevron.setAttribute("aria-hidden", "true");
+                btn.append(name, chevron);
+                btn.addEventListener("click", () => choose(ssid));
+                li.append(btn);
+                list.append(li);
             }
+            $("scan-status").textContent = networks.length ? "" : "No networks found. Scan again, or type the network's name.";
+        } catch (_) {
+            $("scan-status").textContent = "Couldn't look for networks. Scan again, or type the network's name.";
+        } finally {
+            $("scan-btn").disabled = false;
         }
-        
-        function showStatus(msg, type) {
-            const box = document.getElementById("status-box");
-            const text = document.getElementById("status-message");
-            box.className = "status-box " + type;
-            text.innerText = msg;
-            box.style.display = "flex";
+    }
+
+    function choose(ssid) {
+        manual = ssid === null;
+        $("chosen-ssid").hidden = manual;
+        $("manual-ssid").hidden = !manual;
+        $("chosen-ssid").textContent = ssid || "";
+        $("connect-error").textContent = "";
+        show("step-password");
+        (manual ? $("ssid-input") : $("password")).focus();
+    }
+
+    async function connect(event) {
+        event.preventDefault();
+        const ssid = manual ? $("ssid-input").value.trim() : $("chosen-ssid").textContent;
+        if (!ssid) {
+            $("connect-error").textContent = "Type the name of your network.";
+            $("ssid-input").focus();
+            return;
         }
-        
-        // Auto-detect browser timezone
-        try {
-            const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-            if (localTz) {
-                const tzSelect = document.getElementById("timezone");
-                let exists = false;
-                for (let i = 0; i < tzSelect.options.length; i++) {
-                    if (tzSelect.options[i].value === localTz) {
-                        tzSelect.selectedIndex = i;
-                        exists = true;
-                        break;
-                    }
-                }
-                if (!exists) {
-                    const opt = document.createElement("option");
-                    opt.value = localTz;
-                    opt.textContent = localTz + " (Auto-detected)";
-                    tzSelect.insertBefore(opt, tzSelect.firstChild);
-                    tzSelect.selectedIndex = 0;
-                }
-            }
-        } catch (e) {
-            console.error("Timezone auto-detection failed", e);
-        }
-        
-        // Initial setup check and scan
-        checkAuthStatus().then(() => {
-            scanNetworks();
+        $("connect-error").textContent = "";
+        $("done-ssid").textContent = ssid;
+        const request = fetch("/api/wifi/setup", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", ...authHeaders() },
+            body: JSON.stringify({ ssid, password: $("password").value, timezone: $("timezone").value }),
         });
-    </script>
-    
-    <style>
-        @keyframes spin {
-            from { transform: rotate(0deg); }
-            to { transform: rotate(360deg); }
+        if (viaHotspot) {
+            show("step-done");
+            request.catch(() => {}); // the hotspot goes away now; no answer is expected
+            return;
         }
-    </style>
+        $("connect-btn").disabled = true;
+        $("connect-btn").textContent = "Connecting…";
+        try {
+            const res = await request;
+            if (res.status === 401) throw new Error("That admin password isn't right.");
+            const data = await res.json();
+            if (data.status !== "success") throw new Error(`Couldn't connect to ${ssid}. Check the password and try again.`);
+            show("step-done");
+        } catch (err) {
+            $("connect-error").textContent = err instanceof TypeError ? "The mirror didn't answer. Check that it's on, then try again." : err.message;
+        } finally {
+            $("connect-btn").disabled = false;
+            $("connect-btn").textContent = "Connect the mirror";
+        }
+    }
+
+    function setupTimezone() {
+        let detected = "";
+        try { detected = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (_) {}
+        const zones = detected && !TIMEZONES.includes(detected) ? [detected, ...TIMEZONES] : TIMEZONES;
+        const select = $("timezone");
+        for (const tz of zones) select.add(new Option(tz.replaceAll("_", " "), tz));
+        select.value = detected || "Europe/Stockholm";
+        const update = () => { $("timezone-label").textContent = select.selectedOptions[0].text; };
+        update();
+        select.addEventListener("change", update);
+        $("timezone-btn").addEventListener("click", () => {
+            select.hidden = $("timezone-select-label").hidden = false;
+            $("timezone-btn").hidden = true;
+            select.focus();
+        });
+    }
+
+    $("auth-form").addEventListener("submit", event => {
+        event.preventDefault();
+        adminPassword = $("admin-password").value;
+        $("auth-error").textContent = "";
+        show("step-network");
+        scan();
+    });
+    $("scan-btn").addEventListener("click", scan);
+    $("manual-btn").addEventListener("click", () => choose(null));
+    $("back-btn").addEventListener("click", () => show("step-network"));
+    $("connect-form").addEventListener("submit", connect);
+    setupTimezone();
+
+    fetch("/admin/auth/status")
+        .then(res => res.json())
+        .then(data => data.setup_required ? (show("step-network"), scan()) : show("step-auth"))
+        .catch(() => { show("step-network"); scan(); });
+</script>
 </body>
 </html>

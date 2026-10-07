@@ -161,7 +161,14 @@ async def post_wifi_setup(body: dict) -> dict:
     if not ssid:
         return {"status": "error", "message": "SSID is required"}
 
+    # Connecting tears the setup hotspot down first, so a phone on it gets no answer either way
+    from_hotspot = await is_wifi_hotspot_active()
     success, message = await connect_wifi(ssid, password)
+    if not success and from_hotspot:
+        # Otherwise the mirror is left with neither Wi-Fi nor hotspot until it's unplugged.
+        # After the restart the Wi-Fi fallback opens MirrorDash-Setup again.
+        logger.warning(f"Could not connect to '{ssid}' from the setup hotspot; restarting to bring it back.")
+        await reboot_system(delay_sec=3.0)
     if success:
         if timezone:
             from mirrordash_core.config import load_config, save_config
@@ -181,7 +188,7 @@ async def post_wifi_setup(body: dict) -> dict:
             await apply_system_timezone(timezone)
 
         await reboot_system(delay_sec=3.0)
-        return {"status": "success", "message": "Successfully connected! System is rebooting..."}
+        return {"status": "success", "message": "Connected. The mirror is restarting."}
     else:
         return {"status": "error", "message": message}
 
