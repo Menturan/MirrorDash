@@ -365,9 +365,8 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
         await remount_ro()
 
 
-@router.get("/list-modules", dependencies=[Depends(require_api_key)])
 async def list_modules() -> dict:
-    """List all discovered entry-point modules and their config status."""
+    """List all discovered entry-point modules and their config status (for the Modules panels)."""
     eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
     config = load_config()
     modules_config = config.get("modules", {})
@@ -383,45 +382,9 @@ async def list_modules() -> dict:
         except Exception as e:
             logger.warning(f"Could not load schema for entry point '{name}': {e}")
 
+        # The panels only read title, icon and description; with no description they fall back to the package summary
         if not schema:
-            schema = {
-                "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                "description": "No description available.",
-                "properties": {
-                    "enabled": {
-                        "type": "boolean",
-                        "default": True,
-                        "title": "Enabled",
-                        "description": "Enable or disable this module."
-                    },
-                    "position": {
-                        "type": "string",
-                        "default": "middle_center",
-                        "enum": ["top_left", "top_right", "middle_center", "bottom_left", "bottom_right"],
-                        "title": "Screen Position",
-                        "description": "Where to display this module on the mirror screen."
-                    }
-                }
-            }
-
-        # Guarantee that standard properties 'enabled' and 'position' are present
-        if "properties" not in schema:
-            schema["properties"] = {}
-        if "enabled" not in schema["properties"]:
-            schema["properties"]["enabled"] = {
-                "type": "boolean",
-                "default": True,
-                "title": "Enabled",
-                "description": "Enable or disable this module."
-            }
-        if "position" not in schema["properties"]:
-            schema["properties"]["position"] = {
-                "type": "string",
-                "default": "middle_center",
-                "enum": ["top_left", "top_right", "middle_center", "bottom_left", "bottom_right"],
-                "title": "Screen Position",
-                "description": "Where to display this module on the mirror screen."
-            }
+            schema = {"title": name.replace("mirrordash-", "").replace("mirrordash_", "").title()}
 
         instances = []
         for inst_id, inst_cfg in modules_config.items():

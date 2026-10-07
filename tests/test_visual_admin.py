@@ -404,3 +404,33 @@ def test_wifi_setup_flow(page, server_url):
     assert page.locator("#done-ssid").text_content() == "Hemma-5G"
     assert page.locator(".address").get_attribute("href") == "http://mirrordash.local/admin"
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
+
+
+def test_module_script_gets_its_own_shadow_root(page):
+    """A module's inline script receives its shadow root as `root`; it can't rely on document.currentScript."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json=[])
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        route.fulfill(body=file.read_bytes(), content_type="text/html" if path.endswith(".html") else "text/javascript")
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+
+    script = ("<p class='out'></p><script>root.querySelector('.out').textContent = "
+              "(document.currentScript ? 'current' : 'root') + ':' + (root._renders = (root._renders || 0) + 1);</script>")
+    for module in ("clock-a", "clock-b", "clock-a"):
+        msg = json.dumps({"module": module, "position": "top_left", "html": script})
+        page.evaluate("msg => window.__ws.onmessage({ data: msg })", msg)
+
+    read = "m => document.querySelector(`[data-module='${m}']`).shadowRoot.querySelector('.out').textContent"
+    assert page.evaluate(read, "clock-a") == "root:2"  # same root across re-renders, so state like timers persists
+    assert page.evaluate(read, "clock-b") == "root:1"  # and it's per instance

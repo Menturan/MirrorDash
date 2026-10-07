@@ -1,6 +1,5 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import importlib.metadata
 import json
 import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -8,7 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import job_response, notify, require_api_key, start_job, templates
 from mirrordash_core.config import find_module_config, load_config, save_config
-from mirrordash_core.module_loader import module_loader
+from mirrordash_core.module_loader import module_loader, find_entry_point
 from mirrordash_core.system import remount_ro, remount_rw
 from mirrordash_core.system.network import fetch_json_cached
 
@@ -86,11 +85,9 @@ async def get_discover_modules(request: Request):
 
 
 @router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
-@router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
 async def get_module_config_form(module_name: str, instance_id: str = None):
-    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
-    ep = eps_dict.get(module_name)
+    ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
 
@@ -350,8 +347,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
     cfg_key = instance_id if instance_id else list(modules_dict.keys())[0]
     module_cfg = modules_dict.get(cfg_key, {})
 
-    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
-    ep = eps_dict.get(module_name)
+    ep = find_entry_point(module_name)
     schema = None
     if ep:
         try:
@@ -441,9 +437,8 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
 
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
 async def check_module_update_route(module_name: str):
-    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
-    ep = eps_dict.get(module_name)
+    ep = find_entry_point(module_name)
     if not ep:
         return HTMLResponse(content="")
 
@@ -540,9 +535,8 @@ async def check_module_update_route(module_name: str):
 
 @router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
 async def get_module_notes(module_name: str):
-    eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
 
-    ep = eps_dict.get(module_name)
+    ep = find_entry_point(module_name)
     if not ep:
         return HTMLResponse(content="Module not found.")
 

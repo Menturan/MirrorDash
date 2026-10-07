@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import notify, require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config, get_core_version
-from mirrordash_core.module_loader import module_loader
+from mirrordash_core.module_loader import module_loader, find_entry_point
 from mirrordash_core.system import remount_ro, remount_rw
 
 logger = logging.getLogger("mirrordash.core.api.admin_config")
@@ -366,9 +366,7 @@ async def add_array_item_route(
                 config = load_config()
                 inst_cfg = config.get("modules", {}).get(instance_id, {})
                 module_name = inst_cfg.get("module", instance_id)
-            import importlib.metadata
-            eps_dict = {ep.name: ep for ep in importlib.metadata.entry_points(group='mirrordash.modules')}
-            ep = eps_dict.get(module_name) or eps_dict.get(module_name.replace("-", "_"))
+            ep = find_entry_point(module_name)
             if ep:
                 try:
                     plugin_class = ep.load()

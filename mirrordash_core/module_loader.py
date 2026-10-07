@@ -6,7 +6,7 @@ import importlib.metadata
 import importlib.util
 import os
 import json
-from mirrordash_core.config import load_config, find_module_config, get_base_dir
+from mirrordash_core.config import load_config, get_base_dir
 from mirrordash_core.ws_manager import manager
 from mirrordash_core.event_bus import event_bus
 from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
@@ -43,7 +43,7 @@ def load_translations(package_name: str, lang: str) -> dict:
 
     return translations
 
-def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str) -> None:
+def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict) -> None:
     """Inject translation and template rendering helpers into the plugin instance if missing."""
     plugin_instance.translations = translations
 
@@ -85,7 +85,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
                 if "translations" not in context and hasattr(plugin_instance, "translations"):
                     context["translations"] = plugin_instance.translations
                 if "show_header" not in context:
-                    context["show_header"] = plugin_instance.config.get("show_header", True)
+                    context["show_header"] = config.get("show_header", True)
                 try:
                     return env.get_template(template_name).render(**context)
                 except Exception as render_err:
@@ -96,6 +96,12 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
             logger.debug(f"Auto-injected render_template helper for module '{module_name}'")
         except Exception as e:
             logger.warning(f"Could not auto-inject render_template helper for '{module_name}': {e}")
+
+def find_entry_point(name: str, eps=None):
+    """Find a module's entry point by name, treating '-' and '_' as equal (config ids use either)."""
+    norm_name = name.replace('-', '_')
+    eps = importlib.metadata.entry_points(group='mirrordash.modules') if eps is None else eps
+    return next((ep for ep in eps if ep.name.replace('-', '_') == norm_name), None)
 
 class ModuleLoader:
     def __init__(self):
@@ -152,14 +158,6 @@ class ModuleLoader:
         # Discover modules via entry points
         eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
 
-        # Helper to find entry point by name, allowing normalization
-        def find_entry_point(name: str):
-            norm_name = name.replace('-', '_')
-            for ep in eps:
-                if ep.name == name or ep.name.replace('-', '_') == norm_name:
-                    return ep
-            return None
-
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
 
         for instance_id, module_cfg in modules_config.items():
@@ -171,7 +169,7 @@ class ModuleLoader:
                 # If no module name is set, fall back to instance_id (e.g. legacy/direct config)
                 module_name = instance_id
 
-            ep = find_entry_point(module_name)
+            ep = find_entry_point(module_name, eps)
             if ep is None:
                 logger.warning(
                     f"Configuration '{instance_id}' references module '{module_name}', which is not installed — skipping."
@@ -217,7 +215,7 @@ class ModuleLoader:
                 plugin_instance = plugin_class(module_cfg_copy)
                 self.instances[instance_id] = plugin_instance
 
-                _inject_module_helpers(plugin_instance, package_name, translations, instance_id)
+                _inject_module_helpers(plugin_instance, package_name, translations, instance_id, module_cfg_copy)
 
                 if hasattr(plugin_instance, "run_loop"):
                     broadcast_fn = self._make_broadcast_func(instance_id, module_name)

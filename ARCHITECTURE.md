@@ -24,11 +24,12 @@ This document records the core architectural decisions made during the design, d
 - [18. Background Jobs and Restart Detection in the Admin UI](#18-background-jobs-and-restart-detection-in-the-admin-ui)
 - [19. Sensors and Inputs via Kernel Device-Tree Overlays](#19-sensors-and-inputs-via-kernel-device-tree-overlays)
 - [20. Screen Wake Timer](#20-screen-wake-timer)
+- [21. Module Scripts Receive Their Shadow Root](#21-module-scripts-receive-their-shadow-root)
 
 ---
 
 ## 1. Peripheral Modular Grid Layout
-* **Decision**: Snaps mirror modules into 9 distinct grid regions (`top_left`, `top_center`, `top_right`, `middle_left`, `middle_center`, `middle_right`, `bottom_left`, `bottom_center`, `bottom_right`) using CSS Grid, keeping the center void clear.
+* **Decision**: Snaps mirror modules into 9 distinct grid regions (`top_left`, `top_center`, `top_right`, `middle_left`, `middle_center`, `middle_right`, `bottom_left`, `bottom_center`, `bottom_right`), each an absolutely positioned anchor (a flex column pinned to an edge or the centre), keeping the center void clear.
 * **Rationale**: Designed for ambient heads-up display (HUD) observation through semi-reflective glass. Centering information is restricted to maintain the primary reflective function of the mirror.
 
 ## 2. Server-Side Rendering (SSR) via Jinja2 & WebSocket Push
@@ -52,8 +53,8 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Resolves `TemplateNotFound` errors on PEP 660 editable installations (common in local dev/testing environments like Hatch/uv) where zipped virtual package paths can hide standard template subdirectories.
 
 ## 7. Scope Isolation for Dynamic Module Helpers
-* **Decision**: Auto-injected helpers (such as `render_template` and `translate`) are bound to their respective module instances using factory closure functions (`make_render_template` and `make_translate`).
-* **Rationale**: Solves Python's loop lexical closure late-binding behavior. Without these factories, nested helper definitions reference the loop variable by name, resulting in all module instances executing translations and templates using the scope of whichever module loaded last.
+* **Decision**: Auto-injected helpers (such as `render_template` and `translate`) are bound to their module instance by `_inject_module_helpers` in `module_loader.py`, called once per instance after the constructor, so they are not available inside `__init__`.
+* **Rationale**: Solves Python's loop lexical closure late-binding behavior. Defined inside the loader loop instead, nested helper definitions reference the loop variable by name, resulting in all module instances executing translations and templates using the scope of whichever module loaded last.
 
 ## 8. Skeletal Loading UI & Transition Flow
 * **Decision**: Added a public unauthenticated `/api/active-modules` API to retrieve active modules list. On startup/refresh, the client fetches this metadata, pre-renders placeholder loading skeletons with visual spinners, and transitions them smoothly using a fade-in animation (`.module-enter`) once the first WebSocket frame for that module arrives.
@@ -106,3 +107,7 @@ This document records the core architectural decisions made during the design, d
 ## 20. Screen Wake Timer
 * **Decision**: `DisplayPowerManager` combines a base mode (`manual` = always on, `interval` = schedule, `wake` = off until woken) with one wake timer. Presence sensors (if enabled), the push button, the admin page and the open `POST /admin/screen` endpoint wake the screen for `timeout_minutes` (or a per-call `timeout_minutes`). With `extend` the countdown restarts on every wake and stands still while someone is present; without it the screen goes off a fixed time after the first wake. An explicit "off" wins until the next wake or base-mode change. The decision is a single method (`desired_state`) that gets the time and presence passed in, and commands wake the loop through an `asyncio.Event` instead of waiting for the next tick.
 * **Rationale**: The PIR mode was a hard-coded special case of the same idea. One timer covers presence, buttons and home automation calls the same way, and the two counting strategies cover both "stay on while I'm here" and "show it briefly". An API call without a timeout gets the default time, so the screen can never be left on by mistake.
+
+## 21. Module Scripts Receive Their Shadow Root
+* **Decision**: The kiosk wraps every inline `<script>` in a module's HTML as `(function (root) { … })(…)`, where `root` is that module instance's shadow root. The root is kept across re-renders, so a script keeps per-instance state such as a timer on it (`clearInterval(root._timer); root._timer = setInterval(…)`).
+* **Rationale**: Module HTML lives in a shadow root, and the HTML spec makes `document.currentScript` null there, so scripts had no reliable way to find their own markup; looking themselves up by `data-module` broke whenever the instance id differed from the package name, and globals made two instances of a module share one timer. One wrapper in the core gives every module the same answer without a client-side API.

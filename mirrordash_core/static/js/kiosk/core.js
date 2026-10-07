@@ -154,14 +154,19 @@ function connect() {
             lucide.createIcons({ root: shadow });
         }
 
-        // Execute any script tags inside the shadow DOM (since innerHTML doesn't execute them)
+        // Execute any script tags inside the shadow DOM (since innerHTML doesn't execute them).
+        // Each script gets its module's shadow root as `root` (document.currentScript is null in a shadow tree).
+        // The root survives re-renders, so per-instance state like timers can live on it: root._timer.
+        // ponytail: inline classic scripts run synchronously on insert, so one global hand-off is enough;
+        // a type="module" script runs later and would see the wrong root — give it a per-script id if one ever needs it.
+        window.__mirrordashRoot = shadow;
         const scripts = shadow.querySelectorAll('script');
         for (const oldScript of scripts) {
             const newScript = document.createElement('script');
             for (const attr of oldScript.attributes) {
                 newScript.setAttribute(attr.name, attr.value);
             }
-            newScript.textContent = oldScript.textContent;
+            newScript.textContent = `(function (root) {\n${oldScript.textContent}\n})(window.__mirrordashRoot);`;
             oldScript.parentNode.replaceChild(newScript, oldScript);
         }
 
