@@ -34,3 +34,4 @@ modules/*/
 # Scratch folder for temporary work
 scratch/
 
+/.claude
