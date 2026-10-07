@@ -446,7 +446,8 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         pir = display_control.get("pir", {})
         pin = pir.get("pin", 18)
         timeout = pir.get("timeout_minutes", 5)
-        if not isinstance(pin, int) or pin < 1 or pin > 40:
+        from mirrordash_core.hardware import GPIO_HEADER_PINS
+        if not isinstance(pin, int) or pin not in GPIO_HEADER_PINS:
             raise HTTPException(status_code=400, detail="Invalid PIR GPIO pin")
         if not isinstance(timeout, int) or timeout < 1:
             raise HTTPException(status_code=400, detail="Invalid PIR timeout")
@@ -458,91 +459,105 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["display_control"] = display_control
     system_cfg["ssh"] = ssh_enabled
 
+    # The PIR sensor is a kernel overlay: switching to/from PIR mode or changing its pin
+    # rewrites config.txt and takes effect after a restart. A failure here (e.g. an old OS
+    # image without the helper) must not block saving the other settings, so it is reported.
+    restart_required, gpio_error = False, None
+    if "display_control" in settings:
+        from mirrordash_core.hardware import sync_gpio_overlays
+        restart_required, gpio_error = await sync_gpio_overlays(system_cfg)
+
     await remount_rw()
     try:
         save_config(config)
     finally:
         await remount_ro()
 
-    # Apply SSH state; if enabling SSH, require and apply new password for pi user
-    from mirrordash_core.system import set_ssh_status, get_ssh_status
-    current_ssh_active = await get_ssh_status()
-    if ssh_enabled:
-        if not current_ssh_active:
-            pi_password = settings.get("pi_password")
-            if not pi_password or len(pi_password) < 8:
-                raise HTTPException(
-                    status_code=400,
-                    detail="A password of at least 8 characters is required to enable SSH."
-                )
-            # Update the pi user's password using chpasswd
-            try:
-                chpasswd_input = f"pi:{pi_password}\n".encode()
-                proc = await asyncio.create_subprocess_exec(
-                    "sudo", "chpasswd",
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, stderr = await proc.communicate(input=chpasswd_input)
-                if proc.returncode != 0:
-                    err_msg = stderr.decode(errors="replace").strip()
-                    logger.error(f"chpasswd failed: {err_msg}")
+    # Only touch SSH when this request is about it: the Power tab saves just the display
+    # schedule, and re-checking SSH there failed whenever the service state differed.
+    if "ssh" in settings:
+        # Apply SSH state; if enabling SSH, require and apply new password for pi user
+        from mirrordash_core.system import set_ssh_status, get_ssh_status
+        current_ssh_active = await get_ssh_status()
+        if ssh_enabled:
+            if not current_ssh_active:
+                pi_password = settings.get("pi_password")
+                if not pi_password or len(pi_password) < 8:
                     raise HTTPException(
-                        status_code=500,
-                        detail=f"Failed to update system password: {err_msg}"
+                        status_code=400,
+                        detail="A password of at least 8 characters is required to enable SSH."
                     )
-                logger.info("Password for user 'pi' updated successfully.")
-
-                # Generate secure SHA-512 crypt hash using openssl
-                proc_hash = await asyncio.create_subprocess_exec(
-                    "openssl", "passwd", "-6", "-stdin",
-                    stdin=asyncio.subprocess.PIPE,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout_hash, stderr_hash = await proc_hash.communicate(input=pi_password.encode())
-                if proc_hash.returncode != 0:
-                    err_msg = stderr_hash.decode(errors="replace").strip()
-                    logger.error(f"openssl hash failed: {err_msg}")
-                    raise HTTPException(status_code=500, detail="Failed to hash system password.")
-                pwd_hash = stdout_hash.decode().strip()
-
-                # Save password hash persistently
-                await remount_rw()
+                # Update the pi user's password using chpasswd
                 try:
-                    hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
-                    with open(hash_path, "w", encoding="utf-8") as f:
-                        f.write(pwd_hash)
-                    os.chmod(hash_path, 0o600)
-                except Exception as io_err:
-                    logger.error(f"Failed to write password hash to disk: {io_err}")
-                finally:
-                    await remount_ro()
+                    chpasswd_input = f"pi:{pi_password}\n".encode()
+                    proc = await asyncio.create_subprocess_exec(
+                        "sudo", "chpasswd",
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    _, stderr = await proc.communicate(input=chpasswd_input)
+                    if proc.returncode != 0:
+                        err_msg = stderr.decode(errors="replace").strip()
+                        logger.error(f"chpasswd failed: {err_msg}")
+                        raise HTTPException(
+                            status_code=500,
+                            detail=f"Failed to update system password: {err_msg}"
+                        )
+                    logger.info("Password for user 'pi' updated successfully.")
 
-            except HTTPException:
-                raise
-            except Exception as exc:
-                logger.error(f"Unexpected error running chpasswd: {exc}")
-                raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
-    else:
-        # Delete persistent password hash if SSH is disabled
-        await remount_rw()
-        try:
-            hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
-            if os.path.exists(hash_path):
-                os.remove(hash_path)
-        except Exception as io_err:
-            logger.error(f"Failed to remove password hash: {io_err}")
-        finally:
-            await remount_ro()
+                    # Generate secure SHA-512 crypt hash using openssl
+                    proc_hash = await asyncio.create_subprocess_exec(
+                        "openssl", "passwd", "-6", "-stdin",
+                        stdin=asyncio.subprocess.PIPE,
+                        stdout=asyncio.subprocess.PIPE,
+                        stderr=asyncio.subprocess.PIPE,
+                    )
+                    stdout_hash, stderr_hash = await proc_hash.communicate(input=pi_password.encode())
+                    if proc_hash.returncode != 0:
+                        err_msg = stderr_hash.decode(errors="replace").strip()
+                        logger.error(f"openssl hash failed: {err_msg}")
+                        raise HTTPException(status_code=500, detail="Failed to hash system password.")
+                    pwd_hash = stdout_hash.decode().strip()
 
-    await set_ssh_status(ssh_enabled)
+                    # Save password hash persistently
+                    await remount_rw()
+                    try:
+                        hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+                        with open(hash_path, "w", encoding="utf-8") as f:
+                            f.write(pwd_hash)
+                        os.chmod(hash_path, 0o600)
+                    except Exception as io_err:
+                        logger.error(f"Failed to write password hash to disk: {io_err}")
+                    finally:
+                        await remount_ro()
 
-    # Queue settings to apply asynchronously
-    asyncio.create_task(apply_system_settings(rotation, resolution, brightness, volume))
+                except HTTPException:
+                    raise
+                except Exception as exc:
+                    logger.error(f"Unexpected error running chpasswd: {exc}")
+                    raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
+        else:
+            # Delete persistent password hash if SSH is disabled
+            await remount_rw()
+            try:
+                hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
+                if os.path.exists(hash_path):
+                    os.remove(hash_path)
+            except Exception as io_err:
+                logger.error(f"Failed to remove password hash: {io_err}")
+            finally:
+                await remount_ro()
 
-    return {"status": "success", "message": "System settings saved and applied successfully"}
+        await set_ssh_status(ssh_enabled)
+
+    # Queue display/audio settings to apply asynchronously (re-applying an unchanged
+    # rotation/resolution can make the screen flicker, so only when they were sent)
+    if any(k in settings for k in ("rotation", "resolution", "brightness", "volume")):
+        asyncio.create_task(apply_system_settings(rotation, resolution, brightness, volume))
+
+    return {"status": "success", "message": "System settings saved and applied successfully",
+            "restart_required": restart_required, "gpio_error": gpio_error}
 
 
 @router.post("/screen")

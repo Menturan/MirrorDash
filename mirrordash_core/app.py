@@ -17,7 +17,7 @@ from mirrordash_core.api.backup import router as backup_router
 from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active
 
 from mirrordash_core.display_power import display_power_manager
-from mirrordash_core.hardware import button_manager
+from mirrordash_core.hardware import gpio_inputs
 
 import secrets
 from typing import Annotated
@@ -50,11 +50,11 @@ async def lifespan(app: FastAPI):
     try:
         await module_loader.start_modules()
         await display_power_manager.start()
-        await button_manager.start()
+        await gpio_inputs.start()
     except Exception as e:
         logger.error(f"Error during module startup: {e}", exc_info=True)
     yield
-    await button_manager.stop()
+    await gpio_inputs.stop()
     await display_power_manager.stop()
     await module_loader.stop_modules()
 

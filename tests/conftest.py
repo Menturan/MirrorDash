@@ -1,15 +1,16 @@
 import os
+import shutil
+import tempfile
+
 import pytest
 from pathlib import Path
 
-# Always resolve test config to the repo root config.json.
-# This prevents tests from reading from (or polluting) the developer's local
-# ~/.mirrordash/data/config.json — which holds real passwords and settings.
-# Any load_config() call that bypasses mocking will safely fall back here.
-os.environ.setdefault(
-    "MIRRORDASH_CONFIG_PATH",
-    str(Path(__file__).parent.parent / "config.json")
-)
+# Always resolve test config to a throwaway copy of the repo's config.json.
+# This keeps tests away from the developer's ~/.mirrordash/data/config.json (real passwords
+# and settings) and from the tracked config.json, which unmocked saves used to rewrite.
+_test_config = Path(tempfile.mkdtemp(prefix="mirrordash-test-")) / "config.json"
+shutil.copy(Path(__file__).parent.parent / "config.json", _test_config)
+os.environ.setdefault("MIRRORDASH_CONFIG_PATH", str(_test_config))
 
 
 @pytest.fixture(autouse=True)

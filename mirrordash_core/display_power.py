@@ -16,9 +16,6 @@ class DisplayPowerManager:
         self.task: asyncio.Task | None = None
         self.is_on: bool = True
         self.last_motion_time: float = 0.0
-        self.reader = None
-        self.current_pin: int | None = None
-        self.current_mode: str = "manual"
 
     async def start(self) -> None:
         if self.task is None:
@@ -34,30 +31,6 @@ class DisplayPowerManager:
                 pass
             self.task = None
         logger.info("DisplayPowerManager stopped.")
-
-    def _setup_gpio(self, mode: str, pin: int) -> None:
-        if self.current_pin == pin and self.current_mode == mode and self.reader is not None:
-            return  # Already configured
-
-        self.reader = None
-        self.current_pin = pin
-        self.current_mode = mode
-
-        # Try to import and construct GPIO reader
-        try:
-            from gpiozero import InputDevice
-            device = InputDevice(pin)
-            self.reader = lambda: device.is_active
-            logger.info(f"GPIO pin {pin} setup using gpiozero for mode {mode}")
-        except ImportError:
-            try:
-                import RPi.GPIO as GPIO
-                GPIO.setmode(GPIO.BCM)
-                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-                self.reader = lambda: GPIO.input(pin) == GPIO.HIGH
-                logger.info(f"GPIO pin {pin} setup using RPi.GPIO for mode {mode}")
-            except ImportError:
-                logger.warning(f"Could not import gpiozero or RPi.GPIO. GPIO control on pin {pin} is disabled.")
 
     async def _run_loop(self) -> None:
         self.last_motion_time = time_mod.time()
@@ -98,37 +71,25 @@ class DisplayPowerManager:
                     await asyncio.sleep(5.0) # Check schedule every 5 seconds
 
                 elif mode == "pir":
-                    pir_cfg = display_cfg.get("pir", {})
-                    pin = pir_cfg.get("pin", 18)
-                    timeout_mins = pir_cfg.get("timeout_minutes", 5)
-
-                    self._setup_gpio("pir", pin)
-
-                    motion_detected = False
-                    if self.reader:
-                        try:
-                            motion_detected = self.reader()
-                        except Exception as e:
-                            logger.error(f"Error reading PIR GPIO pin {pin}: {e}")
+                    # The sensor is read by hardware.gpio_inputs (kernel gpio-key overlay)
+                    from mirrordash_core.hardware import gpio_inputs
+                    timeout_mins = display_cfg.get("pir", {}).get("timeout_minutes", 5)
 
                     now_ts = time_mod.time()
-                    if motion_detected:
+                    if gpio_inputs.motion_active:
                         self.last_motion_time = now_ts
                         if not self.is_on:
                             logger.info("Motion detected! Turning display ON.")
                             await self.set_state(True)
+                    elif self.is_on and now_ts - self.last_motion_time > timeout_mins * 60:
+                        logger.info(f"No motion detected for {timeout_mins} minutes. Turning display OFF.")
+                        await self.set_state(False)
 
-                    elif self.is_on:
-                        elapsed = now_ts - self.last_motion_time
-                        if elapsed > (timeout_mins * 60):
-                            logger.info(f"No motion detected for {timeout_mins} minutes. Turning display OFF.")
-                            await self.set_state(False)
-
-                    await asyncio.sleep(0.5) # Poll PIR sensor every 500ms
+                    await asyncio.sleep(0.5)
 
                 else:
                     # Unknown mode: behave like manual instead of spinning without a sleep.
-                    # (The GPIO button is handled by hardware.ButtonManager.)
+                    # (The GPIO button is handled by hardware.GpioInputs.)
                     await asyncio.sleep(1.0)
 
             except asyncio.CancelledError:

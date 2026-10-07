@@ -82,15 +82,17 @@ Changes are applied as soon as you make them; there is no Apply button. (Turning
 *   **Screen Brightness**: Adjust display backlight brightness (0% to 100%).
 *   **System Volume**: Control mirror audio output levels.
 *   **Push Button**: Choose the GPIO a push button is connected to (wired between that GPIO and a GND pin), and what a *single*, *double*, *triple* and *long* (1 second) press does: turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down.
+    *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so don't use it if you connect I²C devices.
 *   **DHT11 Sensor**: Choose the GPIO of the sensor's data pin. Its readings appear on the Dashboard.
-*   Changing a GPIO pin takes effect after the mirror restarts; the tab shows a **Restart Mirror** button when that is needed. The status line at the bottom shows whether the button and sensor are detected.
+*   Changing a GPIO pin takes effect after the mirror restarts; the tab shows a **Restart Mirror** button when that is needed. The status line at the bottom shows whether the button and sensors are detected.
 
 ### 4.5. Power Tab
+Changes are applied as soon as you make them.
 *   **Mirror Power**: **Restart Mirror** and **Shut Down**. Always shut down before unplugging the power, so the SD card can't be damaged. To start the mirror again, unplug the power and plug it back in.
 *   **Display Power Management**: Choose how your screen is controlled automatically:
     *   *Manual / Always On*: The screen stays on unless you manually click "Turn Screen OFF".
     *   *Time of Day Schedule*: Specify an *Active Start Time* (e.g. `07:00`) and *Active End Time* (e.g. `22:30`) to turn the display on during the day and off at night.
-    *   *PIR Motion Detector*: Connect a PIR motion sensor to a Raspberry Pi BCM GPIO pin (e.g. `18`). The screen will turn on when motion is detected and automatically shut down after $N$ minutes of inactivity.
+    *   *PIR Motion Detector*: Connect a PIR motion sensor's output to a GPIO (power it from 5V and GND). The screen turns on when motion is detected and off after the chosen number of minutes without motion. Choosing this mode or a new pin takes effect after the mirror restarts; the status line shows the last motion.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
 
 ### 4.6. Backup Tab

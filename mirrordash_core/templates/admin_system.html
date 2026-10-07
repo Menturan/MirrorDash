@@ -94,6 +94,7 @@
                 <div class="form-label-desc" style="margin-bottom: 8px;">
                     <label for="gpio-button-pin" style="font-weight: 500; font-size: 0.9rem; color: white;">Push Button</label>
                     <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Connect the button between this GPIO and a GND pin.</p>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-secondary); margin: 6px 0 0 0;"><i class="fas fa-lightbulb" aria-hidden="true"></i> Tip: on GPIO 3 (pin 5) the same button also starts the mirror again after it has been shut down. Choose "Shut down the mirror" for a long press and the button works as an on/off switch.</p>
                 </div>
                 <select id="gpio-button-pin" name="button_pin" class="form-control" onchange="document.getElementById('gpio-button-actions').hidden = !this.value">
                     <option value="" {% if settings.button.pin is none %}selected{% endif %}>Not connected</option>
@@ -130,7 +131,7 @@
             </div>
         </form>
 
-        <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s"
+        <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s" hx-target="this"
              style="font-size: 0.8rem; color: var(--text-secondary); display: grid; gap: 4px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
             Checking...
         </div>

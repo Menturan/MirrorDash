@@ -408,17 +408,19 @@ EOF
 }
 
 step_gpio_helper() {
-  # Root-owned helper the admin page calls (via sudo) to set the GPIO button and DHT11 pins.
+  # Root-owned helper the admin page calls (via sudo) to set the button, DHT11 and PIR pins.
   # It only writes a managed block of device-tree overlays to config.txt; the firmware applies
   # them at the next boot (overlays applied at boot can't be swapped safely at runtime).
   cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays
 #!/bin/bash
-# Usage: mirrordash-gpio-overlays <button_gpio|none> <dht11_gpio|none>
+# Usage: mirrordash-gpio-overlays <button_gpio|none> <dht11_gpio|none> <pir_gpio|none>
 set -euo pipefail
 
 valid() { [ "$1" = none ] || { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 2 ] && [ "$1" -le 27 ]; }; }
-if [ $# -ne 2 ] || ! valid "$1" || ! valid "$2" || { [ "$1" != none ] && [ "$1" = "$2" ]; }; then
-  echo "usage: $0 <button_gpio|none> <dht11_gpio|none> (GPIO 2-27, two different pins)" >&2
+used=$(printf '%s\n' "$@" | grep -v '^none$' || true)
+if [ $# -ne 3 ] || ! valid "$1" || ! valid "$2" || ! valid "$3" \
+   || [ "$(sort <<< "$used" | uniq -d)" != "" ]; then
+  echo "usage: $0 <button_gpio|none> <dht11_gpio|none> <pir_gpio|none> (GPIO 2-27, all different)" >&2
   exit 2
 fi
 
@@ -432,6 +434,8 @@ END='# --- end MirrorDash GPIO ---'
   # Button between the GPIO and GND: kernel debounce, reported as KEY_PROG1 (148)
   if [ "$1" != none ]; then echo "dtoverlay=gpio-key,gpio=$1,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button"; fi
   if [ "$2" != none ]; then echo "dtoverlay=dht11,gpiopin=$2"; fi
+  # PIR output is high while it sees motion: reported as KEY_PROG2 (149) held down
+  if [ "$3" != none ]; then echo "dtoverlay=gpio-key,gpio=$3,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir"; fi
   echo "$END"
 } > "$CONFIG.mirrordash-tmp"
 mv "$CONFIG.mirrordash-tmp" "$CONFIG"

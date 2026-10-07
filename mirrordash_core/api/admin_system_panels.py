@@ -132,10 +132,12 @@ async def get_panel_power(request: Request):
     hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
     minutes_list = list(range(0, 60))
 
+    from mirrordash_core.hardware import GPIO_HEADER_PINS
     return templates.TemplateResponse(
         request=request,
         name="admin_power.html",
         context={
+            "gpio_pins": sorted(GPIO_HEADER_PINS.items()),
             "settings": settings,
             "time_format": time_format,
             "start_h": start_h,
@@ -215,6 +217,11 @@ async def save_system_settings_route(request: Request):
 
     res = await update_system_settings(settings=parsed)
 
+    if res.get("gpio_error"):
+        return notify(f"Saved, but the motion sensor pin could not be set: {res['gpio_error']}", "error")
+    if res.get("restart_required"):
+        return notify("Saved. Restart the mirror (Mirror Power below) to start using the motion sensor.",
+                      **{"gpio-changed": True})
     return notify("Saved.")
 
 
@@ -288,65 +295,48 @@ def _format_reading(reading: dict) -> tuple[str, str]:
 
 @router.post("/panels/system/gpio", dependencies=[Depends(require_api_key)])
 async def save_gpio_settings(request: Request):
-    from mirrordash_core.hardware import BUTTON_ACTIONS, GPIO_HEADER_PINS, PRESS_TYPES, kernel_boot_id, write_gpio_overlays
+    from mirrordash_core.hardware import BUTTON_ACTIONS, PRESS_TYPES, sync_gpio_overlays
 
     form = await request.form()
 
     def parse_pin(name: str) -> int | None:
         value = (form.get(name) or "").strip()
-        if not value:
-            return None
-        if not value.isdigit() or int(value) not in GPIO_HEADER_PINS:
-            raise ValueError(f"GPIO {value} can't be used.")
+        if not value.isdigit():
+            return None if not value else -1  # -1: rejected by the pin validation below
         return int(value)
 
-    try:
-        button_pin, dht11_pin = parse_pin("button_pin"), parse_pin("dht11_pin")
-    except ValueError as e:
-        return notify(str(e), "error")
     actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
     if any(a not in BUTTON_ACTIONS for a in actions.values()):
         return notify("Unknown button action.", "error")
-    if button_pin is not None and button_pin == dht11_pin:
-        return notify("The button and the DHT11 sensor can't use the same GPIO.", "error")
 
     config = load_config()
     system_cfg = config.setdefault("system", {})
-    dc = system_cfg.get("display_control", {})
-    pir_pin = dc.get("pir", {}).get("pin") if dc.get("mode") == "pir" else None
-    if pir_pin is not None and pir_pin in (button_pin, dht11_pin):
-        return notify(f"GPIO {pir_pin} is already used by the motion sensor (Power tab).", "error")
+    system_cfg["button"] = {"pin": parse_pin("button_pin"), "actions": actions}
+    system_cfg["dht11"] = {"pin": parse_pin("dht11_pin")}
+    restart_needed, error = await sync_gpio_overlays(system_cfg)
+    if error:
+        return notify(error, "error")
 
-    pins_changed = (system_cfg.get("button", {}).get("pin"), system_cfg.get("dht11", {}).get("pin")) != (button_pin, dht11_pin)
-    if pins_changed:
-        error = await write_gpio_overlays(button_pin, dht11_pin)
-        if error:
-            return notify(error, "error")
-        # The new pins are active after the next OS boot; remember which boot they were set in
-        system_cfg["gpio_pending_boot_id"] = kernel_boot_id()
-
-    system_cfg["button"] = {"pin": button_pin, "actions": actions}
-    system_cfg["dht11"] = {"pin": dht11_pin}
     await remount_rw()
     try:
         save_config(config)
     finally:
         await remount_ro()
 
-    if not pins_changed:
+    if not restart_needed:
         return notify("Saved.")
     return notify("Saved. Restart the mirror to use the new GPIO pin.", **{"gpio-changed": True})
 
 
 @router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
 async def get_gpio_status():
-    from mirrordash_core.hardware import button_manager, read_dht11
+    import time
+    from mirrordash_core.hardware import gpio_inputs, read_dht11, wanted_gpio_pins
 
     from mirrordash_core.hardware import kernel_boot_id
 
     system_cfg = load_config().get("system", {})
-    button_pin = system_cfg.get("button", {}).get("pin")
-    dht11_pin = system_cfg.get("dht11", {}).get("pin")
+    button_pin, dht11_pin, pir_pin = wanted_gpio_pins(system_cfg)
 
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
         return HTMLResponse(content="""
@@ -361,7 +351,7 @@ async def get_gpio_status():
 
     if button_pin is None:
         button = "Not connected"
-    elif button_manager.connected:
+    elif gpio_inputs.button_seen:
         button = f"Ready on GPIO {button_pin}"
     else:
         button = f"Not detected on GPIO {button_pin}. Restart the mirror to load the button driver."
@@ -373,10 +363,18 @@ async def get_gpio_status():
         sensor = " · ".join(_format_reading(reading)) if reading else \
             f"No reading from GPIO {dht11_pin}. Check the wiring."
 
-    return HTMLResponse(content=f"""
-        <div><strong>Button:</strong> {html.escape(button)}</div>
-        <div><strong>DHT11:</strong> {html.escape(sensor)}</div>
-    """)
+    lines = [("Button", button), ("DHT11", sensor)]
+    if pir_pin is not None:
+        if gpio_inputs.motion_active:
+            motion = "Motion right now"
+        elif gpio_inputs.last_motion_at:
+            minutes = int((time.monotonic() - gpio_inputs.last_motion_at) // 60)
+            motion = "Last motion just now" if minutes < 1 else f"Last motion {minutes} min ago"
+        else:
+            motion = f"No motion seen on GPIO {pir_pin} since MirrorDash started"
+        lines.append(("Motion sensor", motion))
+    return HTMLResponse(content="".join(
+        f"<div><strong>{name}:</strong> {html.escape(text)}</div>" for name, text in lines))
 
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])

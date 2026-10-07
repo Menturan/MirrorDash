@@ -19,25 +19,27 @@ def run_helper(tmp_path: Path, *args: str) -> tuple[int, str]:
 
 
 def test_writes_one_managed_block_and_replaces_it(tmp_path):
-    code, text = run_helper(tmp_path, "17", "4")
+    code, text = run_helper(tmp_path, "17", "4", "18")
     assert code == 0
     assert text.startswith(ORIGINAL)  # existing settings untouched
     assert "dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=148" in text
     assert "dtoverlay=dht11,gpiopin=4" in text
+    assert "dtoverlay=gpio-key,gpio=18,active_low=0,gpio_pull=down,keycode=149" in text
 
-    code, text = run_helper(tmp_path, "none", "22")  # change: old lines replaced, not appended
+    code, text = run_helper(tmp_path, "none", "22", "none")  # change: old lines replaced, not appended
     assert code == 0
     assert text.count("MirrorDash GPIO (managed") == 1
     assert "gpio-key" not in text and "gpiopin=4" not in text
     assert "dtoverlay=dht11,gpiopin=22" in text
 
-    code, text = run_helper(tmp_path, "none", "none")
+    code, text = run_helper(tmp_path, "none", "none", "none")
     assert "dtoverlay=" not in text.replace("dtoverlay=disable-bt", "")
     assert text.startswith(ORIGINAL)
 
 
 def test_rejects_invalid_pins_without_touching_config(tmp_path):
-    for args in (("1", "none"), ("28", "none"), ("17", "17"), ("4;reboot", "none"), ("17",)):
+    for args in (("1", "none", "none"), ("28", "none", "none"), ("17", "17", "none"), ("17", "none", "17"),
+                 ("4;reboot", "none", "none"), ("17", "4")):
         code, text = run_helper(tmp_path, *args)
         assert code == 2, args
         assert text == ORIGINAL

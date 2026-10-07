@@ -66,49 +66,86 @@ def client():
 @patch("mirrordash_core.api.admin_system_panels.save_config")
 @patch("mirrordash_core.api.admin_system_panels.load_config")
 def test_gpio_settings_validation(mock_load, mock_save, client):
-    mock_load.return_value = {"system": {"display_control": {"mode": "pir", "pir": {"pin": 18}}}}
+    mock_load.return_value = {"system": {"display_control": {"mode": "pir", "pir": {"pin": 18}},
+                                         "gpio_overlays": [None, None, 18]}}
+
     def message(form):
         return client.post("/admin/panels/system/gpio", data=form).headers["HX-Trigger-After-Swap"]
 
     assert "same GPIO" in message({"button_pin": "17", "dht11_pin": "17"})
-    assert "already used by the motion sensor" in message({"button_pin": "18"})
+    assert "motion sensor can't use the same GPIO" in message({"button_pin": "18"})
     assert "can't be used" in message({"button_pin": "1"})
     assert "Unknown button action" in message({"action_single": "rm -rf"})
     mock_save.assert_not_called()
 
     with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write, \
+         patch("mirrordash_core.hardware.kernel_boot_id", return_value="boot-1"), \
          patch("mirrordash_core.api.admin_system_panels.remount_rw", new_callable=AsyncMock), \
          patch("mirrordash_core.api.admin_system_panels.remount_ro", new_callable=AsyncMock):
         r = client.post("/admin/panels/system/gpio", data={"button_pin": "17", "dht11_pin": "4", "action_long": "shutdown"})
     assert "Restart the mirror" in r.headers["HX-Trigger-After-Swap"]
-    write.assert_awaited_once_with(17, 4)
+    write.assert_awaited_once_with(17, 4, 18)  # the PIR pin from the Power tab is kept
     saved = mock_save.call_args[0][0]["system"]
     assert saved["button"] == {"pin": 17, "actions": {"single": "none", "double": "none", "triple": "none", "long": "shutdown"}}
     assert saved["dht11"] == {"pin": 4}
+    assert saved["gpio_overlays"] == [17, 4, 18] and saved["gpio_pending_boot_id"] == "boot-1"
 
 
-def test_button_manager_parses_evdev_events():
-    """Raw struct input_event bytes -> press -> configured action."""
+def test_sync_only_writes_when_pins_change():
+    import asyncio
+    cfg = {"display_control": {"mode": "manual", "pir": {"pin": 18}}}  # nothing ever written
+    with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
+        assert asyncio.run(hardware.sync_gpio_overlays(cfg)) == (False, None)  # PIR pin only counts in PIR mode
+        cfg["display_control"]["mode"] = "pir"
+        assert asyncio.run(hardware.sync_gpio_overlays(cfg)) == (True, None)
+        assert asyncio.run(hardware.sync_gpio_overlays(cfg)) == (False, None)
+    write.assert_awaited_once_with(None, None, 18)
+
+
+def test_gpio_inputs_parse_button_and_motion_events():
+    """Raw struct input_event bytes -> button press / PIR motion state."""
     import asyncio
     import os
 
     async def scenario():
-        mgr = hardware.ButtonManager()
+        inputs = hardware.GpioInputs()
         r, w = os.pipe()
         os.set_blocking(r, False)
-        mgr.fd = r
+        inputs.fds["dev"] = r
         dispatched = []
-        mgr._dispatch = lambda press: press and dispatched.append(press)
-        ev = hardware.ButtonManager.EVENT
+        inputs._dispatch = lambda press: press and dispatched.append(press)
+        ev = hardware.GpioInputs.EVENT
         os.write(w, ev.pack(0, 0, 4, 4, 1234) + ev.pack(0, 0, 1, hardware.BUTTON_KEYCODE, 1)  # MSC_SCAN, key down
                  + ev.pack(0, 0, 0, 0, 0))                                                       # SYN_REPORT
-        mgr._on_readable()
+        inputs._on_readable("dev")
         await asyncio.sleep(0.05)
-        os.write(w, ev.pack(0, 0, 1, hardware.BUTTON_KEYCODE, 0))  # key up
-        mgr._on_readable()
+        os.write(w, ev.pack(0, 0, 1, hardware.BUTTON_KEYCODE, 0) + ev.pack(0, 0, 1, hardware.PIR_KEYCODE, 1))
+        inputs._on_readable("dev")
+        motion_during = inputs.motion_active
         await asyncio.sleep(hardware.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
+        os.write(w, ev.pack(0, 0, 1, hardware.PIR_KEYCODE, 0))
+        inputs._on_readable("dev")
         os.close(r)
         os.close(w)
-        return dispatched
+        return dispatched, motion_during, inputs.motion_active, inputs.last_motion_at
 
-    assert asyncio.run(scenario()) == ["single"]
+    dispatched, motion_during, motion_after, last_motion_at = asyncio.run(scenario())
+    assert dispatched == ["single"]
+    assert motion_during is True and motion_after is False and last_motion_at > 0
+
+
+def test_gpio_problem_does_not_block_other_settings():
+    """Old OS image (no helper) + a migrated button pin: brightness must still save."""
+    import asyncio
+    from mirrordash_core.api.admin_system import update_system_settings
+    cfg = {"system": {"button": {"pin": 23}, "display_control": {"mode": "pir", "pir": {"pin": 18}}}}
+    with patch("mirrordash_core.api.admin_system.load_config", return_value=cfg), \
+         patch("mirrordash_core.api.admin_system.save_config") as save, \
+         patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock), \
+         patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock), \
+         patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock), \
+         patch("mirrordash_core.hardware.os.path.exists", return_value=False):  # helper missing
+        res = asyncio.run(update_system_settings(settings={"brightness": 40}))
+        assert res["gpio_error"] is None and save.called  # Hardware tab: pins not touched
+        res = asyncio.run(update_system_settings(settings={"display_control": {"mode": "pir"}}))
+        assert "too old" in res["gpio_error"] and save.call_count == 2  # Power tab: saved, warned
