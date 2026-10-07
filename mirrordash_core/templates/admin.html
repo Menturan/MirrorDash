@@ -106,7 +106,8 @@
             border-radius: 10px;
             padding: 0.8rem 1rem;
             color: #ffffff;
-            font-size: 0.95rem;
+            font-family: inherit;
+            font-size: 1rem; /* below 16px iOS Safari zooms the page on focus */
             outline: none;
             transition: border-color 0.2s, box-shadow 0.2s;
         }
@@ -114,10 +115,49 @@
             border-color: rgba(255, 255, 255, 0.3);
             box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
         }
+        .auth-field {
+            position: relative;
+        }
+        .auth-field .auth-input {
+            padding-right: 4.5rem;
+        }
+        /* Show / Hide sits inside the field, full height so it is easy to hit on a phone */
+        .auth-reveal {
+            position: absolute;
+            top: 0;
+            right: 0;
+            height: 100%;
+            padding: 0 1rem;
+            background: none;
+            border: 0;
+            border-radius: 0 10px 10px 0;
+            color: var(--text-muted);
+            font: inherit;
+            font-size: 0.85rem;
+            cursor: pointer;
+        }
+        .auth-reveal:hover {
+            color: #ffffff;
+        }
+        .auth-reveal:focus-visible {
+            outline: 2px solid #ffffff;
+            outline-offset: -2px;
+        }
+        @media (max-width: 480px) {
+            .auth-overlay {
+                align-items: flex-start;
+                overflow-y: auto; /* keep the button reachable while the keyboard is up */
+            }
+            .auth-card {
+                margin: 1.5rem 0;
+                padding: 2rem 1.25rem;
+            }
+        }
         .auth-btn {
             width: 100%;
             padding: 0.9rem;
             border-radius: 10px;
+            font-family: inherit;
             font-size: 0.95rem;
             font-weight: 550;
             cursor: pointer;
@@ -795,15 +835,21 @@
             <form id="auth-form" class="auth-form" onsubmit="handleAuthSubmit(event)">
                 <div class="auth-input-group" id="auth-password-group">
                     <label for="auth-password-input" class="auth-input-label">Password</label>
-                    <input type="password" id="auth-password-input" class="auth-input" placeholder="••••••••">
+                    <div class="auth-field">
+                        <input type="password" id="auth-password-input" class="auth-input" placeholder="••••••••" autocapitalize="off" spellcheck="false">
+                        <button type="button" class="auth-reveal" data-reveal="auth-password-input" aria-controls="auth-password-input" aria-pressed="false">Show</button>
+                    </div>
                 </div>
                 <div class="auth-input-group" id="auth-pin-group" style="display: none;">
                     <label for="auth-pin-input" class="auth-input-label">Recovery PIN</label>
-                    <input type="text" id="auth-pin-input" class="auth-input" placeholder="123 456" pattern="[0-9]{3}\s?[0-9]{3}">
+                    <input type="text" id="auth-pin-input" class="auth-input" placeholder="123 456" pattern="[0-9]{3}\s?[0-9]{3}" inputmode="numeric" autocomplete="one-time-code">
                 </div>
                 <div class="auth-input-group" id="auth-new-password-group" style="display: none;">
                     <label for="auth-new-password-input" class="auth-input-label">New Password</label>
-                    <input type="password" id="auth-new-password-input" class="auth-input" placeholder="Min. 4 characters">
+                    <div class="auth-field">
+                        <input type="password" id="auth-new-password-input" class="auth-input" placeholder="Min. 4 characters" autocomplete="new-password" autocapitalize="off" spellcheck="false">
+                        <button type="button" class="auth-reveal" data-reveal="auth-new-password-input" aria-controls="auth-new-password-input" aria-pressed="false">Show</button>
+                    </div>
                 </div>
                 <div id="auth-forgot-link-group" style="text-align: right; margin-top: -8px; margin-bottom: 12px;">
                     <a href="#" onclick="handleForgotPassword(event)" style="font-size: 0.8rem; color: #a1a1aa; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='#a1a1aa'">Forgot password?</a>
@@ -902,6 +948,18 @@
             });
         }
 
+        function setPasswordVisible(btn, visible) {
+            document.getElementById(btn.dataset.reveal).type = visible ? 'text' : 'password';
+            btn.textContent = visible ? 'Hide' : 'Show';
+            btn.setAttribute('aria-pressed', visible);
+        }
+
+        document.querySelectorAll('.auth-reveal').forEach(btn => btn.addEventListener('click', () => {
+            const input = document.getElementById(btn.dataset.reveal);
+            setPasswordVisible(btn, input.type === 'password');
+            input.focus();
+        }));
+
         function showAuthModal(mode) {
             const overlay = document.getElementById('auth-overlay');
             const icon = document.getElementById('auth-icon');
@@ -921,6 +979,10 @@
             document.getElementById('auth-password-input').value = '';
             document.getElementById('auth-new-password-input').value = '';
             document.getElementById('auth-pin-input').value = '';
+            // Every time the dialog opens, passwords start hidden again
+            document.querySelectorAll('.auth-reveal').forEach(btn => setPasswordVisible(btn, false));
+            // Lets password managers save a new password at setup and fill it at login
+            document.getElementById('auth-password-input').autocomplete = mode === 'setup' ? 'new-password' : 'current-password';
 
             const forgotGroup = document.getElementById('auth-forgot-link-group');
             if (forgotGroup) {
