@@ -852,6 +852,11 @@ fi
 EOF
 sudo chmod +x /usr/local/bin/mirrordash-wifi-check.sh
 
+# Captive portal DNS (hotspot only; NetworkManager reads dnsmasq-shared.d just for shared
+# connections): every name answers with the mirror, so phones show "Sign in to network"
+sudo mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+echo 'address=/#/10.42.0.1' | sudo tee /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf
+
 # 2. Write and enable the systemd fallback service
 sudo tee /etc/systemd/system/mirrordash-wifi-fallback.service << 'EOF'
 [Unit]

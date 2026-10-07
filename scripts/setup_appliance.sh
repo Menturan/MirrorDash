@@ -633,6 +633,13 @@ fi
 EOF
   chmod +x /usr/local/bin/mirrordash-wifi-check.sh
 
+  # Captive portal DNS: NetworkManager's dnsmasq reads this directory only for shared (hotspot)
+  # connections, never on the home network. Every name answers with the mirror, so the phone's
+  # connectivity check (captive.apple.com, connectivitycheck.gstatic.com, ...) reaches the app,
+  # gets redirected, and the phone shows "Sign in to network" by itself.
+  mkdir -p /etc/NetworkManager/dnsmasq-shared.d
+  echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf
+
   cat << 'EOF' > /etc/systemd/system/mirrordash-wifi-fallback.service
 [Unit]
 Description=MirrorDash WiFi Fallback Captive Portal Monitor

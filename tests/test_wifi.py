@@ -157,12 +157,12 @@ def test_captive_portal_redirects_remote_client(mock_hotspot, client):
     # Remote client tries to access Apple's captive detection portal path
     response = client.get("/hotspot-detect.html", headers={"host": "captive.apple.com"}, follow_redirects=False)
     assert response.status_code == 302
-    assert response.headers["location"] == "http://10.42.0.1/wifi-setup"
+    assert response.headers["location"] == "http://mirrordash.setup/wifi-setup"
 
     # Remote client tries to access root /
     response = client.get("/", headers={"host": "google.com"}, follow_redirects=False)
     assert response.status_code == 302
-    assert response.headers["location"] == "http://10.42.0.1/wifi-setup"
+    assert response.headers["location"] == "http://mirrordash.setup/wifi-setup"
 
     # Remote client tries to access an allowed path (/wifi-setup)
     response = client.get("/wifi-setup", headers={"host": "10.42.0.1"}, follow_redirects=False)
@@ -197,3 +197,29 @@ def test_hotspot_check_is_not_cached_forever():
         clock[0] += network.HOTSPOT_CACHE_TTL  # TTL expired: hotspot is now seen
         assert asyncio.run(network.is_wifi_hotspot_active()) is True
     network._hotspot_active_cached = None
+
+
+@pytest.mark.parametrize("host,path", [("captive.apple.com", "/hotspot-detect.html"),
+                                       ("connectivitycheck.gstatic.com", "/generate_204"),
+                                       ("www.msftconnecttest.com", "/connecttest.txt")])
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=True)
+def test_phone_connectivity_checks_get_the_sign_in_redirect(_hotspot, client, host, path):
+    """On the hotspot every name resolves to the mirror; a redirect makes the phone show 'Sign in to network'."""
+    response = client.get(path, headers={"host": host}, follow_redirects=False)
+    assert response.status_code == 302
+    assert response.headers["location"] == "http://mirrordash.setup/wifi-setup"
+
+
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=True)
+def test_setup_page_and_what_it_needs_are_not_redirected(_hotspot, client):
+    for path in ("/wifi-setup", "/admin/auth/status", "/static/favicon.svg"):
+        response = client.get(path, headers={"host": "mirrordash.setup"}, follow_redirects=False)
+        assert response.status_code == 200, path
+    assert "const viaHotspot = true" in client.get("/wifi-setup", headers={"host": "mirrordash.setup"}).text
+
+
+def test_hotspot_dns_answers_every_name_with_the_mirror():
+    """The OS image must make NetworkManager's hotspot dnsmasq resolve everything to the mirror."""
+    from pathlib import Path
+    script = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
+    assert "echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf" in script

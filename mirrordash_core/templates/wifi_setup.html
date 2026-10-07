@@ -276,7 +276,7 @@
         "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles",
         "Asia/Tokyo", "Asia/Shanghai", "Asia/Singapore", "Australia/Sydney"];
     // On the setup hotspot the mirror drops the hotspot to connect, so the phone never gets an answer
-    const viaHotspot = location.hostname === "10.42.0.1";
+    const viaHotspot = {{ 'true' if hotspot else 'false' }};
     const $ = id => document.getElementById(id);
     let adminPassword = "";
     let manual = false;

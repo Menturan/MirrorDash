@@ -192,9 +192,9 @@ MirrorDash is designed to be a plug-and-play appliance. If you move your mirror 
 
 1. **Connect to Hotspot**: On your phone or computer, open WiFi settings and look for the network named **`MirrorDash-Setup`**.
 2. **Enter Setup Password**: Connect using the password **`mirrordash`**.
-3. **Configure WiFi**: Open a web browser and navigate to `http://10.42.0.1`. You will be greeted by the minimalist **WiFi Setup Wizard**.
-4. **Submit Details**: Select your home network SSID from the dropdown (or type it manually), enter your WiFi password, and click **Connect & Reboot**.
-5. **System Startup**: The mirror will connect to your WiFi and reboot itself back into normal display mode.
+3. **Sign in**: Your phone says you need to sign in to the network (like on a hotel Wi-Fi). Tap it and the setup page opens. If your phone doesn't ask, open `http://mirrordash.setup` in the browser.
+4. **Choose your Wi-Fi**: Tap your home network (or *Network not listed?*), type its password (tap *Show* to check it) and tap **Connect the mirror**.
+5. **Afterwards**: The mirror restarts and shows its clock in about a minute. Reconnect your phone to your home Wi-Fi and open `mirrordash.local` to reach the admin page. If the password was wrong, `MirrorDash-Setup` appears again within a few minutes; connect and try again.
 
 ---
 

@@ -54,6 +54,7 @@ There are two kinds of releases:
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image
+- Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
 - Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).
 - Updates and installed modules are no longer undone when the mirror restarts.
 - On first start without Wi-Fi, the Wi-Fi setup screen is shown right away.

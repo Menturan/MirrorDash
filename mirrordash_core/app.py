@@ -72,23 +72,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# On the setup hotspot every DNS name answers with the mirror (dnsmasq-shared.d in the OS image),
+# so this name works without typing an IP address.
+SETUP_HOSTS = ("mirrordash.setup", "10.42.0.1")
+SETUP_URL = "http://mirrordash.setup/wifi-setup"
+# What the setup page itself needs; everything else is redirected to it
+SETUP_PATHS = ("/wifi-setup", "/static", "/api/wifi", "/health", "/admin/auth/status")
+
+
 @app.middleware("http")
 async def captive_portal_redirect(request: Request, call_next):
+    """While the hotspot is up, answer everything else with a redirect to the setup page. A phone's
+    connectivity check (captive.apple.com/hotspot-detect.html, .../generate_204, ...) then gets
+    the redirect instead of its expected answer and shows "Sign in to network"."""
     host = request.headers.get("host", "")
     is_local = "localhost" in host or "127.0.0.1" in host
-    
-    if not is_local:
-        path = request.url.path
-        allowed = False
-        for prefix in ("/wifi-setup", "/static", "/api/wifi", "/health"):
-            if path.startswith(prefix):
-                allowed = True
-                break
-        
-        if not allowed:
-            if await is_wifi_hotspot_active():
-                return RedirectResponse(url="http://10.42.0.1/wifi-setup", status_code=302)
-                
+    if not is_local and not request.url.path.startswith(SETUP_PATHS) and await is_wifi_hotspot_active():
+        return RedirectResponse(url=SETUP_URL, status_code=302)
     return await call_next(request)
 
 # Register admin API router
@@ -102,7 +102,7 @@ app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="s
 @app.get("/")
 async def get_index(request: Request):
     host = request.headers.get("host", "")
-    if "10.42.0.1" in host or request.query_params.get("captive") == "true":
+    if host.split(":")[0] in SETUP_HOSTS or request.query_params.get("captive") == "true":
         return RedirectResponse(url="/wifi-setup")
     
     if await is_wifi_hotspot_active():
@@ -146,7 +146,8 @@ async def get_index(request: Request):
 
 @app.get("/wifi-setup")
 async def get_wifi_setup(request: Request):
-    return templates.TemplateResponse(request=request, name="wifi_setup.html")
+    return templates.TemplateResponse(request=request, name="wifi_setup.html",
+                                      context={"hotspot": await is_wifi_hotspot_active()})
 
 @app.get("/api/wifi/scan", dependencies=[Depends(check_wifi_auth)])
 async def get_wifi_scan() -> dict:
