@@ -1,14 +1,18 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-"""GPIO push button and DHT11 sensor, both through Raspberry Pi kernel drivers.
+"""Sensors and inputs on the GPIO header, all through Raspberry Pi kernel drivers.
 
 The app's Python (uv, 3.14) has no GPIO library, and lgpio can't be built on the device, so
-both parts use device-tree overlays instead (written to config.txt by the root helper
+every device is a device-tree overlay instead (written to config.txt by the root helper
 /usr/local/bin/mirrordash-gpio-overlays; the firmware applies them at the next boot):
 
-- gpio-key: the kernel debounces the button and the PIR motion sensor and exposes them as
-  input devices that we read as raw evdev events.
-- dht11: the kernel does the timing-critical sensor protocol and exposes the readings in sysfs.
+- gpio-key (button, PIR, mmWave): the kernel debounces the pin and exposes it as an input
+  device, read here as raw evdev events.
+- dht11, i2c-sensor (BH1750): the kernel does the sensor protocol and exposes the readings
+  under /sys/bus/iio.
+
+The devices are a list in config (system.devices), at most one of each type:
+  {"type": "button", "pin": 17, "actions": {...}}, {"type": "light", "address": "0x23"}, ...
 """
 
 import asyncio
@@ -24,8 +28,33 @@ from mirrordash_core.event_bus import event_bus
 logger = logging.getLogger("mirrordash.core.hardware")
 
 GPIO_HELPER = "/usr/local/bin/mirrordash-gpio-overlays"
-BUTTON_KEYCODE = 148  # KEY_PROG1: no meaning to the compositor or the kiosk browser
-PIR_KEYCODE = 149     # KEY_PROG2
+
+# BCM GPIO number -> physical header pin, for the usable GPIOs (0/1 are reserved for the HAT EEPROM)
+GPIO_HEADER_PINS = {
+    2: 3, 3: 5, 4: 7, 17: 11, 27: 13, 22: 15, 10: 19, 9: 21, 11: 23, 5: 29, 6: 31, 13: 33,
+    19: 35, 26: 37, 14: 8, 15: 10, 18: 12, 23: 16, 24: 18, 25: 22, 8: 24, 7: 26, 12: 32,
+    16: 36, 20: 38, 21: 40,
+}
+I2C_PINS = (2, 3)  # SDA, SCL: taken as soon as an I2C device is added
+
+# Everything the Hardware tab can add. "pin": wired to one GPIO; "addresses": an I2C device.
+# The overlay lines themselves live in the root helper, which only accepts these types.
+DEVICE_TYPES = {
+    "button": {"label": "Push button", "pin": True,
+               "wiring": "Connect the button between the GPIO and a GND pin."},
+    "pir": {"label": "PIR motion sensor", "pin": True,
+            "wiring": "Sensor output to the GPIO; power from a 5V pin and GND."},
+    "mmwave": {"label": "mmWave presence sensor (e.g. LD2410)", "pin": True,
+               "wiring": "The sensor's OUT pin to the GPIO; power from a 5V pin and GND. "
+                         "Unlike PIR it also notices someone standing still."},
+    "dht11": {"label": "DHT11 temperature & humidity sensor", "pin": True,
+              "wiring": "Data pin to the GPIO; power from a 3.3V pin and GND."},
+    "light": {"label": "BH1750 light sensor (I²C)", "addresses": ("0x23", "0x5c"),
+              "wiring": "SDA to GPIO 2 (pin 3), SCL to GPIO 3 (pin 5); power from a 3.3V pin and GND. "
+                        "Address 0x23 with ADDR unconnected or to GND, 0x5c with ADDR to 3.3V."},
+}
+KEYCODES = {"button": 148, "pir": 149, "mmwave": 150}  # KEY_PROG1..3: ignored by the kiosk
+PRESENCE_TYPES = ("pir", "mmwave")
 
 BUTTON_ACTIONS = {
     "none": "Do nothing",
@@ -36,13 +65,96 @@ BUTTON_ACTIONS = {
 }
 PRESS_TYPES = ("single", "double", "triple", "long")
 
-# BCM GPIO number -> physical header pin, for the usable GPIOs (0/1 are reserved for the HAT EEPROM)
-GPIO_HEADER_PINS = {
-    2: 3, 3: 5, 4: 7, 17: 11, 27: 13, 22: 15, 10: 19, 9: 21, 11: 23, 5: 29, 6: 31, 13: 33,
-    19: 35, 26: 37, 14: 8, 15: 10, 18: 12, 23: 16, 24: 18, 25: 22, 8: 24, 7: 26, 12: 32,
-    16: 36, 20: 38, 21: 40,
-}
 
+# --- Device list -------------------------------------------------------------------------
+
+def get_devices(system_cfg: dict) -> list[dict]:
+    return system_cfg.get("devices", [])
+
+
+def find_device(system_cfg: dict, device_type: str) -> dict | None:
+    return next((d for d in get_devices(system_cfg) if d.get("type") == device_type), None)
+
+
+def validate_devices(devices: list[dict]) -> str | None:
+    """Error message if the list can't be wired like this, else None."""
+    pins: dict[int, str] = {}
+    types = [d.get("type") for d in devices]
+    for d in devices:
+        spec = DEVICE_TYPES.get(d.get("type"))
+        if not spec:
+            return f"Unknown device type: {d.get('type')}."
+        if types.count(d["type"]) > 1:
+            return f"Only one {spec['label']} can be connected."
+        if spec.get("pin"):
+            pin = d.get("pin")
+            if pin not in GPIO_HEADER_PINS:
+                return f"GPIO {pin} can't be used for the {spec['label']}."
+            if pin in pins:
+                return f"The {pins[pin]} already uses GPIO {pin}."
+            pins[pin] = spec["label"]
+        elif d.get("address") not in spec["addresses"]:
+            return f"The {spec['label']} needs address {' or '.join(spec['addresses'])}."
+    if any("addresses" in DEVICE_TYPES[t] for t in types):
+        for pin in I2C_PINS:
+            if pin in pins:
+                return f"GPIO {pin} is needed for I²C (the light sensor); the {pins[pin]} must use another GPIO."
+    return None
+
+
+def overlay_args(devices: list[dict]) -> list[str]:
+    """Helper arguments, e.g. ["button:17", "light:0x23"]."""
+    return [f"{d['type']}:{d['pin'] if 'pin' in d else d['address']}" for d in devices]
+
+
+# --- Writing config.txt ------------------------------------------------------------------
+
+def kernel_boot_id() -> str:
+    """Changes on every OS boot (unlike the app's BOOT_ID, which changes on app restarts)."""
+    try:
+        with open("/proc/sys/kernel/random/boot_id") as f:
+            return f.read().strip()
+    except OSError:
+        return ""
+
+
+async def write_gpio_overlays(args: list[str]) -> str | None:
+    """Write the overlays to config.txt. Returns an error message, or None on success.
+
+    ponytail: changes need a reboot. Overlays the firmware applied at boot can't be removed
+    at runtime, so loading a new pin live would leave the old one active too.
+    """
+    if not os.path.exists(GPIO_HELPER):
+        return "This mirror's OS image is too old for GPIO settings. Flash the latest MirrorDash OS image."
+    proc = await asyncio.create_subprocess_exec(
+        "sudo", "-n", GPIO_HELPER, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        logger.error(f"GPIO overlay helper failed ({proc.returncode}): {stderr.decode(errors='replace')}")
+        return "Could not save the GPIO settings. See the logs for details."
+    return None
+
+
+async def sync_gpio_overlays(system_cfg: dict) -> tuple[bool, str | None]:
+    """Write the overlays if the device wiring changed. Updates system_cfg (the caller saves it).
+
+    Returns (restart_needed, error_message).
+    """
+    devices = get_devices(system_cfg)
+    wanted = overlay_args(devices)
+    if system_cfg.get("gpio_overlays", []) == wanted:
+        return False, None
+    error = validate_devices(devices) or await write_gpio_overlays(wanted)
+    if error:
+        return False, error
+    system_cfg["gpio_overlays"] = wanted
+    # Active after the next OS boot; remember which boot the change was made in
+    system_cfg["gpio_pending_boot_id"] = kernel_boot_id()
+    return True, None
+
+
+# --- Inputs: button and presence sensors -------------------------------------------------
 
 class PressClassifier:
     """Turns key down/up timestamps into single/double/triple/long presses.
@@ -93,7 +205,7 @@ class PressClassifier:
 
 
 def find_gpio_key_devices() -> list[str]:
-    """/dev/input/eventN of every gpio-keys device (one per gpio-key overlay: button, PIR)."""
+    """/dev/input/eventN of every gpio-keys device (one per gpio-key overlay)."""
     devices = []
     for ev in sorted(glob.glob("/sys/class/input/event*")):
         driver = os.path.realpath(os.path.join(ev, "device", "device", "driver"))
@@ -103,43 +215,46 @@ def find_gpio_key_devices() -> list[str]:
 
 
 class GpioInputs:
-    """Reads the gpio-keys input devices: the push button (KEY_PROG1) and the PIR motion
-    sensor (KEY_PROG2, "key down" while the sensor reports motion), and polls the DHT11.
+    """Reads the gpio-keys input devices and polls the IIO sensors.
 
     Publishes on the event bus, for modules:
       hardware.button   {"press": "single"|"double"|"triple"|"long", "action": str}
-      hardware.motion   {"motion": bool}                        when motion starts / stops
-      hardware.climate  {"temperature_c": float, "humidity": int}  every CLIMATE_INTERVAL s
+      hardware.motion   {"motion": bool, "sensor": "pir"|"mmwave"}   when presence starts / stops
+      hardware.climate  {"temperature_c": float, "humidity": int}    every SENSOR_INTERVAL s
+      hardware.light    {"lux": float}                               every SENSOR_INTERVAL s
     """
 
-    CLIMATE_INTERVAL = 60.0
-
+    SENSOR_INTERVAL = 30.0
     EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit: timeval, type, code, value
     EV_KEY = 1
 
     def __init__(self):
         self.task: asyncio.Task | None = None
-        self.climate_task: asyncio.Task | None = None
+        self.sensor_task: asyncio.Task | None = None
         self.fds: dict[str, int] = {}
         self.classifier = PressClassifier()
-        self.button_seen = False
-        self.motion_active = False
-        self.last_motion_at = 0.0  # time.monotonic()
+        self.detected: set[str] = set()       # device types whose input device was found
+        self.presence: dict[str, bool] = {}   # per presence sensor type
+        self.last_motion_at = 0.0             # time.monotonic()
+
+    @property
+    def motion_active(self) -> bool:
+        return any(self.presence.values())
 
     async def start(self) -> None:
         if self.task is None:
             self.task = asyncio.create_task(self._watch())
-            self.climate_task = asyncio.create_task(self._publish_climate())
+            self.sensor_task = asyncio.create_task(self._publish_sensors())
 
     async def stop(self) -> None:
-        for task in (self.task, self.climate_task):
+        for task in (self.task, self.sensor_task):
             if task:
                 task.cancel()
                 try:
                     await task
                 except asyncio.CancelledError:
                     pass
-        self.task = self.climate_task = None
+        self.task = self.sensor_task = None
         for device in list(self.fds):
             self._close(device)
 
@@ -159,7 +274,7 @@ class GpioInputs:
             logger.warning(f"Cannot open GPIO input device {device}: {e}")
             return
         self.fds[device] = fd
-        self.button_seen = self.button_seen or self._has_key(device, BUTTON_KEYCODE)
+        self.detected |= {t for t, code in KEYCODES.items() if self._has_key(device, code)}
         asyncio.get_running_loop().add_reader(fd, self._on_readable, device)
         logger.info(f"Listening for GPIO input on {device}")
 
@@ -191,20 +306,24 @@ class GpioInputs:
             _, _, ev_type, code, value = self.EVENT.unpack_from(data, i)
             if ev_type != self.EV_KEY or value == 2:  # 2 = auto-repeat
                 continue
-            if code == BUTTON_KEYCODE:
+            if code == KEYCODES["button"]:
                 self._on_button(value == 1)
-            elif code == PIR_KEYCODE:
-                self.motion_active = value == 1
-                self.last_motion_at = time.monotonic()
-                event_bus.publish("hardware.motion", {"motion": self.motion_active})
+            for sensor in PRESENCE_TYPES:
+                if code == KEYCODES[sensor]:
+                    self.presence[sensor] = value == 1
+                    self.last_motion_at = time.monotonic()
+                    event_bus.publish("hardware.motion", {"motion": self.motion_active, "sensor": sensor})
 
-    async def _publish_climate(self) -> None:
+    async def _publish_sensors(self) -> None:
+        events = {"dht11": "hardware.climate", "light": "hardware.light"}
         while True:
-            if load_config().get("system", {}).get("dht11", {}).get("pin") is not None:
-                reading = await read_dht11()
-                if reading:
-                    event_bus.publish("hardware.climate", dict(reading))
-            await asyncio.sleep(self.CLIMATE_INTERVAL)
+            system_cfg = load_config().get("system", {})
+            for device_type, event in events.items():
+                if find_device(system_cfg, device_type):
+                    reading = await read_sensor(device_type)
+                    if reading:
+                        event_bus.publish(event, dict(reading))
+            await asyncio.sleep(self.SENSOR_INTERVAL)
 
     def _on_button(self, pressed: bool) -> None:
         loop = asyncio.get_running_loop()
@@ -222,7 +341,8 @@ class GpioInputs:
     def _dispatch(self, press: str | None) -> None:
         if not press:
             return
-        action = load_config().get("system", {}).get("button", {}).get("actions", {}).get(press, "none")
+        button = find_device(load_config().get("system", {}), "button") or {}
+        action = button.get("actions", {}).get(press, "none")
         logger.info(f"Button {press} press -> {action}")
         event_bus.publish("hardware.button", {"press": press, "action": action})
         asyncio.create_task(run_button_action(action))
@@ -242,119 +362,71 @@ async def run_button_action(action: str) -> None:
         await poweroff_system(delay_sec=1.0)
 
 
-def kernel_boot_id() -> str:
-    """Changes on every OS boot (unlike the app's BOOT_ID, which changes on app restarts)."""
-    try:
-        with open("/proc/sys/kernel/random/boot_id") as f:
-            return f.read().strip()
-    except OSError:
-        return ""
+# --- Sensors: IIO readings ---------------------------------------------------------------
 
-
-async def write_gpio_overlays(button_pin: int | None, dht11_pin: int | None, pir_pin: int | None = None) -> str | None:
-    """Write the overlays to config.txt. Returns an error message, or None on success.
-
-    ponytail: pin changes need a reboot. Overlays the firmware applied at boot can't be
-    removed at runtime, so loading the new pin live would leave the old one active too.
-    """
-    if not os.path.exists(GPIO_HELPER):
-        return "This mirror's OS image is too old for GPIO settings. Flash the latest MirrorDash OS image."
-    args = [str(pin) if pin is not None else "none" for pin in (button_pin, dht11_pin, pir_pin)]
-    proc = await asyncio.create_subprocess_exec(
-        "sudo", "-n", GPIO_HELPER, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        logger.error(f"GPIO overlay helper failed ({proc.returncode}): {stderr.decode(errors='replace')}")
-        return "Could not save the GPIO settings. See the logs for details."
-    return None
-
-
-def wanted_gpio_pins(system_cfg: dict) -> list:
-    """[button, dht11, pir] GPIO numbers (or None) that the overlays should use."""
-    dc = system_cfg.get("display_control", {})
-    pir = dc.get("pir", {}).get("pin") if dc.get("mode") == "pir" else None
-    return [system_cfg.get("button", {}).get("pin"), system_cfg.get("dht11", {}).get("pin"), pir]
-
-
-def validate_gpio_pins(pins: list) -> str | None:
-    """Error message if a pin can't be used or two parts share one, else None."""
-    names = ("button", "DHT11 sensor", "motion sensor")
-    used = {}
-    for name, pin in zip(names, pins):
-        if pin is None:
-            continue
-        if pin not in GPIO_HEADER_PINS:
-            return f"GPIO {pin} can't be used for the {name}."
-        if pin in used:
-            return f"The {used[pin]} and the {name} can't use the same GPIO ({pin})."
-        used[pin] = name
-    return None
-
-
-async def sync_gpio_overlays(system_cfg: dict) -> tuple[bool, str | None]:
-    """Write the overlays if the wanted pins changed. Updates system_cfg (the caller saves it).
-
-    Returns (restart_needed, error_message).
-    """
-    wanted = wanted_gpio_pins(system_cfg)
-    if system_cfg.get("gpio_overlays", [None, None, None]) == wanted:
-        return False, None
-    error = validate_gpio_pins(wanted) or await write_gpio_overlays(*wanted)
-    if error:
-        return False, error
-    system_cfg["gpio_overlays"] = wanted
-    # The new pins are active after the next OS boot; remember which boot they were set in
-    system_cfg["gpio_pending_boot_id"] = kernel_boot_id()
-    return True, None
-
-
-# ponytail: readings are cached for 30 s, so the dashboard's polling (and every viewer)
-# costs at most one sensor read per 30 s; the DHT11 itself only allows about one per second.
-DHT11_CACHE_SECONDS = 30.0
-_dht11_cache: dict = {"at": 0.0, "value": None}
-
-
-def _find_dht11_dir() -> str | None:
+def _find_iio_dir(driver_name: str) -> str | None:
     for d in glob.glob("/sys/bus/iio/devices/iio:device*"):
         try:
             with open(os.path.join(d, "name")) as f:
-                if "dht11" in f.read():
+                if driver_name in f.read():
                     return d
         except OSError:
             continue
     return None
 
 
-def _read_dht11_once(d: str) -> dict:
-    with open(os.path.join(d, "in_temp_input")) as f:
-        temp = int(f.read()) / 1000
-    with open(os.path.join(d, "in_humidityrelative_input")) as f:
-        humidity = int(f.read()) / 1000
-    return {"temperature_c": round(temp, 1), "humidity": round(humidity)}
+def _read_number(d: str, name: str) -> float:
+    with open(os.path.join(d, name)) as f:
+        return float(f.read())
 
 
-def _read_dht11_blocking() -> dict | None:
-    d = _find_dht11_dir()
+def _read_dht11(d: str) -> dict:
+    return {"temperature_c": round(_read_number(d, "in_temp_input") / 1000, 1),
+            "humidity": round(_read_number(d, "in_humidityrelative_input") / 1000)}
+
+
+def _read_bh1750(d: str) -> dict:
+    lux = _read_number(d, "in_illuminance_raw") * _read_number(d, "in_illuminance_scale")
+    return {"lux": round(lux, 1)}
+
+
+# device type -> (IIO driver name, reader)
+IIO_SENSORS = {"dht11": ("dht11", _read_dht11), "light": ("bh1750", _read_bh1750)}
+
+
+def _read_sensor_blocking(device_type: str) -> dict | None:
+    driver_name, reader = IIO_SENSORS[device_type]
+    d = _find_iio_dir(driver_name)
     if not d:
         return None
     for attempt in range(3):  # the DHT11 regularly fails a read with EIO/ETIMEDOUT; retry
         try:
-            return _read_dht11_once(d)
+            return reader(d)
         except (OSError, ValueError):
             if attempt < 2:
-                time.sleep(1.1)  # the sensor needs about 1 s between reads
+                time.sleep(1.1)  # the DHT11 needs about 1 s between reads
     return None
 
 
-async def read_dht11() -> dict | None:
-    """Latest temperature (°C) and humidity (%), or None if no sensor answers."""
-    if time.monotonic() - _dht11_cache["at"] < DHT11_CACHE_SECONDS and _dht11_cache["value"]:
-        return _dht11_cache["value"]
-    value = await asyncio.to_thread(_read_dht11_blocking)
+# ponytail: readings are cached for 30 s per sensor, so the dashboard, every viewer and the
+# event loop together cost at most one read per 30 s (the DHT11 allows about one per second).
+SENSOR_CACHE_SECONDS = 30.0
+_sensor_cache: dict[str, tuple[float, dict]] = {}
+
+
+async def read_sensor(device_type: str) -> dict | None:
+    """Latest reading of an IIO sensor ("dht11" or "light"), or None if it never answered.
+
+    When a read fails, the last good reading is returned (the DHT11 misses reads regularly).
+    """
+    cached = _sensor_cache.get(device_type)
+    if cached and time.monotonic() - cached[0] < SENSOR_CACHE_SECONDS:
+        return cached[1]
+    value = await asyncio.to_thread(_read_sensor_blocking, device_type)
     if value:
-        _dht11_cache.update(at=time.monotonic(), value=value)
-    return value or _dht11_cache["value"]
+        _sensor_cache[device_type] = (time.monotonic(), value)
+        return value
+    return cached[1] if cached else None
 
 
 gpio_inputs = GpioInputs()

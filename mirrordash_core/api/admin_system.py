@@ -382,14 +382,8 @@ async def get_system_settings() -> dict:
             "display_control": system_cfg.get("display_control", {
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
-                "pir": {"pin": 18, "timeout_minutes": 5},
+                "pir": {"timeout_minutes": 5},
             }),
-            "button": {
-                "pin": system_cfg.get("button", {}).get("pin"),
-                "actions": {p: system_cfg.get("button", {}).get("actions", {}).get(p, "none")
-                            for p in ("single", "double", "triple", "long")},
-            },
-            "dht11": {"pin": system_cfg.get("dht11", {}).get("pin")},
         },
         "resolutions": resolutions
     }
@@ -411,7 +405,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     current_dc = system_cfg.get("display_control", {
         "mode": "manual",
         "interval": {"start": "07:00", "end": "22:00"},
-        "pir": {"pin": 18, "timeout_minutes": 5},
+        "pir": {"timeout_minutes": 5},
     })
     incoming_dc = settings.get("display_control", {})
     
@@ -444,11 +438,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
             raise HTTPException(status_code=400, detail="Invalid interval time format (HH:MM)")
     elif mode == "pir":
         pir = display_control.get("pir", {})
-        pin = pir.get("pin", 18)
         timeout = pir.get("timeout_minutes", 5)
-        from mirrordash_core.hardware import GPIO_HEADER_PINS
-        if not isinstance(pin, int) or pin not in GPIO_HEADER_PINS:
-            raise HTTPException(status_code=400, detail="Invalid PIR GPIO pin")
         if not isinstance(timeout, int) or timeout < 1:
             raise HTTPException(status_code=400, detail="Invalid PIR timeout")
 
@@ -458,14 +448,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["volume"] = volume
     system_cfg["display_control"] = display_control
     system_cfg["ssh"] = ssh_enabled
-
-    # The PIR sensor is a kernel overlay: switching to/from PIR mode or changing its pin
-    # rewrites config.txt and takes effect after a restart. A failure here (e.g. an old OS
-    # image without the helper) must not block saving the other settings, so it is reported.
-    restart_required, gpio_error = False, None
-    if "display_control" in settings:
-        from mirrordash_core.hardware import sync_gpio_overlays
-        restart_required, gpio_error = await sync_gpio_overlays(system_cfg)
 
     await remount_rw()
     try:
@@ -556,8 +538,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     if any(k in settings for k in ("rotation", "resolution", "brightness", "volume")):
         asyncio.create_task(apply_system_settings(rotation, resolution, brightness, volume))
 
-    return {"status": "success", "message": "System settings saved and applied successfully",
-            "restart_required": restart_required, "gpio_error": gpio_error}
+    return {"status": "success", "message": "System settings saved and applied successfully"}
 
 
 @router.post("/screen")

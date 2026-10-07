@@ -305,6 +305,9 @@ class ModuleLoader:
             await asyncio.gather(*self.tasks.values(), return_exceptions=True)
             self.tasks.clear()
         self.instances.clear()
+        # Subscribers are module instances; a reload creates new ones, so the old callbacks
+        # must go or every reload would add another copy of each subscription.
+        event_bus.clear()
         manager.clear_cache()
         logger.info("All module tasks stopped.")
 

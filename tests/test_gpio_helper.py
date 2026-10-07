@@ -4,7 +4,7 @@ import subprocess
 from pathlib import Path
 
 SETUP = Path(__file__).parent.parent / "scripts" / "setup_appliance.sh"
-ORIGINAL = "dtparam=audio=on\n[all]\ndtoverlay=disable-bt\n"
+ORIGINAL = "dtparam=audio=on\n[pi4]\narm_boost=1\n"
 
 
 def run_helper(tmp_path: Path, *args: str) -> tuple[int, str]:
@@ -19,27 +19,31 @@ def run_helper(tmp_path: Path, *args: str) -> tuple[int, str]:
 
 
 def test_writes_one_managed_block_and_replaces_it(tmp_path):
-    code, text = run_helper(tmp_path, "17", "4", "18")
+    code, text = run_helper(tmp_path, "button:17", "dht11:4", "pir:18", "mmwave:22", "light:0x23")
     assert code == 0
     assert text.startswith(ORIGINAL)  # existing settings untouched
-    assert "dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=148" in text
-    assert "dtoverlay=dht11,gpiopin=4" in text
-    assert "dtoverlay=gpio-key,gpio=18,active_low=0,gpio_pull=down,keycode=149" in text
+    block = text[len(ORIGINAL):]
+    assert block.splitlines()[1] == "[all]"  # not inside the [pi4] section the file ended in
+    for line in ("dtoverlay=gpio-key,gpio=17,active_low=1,gpio_pull=up,keycode=148",
+                 "dtoverlay=gpio-key,gpio=18,active_low=0,gpio_pull=down,keycode=149",
+                 "dtoverlay=gpio-key,gpio=22,active_low=0,gpio_pull=down,keycode=150",
+                 "dtoverlay=dht11,gpiopin=4", "dtparam=i2c_arm=on", "dtoverlay=i2c-sensor,bh1750,addr=0x23"):
+        assert line in block, line
 
-    code, text = run_helper(tmp_path, "none", "22", "none")  # change: old lines replaced, not appended
+    code, text = run_helper(tmp_path, "dht11:22")  # changes replace the block, never append
     assert code == 0
     assert text.count("MirrorDash GPIO (managed") == 1
-    assert "gpio-key" not in text and "gpiopin=4" not in text
+    assert "gpio-key" not in text and "i2c" not in text
     assert "dtoverlay=dht11,gpiopin=22" in text
 
-    code, text = run_helper(tmp_path, "none", "none", "none")
-    assert "dtoverlay=" not in text.replace("dtoverlay=disable-bt", "")
-    assert text.startswith(ORIGINAL)
+    code, text = run_helper(tmp_path)  # nothing connected
+    assert code == 0
+    assert "dtoverlay" not in text and text.startswith(ORIGINAL)
 
 
-def test_rejects_invalid_pins_without_touching_config(tmp_path):
-    for args in (("1", "none", "none"), ("28", "none", "none"), ("17", "17", "none"), ("17", "none", "17"),
-                 ("4;reboot", "none", "none"), ("17", "4")):
+def test_rejects_invalid_arguments_without_touching_config(tmp_path):
+    for args in (("button:1",), ("button:28",), ("button:17", "dht11:17"), ("button:17", "button:22"),
+                 ("light:0x40",), ("light:0x23", "button:3"), ("button:4;reboot",), ("fan:12",), ("button",)):
         code, text = run_helper(tmp_path, *args)
         assert code == 2, args
         assert text == ORIGINAL

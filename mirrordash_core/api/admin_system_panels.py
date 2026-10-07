@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.api.admin_shared import BOOT_ID, job_response, notify, require_api_key, start_job, templates, ui_events
+from mirrordash_core.api.admin_shared import BOOT_ID, events_header, job_response, notify, require_api_key, start_job, templates, ui_events
 from mirrordash_core.config import load_config, get_core_version, save_config
 from mirrordash_core.system import poweroff_system, reboot_system, remount_ro, remount_rw, sudo_allowed
 from mirrordash_core.api.admin_system import (
@@ -69,16 +69,11 @@ async def get_panel_system(request: Request):
     minutes_list = list(range(0, 60))
 
     current_version = get_core_version()
-    from mirrordash_core.hardware import BUTTON_ACTIONS, GPIO_HEADER_PINS
 
     return templates.TemplateResponse(
         request=request,
         name="admin_system.html",
         context={
-            "gpio_pins": sorted(GPIO_HEADER_PINS.items()),
-            "button_actions": BUTTON_ACTIONS,
-            "press_labels": [("single", "Single press"), ("double", "Double press"),
-                             ("triple", "Triple press"), ("long", "Long press (1 s)")],
             "settings": settings,
             "resolutions": resolutions,
             "current_version": current_version,
@@ -132,12 +127,13 @@ async def get_panel_power(request: Request):
     hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
     minutes_list = list(range(0, 60))
 
-    from mirrordash_core.hardware import GPIO_HEADER_PINS
+    from mirrordash_core.hardware import DEVICE_TYPES, PRESENCE_TYPES, get_devices
     return templates.TemplateResponse(
         request=request,
         name="admin_power.html",
         context={
-            "gpio_pins": sorted(GPIO_HEADER_PINS.items()),
+            "presence_sensors": [f"{DEVICE_TYPES[d['type']]['label']} on GPIO {d['pin']}"
+                                 for d in get_devices(config.get("system", {})) if d["type"] in PRESENCE_TYPES],
             "settings": settings,
             "time_format": time_format,
             "start_h": start_h,
@@ -210,18 +206,11 @@ async def save_system_settings_route(request: Request):
     if "pir" in display_control:
         pir = display_control["pir"]
         try:
-            pir["pin"] = int(pir.get("pin", 18))
             pir["timeout_minutes"] = int(pir.get("timeout_minutes", 5))
         except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="PIR pin and timeout must be integers")
+            raise HTTPException(status_code=400, detail="The timeout must be a whole number of minutes")
 
-    res = await update_system_settings(settings=parsed)
-
-    if res.get("gpio_error"):
-        return notify(f"Saved, but the motion sensor pin could not be set: {res['gpio_error']}", "error")
-    if res.get("restart_required"):
-        return notify("Saved. Restart the mirror (Mirror Power below) to start using the motion sensor.",
-                      **{"gpio-changed": True})
+    await update_system_settings(settings=parsed)
     return notify("Saved.")
 
 
@@ -284,64 +273,148 @@ async def trigger_rebuild_venv():
                         "Environment rebuilt successfully.")
 
 
-def _format_reading(reading: dict) -> tuple[str, str]:
-    """(temperature, humidity) strings in the user's temperature unit."""
-    unit = load_config().get("globals", {}).get("temperature_unit", "C")
-    temp = reading["temperature_c"]
-    if unit == "F":
-        return f"{temp * 9 / 5 + 32:.1f} °F", f"{reading['humidity']} %"
-    return f"{temp:.1f} °C", f"{reading['humidity']} %"
+def _format_temperature(celsius: float) -> str:
+    if load_config().get("globals", {}).get("temperature_unit", "C") == "F":
+        return f"{celsius * 9 / 5 + 32:.1f} °F"
+    return f"{celsius:.1f} °C"
 
 
-@router.post("/panels/system/gpio", dependencies=[Depends(require_api_key)])
-async def save_gpio_settings(request: Request):
-    from mirrordash_core.hardware import BUTTON_ACTIONS, PRESS_TYPES, sync_gpio_overlays
+async def _sensor_texts(device_type: str) -> list[tuple[str, str]]:
+    """(label, value) pairs for an IIO sensor's latest reading, or [] without a reading."""
+    from mirrordash_core.hardware import read_sensor
 
-    form = await request.form()
+    reading = await read_sensor(device_type)
+    if not reading:
+        return []
+    if device_type == "dht11":
+        return [("Temperature", _format_temperature(reading["temperature_c"])), ("Humidity", f"{reading['humidity']} %")]
+    return [("Light", f"{reading['lux']:.0f} lux")]
 
-    def parse_pin(name: str) -> int | None:
-        value = (form.get(name) or "").strip()
-        if not value.isdigit():
-            return None if not value else -1  # -1: rejected by the pin validation below
-        return int(value)
 
-    actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
-    if any(a not in BUTTON_ACTIONS for a in actions.values()):
-        return notify("Unknown button action.", "error")
+def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: str = "success",
+                  restart_needed: bool = False):
+    """The Sensors & Inputs card, plus the page events that report what happened."""
+    from mirrordash_core.hardware import (
+        BUTTON_ACTIONS, DEVICE_TYPES, GPIO_HEADER_PINS, I2C_PINS, get_devices,
+    )
 
-    config = load_config()
+    devices = get_devices(system_cfg)
+    used_pins = {d["pin"] for d in devices if "pin" in d}
+    if any("address" in d for d in devices):
+        used_pins |= set(I2C_PINS)
+    events = {}
+    if message:
+        events["md-notify"] = {"message": message, "kind": kind}
+    if restart_needed:
+        events["gpio-changed"] = True
+    return templates.TemplateResponse(
+        request=request,
+        name="admin_devices.html",
+        context={
+            "devices": devices,
+            "device_types": DEVICE_TYPES,
+            "available_types": [t for t in DEVICE_TYPES if t not in {d["type"] for d in devices}],
+            "free_pins": [(bcm, header) for bcm, header in sorted(GPIO_HEADER_PINS.items()) if bcm not in used_pins],
+            "header_pins": GPIO_HEADER_PINS,
+            "button_actions": BUTTON_ACTIONS,
+            "press_labels": [("single", "Single press"), ("double", "Double press"),
+                             ("triple", "Triple press"), ("long", "Long press (1 s)")],
+        },
+        headers=events_header(**events) if events else None,
+    )
+
+
+async def _save_devices(request: Request, config: dict, devices: list[dict], done_message: str):
+    """Validate, write the overlays and save; answer with the updated card."""
+    from mirrordash_core.hardware import sync_gpio_overlays
+
     system_cfg = config.setdefault("system", {})
-    system_cfg["button"] = {"pin": parse_pin("button_pin"), "actions": actions}
-    system_cfg["dht11"] = {"pin": parse_pin("dht11_pin")}
+    previous = system_cfg.get("devices", [])
+    system_cfg["devices"] = devices
     restart_needed, error = await sync_gpio_overlays(system_cfg)
     if error:
-        return notify(error, "error")
-
+        system_cfg["devices"] = previous
+        return _devices_card(request, system_cfg, error, "error")
     await remount_rw()
     try:
         save_config(config)
     finally:
         await remount_ro()
+    if restart_needed:
+        done_message += " Restart the mirror to start using it."
+    return _devices_card(request, system_cfg, done_message, restart_needed=restart_needed)
 
-    if not restart_needed:
-        return notify("Saved.")
-    return notify("Saved. Restart the mirror to use the new GPIO pin.", **{"gpio-changed": True})
+
+@router.get("/panels/system/devices", dependencies=[Depends(require_api_key)])
+async def get_devices_card(request: Request):
+    return _devices_card(request, load_config().get("system", {}))
+
+
+@router.post("/panels/system/devices/add", dependencies=[Depends(require_api_key)])
+async def add_device(request: Request):
+    from mirrordash_core.hardware import DEVICE_TYPES, PRESS_TYPES
+
+    form = await request.form()
+    device_type = form.get("type", "")
+    config = load_config()
+    devices = list(config.get("system", {}).get("devices", []))
+    spec = DEVICE_TYPES.get(device_type)
+    if not spec:
+        return _devices_card(request, config.get("system", {}), "Choose what to connect.", "error")
+
+    device = {"type": device_type}
+    if spec.get("pin"):
+        pin = form.get("pin", "")
+        device["pin"] = int(pin) if pin.isdigit() else -1  # -1: rejected by the validation
+    else:
+        device["address"] = form.get("address", "")
+    if device_type == "button":
+        device["actions"] = {p: "none" for p in PRESS_TYPES}
+    return await _save_devices(request, config, devices + [device], f"{spec['label']} added.")
+
+
+@router.post("/panels/system/devices/remove", dependencies=[Depends(require_api_key)])
+async def remove_device(request: Request):
+    from mirrordash_core.hardware import DEVICE_TYPES
+
+    device_type = (await request.form()).get("type", "")
+    config = load_config()
+    devices = [d for d in config.get("system", {}).get("devices", []) if d.get("type") != device_type]
+    label = DEVICE_TYPES.get(device_type, {}).get("label", "Device")
+    return await _save_devices(request, config, devices, f"{label} removed.")
+
+
+@router.post("/panels/system/devices/button-actions", dependencies=[Depends(require_api_key)])
+async def save_button_actions(request: Request):
+    from mirrordash_core.hardware import BUTTON_ACTIONS, PRESS_TYPES, find_device
+
+    form = await request.form()
+    actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
+    if any(a not in BUTTON_ACTIONS for a in actions.values()):
+        return notify("Unknown button action.", "error")
+    config = load_config()
+    button = find_device(config.get("system", {}), "button")
+    if not button:
+        return notify("No push button is connected.", "error")
+    button["actions"] = actions  # takes effect on the next press, no restart needed
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+    return notify("Saved.")
 
 
 @router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
 async def get_gpio_status():
     import time
-    from mirrordash_core.hardware import gpio_inputs, read_dht11, wanted_gpio_pins
-
-    from mirrordash_core.hardware import kernel_boot_id
+    from mirrordash_core.hardware import DEVICE_TYPES, PRESENCE_TYPES, get_devices, gpio_inputs, kernel_boot_id
 
     system_cfg = load_config().get("system", {})
-    button_pin, dht11_pin, pir_pin = wanted_gpio_pins(system_cfg)
-
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
         return HTMLResponse(content="""
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <span><strong>Restart needed:</strong> the new GPIO pins are used after the mirror restarts.</span>
+                <span><strong>Restart needed:</strong> the changes are used after the mirror restarts.</span>
                 <button type="button" class="btn secondary btn-sm" hx-post="/admin/panels/power/reboot" hx-target="#global-status"
                         hx-disabled-elt="this" hx-confirm="Restart the mirror now? The screen will be off for about a minute.">
                     <i class="fas fa-redo" aria-hidden="true"></i> Restart Mirror
@@ -349,50 +422,46 @@ async def get_gpio_status():
             </div>
         """)
 
-    if button_pin is None:
-        button = "Not connected"
-    elif gpio_inputs.button_seen:
-        button = f"Ready on GPIO {button_pin}"
-    else:
-        button = f"Not detected on GPIO {button_pin}. Restart the mirror to load the button driver."
-
-    if dht11_pin is None:
-        sensor = "Not connected"
-    else:
-        reading = await read_dht11()
-        sensor = " · ".join(_format_reading(reading)) if reading else \
-            f"No reading from GPIO {dht11_pin}. Check the wiring."
-
-    lines = [("Button", button), ("DHT11", sensor)]
-    if pir_pin is not None:
-        if gpio_inputs.motion_active:
-            motion = "Motion right now"
-        elif gpio_inputs.last_motion_at:
-            minutes = int((time.monotonic() - gpio_inputs.last_motion_at) // 60)
-            motion = "Last motion just now" if minutes < 1 else f"Last motion {minutes} min ago"
+    lines = []
+    for d in get_devices(system_cfg):
+        label = DEVICE_TYPES[d["type"]]["label"]
+        if d["type"] == "button":
+            status = "Ready" if "button" in gpio_inputs.detected else "Not detected. Restart the mirror to load the driver."
+        elif d["type"] in PRESENCE_TYPES:
+            if d["type"] not in gpio_inputs.detected:
+                status = "Not detected. Restart the mirror to load the driver."
+            elif gpio_inputs.presence.get(d["type"]):
+                status = "Someone is there right now"
+            elif gpio_inputs.last_motion_at:
+                minutes = int((time.monotonic() - gpio_inputs.last_motion_at) // 60)
+                status = "Last motion just now" if minutes < 1 else f"Last motion {minutes} min ago"
+            else:
+                status = "No motion seen since MirrorDash started"
         else:
-            motion = f"No motion seen on GPIO {pir_pin} since MirrorDash started"
-        lines.append(("Motion sensor", motion))
+            texts = await _sensor_texts(d["type"])
+            status = " · ".join(value for _, value in texts) if texts else "No reading. Check the wiring."
+        lines.append((label, status))
+    if not lines:
+        return HTMLResponse(content="<div>Nothing connected yet.</div>")
     return HTMLResponse(content="".join(
-        f"<div><strong>{name}:</strong> {html.escape(text)}</div>" for name, text in lines))
+        f"<div><strong>{html.escape(label)}:</strong> {html.escape(status)}</div>" for label, status in lines))
 
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
 async def get_dashboard_sensor():
-    from mirrordash_core.hardware import read_dht11
+    from mirrordash_core.hardware import IIO_SENSORS, find_device
 
-    reading = await read_dht11()
-    if not reading:
+    system_cfg = load_config().get("system", {})
+    tiles = []
+    for device_type in IIO_SENSORS:
+        if find_device(system_cfg, device_type):
+            tiles += await _sensor_texts(device_type)
+    if not tiles:
         return HTMLResponse(content='<p style="color: var(--text-muted); margin: 0;">Waiting for the first reading...</p>')
-    temperature, humidity = _format_reading(reading)
-    return HTMLResponse(content=f"""
-        <div style="display: flex; gap: 32px; flex-wrap: wrap;">
-            <div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{temperature}</div>
-                 <div style="font-size: 0.75rem; color: var(--text-muted);">Temperature</div></div>
-            <div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{humidity}</div>
-                 <div style="font-size: 0.75rem; color: var(--text-muted);">Humidity</div></div>
-        </div>
-    """)
+    return HTMLResponse(content='<div style="display: flex; gap: 32px; flex-wrap: wrap;">' + "".join(
+        f'<div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{html.escape(value)}</div>'
+        f'<div style="font-size: 0.75rem; color: var(--text-muted);">{label}</div></div>'
+        for label, value in tiles) + "</div>")
 
 
 @router.post("/panels/power/shutdown", dependencies=[Depends(require_api_key)])

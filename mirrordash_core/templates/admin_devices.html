@@ -1,0 +1,84 @@
+<!-- Sensors & Inputs card (Hardware tab). Re-rendered as a whole after every add/remove. -->
+<section class="card" id="devices-card" style="margin-top: 24px;">
+    <h2><i class="fas fa-microchip" aria-hidden="true"></i> Sensors &amp; Inputs</h2>
+    <p class="panel-subtitle">Things connected to the GPIO header. Adding or removing one takes effect after the mirror restarts.</p>
+
+    {% for d in devices %}
+    {% set spec = device_types[d.type] %}
+    <div style="padding: 14px 0; border-top: 1px solid rgba(255,255,255,0.05);">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;">
+            <div>
+                <div style="font-weight: 500; color: white;">{{ spec.label }}</div>
+                <div style="font-size: 0.75rem; color: var(--text-muted);">
+                    {% if d.pin is defined %}GPIO {{ d.pin }} (pin {{ header_pins[d.pin] }}){% else %}I²C address {{ d.address }}{% endif %}
+                </div>
+            </div>
+            <button type="button" class="btn danger btn-sm"
+                    hx-post="/admin/panels/system/devices/remove" hx-vals='{"type": "{{ d.type }}"}'
+                    hx-target="#devices-card" hx-swap="outerHTML" hx-disabled-elt="this"
+                    hx-confirm="Remove the {{ spec.label }}? It stops working after the mirror restarts.">
+                <i class="fas fa-trash-alt" aria-hidden="true"></i> Remove
+            </button>
+        </div>
+
+        {% if d.type == "button" %}
+        <p class="field-description" style="font-size: 0.75rem; color: var(--text-secondary); margin: 10px 0 0 0;">
+            <i class="fas fa-lightbulb" aria-hidden="true"></i> Tip: on GPIO 3 (pin 5) the same button also starts the mirror again after it has been shut down.
+            Choose "Shut down the mirror" for a long press and the button works as an on/off switch.
+            (GPIO 3 can't be used together with the I²C light sensor.)
+        </p>
+        <!-- Actions apply on the next press: saved on change, no restart -->
+        <form hx-post="/admin/panels/system/devices/button-actions" hx-trigger="change" hx-swap="none"
+              style="display: grid; gap: 10px; margin-top: 12px; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal);">
+            {% for press, label in press_labels %}
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label for="action-{{ press }}" style="font-size: 0.8rem; color: white; min-width: 110px;">{{ label }}</label>
+                <select id="action-{{ press }}" name="action_{{ press }}" class="form-control" style="flex: 1; min-width: 180px;">
+                    {% for value, action_label in button_actions.items() %}
+                        <option value="{{ value }}" {% if d.actions[press] == value %}selected{% endif %}>{{ action_label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            {% endfor %}
+        </form>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if available_types %}
+    {% set first = device_types[available_types[0]] %}
+    <form hx-post="/admin/panels/system/devices/add" hx-target="#devices-card" hx-swap="outerHTML"
+          style="display: grid; gap: 10px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,0.05);">
+        <label for="device-type" style="font-weight: 500; font-size: 0.9rem; color: white;">Connect something new</label>
+        <select id="device-type" name="type" class="form-control"
+                onchange="const o = this.selectedOptions[0];
+                          this.form.pin.hidden = o.dataset.kind !== 'pin';
+                          this.form.address.hidden = o.dataset.kind === 'pin';
+                          this.form.querySelector('.device-wiring').textContent = o.dataset.wiring;">
+            {% for t in available_types %}
+                <option value="{{ t }}" data-kind="{{ 'pin' if device_types[t].pin else 'i2c' }}" data-wiring="{{ device_types[t].wiring }}">{{ device_types[t].label }}</option>
+            {% endfor %}
+        </select>
+        <select name="pin" class="form-control" aria-label="GPIO" {% if not first.pin %}hidden{% endif %}>
+            {% for bcm, header in free_pins %}
+                <option value="{{ bcm }}">GPIO {{ bcm }} (pin {{ header }})</option>
+            {% endfor %}
+        </select>
+        <select name="address" class="form-control" aria-label="I²C address" {% if first.pin %}hidden{% endif %}>
+            <option value="0x23">Address 0x23</option>
+            <option value="0x5c">Address 0x5c</option>
+        </select>
+        <p class="device-wiring field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">{{ first.wiring }}</p>
+        <div>
+            <button type="submit" class="btn primary" hx-disabled-elt="this">
+                <i class="fas fa-plus" aria-hidden="true"></i> Add
+            </button>
+        </div>
+    </form>
+    {% endif %}
+
+    <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s" hx-target="this"
+         style="font-size: 0.8rem; color: var(--text-secondary); display: grid; gap: 4px; padding-top: 12px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
+        Checking...
+    </div>
+</section>

@@ -10,10 +10,11 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Added
-- Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting, which is moved over automatically.
-- Connect a DHT11 sensor and see the room's temperature and humidity on the dashboard.
+- Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting.
+- See the room's temperature, humidity and light level on the dashboard.
 - Restart and shut down the mirror from the Power tab.
-- Modules can react to the push button, the motion sensor and the room climate (for module developers: the `hardware.button`, `hardware.motion` and `hardware.climate` events).
+- A "Sensors & Inputs" list in the Hardware tab: add a push button, a PIR motion sensor, an mmWave presence sensor (also notices someone standing still), a DHT11 temperature & humidity sensor or a BH1750 light sensor, with wiring hints for each.
+- Modules can react to the push button, presence and the room sensors (for module developers: the `hardware.button`, `hardware.motion`, `hardware.climate` and `hardware.light` events).
 - A button on GPIO 3 can also start the mirror again after it has been shut down (shown as a tip in the Hardware tab).
 
 ### Changed
@@ -29,7 +30,8 @@ There are two kinds of releases:
 - Confirmation questions use the admin page's own dialog instead of the browser's pop-up.
 - The admin page no longer shows system details (network, IP address, modules) before you have logged in.
 - Error messages are always shown in the admin page; some failed actions used to show nothing at all.
-- The PIR motion sensor works again: it never did on the OS image, because the app's Python had no GPIO library. Its status (last motion) is shown in the Power and Hardware tabs.
+- The PIR motion sensor works again: it never did on the OS image, because the app's Python had no GPIO library. The screen can now also be controlled by an mmWave presence sensor.
+- Modules no longer receive the same event several times after settings have been saved.
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image

@@ -108,3 +108,15 @@ async def test_event_bus_async_callback_crashes():
     # Give the scheduler time to run tasks. The broken one logs an error, normal one sets future.
     result = await asyncio.wait_for(future, timeout=1.0)
     assert result == "safe_async"
+
+
+def test_module_reload_does_not_duplicate_subscriptions():
+    import asyncio
+    from mirrordash_core.event_bus import event_bus
+    from mirrordash_core.module_loader import ModuleLoader
+
+    calls = []
+    event_bus.subscribe("x:test", lambda data: calls.append(data))
+    asyncio.run(ModuleLoader().stop_modules())  # what reload_modules() does first
+    event_bus.publish("x:test", 1)
+    assert calls == []

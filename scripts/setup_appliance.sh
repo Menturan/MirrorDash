@@ -408,20 +408,44 @@ EOF
 }
 
 step_gpio_helper() {
-  # Root-owned helper the admin page calls (via sudo) to set the button, DHT11 and PIR pins.
+  # Root-owned helper the admin page calls (via sudo) to set which sensors/inputs use which pins.
   # It only writes a managed block of device-tree overlays to config.txt; the firmware applies
   # them at the next boot (overlays applied at boot can't be swapped safely at runtime).
   cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays
 #!/bin/bash
-# Usage: mirrordash-gpio-overlays <button_gpio|none> <dht11_gpio|none> <pir_gpio|none>
+# Usage: mirrordash-gpio-overlays [type:value ...]
+#   button, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
+# Each type at most once, every GPIO at most once, GPIO 2/3 are reserved while I2C is used.
 set -euo pipefail
 
-valid() { [ "$1" = none ] || { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 2 ] && [ "$1" -le 27 ]; }; }
-used=$(printf '%s\n' "$@" | grep -v '^none$' || true)
-if [ $# -ne 3 ] || ! valid "$1" || ! valid "$2" || ! valid "$3" \
-   || [ "$(sort <<< "$used" | uniq -d)" != "" ]; then
-  echo "usage: $0 <button_gpio|none> <dht11_gpio|none> <pir_gpio|none> (GPIO 2-27, all different)" >&2
-  exit 2
+die() { echo "$*" >&2; exit 2; }
+declare -A seen_type=() seen_pin=()
+lines=()
+for arg in "$@"; do
+  type=${arg%%:*} value=${arg#*:}
+  [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
+  seen_type[$type]=1
+  case "$type" in
+    button|pir|mmwave|dht11)
+      { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
+      [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
+      seen_pin[$value]=1 ;;
+    light)
+      [ "$value" = 0x23 ] || [ "$value" = 0x5c ] || die "invalid I2C address: $arg" ;;
+    *)
+      die "unknown device type: $arg" ;;
+  esac
+  case "$type" in
+    # Buttons/sensors become input devices (keycodes KEY_PROG1-3): kernel debounce, no polling
+    button) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button") ;;
+    pir)    lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir") ;;
+    mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
+    dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;
+    light)  lines+=("dtparam=i2c_arm=on" "dtoverlay=i2c-sensor,bh1750,addr=$value") ;;
+  esac
+done
+if [ -n "${seen_type[light]:-}" ] && { [ -n "${seen_pin[2]:-}" ] || [ -n "${seen_pin[3]:-}" ]; }; then
+  die "GPIO 2 and 3 are needed for I2C"
 fi
 
 CONFIG=/boot/firmware/config.txt
@@ -431,11 +455,8 @@ END='# --- end MirrorDash GPIO ---'
 {
   awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
   echo "$BEGIN"
-  # Button between the GPIO and GND: kernel debounce, reported as KEY_PROG1 (148)
-  if [ "$1" != none ]; then echo "dtoverlay=gpio-key,gpio=$1,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button"; fi
-  if [ "$2" != none ]; then echo "dtoverlay=dht11,gpiopin=$2"; fi
-  # PIR output is high while it sees motion: reported as KEY_PROG2 (149) held down
-  if [ "$3" != none ]; then echo "dtoverlay=gpio-key,gpio=$3,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir"; fi
+  echo "[all]"  # applies to every Pi model, whatever section the file ended in
+  if [ ${#lines[@]} -gt 0 ]; then printf '%s\n' "${lines[@]}"; fi
   echo "$END"
 } > "$CONFIG.mirrordash-tmp"
 mv "$CONFIG.mirrordash-tmp" "$CONFIG"

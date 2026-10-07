@@ -89,13 +89,18 @@ def job_status() -> dict:
     return {"boot_id": BOOT_ID, **_job}
 
 
-def ui_events(**events) -> HTMLResponse:
-    """Empty HTMX response that fires page events after the swap (admin.html listens for them).
+def events_header(**events) -> dict:
+    """Response header that fires page events after the HTMX swap (admin.html listens for them).
 
-    Using the HX-Trigger-After-Swap header instead of returning <script> tags: a script that
-    rewrote the swap target while htmx was still inserting it crashed htmx mid-swap.
+    Used instead of returning <script> tags: a script that rewrote the swap target while htmx
+    was still inserting it crashed htmx mid-swap.
     """
-    return HTMLResponse(content="", headers={"HX-Trigger-After-Swap": json.dumps(events)})
+    return {"HX-Trigger-After-Swap": json.dumps(events)}
+
+
+def ui_events(**events) -> HTMLResponse:
+    """Empty HTMX response that only fires page events."""
+    return HTMLResponse(content="", headers=events_header(**events))
 
 
 def notify(message: str, kind: str = "success", **more_events) -> HTMLResponse:

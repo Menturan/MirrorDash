@@ -25,6 +25,10 @@ class EventBus:
             self._subscribers[event_type].remove(callback)
             logger.debug(f"Unsubscribed callback from event: {event_type}")
 
+    def clear(self) -> None:
+        """Drop every subscription (all module instances are being replaced)."""
+        self._subscribers.clear()
+
     def publish(self, event_type: str, data: Any = None) -> None:
         """Publish an event to all subscribers.
         If a subscriber callback is an async coroutine function, it is scheduled on

@@ -53,7 +53,7 @@ The Admin Dashboard is organized into seven main tabs:
 
 ### 4.1. Dashboard Tab
 Provides a high-level overview of the mirror's current status:
-*   **Room Climate**: Temperature and humidity from a DHT11 sensor, if one is connected (see the Hardware tab). Updates every 30 seconds.
+*   **Room Sensors**: Temperature and humidity (DHT11) and light level (BH1750), if those sensors are connected (see the Hardware tab). Updates every 30 seconds.
 *   **Screen Layout Matrix**: A 3x3 grid showing which screen regions (Top Left, Top Center, etc.) are currently occupied by active module instances.
 *   **System Analytics**: Real-time telemetry cards showing CPU temperature, persistent storage disk usage, system memory (RAM) usage, active modules running, local IP address, network connection status (SSID and signal strength), system uptime, and NTP time synchronization status.
 *   **Power Throttling Warning**: Displayed automatically if Raspberry Pi under-voltage is detected (dropping below 4.63V), warning the user of potential system instability or file system corruption.
@@ -81,10 +81,12 @@ Changes are applied as soon as you make them; there is no Apply button. (Turning
 *   **Screen Resolution**: Set display resolution or keep it on `auto`.
 *   **Screen Brightness**: Adjust display backlight brightness (0% to 100%).
 *   **System Volume**: Control mirror audio output levels.
-*   **Push Button**: Choose the GPIO a push button is connected to (wired between that GPIO and a GND pin), and what a *single*, *double*, *triple* and *long* (1 second) press does: turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down.
-    *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so don't use it if you connect I²C devices.
-*   **DHT11 Sensor**: Choose the GPIO of the sensor's data pin. Its readings appear on the Dashboard.
-*   Changing a GPIO pin takes effect after the mirror restarts; the tab shows a **Restart Mirror** button when that is needed. The status line at the bottom shows whether the button and sensors are detected.
+*   **Sensors & Inputs**: Everything connected to the GPIO header, as a list. Choose **Connect something new**, pick the type and the GPIO (or the I²C address), and follow the wiring hint shown under it. Each type can be connected once:
+    *   *Push button* (between a GPIO and GND): choose what a *single*, *double*, *triple* and *long* (1 second) press does: turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down. Changing these takes effect immediately.
+        *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so it can't be combined with the light sensor.
+    *   *PIR motion sensor* and *mmWave presence sensor* (e.g. LD2410; it also notices someone standing still): used by the Power tab to turn the screen on and off.
+    *   *DHT11 temperature & humidity sensor* and *BH1750 light sensor* (I²C, uses GPIO 2 and 3): their readings appear on the Dashboard.
+*   Adding or removing something takes effect after the mirror restarts; the card then shows a **Restart Mirror** button. The status line at the bottom shows whether each part is detected, its latest reading, or the last motion.
 
 ### 4.5. Power Tab
 Changes are applied as soon as you make them.
@@ -92,7 +94,7 @@ Changes are applied as soon as you make them.
 *   **Display Power Management**: Choose how your screen is controlled automatically:
     *   *Manual / Always On*: The screen stays on unless you manually click "Turn Screen OFF".
     *   *Time of Day Schedule*: Specify an *Active Start Time* (e.g. `07:00`) and *Active End Time* (e.g. `22:30`) to turn the display on during the day and off at night.
-    *   *PIR Motion Detector*: Connect a PIR motion sensor's output to a GPIO (power it from 5V and GND). The screen turns on when motion is detected and off after the chosen number of minutes without motion. Choosing this mode or a new pin takes effect after the mirror restarts; the status line shows the last motion.
+    *   *Motion / Presence Sensor*: Uses the PIR or mmWave sensor added under Hardware → Sensors & Inputs. The screen turns on when someone is there and off after the chosen number of minutes without motion.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
 
 ### 4.6. Backup Tab

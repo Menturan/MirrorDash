@@ -94,15 +94,8 @@ def test_system_settings_display_control_validation(
     assert response.status_code == 400
     assert "Invalid interval time format" in response.json()["detail"]
     
-    # Invalid GPIO pin for PIR mode
+    # Invalid timeout for PIR mode (the sensor's pin lives in the Hardware tab's device list)
     payload["display_control"]["mode"] = "pir"
-    payload["display_control"]["pir"]["pin"] = 99 # out of range (1-40)
-    response = client.post("/admin/system", json=payload, headers=headers)
-    assert response.status_code == 400
-    assert "Invalid PIR GPIO pin" in response.json()["detail"]
-    
-    # Invalid timeout for PIR mode
-    payload["display_control"]["pir"]["pin"] = 18
     payload["display_control"]["pir"]["timeout_minutes"] = 0 # too small
     response = client.post("/admin/system", json=payload, headers=headers)
     assert response.status_code == 400

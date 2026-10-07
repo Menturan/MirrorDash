@@ -65,22 +65,10 @@ def get_default_globals() -> dict:
     }
 
 def migrate_config(data: dict) -> bool:
-    """Migrates old configurations: modules get a 'module' property, and the old display-power
-    button mode becomes the GPIO button (system.button) with a 'toggle screen' single press."""
+    """Migrates old module configurations to the new format containing a 'module' property."""
     changed = False
-    system_cfg = data.get("system")
-    if isinstance(system_cfg, dict):
-        dc = system_cfg.get("display_control")
-        if isinstance(dc, dict) and dc.get("mode") == "button":
-            system_cfg.setdefault("button", {
-                "pin": dc.get("button", {}).get("pin", 23),
-                "actions": {"single": "toggle_display", "double": "none", "triple": "none", "long": "none"},
-            })
-            dc["mode"] = "manual"
-            dc.pop("button", None)
-            changed = True
     if "modules" not in data or not isinstance(data["modules"], dict):
-        return False
+        return changed
     for instance_id, module_cfg in list(data["modules"].items()):
         if isinstance(module_cfg, dict):
             if "module" not in module_cfg:
