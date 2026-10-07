@@ -483,8 +483,11 @@ async def check_module_update_route(module_name: str):
                 if release_data and release_data.get("tag_name"):
                     tag_name = release_data["tag_name"]
                     latest_version = tag_name.lstrip("v")
-                    
-                    is_newer = _parse_version(latest_version) > _parse_version(current_version)
+
+                    # Installed from exactly this release (upgrades install git+url@tag): up to date,
+                    # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
+                    on_latest = vcs_info.get("requested_revision") == tag_name
+                    is_newer = not on_latest and _parse_version(latest_version) > _parse_version(current_version)
                     if is_newer:
                         git_install_url = f"git+{url}@{tag_name}"
                         return HTMLResponse(content=f"""

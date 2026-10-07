@@ -1024,6 +1024,14 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     assert r2.status_code == 200
     assert r2.text == ""
 
+    # Installed from the latest release tag: up to date, even if the package version lags the tag
+    mock_dist.version = "0.1.0"
+    mock_dist.read_text.return_value = json.dumps({
+        "url": "https://github.com/user1/mirrordash-widget-ok",
+        "vcs_info": {"vcs": "git", "commit_id": "abc", "requested_revision": "v1.0.0"}})
+    r3 = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
+    assert r3.text == ""
+
 
 @patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
 def test_get_panel_and_discover_modules(mock_urlopen, client):
@@ -1238,18 +1246,12 @@ def test_get_dashboard_updates_available(mock_check, client):
     headers = {"X-API-Key": "secret"}
     mock_check.return_value = {
         "core": {"update_available": True, "latest_version": "0.3.5", "current_version": "0.3.4"},
-        "modules": [
-            {"name": "mirrordash_weather", "title": "Weather", "current_version": "1.1.2", "latest_version": "1.2.0"}
-        ]
     }
     response = client.get("/admin/panels/dashboard/updates", headers=headers)
     assert response.status_code == 200
     assert "Update Available: MirrorDash Core" in response.text
     assert "v0.3.5" in response.text
-    assert "Go to System Settings" in response.text
-    assert "Update Available: Weather Module" in response.text
-    assert "v1.2.0" in response.text
-    assert "Go to Modules" in response.text
+    assert "page-tab-config" in response.text and "Go to Settings" in response.text  # core updates live in Settings
 
 
 @patch("mirrordash_core.system.telemetry.check_all_updates")
@@ -1257,7 +1259,6 @@ def test_get_dashboard_updates_none(mock_check, client):
     headers = {"X-API-Key": "secret"}
     mock_check.return_value = {
         "core": {"update_available": False, "latest_version": "0.3.4", "current_version": "0.3.4"},
-        "modules": []
     }
     response = client.get("/admin/panels/dashboard/updates", headers=headers)
     assert response.status_code == 200

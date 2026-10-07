@@ -151,12 +151,11 @@ def get_core_version() -> str:
         return "unknown"
 
 async def check_all_updates() -> dict:
+    """Core update for the dashboard banner. Module updates are checked per module card in the
+    Modules tab (they come from GitHub releases, not PyPI)."""
     updates = {
         "core": {"update_available": False, "latest_version": get_core_version(), "current_version": get_core_version()},
-        "modules": []
     }
-    
-    # 1. Check core update
     try:
         from mirrordash_core.api.admin_system import check_core_update
         core_res = await check_core_update()
@@ -167,39 +166,4 @@ async def check_all_updates() -> dict:
         }
     except Exception:
         pass
-
-    # 2. Check modules updates
-    eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
-    
-    async def check_single_module(ep) -> dict | None:
-        module_name = ep.name
-        package_name = ep.dist.name if ep.dist else module_name
-        current_version = ep.dist.version if ep.dist else "0.0.0"
-        
-        def _parse_version(v: str) -> tuple:
-            try:
-                return tuple(int(x) for x in v.split(".")[:3])
-            except ValueError:
-                return (0,)
-
-        from mirrordash_core.system.network import fetch_json_cached
-        data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
-        latest_version = (data or {}).get("info", {}).get("version")
-        if latest_version:
-            is_newer = _parse_version(latest_version) > _parse_version(current_version)
-            if is_newer:
-                return {
-                    "name": module_name,
-                    "title": module_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                    "current_version": current_version,
-                    "latest_version": latest_version
-                }
-        return None
-
-    tasks = [check_single_module(ep) for ep in eps]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-    for res in results:
-        if res and not isinstance(res, Exception):
-            updates["modules"].append(res)
-            
     return updates

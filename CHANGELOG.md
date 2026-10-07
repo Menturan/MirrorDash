@@ -40,6 +40,8 @@ There are two kinds of releases:
 - Help texts are easier to read (higher contrast).
 - Switching tabs quickly no longer sometimes shows the previous tab.
 - Log text is always shown as plain text in the admin page.
+- Modules no longer show "Update available" again right after being updated.
+- The update banner on the dashboard is only about MirrorDash itself and opens Settings, where the update is installed. Module updates are shown on each module in the Modules tab.
 - The screen layout overview on the dashboard shows the real 3×3 grid on phones.
 - Confirmation questions use the admin page's own dialog instead of the browser's pop-up.
 - The admin page no longer shows system details (network, IP address, modules) before you have logged in.
