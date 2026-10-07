@@ -810,6 +810,17 @@ else
 
 sprite = Sprite (resized_image);
 sprite.SetPosition (image_x, image_y, -100);
+
+breath.angle = 0;
+fun refresh_callback ()
+{
+	breath.angle += ((2 * 3.14) / 50) * 0.4;
+	opacity = (Math.Cos(breath.angle) + 1) / 2;
+	opacity *= 1 - 0.5;
+	opacity += 0.5;
+	sprite.SetOpacity (opacity);
+}
+Plymouth.SetRefreshFunction (refresh_callback);
 EOF
 
 # Boot images (rendered by scripts/render_boot_images.py)

@@ -553,7 +553,8 @@ ScriptFile=/usr/share/plymouth/themes/mirrordash/mirrordash.script
 EOF
 
   # mirrordash.script = pix.script with: black background, one image per mode (boot, reboot,
-  # shutdown) drawn in every mode, and no status text. No comments inside, like pix.script.
+  # shutdown) drawn in every mode, no status text, and the image slowly breathing (opacity only)
+  # so a long boot never looks frozen. No comments inside, like pix.script.
   cat << 'EOF' > "$THEME/mirrordash.script"
 Window.SetBackgroundTopColor(0, 0, 0);
 Window.SetBackgroundBottomColor(0, 0, 0);
@@ -601,6 +602,17 @@ else
 
 sprite = Sprite (resized_image);
 sprite.SetPosition (image_x, image_y, -100);
+
+breath.angle = 0;
+fun refresh_callback ()
+{
+	breath.angle += ((2 * 3.14) / 50) * 0.4;
+	opacity = (Math.Cos(breath.angle) + 1) / 2;
+	opacity *= 1 - 0.5;
+	opacity += 0.5;
+	sprite.SetOpacity (opacity);
+}
+Plymouth.SetRefreshFunction (refresh_callback);
 EOF
 
   # Boot images (rendered by scripts/render_boot_images.py)

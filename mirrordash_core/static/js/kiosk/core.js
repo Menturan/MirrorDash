@@ -8,17 +8,22 @@ const wsUrl = `${protocol}//${window.location.host}/ws`;
 let socket;
 let retryDelay = 2000;
 const MAX_RETRY_DELAY = 30000;
+// After this long without the app, say so instead of "Reconnecting…" forever (it keeps trying)
+const NOT_RESPONDING_AFTER = 2 * 60 * 1000;
+let lostAt = null;
 
 function setStatus(state) {
+    if (state !== 'connected' && lostAt && Date.now() - lostAt > NOT_RESPONDING_AFTER) state = 'failed';
     const statusEl = document.getElementById('ws-status');
     const statusLabel = statusEl.querySelector('.ws-status__label');
     
     statusEl.className = `ws-status ws-status--${state}`;
-    statusLabel.textContent = { connected: 'Connected', disconnected: 'Reconnecting…', connecting: 'Connecting…' }[state] ?? state;
+    statusLabel.textContent = { connected: 'Connected', disconnected: 'Reconnecting…', connecting: 'Connecting…',
+                                failed: 'MirrorDash isn\u2019t responding' }[state] ?? state;
     
     const iconEl = statusEl.querySelector('[data-lucide]');
     if (iconEl) {
-        iconEl.setAttribute('data-lucide', state === 'disconnected' ? 'wifi-off' : 'wifi');
+        iconEl.setAttribute('data-lucide', state === 'disconnected' || state === 'failed' ? 'wifi-off' : 'wifi');
         if (window.lucide) {
             lucide.createIcons({ root: statusEl });
         }
@@ -70,6 +75,7 @@ function connect() {
 
     socket.onopen = () => {
         retryDelay = 2000;
+        lostAt = null;
         setStatus('connected');
         const statusEl = document.getElementById('ws-status');
         setTimeout(() => statusEl.classList.add('ws-status--hidden'), 3000);
@@ -179,6 +185,7 @@ function connect() {
     };
 
     socket.onclose = () => {
+        lostAt = lostAt ?? Date.now();
         setStatus('disconnected');
         const statusEl = document.getElementById('ws-status');
         statusEl.classList.remove('ws-status--hidden');

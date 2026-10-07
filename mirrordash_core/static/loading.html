@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MirrorDash</title>
-    <!-- First page the kiosk shows while the app starts. It must look exactly like the Plymouth
-         splash (static/splash.png: the 160 px monogram centred on black) so the handover is seamless. -->
+    <!-- First page the kiosk shows while the app starts. The monogram must look exactly like the
+         Plymouth splash (static/splash.png: 160 px, centred on black) so the handover is seamless.
+         Something always moves while it waits, and if the app never answers it says so. -->
     <style>
         * { cursor: none !important; }
 
@@ -24,28 +25,68 @@
             width: 160px;
             height: 160px;
             margin: -80px 0 0 -80px;
-            animation: breathe 3s ease-in-out infinite;
+            animation: breathe 2.5s ease-in-out infinite;
         }
 
         @keyframes breathe {
-            50% { opacity: 0.55; }
+            50% { opacity: 0.5; }
         }
 
-        @media (prefers-reduced-motion: reduce) {
-            .monogram { animation: none; }
+        /* Indeterminate progress: a light segment gliding along a dim line under the monogram */
+        .progress {
+            position: fixed;
+            left: 50%;
+            top: calc(50% + 104px);
+            width: 160px;
+            height: 2px;
+            margin-left: -80px;
+            background: #333333;
+            overflow: hidden;
+            opacity: 0;
+            animation: appear 0.6s ease-out 0.8s forwards; /* after the handover from Plymouth */
         }
 
-        /* Only shown when starting takes an unusual path (rollback, safe mode) */
-        .status {
+        .progress::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 48px;
+            height: 100%;
+            background: #ffffff;
+            animation: glide 1.6s ease-in-out infinite alternate;
+        }
+
+        @keyframes appear { to { opacity: 1; } }
+        @keyframes glide { from { transform: translateX(0); } to { transform: translateX(112px); } }
+
+        .message {
             position: fixed;
             left: 0;
             right: 0;
-            top: calc(50% + 112px);
+            top: calc(50% + 136px);
             margin: 0;
             text-align: center;
-            color: #999999;
             font-family: sans-serif;
-            font-size: 18px;
+            font-size: 22px; /* read from across the room, through glass */
+            line-height: 1.5;
+            color: #999999;
+        }
+
+        .message strong {
+            display: block;
+            color: #ffffff;
+            font-weight: 500;
+        }
+
+        /* It failed: nothing moves any more, and the message says what to do */
+        body.failed .monogram { animation: none; opacity: 0.5; }
+        body.failed .progress { display: none; }
+        body.failed .message { top: calc(50% + 112px); }
+
+        @media (prefers-reduced-motion: reduce) {
+            .progress::after { animation: none; width: 100%; }
+            .progress { animation: appear 0.6s ease-out 0.8s forwards, breathe 2.5s ease-in-out 1.4s infinite; }
         }
     </style>
 </head>
@@ -53,35 +94,53 @@
     <svg class="monogram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="MirrorDash">
         <path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="2.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
-    <p class="status" id="status-text" hidden></p>
+    <div class="progress" role="progressbar" aria-label="MirrorDash is starting"></div>
+    <p class="message" id="message" aria-live="polite"></p>
 
     <script>
         const HEALTH_URL = 'http://localhost:8000/health';
         const TARGET_URL = 'http://localhost:8000';
+        const STILL_STARTING_AFTER = 45 * 1000;
+        const FAILED_AFTER = 4 * 60 * 1000;
 
         const STATUS_MESSAGES = {
             'rollback': 'Recovering from an update…',
             'safe_mode': 'Starting in safe mode…',
         };
 
+        const startedAt = Date.now();
+        const messageEl = document.getElementById('message');
+
+        function show(html) {
+            if (messageEl.innerHTML !== html) messageEl.innerHTML = html;
+        }
+
         async function checkHealth() {
             try {
-                const response = await fetch(HEALTH_URL);
+                const response = await fetch(HEALTH_URL, { cache: 'no-store' });
                 if (response.ok) {
                     const data = await response.json().catch(function() { return {}; });
-                    const message = STATUS_MESSAGES[(data && data.boot_status) || 'normal'];
-                    if (message) {
-                        const statusEl = document.getElementById('status-text');
-                        statusEl.textContent = message;
-                        statusEl.hidden = false;
-                    }
+                    const special = STATUS_MESSAGES[(data && data.boot_status) || 'normal'];
+                    document.body.classList.remove('failed');
+                    show(special || '');
                     setTimeout(function() {
                         window.location.replace(TARGET_URL);
-                    }, message ? 2000 : 400);
+                    }, special ? 2000 : 400);
                     return;
                 }
             } catch (error) {
                 // The app isn't up yet
+            }
+
+            // Keep asking even after showing the error: if the app comes up after all, carry on.
+            const waited = Date.now() - startedAt;
+            if (waited > FAILED_AFTER) {
+                document.body.classList.add('failed');
+                show('<strong>MirrorDash didn’t start.</strong>' +
+                     'Unplug the mirror and plug it in again.<br>' +
+                     'If this keeps happening, the SD card may need a fresh MirrorDash image.');
+            } else if (waited > STILL_STARTING_AFTER) {
+                show('Still starting…');
             }
             setTimeout(checkHealth, 500);
         }

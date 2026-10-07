@@ -31,7 +31,18 @@ def test_script_draws_one_image_per_mode_in_every_mode():
     assert all(f'"{image}"' in script for image in IMAGES)
     assert '!= "shutdown"' not in script  # pix.script never drew its image when shutting down
     assert "Image.Text" not in script and "#" not in script  # no fonts needed, nothing pix.script doesn't do
-    assert script.rstrip().endswith("sprite.SetPosition (image_x, image_y, -100);")  # drawn unconditionally
+    assert "\n\nsprite = Sprite (resized_image);\nsprite.SetPosition (image_x, image_y, -100);\n" in script  # top level: every mode
+
+
+def test_script_only_breathes_the_image():
+    """The animation that shows the mirror is still starting changes nothing but the opacity, using
+    the same pattern as Plymouth's own example theme (state kept on a global object)."""
+    script = heredoc("mirrordash.script")
+    callback = script[script.index("fun refresh_callback ()"):script.index("Plymouth.SetRefreshFunction (refresh_callback);")]
+    assert "breath.angle += " in callback and "Math.Cos(breath.angle)" in callback
+    body = callback[callback.index("{") + 1:callback.rindex("}")].split()
+    statements = [word for word in body if word.startswith(("breath.", "opacity", "sprite."))]
+    assert statements == ["breath.angle", "opacity", "opacity", "opacity", "sprite.SetOpacity"]
 
 
 def test_boot_images_are_small_and_rendered_on_black():

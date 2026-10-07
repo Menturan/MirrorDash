@@ -32,6 +32,8 @@ There are two kinds of releases:
 - The Modules tab gets straight to the point: no banner, clearer filter buttons, and storage is only mentioned when it runs low.
 - Modules without their own description show their package description.
 - The MD monogram is now the icon everywhere (browser tab, home screen), and the first screen after start looks exactly like the start screen before it.
+- It's always visible that something is happening: a moving line while the mirror starts, a loading line at the top of the admin page while a tab loads, and animated dots on the Wi-Fi setup page.
+- If MirrorDash doesn't start within 4 minutes, the mirror says so and what to do. If the mirror loses MirrorDash for more than 2 minutes, it shows "MirrorDash isn't responding" instead of reconnecting silently forever.
 - A new Wi-Fi setup page for the first start: tap your network in a list, type the password (with a Show button), and the page tells you where to find the mirror afterwards (mirrordash.local). The time zone is taken from your phone. The text on the mirror during setup is simpler too.
 - The dashboard shows which module sits where on the screen (turned-off modules dimmed), not just which positions are in use.
 - Logs: errors and warnings are coloured, a filter box shows only matching lines, and the log fills the screen.
@@ -57,6 +59,7 @@ There are two kinds of releases:
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image
+- The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
 - A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
 - Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
 - Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).

@@ -199,6 +199,14 @@
             .address { animation: none; }
         }
 
+        /* Waiting is always visible: three dots that light up in turn */
+        .dots { display: inline-flex; gap: 4px; margin-left: 8px; vertical-align: middle; }
+        .dots i { width: 5px; height: 5px; border-radius: 50%; background: currentColor; animation: dot 1.2s ease-in-out infinite; }
+        .dots i:nth-child(2) { animation-delay: 0.2s; }
+        .dots i:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes dot { 0%, 80%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+        @media (prefers-reduced-motion: reduce) { .dots i { animation-duration: 2.4s; } }
+
         [hidden] { display: none !important; }
     </style>
 </head>
@@ -225,7 +233,7 @@
         <h1>Choose your Wi-Fi</h1>
         <p class="lead">The mirror connects to the network you pick here.</p>
         <ul class="networks" id="network-list" aria-label="Wi-Fi networks nearby"></ul>
-        <p class="status" id="scan-status" role="status">Looking for networks…</p>
+        <p class="status" id="scan-status" role="status">Looking for networks<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></p>
         <button type="button" class="text-btn" id="manual-btn">Network not listed?</button>
     </section>
 
@@ -302,7 +310,7 @@
     async function scan() {
         const list = $("network-list");
         list.replaceChildren();
-        $("scan-status").textContent = "Looking for networks…";
+        $("scan-status").innerHTML = 'Looking for networks<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>';
         try {
             const res = await fetch("/api/wifi/scan", { headers: authHeaders() });
             if (res.status === 401) {
@@ -362,7 +370,7 @@
             return;
         }
         $("connect-btn").disabled = true;
-        $("connect-btn").textContent = "Connecting…";
+        $("connect-btn").innerHTML = 'Connecting<span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>';
         try {
             const res = await request;
             if (res.status === 401) throw new Error("That admin password isn't right.");

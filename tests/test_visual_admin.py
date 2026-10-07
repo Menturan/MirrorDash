@@ -1,3 +1,4 @@
+import os
 import time
 import socket
 import threading
@@ -434,3 +435,56 @@ def test_module_script_gets_its_own_shadow_root(page):
     read = "m => document.querySelector(`[data-module='${m}']`).shadowRoot.querySelector('.out').textContent"
     assert page.evaluate(read, "clock-a") == "root:2"  # same root across re-renders, so state like timers persists
     assert page.evaluate(read, "clock-b") == "root:1"  # and it's per instance
+
+
+def test_loading_page_shows_progress_then_error_then_recovers(page):
+    """The kiosk's first page: something always moves while waiting, and it says so if the app never starts."""
+    healthy = {"up": False}
+    page.route("http://localhost:8000/health", lambda r: r.fulfill(json={"status": "ok"}) if healthy["up"] else r.abort())
+    page.route("http://localhost:8000/", lambda r: r.fulfill(body="<p id=mirror>mirror</p>", content_type="text/html"))
+    page.clock.install()
+    page.goto(f"file://{os.path.abspath('mirrordash_core/static/loading.html')}")
+
+    def advance(ms):
+        # Each health check schedules the next one only after its fetch fails (real time), so
+        # move the fake clock in small steps and let the page catch up in between.
+        for _ in range(ms // 500):
+            page.clock.run_for(500)
+            page.wait_for_timeout(5)
+
+    page.wait_for_timeout(1600)  # CSS animations run on real time, not the fake clock
+    assert page.locator(".progress").evaluate("e => getComputedStyle(e).opacity") == "1"  # the gliding line
+    assert page.locator("#message").text_content() == ""
+
+    advance(46_000)
+    assert page.locator("#message").text_content() == "Still starting…"
+
+    advance(4 * 60_000)
+    assert "MirrorDash didn’t start." in page.locator("#message").text_content()
+    assert page.locator(".progress").is_hidden()  # an error doesn't pretend to be loading
+
+    healthy["up"] = True  # it came up after all: carry on to the mirror
+    advance(2000)
+    page.wait_for_selector("#mirror")
+
+
+def test_mirror_says_when_the_app_stops_responding(page, server_url):
+    page.goto(f"{server_url}/")
+    page.wait_for_selector("#ws-status")
+    page.evaluate("lostAt = Date.now() - 3 * 60 * 1000; setStatus('disconnected')")
+    assert page.locator("#ws-status .ws-status__label").text_content() == "MirrorDash isn’t responding"
+    assert "ws-status--failed" in page.locator("#ws-status").get_attribute("class")
+
+
+def test_admin_shows_a_loading_line_while_a_tab_loads(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+
+    def slow(route):
+        time.sleep(1.0)  # a Pi 3 can take seconds to answer
+        route.continue_()
+    page.route("**/admin/panels/logs", slow)
+    page.click("#page-tab-logs")
+    page.wait_for_selector("#page-loading:not([hidden])")
+    page.wait_for_selector("#logs-viewer")
+    page.wait_for_selector("#page-loading[hidden]", state="attached")

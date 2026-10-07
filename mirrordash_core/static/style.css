@@ -374,6 +374,9 @@ body, html {
 .ws-status--connecting  { color: #f59e0b; }
 .ws-status--connected   { color: var(--color-status-online); }
 .ws-status--disconnected { color: var(--color-status-warning); }
+/* Gone for minutes: an error, not a wait, so the dot stops pulsing */
+.ws-status--failed { color: var(--color-status-warning); }
+.ws-status--failed .ws-status__dot { background: var(--color-status-warning); }
 
 @keyframes pulse {
     0%   { opacity: 1;   transform: scale(1); }

@@ -201,6 +201,8 @@ Components are designed for **Passive Observation** rather than active interacti
 - **Monogram**: The MirrorDash mark is the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
 - **Boot, Restart and Shutdown Screens**: Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
 
+- **Loading and Errors**: Loading is always visible: anything that waits shows calm motion (the breathing monogram during boot, the gliding line in `loading.html`, the pulsing connection dot, the admin's loading line, the Wi-Fi page's three dots). Anything that fails stops moving and says what happened and what to do; a wait that never ends turns into an error (`loading.html` after 4 minutes, the mirror's connection status after 2). Motion respects `prefers-reduced-motion` by slowing down, never by disappearing.
+
 ## Iconography
 
 Icons are used as minimalist glyphs to represent data contexts (e.g. weather, connection states).

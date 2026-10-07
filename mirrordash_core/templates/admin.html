@@ -691,6 +691,9 @@
     </div>
     {% endif %}
 
+    <!-- Shown while a tab is loading (after 300 ms, so quick answers don't flicker) -->
+    <div id="page-loading" class="page-loading" role="progressbar" aria-label="Loading" hidden></div>
+
     <!-- SIDEBAR / BOTTOM NAVIGATION BAR -->
     <aside>
         <div class="logo-area">
@@ -1538,6 +1541,21 @@
             let detail = '';
             try { detail = JSON.parse(xhr.responseText).detail; } catch (_) {}
             showGlobal(typeof detail === 'string' && detail ? detail : `Something went wrong (error ${xhr.status}).`, 'error');
+        });
+
+        // Loading is always visible: a line at the top while a tab loads. Only the latest tab
+        // request hides it (an aborted older one must not), and errors are shown just below.
+        let loadingRequest = null, loadingTimer = null;
+        document.body.addEventListener('htmx:beforeRequest', (event) => {
+            if (event.detail.target?.id !== 'tab-content') return;
+            loadingRequest = event.detail.requestConfig;
+            clearTimeout(loadingTimer);
+            loadingTimer = setTimeout(() => { document.getElementById('page-loading').hidden = false; }, 300);
+        });
+        document.body.addEventListener('htmx:afterRequest', (event) => {
+            if (event.detail.requestConfig !== loadingRequest) return;
+            clearTimeout(loadingTimer);
+            document.getElementById('page-loading').hidden = true;
         });
 
         document.body.addEventListener('htmx:sendError', () => {
