@@ -226,7 +226,6 @@
         <p class="lead">The mirror connects to the network you pick here.</p>
         <ul class="networks" id="network-list" aria-label="Wi-Fi networks nearby"></ul>
         <p class="status" id="scan-status" role="status">Looking for networks…</p>
-        <button type="button" class="text-btn" id="scan-btn">Scan again</button><br>
         <button type="button" class="text-btn" id="manual-btn">Network not listed?</button>
     </section>
 
@@ -304,7 +303,6 @@
         const list = $("network-list");
         list.replaceChildren();
         $("scan-status").textContent = "Looking for networks…";
-        $("scan-btn").disabled = true;
         try {
             const res = await fetch("/api/wifi/scan", { headers: authHeaders() });
             if (res.status === 401) {
@@ -327,11 +325,9 @@
                 li.append(btn);
                 list.append(li);
             }
-            $("scan-status").textContent = networks.length ? "" : "No networks found. Scan again, or type the network's name.";
+            $("scan-status").textContent = networks.length ? "" : "No networks found. Tap “Network not listed?” to type its name.";
         } catch (_) {
-            $("scan-status").textContent = "Couldn't look for networks. Scan again, or type the network's name.";
-        } finally {
-            $("scan-btn").disabled = false;
+            $("scan-status").textContent = "Couldn't look for networks. Tap “Network not listed?” to type its name.";
         }
     }
 
@@ -405,7 +401,6 @@
         show("step-network");
         scan();
     });
-    $("scan-btn").addEventListener("click", scan);
     $("manual-btn").addEventListener("click", () => choose(null));
     $("back-btn").addEventListener("click", () => show("step-network"));
     $("connect-form").addEventListener("submit", connect);

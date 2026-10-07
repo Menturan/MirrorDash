@@ -54,8 +54,21 @@ def ensure_nm_wifi_persistence() -> None:
     except OSError as e:
         logger.error(f"Failed to create NM connections symlink: {e}")
 
+HOTSPOT_SSID = "MirrorDash-Setup"
+
+
 async def scan_wifi_networks() -> list[str]:
-    """Scan for nearby WiFi networks using nmcli. Returns a list of SSIDs."""
+    """Nearby WiFi network names, without the mirror's own setup hotspot.
+
+    While the hotspot is up, the Pi's single radio can't scan; nmcli then fails or returns an
+    empty list, and the list saved just before the hotspot started is used instead."""
+    def without_hotspot(ssids: list[str]) -> list[str]:
+        return [ssid for ssid in ssids if ssid != HOTSPOT_SSID]
+    return without_hotspot(await _scan_live()) or without_hotspot(_load_cached_scan())
+
+
+async def _scan_live() -> list[str]:
+    """Scan with nmcli; [] when scanning isn't possible."""
     logger.info("Scanning for WiFi networks...")
     try:
         proc = await asyncio.create_subprocess_exec(
@@ -66,7 +79,7 @@ async def scan_wifi_networks() -> list[str]:
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
         if proc.returncode != 0:
             logger.warning(f"WiFi scan failed: {stderr.decode().strip()}")
-            return _load_cached_scan()
+            return []
 
         # Parse SSIDs, filter duplicates and empty lines
         ssids = []
@@ -77,7 +90,7 @@ async def scan_wifi_networks() -> list[str]:
         return ssids
     except Exception as e:
         logger.error(f"Error scanning WiFi: {e}")
-        return _load_cached_scan()
+        return []
 
 
 def _load_cached_scan() -> list[str]:
@@ -240,7 +253,7 @@ async def is_wifi_hotspot_active() -> bool:
             stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
             if proc.returncode == 0:
                 lines = stdout.decode("utf-8", errors="ignore").splitlines()
-                active = "MirrorDash-Setup" in lines
+                active = HOTSPOT_SSID in lines
                 _hotspot_active_cached = active
                 _hotspot_checked_at = time.monotonic()
                 return active
@@ -258,8 +271,8 @@ async def _teardown_captive_ap() -> None:
     _hotspot_active_cached = False
     _hotspot_checked_at = time.monotonic()
     for cmd in (
-        ["sudo", "nmcli", "connection", "down", "MirrorDash-Setup"],
-        ["sudo", "nmcli", "connection", "delete", "MirrorDash-Setup"],
+        ["sudo", "nmcli", "connection", "down", HOTSPOT_SSID],
+        ["sudo", "nmcli", "connection", "delete", HOTSPOT_SSID],
     ):
         try:
             proc = await asyncio.create_subprocess_exec(

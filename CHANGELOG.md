@@ -43,6 +43,7 @@ There are two kinds of releases:
 - Log text is always shown as plain text in the admin page.
 - Wi-Fi setup no longer ends with "Network request failed" when the mirror leaves its setup network to connect.
 - A wrong Wi-Fi password during setup no longer leaves the mirror without any network until it's unplugged: it restarts and opens MirrorDash-Setup again.
+- The Wi-Fi setup page always lists the networks the mirror found, and never its own MirrorDash-Setup network.
 - Modules no longer show "Update available" again right after being updated.
 - The update banner on the dashboard is only about MirrorDash itself and opens Settings, where the update is installed. Module updates are shown on each module in the Modules tab.
 - The screen layout overview on the dashboard shows the real 3×3 grid on phones.

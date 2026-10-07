@@ -94,6 +94,18 @@ def test_wifi_scan_fallback_to_cache(mock_subprocess, mock_cache, client):
     mock_cache.assert_called_once()
 
 
+@patch("mirrordash_core.system.network._load_cached_scan", return_value=["CachedNet", "MirrorDash-Setup"])
+@patch("mirrordash_core.system.network.asyncio.create_subprocess_exec")
+def test_wifi_scan_empty_while_hotspot_uses_cache(mock_subprocess, _cache, client):
+    """In hotspot mode nmcli can succeed with nothing (the radio can't scan): use the saved list,
+    and never offer the mirror's own setup network."""
+    mock_proc = AsyncMock()
+    mock_proc.communicate = AsyncMock(return_value=(b"MirrorDash-Setup\n", b""))
+    mock_proc.returncode = 0
+    mock_subprocess.return_value = mock_proc
+    assert client.get("/api/wifi/scan").json() == {"networks": ["CachedNet"]}
+
+
 @patch("mirrordash_core.system.network._load_cached_scan")
 @patch("mirrordash_core.system.network.asyncio.create_subprocess_exec")
 def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
