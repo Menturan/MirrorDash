@@ -357,25 +357,22 @@ def test_update_system_settings_invalid_inputs(mock_load, client):
     r = client.post("/admin/system", json={"volume": 105}, headers=headers)
     assert r.status_code == 400
 
-@patch("mirrordash_core.display_power.display_power_manager.set_state", new_callable=AsyncMock)
-def test_update_screen_state(mock_power, client):
-    # This route is unauthenticated
-    
-    # Valid state
-    r = client.post("/admin/screen", json={"state": "on"})
-    assert r.status_code == 200
-    assert r.json()["status"] == "success"
-    mock_power.assert_called_once_with(True)
+def test_update_screen_state(client):
+    # This route is unauthenticated (e.g. for Home Assistant)
+    with patch("mirrordash_core.display_power.display_power_manager") as manager:
+        r = client.post("/admin/screen", json={"state": "on"})
+        assert r.status_code == 200 and r.json()["status"] == "success"
+        manager.wake.assert_called_once_with(None)  # the configured screen timeout
 
-    # Valid state off
-    mock_power.reset_mock()
-    r = client.post("/admin/screen", json={"state": "off"})
-    assert r.status_code == 200
-    mock_power.assert_called_once_with(False)
+        assert client.post("/admin/screen", json={"state": "on", "timeout_minutes": 2}).status_code == 200
+        manager.wake.assert_called_with(2)
 
-    # Invalid state value
-    r = client.post("/admin/screen", json={"state": "maybe"})
-    assert r.status_code == 400
+        assert client.post("/admin/screen", json={"state": "off"}).status_code == 200
+        manager.turn_off.assert_called_once_with()
+
+    assert client.post("/admin/screen", json={"state": "maybe"}).status_code == 400
+    assert client.post("/admin/screen", json={"state": "on", "timeout_minutes": 0}).status_code == 400
+    assert client.post("/admin/screen", json={"state": "on", "timeout_minutes": "5"}).status_code == 400
 
 @patch("mirrordash_core.app.module_loader")
 def test_public_active_modules_endpoint(mock_loader, client):

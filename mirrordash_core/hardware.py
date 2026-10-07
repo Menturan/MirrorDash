@@ -10,6 +10,8 @@ every device is a device-tree overlay instead (written to config.txt by the root
   device, read here as raw evdev events.
 - dht11, i2c-sensor (BH1750): the kernel does the sensor protocol and exposes the readings
   under /sys/bus/iio.
+- gpio-fan, pwm-gpio-fan: the kernel's thermal framework switches the fan by CPU temperature;
+  we only read its state from /sys/class/thermal.
 
 The devices are a list in config (system.devices), at most one of each type:
   {"type": "button", "pin": 17, "actions": {...}}, {"type": "light", "address": "0x23"}, ...
@@ -52,12 +54,25 @@ DEVICE_TYPES = {
     "light": {"label": "BH1750 light sensor (I²C)", "addresses": ("0x23", "0x5c"),
               "wiring": "SDA to GPIO 2 (pin 3), SCL to GPIO 3 (pin 5); power from a 3.3V pin and GND. "
                         "Address 0x23 with ADDR unconnected or to GND, 0x5c with ADDR to 3.3V."},
+    "fan": {"label": "Fan, on/off (2 or 3 wires)", "pin": True, "temperature": True,
+            "wiring": "Never power the fan from the GPIO itself. The GPIO switches a transistor or "
+                      "logic-level MOSFET between the fan's black wire and GND; the red wire goes to 5V, "
+                      "and a diode across the fan protects the transistor. Leave a yellow (speed) wire "
+                      "unconnected. Turns on at the temperature below and off again 5 °C lower."},
+    "pwm_fan": {"label": "PWM fan with speed control (4 wires)", "pin": True, "temperature": True,
+                "wiring": "The blue (PWM) wire to the GPIO, black to GND, red to the voltage the fan "
+                          "needs (most 4-pin fans are 12V, some are 5V), yellow (speed) unconnected. "
+                          "Starts slowly at the temperature below and speeds up in steps "
+                          "(+5, +12.5 and +20 °C)."},
 }
+FAN_TYPES = ("fan", "pwm_fan")
+FAN_TEMPERATURE_RANGE = (40, 80)  # °C; the Pi throttles at 80
 KEYCODES = {"button": 148, "pir": 149, "mmwave": 150}  # KEY_PROG1..3: ignored by the kiosk
 PRESENCE_TYPES = ("pir", "mmwave")
 
 BUTTON_ACTIONS = {
     "none": "Do nothing",
+    "wake": "Wake the screen (for the screen timeout)",
     "toggle_display": "Turn screen on/off",
     "restart": "Restart MirrorDash",
     "reboot": "Restart the mirror",
@@ -95,6 +110,13 @@ def validate_devices(devices: list[dict]) -> str | None:
             pins[pin] = spec["label"]
         elif d.get("address") not in spec["addresses"]:
             return f"The {spec['label']} needs address {' or '.join(spec['addresses'])}."
+    if all(t in types for t in FAN_TYPES):
+        return "Only one fan can be connected."
+    for d in devices:
+        if d["type"] in FAN_TYPES:
+            low, high = FAN_TEMPERATURE_RANGE
+            if not isinstance(d.get("temperature"), int) or not low <= d["temperature"] <= high:
+                return f"The fan's temperature must be between {low} and {high} °C."
     if any("addresses" in DEVICE_TYPES[t] for t in types):
         for pin in I2C_PINS:
             if pin in pins:
@@ -103,8 +125,12 @@ def validate_devices(devices: list[dict]) -> str | None:
 
 
 def overlay_args(devices: list[dict]) -> list[str]:
-    """Helper arguments, e.g. ["button:17", "light:0x23"]."""
-    return [f"{d['type']}:{d['pin'] if 'pin' in d else d['address']}" for d in devices]
+    """Helper arguments, e.g. ["button:17", "light:0x23", "fan:14:60"] (fans: GPIO:°C)."""
+    def value(d):
+        if d["type"] in FAN_TYPES:
+            return f"{d['pin']}:{d['temperature']}"
+        return d["pin"] if "pin" in d else d["address"]
+    return [f"{d['type']}:{value(d)}" for d in devices]
 
 
 # --- Writing config.txt ------------------------------------------------------------------
@@ -222,6 +248,8 @@ class GpioInputs:
       hardware.motion   {"motion": bool, "sensor": "pir"|"mmwave"}   when presence starts / stops
       hardware.climate  {"temperature_c": float, "humidity": int}    every SENSOR_INTERVAL s
       hardware.light    {"lux": float}                               every SENSOR_INTERVAL s
+      hardware.fan      {"level": int, "max_level": int, "cpu_temperature_c": float}
+                        every SENSOR_INTERVAL s (level 0 = off; an on/off fan has max_level 1)
     """
 
     SENSOR_INTERVAL = 30.0
@@ -323,6 +351,10 @@ class GpioInputs:
                     reading = await read_sensor(device_type)
                     if reading:
                         event_bus.publish(event, dict(reading))
+            if any(find_device(system_cfg, t) for t in FAN_TYPES):
+                fan = read_fan_state()
+                if fan:
+                    event_bus.publish("hardware.fan", fan)
             await asyncio.sleep(self.SENSOR_INTERVAL)
 
     def _on_button(self, pressed: bool) -> None:
@@ -352,8 +384,10 @@ async def run_button_action(action: str) -> None:
     from mirrordash_core.display_power import display_power_manager
     from mirrordash_core.system import poweroff_system, reboot_system, run_restart
 
-    if action == "toggle_display":
-        await display_power_manager.set_state(not display_power_manager.is_on)
+    if action == "wake":
+        display_power_manager.wake()
+    elif action == "toggle_display":
+        display_power_manager.toggle()
     elif action == "restart":
         await run_restart()
     elif action == "reboot":
@@ -427,6 +461,23 @@ async def read_sensor(device_type: str) -> dict | None:
         _sensor_cache[device_type] = (time.monotonic(), value)
         return value
     return cached[1] if cached else None
+
+
+# --- Fan: state from the kernel's thermal framework ------------------------------------
+
+def read_fan_state() -> dict | None:
+    """{"level", "max_level", "cpu_temperature_c"} of the gpio-fan / pwm-fan, or None if not loaded."""
+    for d in glob.glob("/sys/class/thermal/cooling_device*"):
+        try:
+            with open(os.path.join(d, "type")) as f:
+                if f.read().strip() not in ("gpio-fan", "pwm-fan"):
+                    continue
+            state = {"level": int(_read_number(d, "cur_state")), "max_level": int(_read_number(d, "max_state"))}
+            state["cpu_temperature_c"] = round(_read_number("/sys/class/thermal/thermal_zone0", "temp") / 1000, 1)
+            return state
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 gpio_inputs = GpioInputs()

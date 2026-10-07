@@ -47,3 +47,22 @@ def test_rejects_invalid_arguments_without_touching_config(tmp_path):
         code, text = run_helper(tmp_path, *args)
         assert code == 2, args
         assert text == ORIGINAL
+
+
+def test_fans(tmp_path):
+    code, text = run_helper(tmp_path, "fan:14:60")
+    assert code == 0
+    assert "dtoverlay=gpio-fan,gpiopin=14,temp=60000,hyst=5000" in text
+    code, text = run_helper(tmp_path, "pwm_fan:18:55")
+    assert code == 0
+    assert ("dtoverlay=pwm-gpio-fan,fan_gpio=18,fan_temp0=55000,fan_temp1=60000,"
+            "fan_temp2=67500,fan_temp3=75000") in text
+    assert "gpio-fan,gpiopin" not in text  # the previous fan is replaced
+
+
+def test_rejects_bad_fans(tmp_path):
+    for args in (("fan:14",), ("fan:14:39",), ("fan:14:81",), ("fan:14:6x",), ("fan:14:60", "pwm_fan:18:60"),
+                 ("fan:14:60", "button:14")):
+        code, text = run_helper(tmp_path, *args)
+        assert code == 2, args
+        assert text == ORIGINAL

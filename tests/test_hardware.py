@@ -45,7 +45,26 @@ def test_validate_devices():
     assert "can't be used" in v([{"type": "button", "pin": 1}])
     assert "needs address" in v([{"type": "light", "address": "0x40"}])
     assert "needed for I²C" in v([{"type": "button", "pin": 3}, {"type": "light", "address": "0x23"}])
-    assert "Unknown device type" in v([{"type": "fan", "pin": 12}])
+    assert "Unknown device type" in v([{"type": "heater", "pin": 12}])
+    assert v([{"type": "fan", "pin": 14, "temperature": 60}]) is None
+    assert "between 40 and 80" in v([{"type": "pwm_fan", "pin": 18, "temperature": 90}])
+    assert "Only one fan" in v([{"type": "fan", "pin": 14, "temperature": 60}, {"type": "pwm_fan", "pin": 18, "temperature": 60}])
+    assert hardware.overlay_args([{"type": "fan", "pin": 14, "temperature": 60}]) == ["fan:14:60"]
+
+
+def test_read_fan_state(tmp_path, monkeypatch):
+    fan = tmp_path / "cooling_device0"
+    fan.mkdir()
+    for f, v in (("type", "pwm-fan"), ("cur_state", "2"), ("max_state", "4")):
+        (fan / f).write_text(v + "\n")
+    zone = tmp_path / "thermal_zone0"
+    zone.mkdir()
+    (zone / "temp").write_text("62500\n")
+    monkeypatch.setattr(hardware.glob, "glob", lambda pattern: [str(fan)] if "cooling" in pattern else [])
+    real_join = os.path.join
+    monkeypatch.setattr(hardware.os.path, "join",
+                        lambda a, *b: real_join(str(zone), *b) if a == "/sys/class/thermal/thermal_zone0" else real_join(a, *b))
+    assert hardware.read_fan_state() == {"level": 2, "max_level": 4, "cpu_temperature_c": 62.5}
 
 
 def test_sync_only_writes_when_devices_change():
@@ -194,7 +213,7 @@ def test_button_actions(mock_load, mock_save, _rw, _ro, client):
 def test_device_problem_does_not_block_other_settings():
     """An old OS image (no helper) must never stop the display settings from saving."""
     from mirrordash_core.api.admin_system import update_system_settings
-    cfg = {"system": {"devices": [{"type": "button", "pin": 23}], "display_control": {"mode": "pir"}}}
+    cfg = {"system": {"devices": [{"type": "button", "pin": 23}], "display_control": {"mode": "wake"}}}
     with patch("mirrordash_core.api.admin_system.load_config", return_value=cfg), \
          patch("mirrordash_core.api.admin_system.save_config") as save, \
          patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock), \
@@ -202,5 +221,5 @@ def test_device_problem_does_not_block_other_settings():
          patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock), \
          patch("mirrordash_core.hardware.os.path.exists", return_value=False):
         asyncio.run(update_system_settings(settings={"brightness": 40}))
-        asyncio.run(update_system_settings(settings={"display_control": {"mode": "pir"}}))
+        asyncio.run(update_system_settings(settings={"display_control": {"mode": "wake"}}))
     assert save.call_count == 2

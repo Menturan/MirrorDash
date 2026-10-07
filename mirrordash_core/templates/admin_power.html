@@ -9,17 +9,23 @@
             <!-- Display Power Management Mode -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
-                    <label for="sys-display-mode" style="font-weight: 500; font-size: 0.9rem; color: white;">Display Power Management</label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--color-standard-gray); margin: 0;">Choose how the screen is turned on/off automatically.</p>
+                    <label for="sys-display-mode" style="font-weight: 500; font-size: 0.9rem; color: white;">When is the screen on?</label>
                 </div>
-                <select id="sys-display-mode" name="display_control[mode]" class="form-control" style="margin-bottom: 12px;" onchange="toggleDisplayModeGroups(this.value)">
-                    <option value="manual" {% if settings.display_control.mode == "manual" %}selected{% endif %}>Manual / Always On</option>
-                    <option value="interval" {% if settings.display_control.mode == "interval" %}selected{% endif %}>Time of Day Schedule</option>
-                    <option value="pir" {% if settings.display_control.mode == "pir" %}selected{% endif %}>Motion / Presence Sensor</option>
+                {% set mode = settings.display_control.mode if settings.display_control.mode in ("manual", "interval", "wake") else "manual" %}
+                <select id="sys-display-mode" name="display_control[mode]" class="form-control" style="margin-bottom: 8px;" onchange="toggleDisplayModeGroups(this)">
+                    <option value="manual" {% if mode == "manual" %}selected{% endif %}
+                            data-help="The screen is always on, unless you turn it off yourself.">Always on</option>
+                    <option value="interval" {% if mode == "interval" %}selected{% endif %}
+                            data-help="On between the times below. Outside them the screen is off, but it can still be woken for a while (see Waking the screen).">On a schedule</option>
+                    <option value="wake" {% if mode == "wake" %}selected{% endif %}
+                            data-help="The screen is off and only lights up when something wakes it: someone in front of the mirror, the button, or a call from e.g. Home Assistant. Saves the most energy and screen life.">Off until woken</option>
                 </select>
+                <p id="display-mode-help" class="field-description" style="font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 14px 0;">
+                    {% if mode == "manual" %}The screen is always on, unless you turn it off yourself.{% elif mode == "interval" %}On between the times below. Outside them the screen is off, but it can still be woken for a while (see Waking the screen).{% else %}The screen is off and only lights up when something wakes it: someone in front of the mirror, the button, or a call from e.g. Home Assistant. Saves the most energy and screen life.{% endif %}
+                </p>
 
                 <!-- Interval Settings Group -->
-                <div id="display-mode-interval-group" class="sub-form-group" style="{% if settings.display_control.mode == 'interval' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
+                <div id="display-mode-interval-group" class="sub-form-group" style="{% if mode == 'interval' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
                     <div style="display: flex; gap: 15px; margin-bottom: 10px;">
                         <div style="flex: 1;">
                             <span style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Active Start Time</span>
@@ -68,19 +74,59 @@
                     </div>
                 </div>
 
-                <!-- Presence Settings Group (the sensors themselves are added under Hardware) -->
-                <div id="display-mode-pir-group" class="sub-form-group" style="{% if settings.display_control.mode == 'pir' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
-                    {% if presence_sensors %}
-                        <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0 0 10px 0;">Uses: {{ presence_sensors | join(", ") }}.</p>
-                    {% else %}
-                        <p class="field-description" style="font-size: 0.8rem; color: var(--warning-color); margin: 0 0 10px 0;">No motion or presence sensor is connected yet. Add a PIR or mmWave sensor under Hardware → Sensors &amp; Inputs.</p>
-                    {% endif %}
-                    <div style="max-width: 220px; margin-bottom: 10px;">
-                        <label for="sys-display-pir-timeout" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Turn the screen off after (minutes without motion)</label>
-                        <input type="number" id="sys-display-pir-timeout" name="display_control[pir][timeout_minutes]" class="form-control" min="1" max="1440" value="{{ settings.display_control.pir.timeout_minutes or 5 }}">
+                <!-- Waking the screen: used whenever the mode above has the screen off -->
+                {% set wake = settings.display_control.wake or {} %}
+                {% set extend = wake.extend if wake.extend is defined else true %}
+                <div id="display-mode-wake-group" class="sub-form-group" {% if mode == "manual" %}hidden{% endif %}
+                     style="padding: 14px 0 0 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px; display: grid; gap: 14px;">
+                    <div>
+                        <div style="font-weight: 500; font-size: 0.9rem; color: white;">Waking the screen</div>
+                        <p class="field-description" style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
+                            When the screen is off, something can wake it for a while. Afterwards it turns off again by itself.
+                        </p>
+                    </div>
+
+                    <div style="max-width: 260px;">
+                        <label for="sys-wake-timeout" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Keep it on for (minutes)</label>
+                        <input type="number" id="sys-wake-timeout" name="display_control[wake][timeout_minutes]" class="form-control" min="1" max="1440" value="{{ wake.timeout_minutes or 5 }}">
+                    </div>
+
+                    <fieldset style="border: none; padding: 0; margin: 0; display: grid; gap: 10px;">
+                        <legend style="font-size: 0.8rem; color: white; margin-bottom: 6px;">How the time is counted</legend>
+                        <label style="display: flex; gap: 10px; align-items: flex-start; font-size: 0.85rem; color: white;">
+                            <input type="radio" name="display_control[wake][extend]" value="true" {% if extend %}checked{% endif %} style="margin-top: 1px; width: 18px; height: 18px; flex-shrink: 0;">
+                            <span>From the last activity (recommended)
+                                <span style="display: block; font-size: 0.75rem; color: var(--text-muted);">Every new movement or call starts the countdown again, and it waits while someone is still there. The screen turns off when nothing has happened for this long.</span></span>
+                        </label>
+                        <label style="display: flex; gap: 10px; align-items: flex-start; font-size: 0.85rem; color: white;">
+                            <input type="radio" name="display_control[wake][extend]" value="false" {% if not extend %}checked{% endif %} style="margin-top: 1px; width: 18px; height: 18px; flex-shrink: 0;">
+                            <span>A fixed time
+                                <span style="display: block; font-size: 0.75rem; color: var(--text-muted);">The screen stays on exactly this long after it was woken, even if someone is still there. Good for showing something briefly, like a doorbell.</span></span>
+                        </label>
+                    </fieldset>
+
+                    <div>
+                        <label style="display: flex; gap: 10px; align-items: center; font-size: 0.85rem; color: white;">
+                            <input type="hidden" name="display_control[wake][presence]" value="false">
+                            <input type="checkbox" name="display_control[wake][presence]" value="true" {% if wake.presence is not defined or wake.presence %}checked{% endif %} style="width: 18px; height: 18px; flex-shrink: 0;">
+                            Wake when someone is in front of the mirror
+                        </label>
+                        <p class="field-description" style="font-size: 0.75rem; color: {% if presence_sensors %}var(--text-muted){% else %}var(--warning-color){% endif %}; margin: 4px 0 0 26px;">
+                            {% if presence_sensors %}Uses: {{ presence_sensors | join(", ") }}.{% else %}No motion or presence sensor is connected. Add a PIR or mmWave sensor under Hardware → Sensors &amp; Inputs.{% endif %}
+                        </p>
+                    </div>
+
+                    <div style="font-size: 0.75rem; color: var(--text-muted); line-height: 1.5;">
+                        <strong style="color: var(--text-secondary);">Also wakes it:</strong> the push button (if one of its presses is set to "Wake the screen"),
+                        the Turn Screen ON button below, and other systems such as Home Assistant:
+                        <code style="display: block; margin: 6px 0; word-break: break-all; color: var(--text-primary);">POST http://mirrordash.local/admin/screen</code>
+                        <div style="display: grid; gap: 6px;">
+                            <div><code style="color: var(--text-primary);">{"state": "on"}</code><br>wakes it for the time above</div>
+                            <div><code style="color: var(--text-primary);">{"state": "on", "timeout_minutes": 2}</code><br>wakes it for 2 minutes, for just this call</div>
+                            <div><code style="color: var(--text-primary);">{"state": "off"}</code><br>turns it off right away</div>
+                        </div>
                     </div>
                 </div>
-
             </div>
 
         </form>
@@ -109,7 +155,9 @@
         <h2><i class="fas fa-tv" aria-hidden="true"></i> Immediate Action</h2>
         <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
             <div class="form-label-desc" style="margin-bottom: 8px;">
-                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Manually turn the mirror display output ON or OFF right now.</p>
+                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn the screen on or off right now. When the setting above has the screen off, ON wakes it for the screen timeout.</p>
+                <div id="screen-status" hx-get="/admin/panels/power/screen-status" hx-trigger="load, every 5s" hx-target="this"
+                     style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"></div>
             </div>
             <div style="display: flex; gap: 12px; width: 100%;">
                 <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;"
@@ -117,7 +165,7 @@
                         hx-vals='{"state": "on"}'
                         hx-target="#global-status"
                         hx-swap="innerHTML"
-                        onclick="this.disabled=true; setTimeout(() => this.disabled=false, 3000)">
+                        hx-disabled-elt="this">
                     <i class="fas fa-desktop" aria-hidden="true"></i> Turn Screen ON
                 </button>
                 <button type="button" id="screen-off-btn" class="btn danger" style="flex: 1; justify-content: center;"
@@ -125,7 +173,7 @@
                         hx-vals='{"state": "off"}'
                         hx-target="#global-status"
                         hx-swap="innerHTML"
-                        onclick="this.disabled=true; setTimeout(() => this.disabled=false, 3000)">
+                        hx-disabled-elt="this">
                     <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
                 </button>
             </div>
@@ -134,8 +182,9 @@
 </div>
 
 <script>
-    function toggleDisplayModeGroups(mode) {
-        document.getElementById('display-mode-interval-group').style.display = mode === 'interval' ? 'block' : 'none';
-        document.getElementById('display-mode-pir-group').style.display = mode === 'pir' ? 'block' : 'none';
+    function toggleDisplayModeGroups(select) {
+        document.getElementById('display-mode-interval-group').style.display = select.value === 'interval' ? 'block' : 'none';
+        document.getElementById('display-mode-wake-group').hidden = select.value === 'manual';
+        document.getElementById('display-mode-help').textContent = select.selectedOptions[0].dataset.help;
     }
 </script>

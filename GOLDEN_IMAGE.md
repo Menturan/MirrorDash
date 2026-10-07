@@ -656,25 +656,30 @@ sudo visudo -cf /etc/sudoers.d/mirrordash
 
 ### 3.3 GPIO Overlay Helper (Sensors & Inputs)
 
-The admin page's *Sensors & Inputs* list (push button, PIR, mmWave, DHT11, BH1750 light sensor) is applied through this root-owned helper (allowed in the sudoers file above). It only accepts a fixed set of `type:value` arguments (GPIO 2–27, each GPIO and type once, I²C addresses 0x23/0x5c, GPIO 2/3 reserved while I²C is used) and only rewrites a managed `[all]` block of device-tree overlays in `config.txt`; the firmware applies them at the next boot. The kernel drivers then do the work: `gpio-key` debounces the button and the presence sensors and reports them as input devices (`KEY_PROG1`–`KEY_PROG3`), `dht11` and `i2c-sensor` expose readings under `/sys/bus/iio/devices/`. No Python GPIO library is needed. Reading `/dev/input/event*` relies on `pi` being in the `input` group, which Raspberry Pi OS sets up for the first user.
+The admin page's *Sensors & Inputs* list (push button, PIR, mmWave, DHT11, BH1750 light sensor, on/off or PWM fan) is applied through this root-owned helper (allowed in the sudoers file above). It only accepts a fixed set of `type:value` arguments (GPIO 2–27, each GPIO and type once, I²C addresses 0x23/0x5c, GPIO 2/3 reserved while I²C is used, fans as `GPIO:°C` with 40–80 °C and only one fan) and only rewrites a managed `[all]` block of device-tree overlays in `config.txt`; the firmware applies them at the next boot. The kernel drivers then do the work: `gpio-key` debounces the button and the presence sensors and reports them as input devices (`KEY_PROG1`–`KEY_PROG3`), `dht11` and `i2c-sensor` expose readings under `/sys/bus/iio/devices/`, and `gpio-fan`/`pwm-gpio-fan` let the kernel's thermal framework run the fan by CPU temperature. No Python GPIO library is needed. Reading `/dev/input/event*` relies on `pi` being in the `input` group, which Raspberry Pi OS sets up for the first user.
 
 ```bash
 sudo tee /usr/local/bin/mirrordash-gpio-overlays > /dev/null << 'EOF'
 #!/bin/bash
 # Usage: mirrordash-gpio-overlays [type:value ...]
 #   button, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
-# Each type at most once, every GPIO at most once, GPIO 2/3 are reserved while I2C is used.
+#   fan, pwm_fan: GPIO:temperature, e.g. fan:14:60 (switch-on temperature 40-80 °C)
+# Each type at most once, one fan, every GPIO at most once, GPIO 2/3 reserved while I2C is used.
 set -euo pipefail
 
 die() { echo "$*" >&2; exit 2; }
 declare -A seen_type=() seen_pin=()
 lines=()
 for arg in "$@"; do
-  type=${arg%%:*} value=${arg#*:}
+  type=${arg%%:*} value=${arg#*:} temp=""
+  if [ "$type" = fan ] || [ "$type" = pwm_fan ]; then
+    temp=${value#*:} value=${value%%:*}
+    { [[ "$temp" =~ ^[0-9]+$ ]] && [ "$temp" -ge 40 ] && [ "$temp" -le 80 ]; } || die "invalid fan temperature: $arg"
+  fi
   [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
   seen_type[$type]=1
   case "$type" in
-    button|pir|mmwave|dht11)
+    button|pir|mmwave|dht11|fan|pwm_fan)
       { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
       [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
       seen_pin[$value]=1 ;;
@@ -690,8 +695,12 @@ for arg in "$@"; do
     mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
     dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;
     light)  lines+=("dtparam=i2c_arm=on" "dtoverlay=i2c-sensor,bh1750,addr=$value") ;;
+    # The kernel's thermal framework runs the fan by CPU temperature (millidegrees)
+    fan)    lines+=("dtoverlay=gpio-fan,gpiopin=$value,temp=$((temp * 1000)),hyst=5000") ;;
+    pwm_fan) lines+=("dtoverlay=pwm-gpio-fan,fan_gpio=$value,fan_temp0=$((temp * 1000)),fan_temp1=$((temp * 1000 + 5000)),fan_temp2=$((temp * 1000 + 12500)),fan_temp3=$((temp * 1000 + 20000))") ;;
   esac
 done
+if [ -n "${seen_type[fan]:-}" ] && [ -n "${seen_type[pwm_fan]:-}" ]; then die "only one fan"; fi
 if [ -n "${seen_type[light]:-}" ] && { [ -n "${seen_pin[2]:-}" ] || [ -n "${seen_pin[3]:-}" ]; }; then
   die "GPIO 2 and 3 are needed for I2C"
 fi

@@ -13,6 +13,8 @@ There are two kinds of releases:
 - Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting.
 - See the room's temperature, humidity and light level on the dashboard.
 - Restart and shut down the mirror from the Power tab.
+- A screen timeout: the screen can be "off until woken", or off outside its schedule, and light up for a while when someone is in front of the mirror, the button is pressed, or Home Assistant calls `/admin/screen` (optionally with its own time). Choose whether every new activity keeps it on longer or it stays on a fixed time. The Power tab explains each choice.
+- Connect a fan that cools the Pi by CPU temperature: on/off (2 or 3 wires, with a transistor) or a 4-wire PWM fan with speed steps.
 - A "Sensors & Inputs" list in the Hardware tab: add a push button, a PIR motion sensor, an mmWave presence sensor (also notices someone standing still), a DHT11 temperature & humidity sensor or a BH1750 light sensor, with wiring hints for each.
 - Modules can react to the push button, presence and the room sensors (for module developers: the `hardware.button`, `hardware.motion`, `hardware.climate` and `hardware.light` events).
 - A button on GPIO 3 can also start the mirror again after it has been shut down (shown as a tip in the Hardware tab).

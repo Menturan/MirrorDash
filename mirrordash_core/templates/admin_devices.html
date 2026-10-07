@@ -10,7 +10,7 @@
             <div>
                 <div style="font-weight: 500; color: white;">{{ spec.label }}</div>
                 <div style="font-size: 0.75rem; color: var(--text-muted);">
-                    {% if d.pin is defined %}GPIO {{ d.pin }} (pin {{ header_pins[d.pin] }}){% else %}I²C address {{ d.address }}{% endif %}
+                    {% if d.pin is defined %}GPIO {{ d.pin }} (pin {{ header_pins[d.pin] }}){% else %}I²C address {{ d.address }}{% endif %}{% if d.temperature is defined %} · starts at {{ d.temperature }} °C{% endif %}
                 </div>
             </div>
             <button type="button" class="btn danger btn-sm"
@@ -52,11 +52,12 @@
         <label for="device-type" style="font-weight: 500; font-size: 0.9rem; color: white;">Connect something new</label>
         <select id="device-type" name="type" class="form-control"
                 onchange="const o = this.selectedOptions[0];
-                          this.form.pin.hidden = o.dataset.kind !== 'pin';
-                          this.form.address.hidden = o.dataset.kind === 'pin';
+                          this.form.pin.hidden = o.dataset.kind === 'i2c';
+                          this.form.address.hidden = o.dataset.kind !== 'i2c';
+                          this.form.querySelector('.device-temperature').hidden = o.dataset.kind !== 'fan';
                           this.form.querySelector('.device-wiring').textContent = o.dataset.wiring;">
             {% for t in available_types %}
-                <option value="{{ t }}" data-kind="{{ 'pin' if device_types[t].pin else 'i2c' }}" data-wiring="{{ device_types[t].wiring }}">{{ device_types[t].label }}</option>
+                <option value="{{ t }}" data-kind="{{ 'fan' if device_types[t].temperature else ('pin' if device_types[t].pin else 'i2c') }}" data-wiring="{{ device_types[t].wiring }}">{{ device_types[t].label }}</option>
             {% endfor %}
         </select>
         <select name="pin" class="form-control" aria-label="GPIO" {% if not first.pin %}hidden{% endif %}>
@@ -68,6 +69,10 @@
             <option value="0x23">Address 0x23</option>
             <option value="0x5c">Address 0x5c</option>
         </select>
+        <label class="device-temperature" {% if not first.temperature %}hidden{% endif %} style="font-size: 0.8rem; color: white;">
+            Start the fan at (°C)
+            <input type="number" name="temperature" class="form-control" min="40" max="80" value="60" style="margin-top: 4px; max-width: 120px;">
+        </label>
         <p class="device-wiring field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">{{ first.wiring }}</p>
         <div>
             <button type="submit" class="btn primary" hx-disabled-elt="this">

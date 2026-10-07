@@ -36,7 +36,7 @@
         <!-- Room sensors (refreshes every 30 s; the readings themselves are cached server-side) -->
         <section class="card" style="grid-column: span 12;">
             <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
-                <i class="fas fa-thermometer-half" style="color: var(--primary);"></i> Room Sensors
+                <i class="fas fa-thermometer-half" style="color: var(--primary);"></i> Sensors
             </h2>
             <div hx-get="/admin/panels/dashboard/sensor" hx-trigger="load, every 30s">
                 <p style="color: var(--text-muted); margin: 0;">Reading sensor...</p>

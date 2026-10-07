@@ -53,7 +53,7 @@ The Admin Dashboard is organized into seven main tabs:
 
 ### 4.1. Dashboard Tab
 Provides a high-level overview of the mirror's current status:
-*   **Room Sensors**: Temperature and humidity (DHT11) and light level (BH1750), if those sensors are connected (see the Hardware tab). Updates every 30 seconds.
+*   **Sensors**: Temperature and humidity (DHT11), light level (BH1750) and the fan, if they are connected (see the Hardware tab). Updates every 30 seconds.
 *   **Screen Layout Matrix**: A 3x3 grid showing which screen regions (Top Left, Top Center, etc.) are currently occupied by active module instances.
 *   **System Analytics**: Real-time telemetry cards showing CPU temperature, persistent storage disk usage, system memory (RAM) usage, active modules running, local IP address, network connection status (SSID and signal strength), system uptime, and NTP time synchronization status.
 *   **Power Throttling Warning**: Displayed automatically if Raspberry Pi under-voltage is detected (dropping below 4.63V), warning the user of potential system instability or file system corruption.
@@ -86,15 +86,22 @@ Changes are applied as soon as you make them; there is no Apply button. (Turning
         *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so it can't be combined with the light sensor.
     *   *PIR motion sensor* and *mmWave presence sensor* (e.g. LD2410; it also notices someone standing still): used by the Power tab to turn the screen on and off.
     *   *DHT11 temperature & humidity sensor* and *BH1750 light sensor* (I²C, uses GPIO 2 and 3): their readings appear on the Dashboard.
+    *   *Fan*: cools the Pi by CPU temperature; you choose the temperature it starts at. An *on/off* fan (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone; it turns off again 5 °C lower. A *PWM fan* (4 wires) gets its speed from the GPIO and speeds up in steps as the Pi gets warmer. The fan's state is shown on the Dashboard.
 *   Adding or removing something takes effect after the mirror restarts; the card then shows a **Restart Mirror** button. The status line at the bottom shows whether each part is detected, its latest reading, or the last motion.
 
 ### 4.5. Power Tab
 Changes are applied as soon as you make them.
 *   **Mirror Power**: **Restart Mirror** and **Shut Down**. Always shut down before unplugging the power, so the SD card can't be damaged. To start the mirror again, unplug the power and plug it back in.
-*   **Display Power Management**: Choose how your screen is controlled automatically:
-    *   *Manual / Always On*: The screen stays on unless you manually click "Turn Screen OFF".
-    *   *Time of Day Schedule*: Specify an *Active Start Time* (e.g. `07:00`) and *Active End Time* (e.g. `22:30`) to turn the display on during the day and off at night.
-    *   *Motion / Presence Sensor*: Uses the PIR or mmWave sensor added under Hardware → Sensors & Inputs. The screen turns on when someone is there and off after the chosen number of minutes without motion.
+*   **When is the screen on?**
+    *   *Always on*: the screen is on, unless you turn it off yourself.
+    *   *On a schedule*: on between a start and an end time (e.g. `07:00`–`22:30`). Outside them the screen is off, but it can still be woken.
+    *   *Off until woken*: the screen is off and only lights up when something wakes it. Saves the most energy and screen life.
+*   **Waking the screen** (for the schedule and "off until woken"): something wakes the screen for a number of minutes, then it turns off again by itself.
+    *   *From the last activity* (recommended): every new movement or call starts the countdown again, and it waits while someone is still in front of the mirror.
+    *   *A fixed time*: the screen stays on exactly that long after it was woken, even if someone is still there. Good for showing something briefly, like a doorbell.
+    *   What wakes it: someone in front of the mirror (with a PIR or mmWave sensor, if *Wake when someone is in front of the mirror* is on), the push button (a press set to *Wake the screen*), the **Turn Screen ON** button, and other systems such as Home Assistant:
+        *   `POST http://mirrordash.local/admin/screen` with `{"state": "on"}` wakes it for the chosen time, `{"state": "on", "timeout_minutes": 2}` for 2 minutes, and `{"state": "off"}` turns it off right away.
+    *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
 
 ### 4.6. Backup Tab

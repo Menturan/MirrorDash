@@ -382,7 +382,6 @@ async def get_system_settings() -> dict:
             "display_control": system_cfg.get("display_control", {
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
-                "pir": {"timeout_minutes": 5},
             }),
         },
         "resolutions": resolutions
@@ -402,10 +401,11 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     ssh_enabled = settings.get("ssh", system_cfg.get("ssh", True))
     
     # Merge display_control securely
+    from mirrordash_core.display_power import DEFAULT_WAKE
     current_dc = system_cfg.get("display_control", {
         "mode": "manual",
         "interval": {"start": "07:00", "end": "22:00"},
-        "pir": {"timeout_minutes": 5},
+        "wake": dict(DEFAULT_WAKE),
     })
     incoming_dc = settings.get("display_control", {})
     
@@ -415,8 +415,8 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
             display_control["mode"] = incoming_dc["mode"]
         if "interval" in incoming_dc:
             display_control["interval"] = {**display_control.get("interval", {}), **incoming_dc["interval"]}
-        if "pir" in incoming_dc:
-            display_control["pir"] = {**display_control.get("pir", {}), **incoming_dc["pir"]}
+        if "wake" in incoming_dc:
+            display_control["wake"] = {**display_control.get("wake", {}), **incoming_dc["wake"]}
 
     # Validation
     if rotation not in ("normal", "left", "right", "inverted"):
@@ -427,8 +427,14 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail="Volume must be between 0 and 100")
 
     mode = display_control.get("mode", "manual")
-    if mode not in ("manual", "interval", "pir"):
+    if mode not in ("manual", "interval", "wake"):
         raise HTTPException(status_code=400, detail="Invalid display power mode")
+    wake = display_control.get("wake", {})
+    timeout = wake.get("timeout_minutes", DEFAULT_WAKE["timeout_minutes"])
+    if not isinstance(timeout, int) or not 1 <= timeout <= 1440:
+        raise HTTPException(status_code=400, detail="The screen timeout must be 1 to 1440 minutes")
+    if not all(isinstance(wake.get(k, True), bool) for k in ("extend", "presence")):
+        raise HTTPException(status_code=400, detail="Invalid wake settings")
 
     if mode == "interval":
         interval = display_control.get("interval", {})
@@ -436,11 +442,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         end = interval.get("end", "22:00")
         if not re.match(r"^\d{2}:\d{2}$", start) or not re.match(r"^\d{2}:\d{2}$", end):
             raise HTTPException(status_code=400, detail="Invalid interval time format (HH:MM)")
-    elif mode == "pir":
-        pir = display_control.get("pir", {})
-        timeout = pir.get("timeout_minutes", 5)
-        if not isinstance(timeout, int) or timeout < 1:
-            raise HTTPException(status_code=400, detail="Invalid PIR timeout")
 
     system_cfg["rotation"] = rotation
     system_cfg["resolution"] = resolution
@@ -543,14 +544,22 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
 
 @router.post("/screen")
 async def update_screen_state(body: dict = Body(...)) -> dict:
+    """Open endpoint (e.g. for Home Assistant). {"state": "on"} wakes the screen for the
+    configured screen timeout, or for "timeout_minutes" if given; {"state": "off"} turns it off."""
     state = body.get("state")
     if state not in ("on", "off"):
         raise HTTPException(status_code=400, detail="Invalid state value. Must be 'on' or 'off'")
+    timeout = body.get("timeout_minutes")
+    if timeout is not None and (not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 1440):
+        raise HTTPException(status_code=400, detail="timeout_minutes must be a number from 1 to 1440")
 
     from mirrordash_core.display_power import display_power_manager
-    asyncio.create_task(display_power_manager.set_state(state == "on"))
+    if state == "on":
+        display_power_manager.wake(timeout)
+    else:
+        display_power_manager.turn_off()
 
-    return {"status": "success", "message": f"Screen power command to turn '{state}' queued successfully"}
+    return {"status": "success", "message": f"Screen turned {state}"}
 
 
 

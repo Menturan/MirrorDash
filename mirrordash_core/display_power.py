@@ -1,9 +1,26 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+"""Decides when the screen is on.
+
+Base mode (system.display_control.mode):
+  manual   - always on
+  interval - on inside the daily schedule
+  wake     - off until something wakes it
+
+Wake timer (system.display_control.wake): when the base mode has the screen off, it can be
+woken for `timeout_minutes` by presence (if `presence` is on), the button, the admin page or
+the open API (POST /admin/screen {"state": "on", "timeout_minutes": optional}).
+  extend=True  - every new wake restarts the countdown, and it stands still while someone
+                 is there; the screen goes off `timeout_minutes` after the last activity.
+  extend=False - the screen goes off `timeout_minutes` after it was woken, whatever happens.
+An explicit "off" turns the screen off and keeps it off until something wakes it again or the
+base mode changes (e.g. the schedule starts).
+"""
+
 import asyncio
 import logging
-from datetime import datetime, time
 import time as time_mod
+from datetime import datetime, time
 from zoneinfo import ZoneInfo
 
 from mirrordash_core.config import load_config
@@ -11,11 +28,24 @@ from mirrordash_core.system import set_screen_power
 
 logger = logging.getLogger("mirrordash.core.display_power")
 
+DEFAULT_WAKE = {"timeout_minutes": 5, "extend": True, "presence": True}
+
+
+def wake_settings(display_cfg: dict) -> dict:
+    return {**DEFAULT_WAKE, **display_cfg.get("wake", {})}
+
+
 class DisplayPowerManager:
+    RETRY_AFTER_FAILURE = 30.0  # seconds; e.g. no wlr-randr on a development machine
+
     def __init__(self):
         self.task: asyncio.Task | None = None
         self.is_on: bool = True
-        self.last_motion_time: float = 0.0
+        self.wake_until = 0.0        # time.monotonic() until which the screen is woken
+        self.forced_off = False      # an explicit "off" wins until a wake or base change
+        self.last_base: bool | None = None
+        self.was_present = False
+        self.changed = asyncio.Event()
 
     async def start(self) -> None:
         if self.task is None:
@@ -32,76 +62,95 @@ class DisplayPowerManager:
             self.task = None
         logger.info("DisplayPowerManager stopped.")
 
+    # --- Commands (API, admin page, button) ---------------------------------------------
+
+    def wake(self, timeout_minutes: float | None = None, now: float | None = None) -> None:
+        """Turn the screen on for a while (or keep it on longer, depending on `extend`)."""
+        settings = wake_settings(load_config().get("system", {}).get("display_control", {}))
+        now = time_mod.monotonic() if now is None else now
+        until = now + (timeout_minutes or settings["timeout_minutes"]) * 60
+        self.forced_off = False
+        if settings["extend"]:
+            self.wake_until = max(self.wake_until, until)
+        elif now >= self.wake_until:  # fixed time: a wake while already awake changes nothing
+            self.wake_until = until
+        self.changed.set()
+
+    def turn_off(self) -> None:
+        self.wake_until = 0.0
+        self.forced_off = True
+        self.changed.set()
+
+    def toggle(self) -> None:
+        self.turn_off() if self.is_on else self.wake()
+
+    # --- Decision ------------------------------------------------------------------------
+
+    def desired_state(self, display_cfg: dict, now: float, local_time: time, present: bool) -> bool:
+        """Whether the screen should be on now. Pure apart from the timer state it updates."""
+        mode = display_cfg.get("mode", "manual")
+        interval = display_cfg.get("interval", {})
+        base_on = mode == "manual" or (
+            mode == "interval" and self._is_time_in_range(interval.get("start", "07:00"), interval.get("end", "22:00"), local_time)
+        )
+        if base_on != self.last_base:  # e.g. the schedule starts or ends: a manual "off" no longer applies
+            self.forced_off = False
+            self.last_base = base_on
+
+        settings = wake_settings(display_cfg)
+        if settings["presence"] and present:
+            if not self.was_present:  # someone arrived: wakes (and cancels a manual "off")
+                self.wake(now=now)
+            elif settings["extend"]:  # still there: hold the countdown
+                self.wake_until = max(self.wake_until, now + settings["timeout_minutes"] * 60)
+        self.was_present = present
+
+        return not self.forced_off and (base_on or now < self.wake_until)
+
+    def status(self) -> dict:
+        left = max(0.0, self.wake_until - time_mod.monotonic())
+        return {"on": self.is_on, "base_on": bool(self.last_base), "wake_seconds_left": left, "forced_off": self.forced_off}
+
     async def _run_loop(self) -> None:
-        self.last_motion_time = time_mod.time()
+        from mirrordash_core.hardware import gpio_inputs
 
         while True:
             try:
                 config = load_config()
-                system_cfg = config.get("system", {})
-                display_cfg = system_cfg.get("display_control", {})
-
-                mode = display_cfg.get("mode", "manual")
-
-                if mode == "manual":
-                    # manual control is handled via HTTP endpoints
-                    await asyncio.sleep(1.0)
-                    continue
-
-                elif mode == "interval":
-                    interval_cfg = display_cfg.get("interval", {})
-                    start_str = interval_cfg.get("start", "07:00")
-                    end_str = interval_cfg.get("end", "22:00")
-
-                    globals_cfg = config.get("globals", {})
-                    tz_name = globals_cfg.get("timezone", "Europe/Stockholm")
-                    try:
-                        tz = ZoneInfo(tz_name)
-                    except Exception as e:
-                        logger.warning(f"Invalid timezone '{tz_name}' in globals: {e}. Using local system time.")
-                        tz = None
-
-                    now = datetime.now(tz) if tz else datetime.now()
-                    should_be_on = self._is_time_in_range(start_str, end_str, now.time())
-
-                    if should_be_on != self.is_on:
-                        logger.info(f"Schedule mismatch (should_be_on={should_be_on}). Toggling display.")
-                        await self.set_state(should_be_on)
-
-                    await asyncio.sleep(5.0) # Check schedule every 5 seconds
-
-                elif mode == "pir":
-                    # The sensor is read by hardware.gpio_inputs (kernel gpio-key overlay)
-                    from mirrordash_core.hardware import gpio_inputs
-                    timeout_mins = display_cfg.get("pir", {}).get("timeout_minutes", 5)
-
-                    now_ts = time_mod.time()
-                    if gpio_inputs.motion_active:
-                        self.last_motion_time = now_ts
-                        if not self.is_on:
-                            logger.info("Motion detected! Turning display ON.")
-                            await self.set_state(True)
-                    elif self.is_on and now_ts - self.last_motion_time > timeout_mins * 60:
-                        logger.info(f"No motion detected for {timeout_mins} minutes. Turning display OFF.")
-                        await self.set_state(False)
-
-                    await asyncio.sleep(0.5)
-
-                else:
-                    # Unknown mode: behave like manual instead of spinning without a sleep.
-                    # (The GPIO button is handled by hardware.GpioInputs.)
-                    await asyncio.sleep(1.0)
-
+                display_cfg = config.get("system", {}).get("display_control", {})
+                desired = self.desired_state(display_cfg, time_mod.monotonic(), self._local_time(config),
+                                             gpio_inputs.motion_active)
+                if desired != self.is_on:
+                    logger.info(f"Turning the screen {'on' if desired else 'off'}.")
+                    if not await self.set_state(desired):
+                        await asyncio.sleep(self.RETRY_AFTER_FAILURE)
+                # Re-check every second, or right away when a command arrives
+                self.changed.clear()
+                try:
+                    await asyncio.wait_for(self.changed.wait(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    pass
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 logger.error(f"Error in display power loop: {e}", exc_info=True)
                 await asyncio.sleep(5.0)
 
-    async def set_state(self, on: bool) -> None:
+    @staticmethod
+    def _local_time(config: dict) -> time:
+        tz_name = config.get("globals", {}).get("timezone", "Europe/Stockholm")
+        try:
+            tz = ZoneInfo(tz_name)
+        except Exception as e:
+            logger.warning(f"Invalid timezone '{tz_name}' in globals: {e}. Using local system time.")
+            tz = None
+        return (datetime.now(tz) if tz else datetime.now()).time()
+
+    async def set_state(self, on: bool) -> bool:
         success = await set_screen_power(on)
         if success:
             self.is_on = on
+        return bool(success)
 
     def _is_time_in_range(self, start_str: str, end_str: str, current_time: time) -> bool:
         try:

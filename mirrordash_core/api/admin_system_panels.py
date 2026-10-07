@@ -203,12 +203,15 @@ async def save_system_settings_route(request: Request):
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="Volume must be an integer")
 
-    if "pir" in display_control:
-        pir = display_control["pir"]
+    if "wake" in display_control:
+        wake = display_control["wake"]
         try:
-            pir["timeout_minutes"] = int(pir.get("timeout_minutes", 5))
+            wake["timeout_minutes"] = int(wake.get("timeout_minutes", 5))
         except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="The timeout must be a whole number of minutes")
+            raise HTTPException(status_code=400, detail="The screen timeout must be a whole number of minutes")
+        for key in ("extend", "presence"):
+            if key in wake:  # parse_flat_form_data already turns "true"/"false" (and checkbox pairs) into bools
+                wake[key] = wake[key] in (True, "true")
 
     await update_system_settings(settings=parsed)
     return notify("Saved.")
@@ -223,7 +226,7 @@ async def post_panel_screen(request: Request):
         raise HTTPException(status_code=400, detail="Invalid state")
 
     from mirrordash_core.display_power import display_power_manager
-    asyncio.create_task(display_power_manager.set_state(state == "on"))
+    display_power_manager.wake() if state == "on" else display_power_manager.turn_off()
 
     return notify(f"Screen turned {state}.")
 
@@ -291,11 +294,26 @@ async def _sensor_texts(device_type: str) -> list[tuple[str, str]]:
     return [("Light", f"{reading['lux']:.0f} lux")]
 
 
+def _fan_text() -> str | None:
+    from mirrordash_core.hardware import read_fan_state
+
+    fan = read_fan_state()
+    if not fan:
+        return None
+    if fan["level"] == 0:
+        state = "Off"
+    elif fan["max_level"] > 1:
+        state = f"Running, speed {fan['level']} of {fan['max_level']}"
+    else:
+        state = "Running"
+    return f"{state} (CPU {_format_temperature(fan['cpu_temperature_c'])})"
+
+
 def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: str = "success",
                   restart_needed: bool = False):
     """The Sensors & Inputs card, plus the page events that report what happened."""
     from mirrordash_core.hardware import (
-        BUTTON_ACTIONS, DEVICE_TYPES, GPIO_HEADER_PINS, I2C_PINS, get_devices,
+        BUTTON_ACTIONS, DEVICE_TYPES, FAN_TYPES, GPIO_HEADER_PINS, I2C_PINS, get_devices,
     )
 
     devices = get_devices(system_cfg)
@@ -313,7 +331,8 @@ def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: s
         context={
             "devices": devices,
             "device_types": DEVICE_TYPES,
-            "available_types": [t for t in DEVICE_TYPES if t not in {d["type"] for d in devices}],
+            "available_types": [t for t in DEVICE_TYPES if t not in {d["type"] for d in devices}
+                                and not (t in FAN_TYPES and any(d["type"] in FAN_TYPES for d in devices))],
             "free_pins": [(bcm, header) for bcm, header in sorted(GPIO_HEADER_PINS.items()) if bcm not in used_pins],
             "header_pins": GPIO_HEADER_PINS,
             "button_actions": BUTTON_ACTIONS,
@@ -368,6 +387,9 @@ async def add_device(request: Request):
         device["pin"] = int(pin) if pin.isdigit() else -1  # -1: rejected by the validation
     else:
         device["address"] = form.get("address", "")
+    if spec.get("temperature"):
+        temperature = form.get("temperature", "")
+        device["temperature"] = int(temperature) if temperature.isdigit() else -1
     if device_type == "button":
         device["actions"] = {p: "none" for p in PRESS_TYPES}
     return await _save_devices(request, config, devices + [device], f"{spec['label']} added.")
@@ -437,6 +459,8 @@ async def get_gpio_status():
                 status = "Last motion just now" if minutes < 1 else f"Last motion {minutes} min ago"
             else:
                 status = "No motion seen since MirrorDash started"
+        elif d["type"] in ("fan", "pwm_fan"):
+            status = _fan_text() or "Not detected. Restart the mirror to load the driver."
         else:
             texts = await _sensor_texts(d["type"])
             status = " · ".join(value for _, value in texts) if texts else "No reading. Check the wiring."
@@ -449,13 +473,15 @@ async def get_gpio_status():
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
 async def get_dashboard_sensor():
-    from mirrordash_core.hardware import IIO_SENSORS, find_device
+    from mirrordash_core.hardware import FAN_TYPES, IIO_SENSORS, find_device
 
     system_cfg = load_config().get("system", {})
     tiles = []
     for device_type in IIO_SENSORS:
         if find_device(system_cfg, device_type):
             tiles += await _sensor_texts(device_type)
+    if any(find_device(system_cfg, t) for t in FAN_TYPES) and (fan := _fan_text()):
+        tiles.append(("Fan", fan))
     if not tiles:
         return HTMLResponse(content='<p style="color: var(--text-muted); margin: 0;">Waiting for the first reading...</p>')
     return HTMLResponse(content='<div style="display: flex; gap: 32px; flex-wrap: wrap;">' + "".join(
@@ -481,3 +507,23 @@ async def reboot_mirror():
     return ui_events(**{"md-follow": {"bootId": BOOT_ID, "title": "Restarting the Mirror",
                                       "message": "Restarting... This takes about a minute.",
                                       "successMsg": "The mirror has restarted."}})
+
+
+@router.get("/panels/power/screen-status", dependencies=[Depends(require_api_key)])
+async def get_screen_status():
+    import math
+    from mirrordash_core.display_power import display_power_manager
+    from mirrordash_core.hardware import gpio_inputs
+
+    st = display_power_manager.status()
+    if not st["on"]:
+        text = "The screen is off" + (" (turned off by hand)." if st["forced_off"] else ".")
+    elif st["base_on"]:
+        text = "The screen is on."
+    elif gpio_inputs.motion_active and st["wake_seconds_left"]:
+        text = "The screen is on while someone is in front of the mirror."
+    elif st["wake_seconds_left"]:
+        text = f"The screen is on and turns off in {math.ceil(st['wake_seconds_left'] / 60)} min."
+    else:
+        text = "The screen is on."
+    return HTMLResponse(content=f"<i class='fas fa-circle' style='font-size: 0.5rem; color: {'#34d399' if st['on'] else '#71717a'};'></i> {html.escape(text)}")

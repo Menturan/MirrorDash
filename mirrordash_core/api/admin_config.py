@@ -453,7 +453,7 @@ async def get_panel_dashboard(request: Request):
             "ntp_synchronized": ntp_synchronized,
             "network_info": network_info,
             "undervoltage_detected": undervoltage_detected,
-            "sensors_configured": any(d.get("type") in ("dht11", "light")
+            "sensors_configured": any(d.get("type") in ("dht11", "light", "fan", "pwm_fan")
                                       for d in load_config().get("system", {}).get("devices", [])),
         }
     )

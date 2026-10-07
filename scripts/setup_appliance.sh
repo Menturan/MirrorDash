@@ -415,18 +415,23 @@ step_gpio_helper() {
 #!/bin/bash
 # Usage: mirrordash-gpio-overlays [type:value ...]
 #   button, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
-# Each type at most once, every GPIO at most once, GPIO 2/3 are reserved while I2C is used.
+#   fan, pwm_fan: GPIO:temperature, e.g. fan:14:60 (switch-on temperature 40-80 °C)
+# Each type at most once, one fan, every GPIO at most once, GPIO 2/3 reserved while I2C is used.
 set -euo pipefail
 
 die() { echo "$*" >&2; exit 2; }
 declare -A seen_type=() seen_pin=()
 lines=()
 for arg in "$@"; do
-  type=${arg%%:*} value=${arg#*:}
+  type=${arg%%:*} value=${arg#*:} temp=""
+  if [ "$type" = fan ] || [ "$type" = pwm_fan ]; then
+    temp=${value#*:} value=${value%%:*}
+    { [[ "$temp" =~ ^[0-9]+$ ]] && [ "$temp" -ge 40 ] && [ "$temp" -le 80 ]; } || die "invalid fan temperature: $arg"
+  fi
   [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
   seen_type[$type]=1
   case "$type" in
-    button|pir|mmwave|dht11)
+    button|pir|mmwave|dht11|fan|pwm_fan)
       { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
       [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
       seen_pin[$value]=1 ;;
@@ -442,8 +447,12 @@ for arg in "$@"; do
     mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
     dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;
     light)  lines+=("dtparam=i2c_arm=on" "dtoverlay=i2c-sensor,bh1750,addr=$value") ;;
+    # The kernel's thermal framework runs the fan by CPU temperature (millidegrees)
+    fan)    lines+=("dtoverlay=gpio-fan,gpiopin=$value,temp=$((temp * 1000)),hyst=5000") ;;
+    pwm_fan) lines+=("dtoverlay=pwm-gpio-fan,fan_gpio=$value,fan_temp0=$((temp * 1000)),fan_temp1=$((temp * 1000 + 5000)),fan_temp2=$((temp * 1000 + 12500)),fan_temp3=$((temp * 1000 + 20000))") ;;
   esac
 done
+if [ -n "${seen_type[fan]:-}" ] && [ -n "${seen_type[pwm_fan]:-}" ]; then die "only one fan"; fi
 if [ -n "${seen_type[light]:-}" ] && { [ -n "${seen_pin[2]:-}" ] || [ -n "${seen_pin[3]:-}" ]; }; then
   die "GPIO 2 and 3 are needed for I2C"
 fi
