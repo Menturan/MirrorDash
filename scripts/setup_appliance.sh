@@ -786,6 +786,9 @@ step_first_boot_lock() {
 Description=MirrorDash First-Boot OverlayFS Lock
 After=multi-user.target mirrordash-storage-init.service
 ConditionKernelCommandLine=!boot=overlay
+# Never lock without the persistent partition: /storage is nofail, so a failed repart or
+# mount would otherwise put all data on the RAM overlay. Skipped (not disabled) => retried next boot.
+ConditionPathIsMountPoint=/storage
 
 [Service]
 Type=oneshot
