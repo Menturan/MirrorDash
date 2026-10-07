@@ -24,6 +24,7 @@ There are two kinds of releases:
 - Installing, updating and removing modules shows progress right away, with a timer, and the page knows exactly when the mirror is back. If something goes wrong you see what failed.
 - The admin page opens faster, also when the mirror has no internet connection.
 - Update checks are remembered for 10 minutes instead of being repeated on every page view.
+- The System Analytics values on the dashboard (temperature, memory, network, uptime and more) update every 10 seconds while the Dashboard tab is open.
 
 ### Fixed
 - Loading spinners no longer keep spinning after a task has finished or was cancelled.

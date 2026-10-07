@@ -81,8 +81,11 @@
             </div>
         </section>
 
-        <!-- System Analytics -->
-        <section class="card" style="grid-column: span 7; display: flex; flex-direction: column;">
+        <!-- System Analytics: re-fetched every 10 s while the dashboard tab is open (switching tab
+             removes the element, which stops the polling) and the browser tab is visible -->
+        <section class="card" id="system-analytics" style="grid-column: span 7; display: flex; flex-direction: column;"
+                 hx-get="/admin/panels/dashboard" hx-select="#system-analytics" hx-target="this" hx-swap="outerHTML"
+                 hx-trigger="every 10s [document.visibilityState === 'visible']">
             <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
                 <i class="fas fa-chart-line" style="color: var(--primary);"></i> System Analytics
             </h2>

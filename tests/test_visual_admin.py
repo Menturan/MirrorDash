@@ -343,3 +343,24 @@ def test_add_to_mirror(page, server_url):
 
     assert len([err for err in console_errors if "error" in err]) == 0
 
+
+
+def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):
+    page.clock.install()
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("#system-analytics")
+    polls = []
+    page.on("request", lambda r: r.url.endswith("/admin/panels/dashboard") and polls.append(r))
+
+    page.clock.run_for(11000)
+    page.wait_for_timeout(500)
+    assert len(polls) == 1  # one refresh after 10 s
+    page.clock.run_for(10000)
+    page.wait_for_timeout(500)
+    assert len(polls) == 2  # the swapped-in section keeps polling
+
+    page.click("#page-tab-modules")
+    page.wait_for_selector("#installed-modules-container")
+    page.clock.run_for(30000)
+    page.wait_for_timeout(500)
+    assert len(polls) == 2  # another tab: no more refreshes
