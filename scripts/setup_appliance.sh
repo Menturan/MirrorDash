@@ -534,49 +534,85 @@ EOF
 }
 
 step_plymouth_splash() {
-  # Skip rebuilding initramfs if our custom theme is already configured
-  if [ "$(plymouth-set-default-theme)" = "mirrordash" ]; then
-    echo "Plymouth splash screen is already configured. Skipping rebuild."
-    return 0
-  fi
+  # Our own small theme instead of a patched copy of Raspberry Pi's "pix" theme: pix never draws
+  # its image in shutdown mode, and it scales a large splash down (blurry) on smaller screens.
+  # The script is pix.script with as few changes as possible (same calls Raspberry Pi ships).
+  # Plymouth is never required for booting: a broken theme only means a black screen meanwhile.
+  local THEME=/usr/share/plymouth/themes/mirrordash
+  mkdir -p "$THEME"
 
-  echo "Cloning 'pix' Plymouth theme to create a robust 'mirrordash' theme..."
-  mkdir -p /usr/share/plymouth/themes/mirrordash
-  cp -r /usr/share/plymouth/themes/pix/* /usr/share/plymouth/themes/mirrordash/ || true
+  cat << 'EOF' > "$THEME/mirrordash.plymouth"
+[Plymouth Theme]
+Name=MirrorDash
+Description=MirrorDash boot splash
+ModuleName=script
 
-  if [ -f /usr/share/plymouth/themes/mirrordash/pix.plymouth ]; then
-    mv /usr/share/plymouth/themes/mirrordash/pix.plymouth /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-    sed -i 's/Name=Raspberry Pi/Name=MirrorDash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-    sed -i 's/\/usr\/share\/plymouth\/themes\/pix/\/usr\/share\/plymouth\/themes\/mirrordash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-    sed -i 's/pix\.script/mirrordash.script/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-    mv /usr/share/plymouth/themes/mirrordash/pix.script /usr/share/plymouth/themes/mirrordash/mirrordash.script
-  fi
+[script]
+ImageDir=/usr/share/plymouth/themes/mirrordash
+ScriptFile=/usr/share/plymouth/themes/mirrordash/mirrordash.script
+EOF
 
-  # Apply our clean script modifications safely to our cloned theme
-  if [ -f /usr/share/plymouth/themes/mirrordash/mirrordash.script ]; then
-    echo "Silencing Plymouth message callbacks in mirrordash.script..."
-    sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
-    sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
-    
-    if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/mirrordash/mirrordash.script; then
-      echo "Patching mirrordash.script to support separate shutdown splash image..."
-      sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
+  # mirrordash.script = pix.script with: black background, one image per mode (boot, reboot,
+  # shutdown) drawn in every mode, and no status text. No comments inside, like pix.script.
+  cat << 'EOF' > "$THEME/mirrordash.script"
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
+
+image_file = "splash.png";
+if (Plymouth.GetMode() == "shutdown")
+{
+	image_file = "shutdown.png";
+}
+if (Plymouth.GetMode() == "reboot")
+{
+	image_file = "restart.png";
+}
+theme_image = Image(image_file);
+image_width = theme_image.GetWidth();
+image_height = theme_image.GetHeight();
+
+scale_x = image_width / screen_width;
+scale_y = image_height / screen_height;
+
+if (scale_x > 1 || scale_y > 1)
+{
+	if (scale_x > scale_y)
+	{
+		resized_image = theme_image.Scale (screen_width, image_height / scale_x);
+		image_x = 0;
+		image_y = (screen_height - ((image_height  * screen_width) / image_width)) / 2;
+	}
+	else
+	{
+		resized_image = theme_image.Scale (image_width / scale_y, screen_height);
+		image_x = (screen_width - ((image_width  * screen_height) / image_height)) / 2;
+		image_y = 0;
+	}
+}
+else
+{
+	resized_image = theme_image.Scale (image_width, image_height);
+	image_x = (screen_width - image_width) / 2;
+	image_y = (screen_height - image_height) / 2;
+}
+
+sprite = Sprite (resized_image);
+sprite.SetPosition (image_x, image_y, -100);
+EOF
+
+  # Boot images (rendered by scripts/render_boot_images.py)
+  local img
+  for img in splash.png restart.png shutdown.png; do
+    if [ -f "/opt/MirrorDash/mirrordash_core/static/$img" ]; then
+      cp "/opt/MirrorDash/mirrordash_core/static/$img" "$THEME/$img"
+    else
+      curl -sSLf "$GITHUB_RAW/mirrordash_core/static/$img" -o "/tmp/$img"
+      mv "/tmp/$img" "$THEME/$img"
     fi
-  fi
-
-  # Download or copy splash and shutdown images
-  if [ -f "/opt/MirrorDash/mirrordash_core/static/splash.png" ]; then
-    echo "Copying splash and shutdown images from local repository..."
-    cp "/opt/MirrorDash/mirrordash_core/static/splash.png" /usr/share/plymouth/themes/mirrordash/splash.png
-    cp "/opt/MirrorDash/mirrordash_core/static/shutdown.png" /usr/share/plymouth/themes/mirrordash/shutdown.png
-  else
-    echo "Downloading splash and shutdown images from GitHub..."
-    curl -sSLf "$GITHUB_RAW/mirrordash_core/static/splash.png" -o /tmp/splash.png
-    mv /tmp/splash.png /usr/share/plymouth/themes/mirrordash/splash.png
-
-    curl -sSLf "$GITHUB_RAW/mirrordash_core/static/shutdown.png" -o /tmp/shutdown.png
-    mv /tmp/shutdown.png /usr/share/plymouth/themes/mirrordash/shutdown.png
-  fi
+  done
 
   # Register our theme (initrd will be fully rebuilt later in step_system_cleanup)
   plymouth-set-default-theme mirrordash

@@ -198,7 +198,8 @@ Components are designed for **Passive Observation** rather than active interacti
 - **Status Indicators:** Small 8px circles. Green (`#a0ffba`) for "online/active", and the primary `accent_warm` for "error/warning".
 - **Separators**: Use horizontal lines `1px` thick in `#666666`. Never use vertical separators; use whitespace instead.
 - **Carousel Containers**: Use a `.carousel-group-container` wrapper with individual widgets marked as `.carousel-slide`. The slides are layered atop each other in a single grid cell (`grid-area: 1 / 1 / 2 / 2`) and cross-fade smoothly using `opacity` and `visibility` over a `0.8s` ease-in-out curve to prevent vertical layout shifting.
-- **Boot Splash Screen**: Represented by the design system asset [splash.png](file:///home/menturan/repos/mymagicmirror/mirrordash_core/static/splash.png) (1280x1024). It features a centered monochromatic MirrorDash monogram logo, tracking uppercase brand headers, a pulsating initialization state, and a minimalist loader bar. It is integrated as the early boot screen using Plymouth to guarantee a professional visual startup experience.
+- **Monogram**: The MirrorDash mark is the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
+- **Boot, Restart and Shutdown Screens**: Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
 
 ## Iconography
 

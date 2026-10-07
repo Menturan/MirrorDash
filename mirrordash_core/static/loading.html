@@ -3,165 +3,89 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MirrorDash Setup</title>
+    <title>MirrorDash</title>
+    <!-- First page the kiosk shows while the app starts. It must look exactly like the Plymouth
+         splash (static/splash.png: the 160 px monogram centred on black) so the handover is seamless. -->
     <style>
-        * {
-            box-sizing: border-box;
-            cursor: none !important;
-        }
+        * { cursor: none !important; }
 
         html, body {
             width: 100%;
             height: 100%;
             margin: 0;
-            padding: 0;
-            background-color: #000000;
-            color: #ffffff;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            background: #000000;
             overflow: hidden;
         }
 
-        .container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-        }
-
-        /* Monogram SVG pulsating glow styling */
         .monogram {
-            width: 80px;
-            height: 80px;
-            margin-bottom: 28px;
-            animation: pulse 2.5s infinite ease-in-out;
-        }
-
-        @keyframes pulse {
-            0% {
-                opacity: 0.55;
-                filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.15));
-            }
-            50% {
-                opacity: 1.0;
-                filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.5));
-            }
-            100% {
-                opacity: 0.55;
-                filter: drop-shadow(0 0 2px rgba(255, 255, 255, 0.15));
-            }
-        }
-
-        /* Brand Headers */
-        .brand {
-            font-size: 14px;
-            font-weight: 600;
-            letter-spacing: 0.2em;
-            color: #ffffff;
-            text-transform: uppercase;
-            margin-bottom: 10px;
-        }
-
-        .status {
-            font-size: 11px;
-            font-weight: 400;
-            color: #666666;
-            letter-spacing: 0.1em;
-            text-transform: uppercase;
-            margin-bottom: 36px;
-        }
-
-        /* Sleek progress loader bar */
-        .loader-bar {
+            position: fixed;
+            left: 50%;
+            top: 50%;
             width: 160px;
-            height: 2px;
-            background-color: #1a1a1a;
-            position: relative;
-            overflow: hidden;
-            border-radius: 1px;
+            height: 160px;
+            margin: -80px 0 0 -80px;
+            animation: breathe 3s ease-in-out infinite;
         }
 
-        .loader-progress {
-            position: absolute;
+        @keyframes breathe {
+            50% { opacity: 0.55; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .monogram { animation: none; }
+        }
+
+        /* Only shown when starting takes an unusual path (rollback, safe mode) */
+        .status {
+            position: fixed;
             left: 0;
-            top: 0;
-            height: 100%;
-            width: 50px;
-            background-color: #ffffff;
-            border-radius: 1px;
-            animation: loading 1.8s infinite ease-in-out;
-        }
-
-        @keyframes loading {
-            0% {
-                transform: translateX(-60px);
-            }
-            50% {
-                transform: translateX(80px);
-            }
-            100% {
-                transform: translateX(170px);
-            }
+            right: 0;
+            top: calc(50% + 112px);
+            margin: 0;
+            text-align: center;
+            color: #999999;
+            font-family: sans-serif;
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <!-- SVG Monogram Logo (matching favicon) -->
-        <svg class="monogram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-            <path d="M25 75V25L50 50L75 25V75" stroke="#FFFFFF" stroke-width="2.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
-            <path d="M25 75V25L50 50L75 25V75" stroke="#FFFFFF" stroke-width="0.8" fill="none" opacity="0.25" transform="translate(2.5, 2.5)"/>
-        </svg>
-
-        <div class="brand">MirrorDash</div>
-        <div class="status" id="status-text">Connecting to core service...</div>
-
-        <!-- Precision loader bar -->
-        <div class="loader-bar">
-            <div class="loader-progress"></div>
-        </div>
-    </div>
+    <svg class="monogram" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" aria-label="MirrorDash">
+        <path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="2.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    <p class="status" id="status-text" hidden></p>
 
     <script>
         const HEALTH_URL = 'http://localhost:8000/health';
         const TARGET_URL = 'http://localhost:8000';
 
         const STATUS_MESSAGES = {
-            'normal': 'Connecting to core service...',
-            'rollback': 'Recovering from update... please wait',
-            'safe_mode': 'Running in safe mode... please wait',
+            'rollback': 'Recovering from an update…',
+            'safe_mode': 'Starting in safe mode…',
         };
-
-        function getStatusMessage(bootStatus) {
-            return STATUS_MESSAGES[bootStatus] || STATUS_MESSAGES['normal'];
-        }
 
         async function checkHealth() {
             try {
                 const response = await fetch(HEALTH_URL);
                 if (response.ok) {
                     const data = await response.json().catch(function() { return {}; });
-                    const bootStatus = (data && data.boot_status) || 'normal';
-                    const statusEl = document.getElementById('status-text');
-                    if (statusEl) {
-                        statusEl.textContent = getStatusMessage(bootStatus);
+                    const message = STATUS_MESSAGES[(data && data.boot_status) || 'normal'];
+                    if (message) {
+                        const statusEl = document.getElementById('status-text');
+                        statusEl.textContent = message;
+                        statusEl.hidden = false;
                     }
                     setTimeout(function() {
                         window.location.replace(TARGET_URL);
-                    }, 400);
+                    }, message ? 2000 : 400);
                     return;
                 }
             } catch (error) {
-                // Ignore connection refusal/errors
+                // The app isn't up yet
             }
-            // Poll again in 500ms
             setTimeout(checkHealth, 500);
         }
 
-        // Initialize polling
         checkHealth();
     </script>
 </body>

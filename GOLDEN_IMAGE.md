@@ -286,7 +286,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `avahi-daemon` | mDNS/DNS-SD responder (Bonjour/Zeroconf). Advertises the device as `mirrordash.local` on the local network so users never need to type an IP address. |
 | `nginx` | Lightweight reverse proxy. Listens on port 80 so the mirror is reachable at `http://mirrordash.local` with no port number, then forwards traffic to uvicorn on `localhost:8000`. |
 | `plymouth` | Boot animation manager used to render the startup splash screen. |
-| `pix-plym-splash` | The Raspberry Pi-specific "pix" desktop Plymouth theme package required for the customized startup splash screen. |
+| `pix-plym-splash` | Raspberry Pi's Plymouth theme. Not used by our own `mirrordash` theme (its script plugin ships with `plymouth`); kept only to leave the package set unchanged. |
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
 | `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
@@ -750,31 +750,72 @@ for opt in "loglevel=0" "quiet" "splash" "systemd.show_status=false" "vt.global_
   fi
 done
 
-# 4. Create custom 'mirrordash' Plymouth theme, patch for separate shutdown splash, and set theme
+# 4. Our own 'mirrordash' Plymouth theme: Raspberry Pi's pix.script with a black background,
+#    one image per mode (boot, reboot, shutdown) drawn in every mode, and no status text
 sudo mkdir -p /usr/share/plymouth/themes/mirrordash
-sudo cp -r /usr/share/plymouth/themes/pix/* /usr/share/plymouth/themes/mirrordash/ || true
+sudo tee /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth << 'EOF'
+[Plymouth Theme]
+Name=MirrorDash
+Description=MirrorDash boot splash
+ModuleName=script
 
-if [ -f /usr/share/plymouth/themes/mirrordash/pix.plymouth ]; then
-  sudo mv /usr/share/plymouth/themes/mirrordash/pix.plymouth /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-  sudo sed -i 's/Name=Raspberry Pi/Name=MirrorDash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-  sudo sed -i 's/\/usr\/share\/plymouth\/themes\/pix/\/usr\/share\/plymouth\/themes\/mirrordash/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-  sudo sed -i 's/pix\.script/mirrordash.script/g' /usr/share/plymouth/themes/mirrordash/mirrordash.plymouth
-  sudo mv /usr/share/plymouth/themes/mirrordash/pix.script /usr/share/plymouth/themes/mirrordash/mirrordash.script
-fi
+[script]
+ImageDir=/usr/share/plymouth/themes/mirrordash
+ScriptFile=/usr/share/plymouth/themes/mirrordash/mirrordash.script
+EOF
+sudo tee /usr/share/plymouth/themes/mirrordash/mirrordash.script << 'EOF'
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
 
-# Apply clean script modifications to comments and separate shutdown splash image
-if [ -f /usr/share/plymouth/themes/mirrordash/mirrordash.script ]; then
-  sudo sed -i 's/^[[:space:]]*Plymouth\.SetMessageFunction/# Plymouth.SetMessageFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
-  sudo sed -i 's/^[[:space:]]*Plymouth\.SetUpdateStatusFunction/# Plymouth.SetUpdateStatusFunction/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
-  
-  if ! grep -q 'Plymouth\.GetMode() == "shutdown"' /usr/share/plymouth/themes/mirrordash/mirrordash.script; then
-    sudo sed -i -E 's/([a-zA-Z0-9_]+)[[:space:]]*=[[:space:]]*Image[[:space:]]*\("splash.png"\);/if (Plymouth.GetMode() == "shutdown") { \1 = Image("shutdown.png"); } else { \1 = Image("splash.png"); }/g' /usr/share/plymouth/themes/mirrordash/mirrordash.script
-  fi
-fi
+screen_width = Window.GetWidth();
+screen_height = Window.GetHeight();
 
-# Download/write custom splash and shutdown splash assets
-sudo curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/splash.png -o /usr/share/plymouth/themes/mirrordash/splash.png
-sudo curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/shutdown.png -o /usr/share/plymouth/themes/mirrordash/shutdown.png
+image_file = "splash.png";
+if (Plymouth.GetMode() == "shutdown")
+{
+	image_file = "shutdown.png";
+}
+if (Plymouth.GetMode() == "reboot")
+{
+	image_file = "restart.png";
+}
+theme_image = Image(image_file);
+image_width = theme_image.GetWidth();
+image_height = theme_image.GetHeight();
+
+scale_x = image_width / screen_width;
+scale_y = image_height / screen_height;
+
+if (scale_x > 1 || scale_y > 1)
+{
+	if (scale_x > scale_y)
+	{
+		resized_image = theme_image.Scale (screen_width, image_height / scale_x);
+		image_x = 0;
+		image_y = (screen_height - ((image_height  * screen_width) / image_width)) / 2;
+	}
+	else
+	{
+		resized_image = theme_image.Scale (image_width / scale_y, screen_height);
+		image_x = (screen_width - ((image_width  * screen_height) / image_height)) / 2;
+		image_y = 0;
+	}
+}
+else
+{
+	resized_image = theme_image.Scale (image_width, image_height);
+	image_x = (screen_width - image_width) / 2;
+	image_y = (screen_height - image_height) / 2;
+}
+
+sprite = Sprite (resized_image);
+sprite.SetPosition (image_x, image_y, -100);
+EOF
+
+# Boot images (rendered by scripts/render_boot_images.py)
+for img in splash.png restart.png shutdown.png; do
+  sudo curl -sSLf "https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_core/static/$img" -o "/usr/share/plymouth/themes/mirrordash/$img"
+done
 
 # Register the new default theme
 sudo plymouth-set-default-theme mirrordash
