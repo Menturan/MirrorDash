@@ -8,7 +8,7 @@ import re
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.api.admin_shared import require_api_key, templates
+from mirrordash_core.api.admin_shared import notify, require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config, get_core_version
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.system import remount_ro, remount_rw
@@ -342,13 +342,7 @@ async def save_panel_config_visual(request: Request):
 
     await module_loader.reload_modules()
 
-    response = HTMLResponse(content=f"""
-        <div class="alert alert--success">Global settings saved successfully.</div>
-        <script>
-            showGlobal('Global settings saved successfully.', 'success');
-        </script>
-    """)
-    return response
+    return notify("Global settings saved successfully.")
 
 
 @router.get("/panels/config/add-array-item", dependencies=[Depends(require_api_key)])
@@ -407,8 +401,12 @@ async def get_panel_dashboard(request: Request):
         get_undervoltage_detected
     )
     import socket
-    
-    disk_usage = await get_disk_usage()
+
+    # Each of these spawns a system command (df, timedatectl, nmcli, vcgencmd); run them
+    # concurrently instead of one after another, which added up on a Pi 3.
+    disk_usage, ntp_synchronized, network_info, undervoltage_detected = await asyncio.gather(
+        get_disk_usage(), get_ntp_status(), get_wifi_info(), get_undervoltage_detected()
+    )
     
     # Get active modules from module_loader
     active_instances = []
@@ -440,9 +438,6 @@ async def get_panel_dashboard(request: Request):
 
     uptime_str = get_uptime_string()
     ram_usage = get_ram_usage()
-    ntp_synchronized = await get_ntp_status()
-    network_info = await get_wifi_info()
-    undervoltage_detected = await get_undervoltage_detected()
         
     return templates.TemplateResponse(
         request=request,
@@ -457,7 +452,8 @@ async def get_panel_dashboard(request: Request):
             "ram_usage": ram_usage,
             "ntp_synchronized": ntp_synchronized,
             "network_info": network_info,
-            "undervoltage_detected": undervoltage_detected
+            "undervoltage_detected": undervoltage_detected,
+            "dht11_configured": load_config().get("system", {}).get("dht11", {}).get("pin") is not None,
         }
     )
 

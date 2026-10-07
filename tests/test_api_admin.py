@@ -865,7 +865,7 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_ro, mock_
     
     response = client.post("/admin/panels/system/save", data=form_data, headers=headers)
     assert response.status_code == 200
-    assert "System settings applied successfully" in response.text
+    assert "Saved." in response.headers["HX-Trigger-After-Swap"]
     
     mock_save.assert_called_once()
     saved_cfg = mock_save.call_args[0][0]
@@ -975,7 +975,7 @@ def test_install_module_enforce_releases(mock_exec, mock_ro, mock_rw, mock_resta
     assert "does not have any official releases" in r2.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_modules_panels.urllib.request.urlopen")
+@patch("mirrordash_core.system.network.urllib.request.urlopen")
 @patch("importlib.metadata.entry_points")
 def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     mock_dist = MagicMock()
@@ -1014,7 +1014,15 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     mock_resp_same.__enter__.return_value = mock_resp_same
     mock_resp_same.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
     mock_urlopen.return_value = mock_resp_same
-    
+
+    # Within the cache TTL the earlier GitHub answer is reused (no new request per page view)
+    calls = mock_urlopen.call_count
+    r_cached = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
+    assert "Update Available" in r_cached.text
+    assert mock_urlopen.call_count == calls
+
+    from mirrordash_core.system import network
+    network._remote_json_cache.clear()
     r2 = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
     assert r2.status_code == 200
     assert r2.text == ""
@@ -1159,12 +1167,12 @@ def test_toggle_module_instance_config(mock_reload, mock_ro, mock_rw, mock_save,
     # Post to toggle clock-one (True -> False)
     r = client.post("/admin/panels/modules/config/mirrordash-clock/toggle?instance_id=clock-one", headers=headers)
     assert r.status_code == 200
-    assert "disabled" in r.text
+    assert "disabled" in r.headers["HX-Trigger-After-Swap"]
 
     # Post to toggle clock-two (False -> True)
     r2 = client.post("/admin/panels/modules/config/mirrordash-clock/toggle?instance_id=clock-two", headers=headers)
     assert r2.status_code == 200
-    assert "enabled" in r2.text
+    assert "enabled" in r2.headers["HX-Trigger-After-Swap"]
 
     assert mock_save.call_count == 2
 

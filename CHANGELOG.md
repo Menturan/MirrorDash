@@ -9,10 +9,28 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### Added
+- Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting, which is moved over automatically.
+- Connect a DHT11 sensor and see the room's temperature and humidity on the dashboard.
+- Restart and shut down the mirror from the Power tab.
+
+### Changed
+- Hardware settings are applied as soon as you change them; the Apply button is gone.
+- Installing, updating and removing modules shows progress right away, with a timer, and the page knows exactly when the mirror is back. If something goes wrong you see what failed.
+- The admin page opens faster, also when the mirror has no internet connection.
+- Update checks are remembered for 10 minutes instead of being repeated on every page view.
+
 ### Fixed
+- Loading spinners no longer keep spinning after a task has finished or was cancelled.
+- On phones, all tabs fit in the bottom bar, only the selected tab is highlighted, and the Backup page no longer hides the tab bar.
+- The screen layout overview on the dashboard shows the real 3×3 grid on phones.
+- Confirmation questions use the admin page's own dialog instead of the browser's pop-up.
+- The admin page no longer shows system details (network, IP address, modules) before you have logged in.
+- Error messages are always shown in the admin page; some failed actions used to show nothing at all.
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image
+- Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).
 - Updates and installed modules are no longer undone when the mirror restarts.
 - On first start without Wi-Fi, the Wi-Fi setup screen is shown right away.
 - The SD card is now protected automatically: the mirror switches to read-only mode by itself after its first start (this takes one extra restart), and only once the storage partition is ready.

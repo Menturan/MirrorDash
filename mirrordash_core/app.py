@@ -17,6 +17,7 @@ from mirrordash_core.api.backup import router as backup_router
 from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active
 
 from mirrordash_core.display_power import display_power_manager
+from mirrordash_core.hardware import button_manager
 
 import secrets
 from typing import Annotated
@@ -49,9 +50,11 @@ async def lifespan(app: FastAPI):
     try:
         await module_loader.start_modules()
         await display_power_manager.start()
+        await button_manager.start()
     except Exception as e:
         logger.error(f"Error during module startup: {e}", exc_info=True)
     yield
+    await button_manager.stop()
     await display_power_manager.stop()
     await module_loader.stop_modules()
 
@@ -184,17 +187,13 @@ async def post_wifi_setup(body: dict) -> dict:
 
 @app.get("/admin")
 async def get_admin(request: Request):
-    from mirrordash_core.api.admin_config import get_panel_dashboard
-    dashboard_panel_response = await get_panel_dashboard(request=request)
-    dashboard_panel_html = dashboard_panel_response.body.decode("utf-8")
+    # The page shell is public; every panel (dashboard included) is loaded after login via
+    # the authenticated /admin/panels/* routes, so nothing system-specific is rendered here.
     boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context={
-            "dashboard_panel_html": dashboard_panel_html,
-            "boot_status": boot_status
-        }
+        context={"boot_status": boot_status}
     )
 
 
@@ -204,7 +203,8 @@ async def get_design() -> FileResponse:
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")}
+    from mirrordash_core.api.admin_shared import BOOT_ID
+    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"), "boot_id": BOOT_ID}
 
 @app.get("/api/active-modules")
 async def get_active_modules() -> dict:

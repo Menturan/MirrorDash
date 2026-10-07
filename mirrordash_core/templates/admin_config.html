@@ -31,9 +31,10 @@
                     hx-get="/admin/panels/system/update-check"
                     hx-target="#core-update-result"
                     hx-swap="innerHTML"
-                    onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Checking...';">
-                <i class="fas fa-search" aria-hidden="true"></i>
-                <span id="core-check-label">Check for Updates</span>
+                    hx-disabled-elt="this">
+                <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Checking...</span>
+                <span class="htmx-normal"><i class="fas fa-search" aria-hidden="true"></i>
+                <span id="core-check-label">Check for Updates</span></span>
             </button>
         </div>
 

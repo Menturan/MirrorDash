@@ -108,12 +108,11 @@ def test_system_settings_display_control_validation(
     assert response.status_code == 400
     assert "Invalid PIR timeout" in response.json()["detail"]
 
-    # Invalid GPIO pin for Button mode
+    # The old display "button" mode is gone; the GPIO button has its own settings now
     payload["display_control"]["mode"] = "button"
-    payload["display_control"]["button"]["pin"] = -5 # negative pin
     response = client.post("/admin/system", json=payload, headers=headers)
     assert response.status_code == 400
-    assert "Invalid Button GPIO pin" in response.json()["detail"]
+    assert "Invalid display power mode" in response.json()["detail"]
     
     # Clear overrides
     app.dependency_overrides.clear()

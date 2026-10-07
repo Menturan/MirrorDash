@@ -1338,3 +1338,18 @@ input:checked + .slider:before {
     display: block;
 }
 
+
+/* HTMX loading state: show .htmx-indicator and hide .htmx-normal only while a request runs.
+   htmx removes .htmx-request when the request ends, so the spinner can never get stuck.
+   !important: Font Awesome's ".fas { display: inline-block }" loads later and would otherwise
+   keep icon spinners (<i class="fas fa-spin htmx-indicator">) visible all the time. */
+.htmx-indicator { display: none !important; }
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator { display: inline-block !important; }
+.htmx-request .htmx-normal { display: none !important; }
+
+/* Wide tables scroll inside their card instead of widening the whole page on phones */
+.table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* Make the hidden attribute win over inline display styles (e.g. display: grid) */
+[hidden] { display: none !important; }

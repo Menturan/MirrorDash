@@ -108,24 +108,44 @@ async def run_restart() -> None:
     await asyncio.sleep(1)  # Allow HTTP responses to flush
     os.kill(os.getpid(), 15)  # SIGTERM — uvicorn handles this gracefully
 
-async def reboot_system(delay_sec: float = 2.0) -> None:
-    """Asynchronously trigger an OS-level reboot after a delay."""
-    logger.info(f"Scheduling system reboot in {delay_sec} seconds...")
+async def _schedule_power_command(command: str, delay_sec: float) -> None:
+    """Run `sudo -n <command>` (reboot/poweroff) after a delay, so the HTTP response gets out first."""
+    logger.info(f"Scheduling system {command} in {delay_sec} seconds...")
 
-    async def _do_reboot():
+    async def _run():
         await asyncio.sleep(delay_sec)
         try:
-            logger.info("Executing sudo reboot...")
+            logger.info(f"Executing sudo {command}...")
             proc = await asyncio.create_subprocess_exec(
-                "sudo", "reboot",
+                "sudo", "-n", command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            await proc.wait()
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                logger.error(f"sudo {command} failed: {stderr.decode(errors='replace').strip()}")
         except Exception as e:
-            logger.error(f"Reboot command failed: {e}")
+            logger.error(f"{command} command failed: {e}")
 
-    asyncio.create_task(_do_reboot())
+    asyncio.create_task(_run())
+
+async def sudo_allowed(command: str) -> bool:
+    """True if the sudoers allow-list lets this app run `command` without a password."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "-n", "-l", command, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        return await proc.wait() == 0
+    except Exception:
+        return False
+
+async def reboot_system(delay_sec: float = 2.0) -> None:
+    """Asynchronously trigger an OS-level reboot after a delay."""
+    await _schedule_power_command("reboot", delay_sec)
+
+async def poweroff_system(delay_sec: float = 2.0) -> None:
+    """Asynchronously shut the mirror down after a delay."""
+    await _schedule_power_command("poweroff", delay_sec)
 
 async def apply_system_timezone(timezone: str) -> bool:
     """Apply system timezone using timedatectl."""

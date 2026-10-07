@@ -16,7 +16,6 @@ class DisplayPowerManager:
         self.task: asyncio.Task | None = None
         self.is_on: bool = True
         self.last_motion_time: float = 0.0
-        self.last_button_state: bool = False
         self.reader = None
         self.current_pin: int | None = None
         self.current_mode: str = "manual"
@@ -54,13 +53,8 @@ class DisplayPowerManager:
             try:
                 import RPi.GPIO as GPIO
                 GPIO.setmode(GPIO.BCM)
-                if mode == "button":
-                    # Use pull-up (active low) for standard buttons
-                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-                    self.reader = lambda: GPIO.input(pin) == GPIO.LOW  # True if pressed (pulled low)
-                else: # PIR
-                    GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
-                    self.reader = lambda: GPIO.input(pin) == GPIO.HIGH
+                GPIO.setup(pin, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+                self.reader = lambda: GPIO.input(pin) == GPIO.HIGH
                 logger.info(f"GPIO pin {pin} setup using RPi.GPIO for mode {mode}")
             except ImportError:
                 logger.warning(f"Could not import gpiozero or RPi.GPIO. GPIO control on pin {pin} is disabled.")
@@ -132,25 +126,10 @@ class DisplayPowerManager:
 
                     await asyncio.sleep(0.5) # Poll PIR sensor every 500ms
 
-                elif mode == "button":
-                    btn_cfg = display_cfg.get("button", {})
-                    pin = btn_cfg.get("pin", 23)
-
-                    self._setup_gpio("button", pin)
-
-                    btn_pressed = False
-                    if self.reader:
-                        try:
-                            btn_pressed = self.reader()
-                        except Exception as e:
-                            logger.error(f"Error reading button GPIO pin {pin}: {e}")
-
-                    if btn_pressed and not self.last_button_state:
-                        logger.info("Physical button pressed! Toggling display power.")
-                        await self.set_state(not self.is_on)
-
-                    self.last_button_state = btn_pressed
-                    await asyncio.sleep(0.1) # Poll button frequently (100ms) for responsive toggle
+                else:
+                    # Unknown mode: behave like manual instead of spinning without a sleep.
+                    # (The GPIO button is handled by hardware.ButtonManager.)
+                    await asyncio.sleep(1.0)
 
             except asyncio.CancelledError:
                 raise

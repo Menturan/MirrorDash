@@ -49,10 +49,11 @@ For subsequent visits, simply log in using your admin password.
 
 ## 4. Using the Admin Dashboard
 
-The Admin Dashboard is organized into six main tabs:
+The Admin Dashboard is organized into seven main tabs:
 
 ### 4.1. Dashboard Tab
 Provides a high-level overview of the mirror's current status:
+*   **Room Climate**: Temperature and humidity from a DHT11 sensor, if one is connected (see the Hardware tab). Updates every 30 seconds.
 *   **Screen Layout Matrix**: A 3x3 grid showing which screen regions (Top Left, Top Center, etc.) are currently occupied by active module instances.
 *   **System Analytics**: Real-time telemetry cards showing CPU temperature, persistent storage disk usage, system memory (RAM) usage, active modules running, local IP address, network connection status (SSID and signal strength), system uptime, and NTP time synchronization status.
 *   **Power Throttling Warning**: Displayed automatically if Raspberry Pi under-voltage is detected (dropping below 4.63V), warning the user of potential system instability or file system corruption.
@@ -74,25 +75,30 @@ Controls global settings shared by all modules. Adjust these to localize your mi
 *   **Units**: Change temperature units (`C` or `F`) and distance (`km` or `mi`).
 *   **Coordinates**: Latitude and longitude (used by weather modules to locate your mirror).
 
-### 4.4. System Tab
-Allows you to adjust physical display properties and automate display power directly from your browser:
+### 4.4. Hardware Tab
+Changes are applied as soon as you make them; there is no Apply button. (Turning SSH on waits until you have entered the new password.)
 *   **Screen Rotation**: Rotate the screen layout (`normal`, `left`, `right`, or `inverted`) to support portrait-oriented mirrors.
 *   **Screen Resolution**: Set display resolution or keep it on `auto`.
 *   **Screen Brightness**: Adjust display backlight brightness (0% to 100%).
 *   **System Volume**: Control mirror audio output levels.
+*   **Push Button**: Choose the GPIO a push button is connected to (wired between that GPIO and a GND pin), and what a *single*, *double*, *triple* and *long* (1 second) press does: turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down.
+*   **DHT11 Sensor**: Choose the GPIO of the sensor's data pin. Its readings appear on the Dashboard.
+*   Changing a GPIO pin takes effect after the mirror restarts; the tab shows a **Restart Mirror** button when that is needed. The status line at the bottom shows whether the button and sensor are detected.
+
+### 4.5. Power Tab
+*   **Mirror Power**: **Restart Mirror** and **Shut Down**. Always shut down before unplugging the power, so the SD card can't be damaged. To start the mirror again, unplug the power and plug it back in.
 *   **Display Power Management**: Choose how your screen is controlled automatically:
     *   *Manual / Always On*: The screen stays on unless you manually click "Turn Screen OFF".
     *   *Time of Day Schedule*: Specify an *Active Start Time* (e.g. `07:00`) and *Active End Time* (e.g. `22:30`) to turn the display on during the day and off at night.
     *   *PIR Motion Detector*: Connect a PIR motion sensor to a Raspberry Pi BCM GPIO pin (e.g. `18`). The screen will turn on when motion is detected and automatically shut down after $N$ minutes of inactivity.
-    *   *Physical GPIO Button*: Connect a momentary push button to a BCM GPIO pin (e.g. `23`) to toggle the display power state manually by pressing it.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
 
-### 4.5. Backup Tab
+### 4.6. Backup Tab
 Protect your configurations and personal data files:
 *   **Create Backup**: Downloads a single `.zip` file containing your entire setup, module settings, and authentication details.
 *   **Restore Backup**: Upload a previously saved backup file to restore your mirror to that state instantly.
 
-### 4.6. Logs Tab
+### 4.7. Logs Tab
 Displays real-time system logs. If a module fails to fetch data or the screen behaves unexpectedly, open this tab to inspect the error messages.
 
 ---

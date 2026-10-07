@@ -1,17 +1,16 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import asyncio
 import importlib.metadata
 import json
 import logging
-import urllib.request
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.api.admin_shared import require_api_key, templates
+from mirrordash_core.api.admin_shared import job_response, notify, require_api_key, start_job, templates
 from mirrordash_core.config import find_module_config, load_config, save_config
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.system import remount_ro, remount_rw
+from mirrordash_core.system.network import fetch_json_cached
 
 # Import endpoints and helper functions from admin_modules and admin_system
 from mirrordash_core.api.admin_modules import (
@@ -388,14 +387,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
 
     await module_loader.reload_modules()
 
-    response = HTMLResponse(content=f"""
-        <div class="alert alert--success">Module configuration saved successfully.</div>
-        <script>
-            showGlobal('Module configuration saved successfully.', 'success');
-            htmx.trigger("#installed-modules-container", "refreshModules");
-        </script>
-    """)
-    return response
+    return notify("Module configuration saved successfully.", refreshModules=True)
 
 
 @router.post("/panels/modules/config/{module_name}/remove", dependencies=[Depends(require_api_key)])
@@ -417,14 +409,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
 
     await module_loader.reload_modules()
 
-    response = HTMLResponse(content=f"""
-        <div class="alert alert--success">Module removed from mirror display.</div>
-        <script>
-            showGlobal('Module removed from mirror display.', 'success');
-            htmx.trigger("#installed-modules-container", "refreshModules");
-        </script>
-    """)
-    return response
+    return notify("Module removed from mirror display.", refreshModules=True)
 
 
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
@@ -448,14 +433,8 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
 
         await module_loader.reload_modules()
 
-        status_text = "enabled" if new_state else "disabled"
-        response = HTMLResponse(content=f"""
-            <script>
-                showGlobal('Module instance {status_text} successfully.', 'success');
-                htmx.trigger("#installed-modules-container", "refreshModules");
-            </script>
-        """)
-        return response
+        # No refreshModules here: it closes the settings sheet the toggle lives in
+        return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
     else:
         raise HTTPException(status_code=404, detail="Instance not found")
 
@@ -497,22 +476,10 @@ async def check_module_update_route(module_name: str):
                 owner = parts[0]
                 repo = parts[1].replace(".git", "")
                 
-                def _fetch_github_release() -> dict | None:
-                    api_url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
-                    req = urllib.request.Request(
-                        api_url,
-                        headers={
-                            "User-Agent": "MirrorDash/1.0",
-                            "Accept": "application/vnd.github.v3+json"
-                        }
-                    )
-                    try:
-                        with urllib.request.urlopen(req, timeout=3) as resp:
-                            return json.loads(resp.read().decode("utf-8"))
-                    except Exception:
-                        return None
-                
-                release_data = await asyncio.to_thread(_fetch_github_release)
+                release_data = await fetch_json_cached(
+                    f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
+                    headers={"Accept": "application/vnd.github.v3+json"},
+                )
                 if release_data and release_data.get("tag_name"):
                     tag_name = release_data["tag_name"]
                     latest_version = tag_name.lstrip("v")
@@ -536,15 +503,7 @@ async def check_module_update_route(module_name: str):
                         """)
         return HTMLResponse(content="")
 
-    def _fetch_pypi_info() -> dict | None:
-        url = f"https://pypi.org/pypi/{package_name}/json"
-        try:
-            with urllib.request.urlopen(url, timeout=3) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            return None
-
-    pypi_data = await asyncio.to_thread(_fetch_pypi_info)
+    pypi_data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
     if not pypi_data:
         return HTMLResponse(content="")
 
@@ -586,15 +545,7 @@ async def get_module_notes(module_name: str):
 
     package_name = ep.dist.name if ep.dist else module_name
 
-    def _fetch_pypi_info() -> dict | None:
-        url = f"https://pypi.org/pypi/{package_name}/json"
-        try:
-            with urllib.request.urlopen(url, timeout=3) as resp:
-                return json.loads(resp.read().decode("utf-8"))
-        except Exception:
-            return None
-
-    pypi_data = await asyncio.to_thread(_fetch_pypi_info)
+    pypi_data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
     if not pypi_data:
         return HTMLResponse(content="Failed to fetch release notes from PyPI.")
 
@@ -635,74 +586,20 @@ async def get_module_notes(module_name: str):
 
 @router.post("/panels/modules/install", dependencies=[Depends(require_api_key)])
 async def install_panel_module(package_name: str = Form(...)):
-    try:
-        res = await install_module(package_name=package_name)
-        return HTMLResponse(content=f"""
-            <div class="alert alert--success">Successfully installed {package_name}! System is restarting...</div>
-            <script>
-                if (window.pollRestartAndReload) {{
-                    window.pollRestartAndReload({{
-                        targetPanel: 'modules',
-                        successMsg: 'Successfully installed {package_name}!',
-                        title: 'Installing Module',
-                        message: 'Restarting MirrorDash to load {package_name}...'
-                    }});
-                }} else {{
-                    showGlobal('Successfully installed {package_name}. Restarting...', 'success');
-                    setTimeout(() => {{ window.location.reload(); }}, 5000);
-                }}
-            </script>
-        """)
-    except Exception as e:
-        err_detail = e.detail if hasattr(e, "detail") else str(e)
-        return HTMLResponse(content=f'<div class="alert alert--error">Installation failed: {err_detail}</div>')
+    job_id = start_job(lambda: install_module(package_name=package_name))
+    return job_response(job_id, "Installing Module", f"Installing {package_name}. This can take a few minutes...",
+                        f"Successfully installed {package_name}!", "modules")
 
 
 @router.post("/panels/modules/uninstall", dependencies=[Depends(require_api_key)])
 async def uninstall_panel_module(package_name: str = Form(...)):
-    try:
-        res = await uninstall_module(package_name=package_name)
-        return HTMLResponse(content=f"""
-            <div class="alert alert--success">Successfully uninstalled {package_name}! System is restarting...</div>
-            <script>
-                if (window.pollRestartAndReload) {{
-                    window.pollRestartAndReload({{
-                        targetPanel: 'modules',
-                        successMsg: 'Successfully uninstalled {package_name}!',
-                        title: 'Uninstalling Module',
-                        message: 'Restarting MirrorDash to complete uninstallation of {package_name}...'
-                    }});
-                }} else {{
-                    showGlobal('Successfully uninstalled {package_name}. Restarting...', 'success');
-                    setTimeout(() => {{ window.location.reload(); }}, 5000);
-                }}
-            </script>
-        """)
-    except Exception as e:
-        err_detail = e.detail if hasattr(e, "detail") else str(e)
-        return HTMLResponse(content=f'<div class="alert alert--error">Uninstall failed: {err_detail}</div>')
+    job_id = start_job(lambda: uninstall_module(package_name=package_name))
+    return job_response(job_id, "Uninstalling Module", f"Removing {package_name}...",
+                        f"Successfully uninstalled {package_name}!", "modules")
 
 
 @router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
 async def upgrade_panel_module(package_name: str = Form(...)):
-    try:
-        res = await update_module(package_name=package_name)
-        return HTMLResponse(content=f"""
-            <div class="alert alert--success">Successfully upgraded {package_name}! System is restarting...</div>
-            <script>
-                if (window.pollRestartAndReload) {{
-                    window.pollRestartAndReload({{
-                        targetPanel: 'modules',
-                        successMsg: 'Successfully upgraded {package_name}!',
-                        title: 'Upgrading Module',
-                        message: 'Restarting MirrorDash to complete upgrade of {package_name}...'
-                    }});
-                }} else {{
-                    showGlobal('Successfully upgraded {package_name}. Restarting...', 'success');
-                    setTimeout(() => {{ window.location.reload(); }}, 5000);
-                }}
-            </script>
-        """)
-    except Exception as e:
-        err_detail = e.detail if hasattr(e, "detail") else str(e)
-        return HTMLResponse(content=f'<div class="alert alert--error">Upgrade failed: {err_detail}</div>')
+    job_id = start_job(lambda: update_module(package_name=package_name))
+    return job_response(job_id, "Upgrading Module", f"Upgrading {package_name}. This can take a few minutes...",
+                        f"Successfully upgraded {package_name}!", "modules")

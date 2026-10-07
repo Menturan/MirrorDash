@@ -4,6 +4,8 @@ from mirrordash_core.system.os import (
     remount_ro,
     run_restart,
     reboot_system,
+    poweroff_system,
+    sudo_allowed,
     apply_system_timezone,
     apply_system_password_hash,
 )
@@ -26,6 +28,8 @@ __all__ = [
     "remount_ro",
     "run_restart",
     "reboot_system",
+    "poweroff_system",
+    "sudo_allowed",
     "apply_system_timezone",
     "apply_system_password_hash",
     "get_available_resolutions",

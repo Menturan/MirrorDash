@@ -1,8 +1,6 @@
 import asyncio
 import logging
 import importlib.metadata
-import urllib.request
-import json
 
 logger = logging.getLogger("mirrordash.core.telemetry")
 
@@ -178,22 +176,15 @@ async def check_all_updates() -> dict:
         package_name = ep.dist.name if ep.dist else module_name
         current_version = ep.dist.version if ep.dist else "0.0.0"
         
-        def _fetch_pypi() -> str | None:
-            url = f"https://pypi.org/pypi/{package_name}/json"
-            try:
-                with urllib.request.urlopen(url, timeout=3) as resp:
-                    data = json.loads(resp.read().decode("utf-8"))
-                    return data.get("info", {}).get("version")
-            except Exception:
-                return None
-                
         def _parse_version(v: str) -> tuple:
             try:
                 return tuple(int(x) for x in v.split(".")[:3])
             except ValueError:
                 return (0,)
 
-        latest_version = await asyncio.to_thread(_fetch_pypi)
+        from mirrordash_core.system.network import fetch_json_cached
+        data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
+        latest_version = (data or {}).get("info", {}).get("version")
         if latest_version:
             is_newer = _parse_version(latest_version) > _parse_version(current_version)
             if is_newer:

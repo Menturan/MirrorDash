@@ -1,18 +1,21 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import html
 import importlib.metadata
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import load_config, get_core_version
+from mirrordash_core.api.admin_shared import BOOT_ID, job_response, notify, require_api_key, start_job, templates, ui_events
+from mirrordash_core.config import load_config, get_core_version, save_config
+from mirrordash_core.system import poweroff_system, reboot_system, remount_ro, remount_rw, sudo_allowed
 from mirrordash_core.api.admin_system import (
     get_system_settings,
     update_system_settings,
     check_core_update,
     update_core,
+    rebuild_venv,
 )
 
 logger = logging.getLogger("mirrordash.core.api.admin_system_panels")
@@ -66,11 +69,16 @@ async def get_panel_system(request: Request):
     minutes_list = list(range(0, 60))
 
     current_version = get_core_version()
+    from mirrordash_core.hardware import BUTTON_ACTIONS, GPIO_HEADER_PINS
 
     return templates.TemplateResponse(
         request=request,
         name="admin_system.html",
         context={
+            "gpio_pins": sorted(GPIO_HEADER_PINS.items()),
+            "button_actions": BUTTON_ACTIONS,
+            "press_labels": [("single", "Single press"), ("double", "Double press"),
+                             ("triple", "Triple press"), ("long", "Long press (1 s)")],
             "settings": settings,
             "resolutions": resolutions,
             "current_version": current_version,
@@ -204,21 +212,10 @@ async def save_system_settings_route(request: Request):
             pir["timeout_minutes"] = int(pir.get("timeout_minutes", 5))
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail="PIR pin and timeout must be integers")
-    if "button" in display_control:
-        btn = display_control["button"]
-        try:
-            btn["pin"] = int(btn.get("pin", 23))
-        except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail="Button pin must be an integer")
 
     res = await update_system_settings(settings=parsed)
 
-    return HTMLResponse(content=f"""
-        <div class="alert alert--success">System settings applied successfully.</div>
-        <script>
-            showGlobal('System settings applied successfully.', 'success');
-        </script>
-    """)
+    return notify("Saved.")
 
 
 @router.post("/panels/power/screen", dependencies=[Depends(require_api_key)])
@@ -232,12 +229,7 @@ async def post_panel_screen(request: Request):
     from mirrordash_core.display_power import display_power_manager
     asyncio.create_task(display_power_manager.set_state(state == "on"))
 
-    return HTMLResponse(content=f"""
-        <div class="alert alert--success">Screen turned {state.upper()} successfully.</div>
-        <script>
-            showGlobal('Screen turned {state.upper()} successfully.', 'success');
-        </script>
-    """)
+    return notify(f"Screen turned {state}.")
 
 
 @router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])
@@ -261,8 +253,8 @@ async def get_system_update_check():
                         hx-post="/admin/panels/system/update-trigger"
                         hx-target="#core-update-result"
                         hx-swap="innerHTML"
-                        hx-confirm="Are you sure you want to upgrade MirrorDash Core to v{latest}? The system will reboot afterwards."
-                        onclick="this.disabled=true; this.innerHTML='<i class=&quot;fas fa-spinner fa-spin&quot;></i> Upgrading...';">
+                        hx-confirm="Are you sure you want to upgrade MirrorDash Core to v{latest}? MirrorDash will restart afterwards."
+                        hx-disabled-elt="this">
                     Upgrade to v{latest} Now
                 </button>
             </div>
@@ -273,30 +265,152 @@ async def get_system_update_check():
 
 @router.post("/panels/system/update-trigger", dependencies=[Depends(require_api_key)])
 async def trigger_system_update():
+    job_id = start_job(update_core)
+    return job_response(job_id, "Updating MirrorDash", "Installing the new version. This can take a few minutes...",
+                        "MirrorDash was updated successfully.")
+
+
+@router.post("/panels/system/rebuild-venv", dependencies=[Depends(require_api_key)])
+async def trigger_rebuild_venv():
+    job_id = start_job(rebuild_venv)
+    return job_response(job_id, "Rebuilding Environment", "Reinstalling MirrorDash and its modules. This can take several minutes...",
+                        "Environment rebuilt successfully.")
+
+
+def _format_reading(reading: dict) -> tuple[str, str]:
+    """(temperature, humidity) strings in the user's temperature unit."""
+    unit = load_config().get("globals", {}).get("temperature_unit", "C")
+    temp = reading["temperature_c"]
+    if unit == "F":
+        return f"{temp * 9 / 5 + 32:.1f} °F", f"{reading['humidity']} %"
+    return f"{temp:.1f} °C", f"{reading['humidity']} %"
+
+
+@router.post("/panels/system/gpio", dependencies=[Depends(require_api_key)])
+async def save_gpio_settings(request: Request):
+    from mirrordash_core.hardware import BUTTON_ACTIONS, GPIO_HEADER_PINS, PRESS_TYPES, kernel_boot_id, write_gpio_overlays
+
+    form = await request.form()
+
+    def parse_pin(name: str) -> int | None:
+        value = (form.get(name) or "").strip()
+        if not value:
+            return None
+        if not value.isdigit() or int(value) not in GPIO_HEADER_PINS:
+            raise ValueError(f"GPIO {value} can't be used.")
+        return int(value)
+
     try:
-        res = await update_core()
-        return HTMLResponse(content=f"""
-            <div class="alert alert--success" style="margin-top: 10px;">Upgrade initiated successfully. System is restarting. Please wait...</div>
-            <script>
-                showGlobal('Upgrade initiated. Restarting system...', 'success');
-                setTimeout(() => {{
-                    const pollStart = Date.now();
-                    const poll = setInterval(async () => {{
-                        if (Date.now() - pollStart > 60000) {{
-                            clearInterval(poll);
-                            showGlobal('Server did not respond after 60s.', 'error');
-                            return;
-                        }}
-                        try {{
-                            const r = await fetch('/health');
-                            if (r.ok) {{
-                                clearInterval(poll);
-                                window.location.reload();
-                            }}
-                        }} catch (_) {{}}
-                    }}, 2000);
-                }}, 3000);
-            </script>
+        button_pin, dht11_pin = parse_pin("button_pin"), parse_pin("dht11_pin")
+    except ValueError as e:
+        return notify(str(e), "error")
+    actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
+    if any(a not in BUTTON_ACTIONS for a in actions.values()):
+        return notify("Unknown button action.", "error")
+    if button_pin is not None and button_pin == dht11_pin:
+        return notify("The button and the DHT11 sensor can't use the same GPIO.", "error")
+
+    config = load_config()
+    system_cfg = config.setdefault("system", {})
+    dc = system_cfg.get("display_control", {})
+    pir_pin = dc.get("pir", {}).get("pin") if dc.get("mode") == "pir" else None
+    if pir_pin is not None and pir_pin in (button_pin, dht11_pin):
+        return notify(f"GPIO {pir_pin} is already used by the motion sensor (Power tab).", "error")
+
+    pins_changed = (system_cfg.get("button", {}).get("pin"), system_cfg.get("dht11", {}).get("pin")) != (button_pin, dht11_pin)
+    if pins_changed:
+        error = await write_gpio_overlays(button_pin, dht11_pin)
+        if error:
+            return notify(error, "error")
+        # The new pins are active after the next OS boot; remember which boot they were set in
+        system_cfg["gpio_pending_boot_id"] = kernel_boot_id()
+
+    system_cfg["button"] = {"pin": button_pin, "actions": actions}
+    system_cfg["dht11"] = {"pin": dht11_pin}
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+
+    if not pins_changed:
+        return notify("Saved.")
+    return notify("Saved. Restart the mirror to use the new GPIO pin.", **{"gpio-changed": True})
+
+
+@router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
+async def get_gpio_status():
+    from mirrordash_core.hardware import button_manager, read_dht11
+
+    from mirrordash_core.hardware import kernel_boot_id
+
+    system_cfg = load_config().get("system", {})
+    button_pin = system_cfg.get("button", {}).get("pin")
+    dht11_pin = system_cfg.get("dht11", {}).get("pin")
+
+    if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
+        return HTMLResponse(content="""
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <span><strong>Restart needed:</strong> the new GPIO pins are used after the mirror restarts.</span>
+                <button type="button" class="btn secondary btn-sm" hx-post="/admin/panels/power/reboot" hx-target="#global-status"
+                        hx-disabled-elt="this" hx-confirm="Restart the mirror now? The screen will be off for about a minute.">
+                    <i class="fas fa-redo" aria-hidden="true"></i> Restart Mirror
+                </button>
+            </div>
         """)
-    except Exception as e:
-        return HTMLResponse(content=f'<div class="status-msg error" style="margin-top: 10px;">Upgrade failed: {str(e)}</div>')
+
+    if button_pin is None:
+        button = "Not connected"
+    elif button_manager.connected:
+        button = f"Ready on GPIO {button_pin}"
+    else:
+        button = f"Not detected on GPIO {button_pin}. Restart the mirror to load the button driver."
+
+    if dht11_pin is None:
+        sensor = "Not connected"
+    else:
+        reading = await read_dht11()
+        sensor = " · ".join(_format_reading(reading)) if reading else \
+            f"No reading from GPIO {dht11_pin}. Check the wiring."
+
+    return HTMLResponse(content=f"""
+        <div><strong>Button:</strong> {html.escape(button)}</div>
+        <div><strong>DHT11:</strong> {html.escape(sensor)}</div>
+    """)
+
+
+@router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
+async def get_dashboard_sensor():
+    from mirrordash_core.hardware import read_dht11
+
+    reading = await read_dht11()
+    if not reading:
+        return HTMLResponse(content='<p style="color: var(--text-muted); margin: 0;">Waiting for the first reading...</p>')
+    temperature, humidity = _format_reading(reading)
+    return HTMLResponse(content=f"""
+        <div style="display: flex; gap: 32px; flex-wrap: wrap;">
+            <div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{temperature}</div>
+                 <div style="font-size: 0.75rem; color: var(--text-muted);">Temperature</div></div>
+            <div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{humidity}</div>
+                 <div style="font-size: 0.75rem; color: var(--text-muted);">Humidity</div></div>
+        </div>
+    """)
+
+
+@router.post("/panels/power/shutdown", dependencies=[Depends(require_api_key)])
+async def shutdown_mirror():
+    if not await sudo_allowed("/usr/sbin/poweroff"):
+        return notify("This mirror's OS image is too old to shut down from here. Flash the latest MirrorDash OS image.", "error")
+    await poweroff_system(delay_sec=2.0)
+    return ui_events(**{"md-overlay": {"title": "Shutting Down", "message":
+        "The mirror is shutting down. Wait until the screen has been dark for 10 seconds before unplugging the power."}})
+
+
+@router.post("/panels/power/reboot", dependencies=[Depends(require_api_key)])
+async def reboot_mirror():
+    if not await sudo_allowed("/usr/sbin/reboot"):
+        return notify("Restarting the mirror isn't allowed on this OS image.", "error")
+    await reboot_system(delay_sec=2.0)
+    return ui_events(**{"md-follow": {"bootId": BOOT_ID, "title": "Restarting the Mirror",
+                                      "message": "Restarting... This takes about a minute.",
+                                      "successMsg": "The mirror has restarted."}})

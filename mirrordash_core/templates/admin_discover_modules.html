@@ -8,10 +8,11 @@
             <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Last scanned: {{ last_scan }}</span>
             <button class="btn secondary btn-sm"
                     hx-post="/admin/community-modules/scan"
-                    hx-target="#global-status"
-                    hx-swap="innerHTML"
-                    onclick="this.innerHTML='<i class=\'fas fa-spinner fa-spin\'></i> Scanning...'; setTimeout(() => location.reload(), 3000);">
-                <i class="fas fa-sync-alt"></i> Refresh Module List
+                    hx-swap="none"
+                    hx-disabled-elt="this"
+                    hx-on::after-request="if (event.detail.successful) htmx.ajax('GET', '/admin/panels/modules/discover', {target: '#discover-modules-section', swap: 'outerHTML'}); else showGlobal('Could not refresh the module list.', 'error');">
+                <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Scanning...</span>
+                <span class="htmx-normal"><i class="fas fa-sync-alt"></i> Refresh Module List</span>
             </button>
         </div>
     </div>

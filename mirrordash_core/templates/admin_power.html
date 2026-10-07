@@ -15,7 +15,6 @@
                     <option value="manual" {% if settings.display_control.mode == "manual" %}selected{% endif %}>Manual / Always On</option>
                     <option value="interval" {% if settings.display_control.mode == "interval" %}selected{% endif %}>Time of Day Schedule</option>
                     <option value="pir" {% if settings.display_control.mode == "pir" %}selected{% endif %}>PIR Motion Detector</option>
-                    <option value="button" {% if settings.display_control.mode == "button" %}selected{% endif %}>Physical GPIO Button</option>
                 </select>
 
                 <!-- Interval Settings Group -->
@@ -82,13 +81,6 @@
                     </div>
                 </div>
 
-                <!-- Button Settings Group -->
-                <div id="display-mode-button-group" class="sub-form-group" style="{% if settings.display_control.mode == 'button' %}display: block;{% else %}display: none;{% endif %} padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-bottom: 12px;">
-                    <div>
-                        <label for="sys-display-button-pin" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">GPIO Button Pin (BCM)</label>
-                        <input type="number" id="sys-display-button-pin" name="display_control[button][pin]" class="form-control" min="1" max="40" value="{{ settings.display_control.button.pin or 23 }}">
-                    </div>
-                </div>
             </div>
 
             <div class="card-actions">
@@ -98,6 +90,24 @@
                 </button>
             </div>
         </form>
+    </section>
+
+    <!-- Restart / shut down the whole mirror -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-power-off" aria-hidden="true"></i> Mirror Power</h2>
+        <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 15px 0;">Shut the mirror down before unplugging it, so the SD card is never damaged. A button connected under Hardware can do the same.</p>
+        <div style="display: flex; gap: 12px; width: 100%; flex-wrap: wrap;">
+            <button type="button" id="reboot-mirror-btn" class="btn secondary" style="flex: 1; justify-content: center;"
+                    hx-post="/admin/panels/power/reboot" hx-target="#global-status" hx-disabled-elt="this"
+                    hx-confirm="Restart the mirror? The screen will be off for about a minute.">
+                <i class="fas fa-redo" aria-hidden="true"></i> Restart Mirror
+            </button>
+            <button type="button" id="shutdown-mirror-btn" class="btn danger" style="flex: 1; justify-content: center;"
+                    hx-post="/admin/panels/power/shutdown" hx-target="#global-status" hx-disabled-elt="this"
+                    hx-confirm="Shut down the mirror? To start it again, unplug the power and plug it back in.">
+                <i class="fas fa-power-off" aria-hidden="true"></i> Shut Down
+            </button>
+        </div>
     </section>
 
     <!-- Screen Power Control -->
@@ -133,6 +143,5 @@
     function toggleDisplayModeGroups(mode) {
         document.getElementById('display-mode-interval-group').style.display = mode === 'interval' ? 'block' : 'none';
         document.getElementById('display-mode-pir-group').style.display = mode === 'pir' ? 'block' : 'none';
-        document.getElementById('display-mode-button-group').style.display = mode === 'button' ? 'block' : 'none';
     }
 </script>

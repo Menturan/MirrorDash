@@ -57,7 +57,13 @@ MOCK_BACKUPS = {
 def patch_all_system():
     mock_rw = AsyncMock(return_value=True)
     mock_ro = AsyncMock(return_value=True)
-    mock_restart = AsyncMock(return_value=True)
+    async def fake_restart():
+        # A real restart starts a new process with a new boot id; the admin UI waits for that.
+        import uuid
+        from mirrordash_core.api import admin_shared
+        admin_shared.BOOT_ID = uuid.uuid4().hex
+        return True
+    mock_restart = AsyncMock(side_effect=fake_restart)
     mock_get_ssh_val = AsyncMock(return_value=False) # Start with SSH disabled to test toggle
     mock_set_ssh_val = AsyncMock(return_value=True)
     
@@ -266,7 +272,7 @@ def test_admin_backup_panel(page, server_url):
 
     # Verify alert/success messaging gets displayed in global status
     page.wait_for_selector("#global-status", state="visible")
-    assert "Backup generated successfully" in page.locator("#global-status").text_content()
+    assert "generated successfully" in page.locator("#global-status").text_content()
 
 def test_admin_system_panel(page, server_url):
     navigate_authenticated(page, server_url)
@@ -285,22 +291,23 @@ def test_admin_system_panel(page, server_url):
     page.evaluate("document.getElementById('sys-brightness').value = 85; document.getElementById('sys-brightness').dispatchEvent(new Event('input'))")
     assert page.locator("#sys-brightness-val").text_content() == "85%"
 
-    # Toggle SSH switch and set user password
-    assert not page.locator("#sys-ssh-password-group").is_visible()
-    page.evaluate("document.getElementById('sys-ssh').checked = true; document.getElementById('sys-ssh').dispatchEvent(new Event('change'))")
-    page.wait_for_selector("#sys-ssh-password-group", state="visible")
-    assert page.locator("#sys-ssh-password-group").is_visible()
-    page.fill("#sys-ssh-password", "pi_password_123")
-
-    # Change rotation settings
+    # Settings apply on change: there is no Apply button any more
+    assert page.locator("#save-system-btn").count() == 0
     page.select_option("#sys-rotation", "right")
-
-    # Submit settings form
-    page.click("#save-system-btn")
-
-    # Verify status bar notifies user of successful save
     page.wait_for_selector("#global-status", state="visible")
-    assert "System settings applied successfully" in page.locator("#global-status").text_content()
+    assert "Saved." in page.locator("#global-status").text_content()
+
+    # Turning SSH on waits for the password instead of saving immediately
+    page.evaluate("document.getElementById('global-status').hidden = true")
+    assert not page.locator("#sys-ssh-password-group").is_visible()
+    with page.expect_request("**/admin/panels/system/save") as saved:
+        page.evaluate("document.getElementById('sys-ssh').checked = true; document.getElementById('sys-ssh').dispatchEvent(new Event('change', {bubbles: true}))")
+        page.wait_for_selector("#sys-ssh-password-group", state="visible")
+        page.fill("#sys-ssh-password", "pi_password_123")
+        page.dispatch_event("#sys-ssh-password", "change")
+    assert "pi_password=pi_password_123" in saved.value.post_data
+    page.wait_for_selector("#global-status", state="visible")
+    assert "Saved." in page.locator("#global-status").text_content()
 
 
 def test_add_to_mirror(page, server_url):

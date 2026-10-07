@@ -39,7 +39,11 @@
 
 7. **Conservative framework adoption.** The mirror frontend uses vanilla HTML, CSS, and JavaScript by default. Introducing frameworks (React, Vue, Alpine, HTMX, etc.) should be avoided unless there is a compelling justification that vanilla JS cannot solve. If a framework is deemed necessary, consult with the maintainers first and document the rationale in `ARCHITECTURE.md`.
 
-8. **No browser alert popups.** Never use native browser dialogs like `alert()`, `confirm()`, or `prompt()` in the admin dashboard user interface. Use custom, sleek inline styling or custom overlays consistent with the Global Ethereal Design System instead.
+8. **No browser alert popups.** Never use native browser dialogs like `alert()`, `confirm()`, or `prompt()` in the admin dashboard user interface. Use custom, sleek inline styling or custom overlays consistent with the Global Ethereal Design System instead. `hx-confirm` is fine: a global `htmx:confirm` handler routes it to `showConfirm()`.
+
+8b. **Loading states come from HTMX, never from `onclick`.** Show spinners with `.htmx-indicator` / `.htmx-normal` spans and `hx-disabled-elt="this"`, so they end when the request ends (and never start if a confirm is cancelled). Anything that takes longer than a few seconds or restarts the app (package installs, updates, restores) must run via `start_job()` and answer with `job_response()`.
+
+8c. **Server feedback via page events, not `<script>` tags.** Admin panel routes report results with `notify()` / `ui_events()` (an `HX-Trigger-After-Swap` header that `admin.html` listens for). Returning `<script>showGlobal(...)</script>` into `#global-status` crashed htmx mid-swap and is also never run with `hx-swap="none"`. Errors raised as `HTTPException` are shown automatically by the global `htmx:responseError` handler.
 
 9. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
 

@@ -137,8 +137,9 @@ async def revert_venv_next(active_path, next_path):
 @router.post("/restart", dependencies=[Depends(require_api_key)])
 async def restart_system() -> dict:
     logger.info("System restart requested by admin client.")
+    from mirrordash_core.api.admin_shared import BOOT_ID
     asyncio.create_task(run_restart())
-    return {"status": "success", "message": "Restarting..."}
+    return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
 
 
 @router.get("/core-update-check", dependencies=[Depends(require_api_key)])
@@ -382,8 +383,13 @@ async def get_system_settings() -> dict:
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
                 "pir": {"pin": 18, "timeout_minutes": 5},
-                "button": {"pin": 23}
-            })
+            }),
+            "button": {
+                "pin": system_cfg.get("button", {}).get("pin"),
+                "actions": {p: system_cfg.get("button", {}).get("actions", {}).get(p, "none")
+                            for p in ("single", "double", "triple", "long")},
+            },
+            "dht11": {"pin": system_cfg.get("dht11", {}).get("pin")},
         },
         "resolutions": resolutions
     }
@@ -406,7 +412,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         "mode": "manual",
         "interval": {"start": "07:00", "end": "22:00"},
         "pir": {"pin": 18, "timeout_minutes": 5},
-        "button": {"pin": 23}
     })
     incoming_dc = settings.get("display_control", {})
     
@@ -418,8 +423,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
             display_control["interval"] = {**display_control.get("interval", {}), **incoming_dc["interval"]}
         if "pir" in incoming_dc:
             display_control["pir"] = {**display_control.get("pir", {}), **incoming_dc["pir"]}
-        if "button" in incoming_dc:
-            display_control["button"] = {**display_control.get("button", {}), **incoming_dc["button"]}
 
     # Validation
     if rotation not in ("normal", "left", "right", "inverted"):
@@ -430,7 +433,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail="Volume must be between 0 and 100")
 
     mode = display_control.get("mode", "manual")
-    if mode not in ("manual", "interval", "pir", "button"):
+    if mode not in ("manual", "interval", "pir"):
         raise HTTPException(status_code=400, detail="Invalid display power mode")
 
     if mode == "interval":
@@ -447,11 +450,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
             raise HTTPException(status_code=400, detail="Invalid PIR GPIO pin")
         if not isinstance(timeout, int) or timeout < 1:
             raise HTTPException(status_code=400, detail="Invalid PIR timeout")
-    elif mode == "button":
-        btn = display_control.get("button", {})
-        pin = btn.get("pin", 23)
-        if not isinstance(pin, int) or pin < 1 or pin > 40:
-            raise HTTPException(status_code=400, detail="Invalid Button GPIO pin")
 
     system_cfg["rotation"] = rotation
     system_cfg["resolution"] = resolution

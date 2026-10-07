@@ -6,6 +6,7 @@ from mirrordash_core.system import (
     remount_rw,
     remount_ro,
     reboot_system,
+    poweroff_system,
     apply_system_timezone,
     get_available_resolutions,
     apply_system_settings,
@@ -67,16 +68,19 @@ async def test_remount_ro_success(mock_subproc):
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
-async def test_reboot_system(mock_subproc):
+@pytest.mark.parametrize("func, command", [(reboot_system, "reboot"), (poweroff_system, "poweroff")])
+async def test_reboot_and_poweroff_system(mock_subproc, func, command):
     mock_proc = AsyncMock()
-    mock_proc.wait = AsyncMock()
+    mock_proc.returncode = 0
+    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
     mock_subproc.return_value = mock_proc
-    
-    await reboot_system(delay_sec=0.001)
+
+    await func(delay_sec=0.001)
     # Wait briefly for scheduled task to run
     await asyncio.sleep(0.01)
+    # -n: fail instead of hanging on a password prompt if the sudoers rule is missing
     mock_subproc.assert_called_once_with(
-        "sudo", "reboot",
+        "sudo", "-n", command,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )

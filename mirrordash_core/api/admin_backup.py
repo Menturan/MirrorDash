@@ -8,7 +8,7 @@ import zipfile
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.api.admin_shared import require_api_key, templates
+from mirrordash_core.api.admin_shared import job_response, notify, require_api_key, start_job, templates
 
 logger = logging.getLogger("mirrordash.core.api.admin_backup")
 
@@ -308,34 +308,9 @@ async def restore_panel_backup(
 ):
     from mirrordash_core.api.backup import restore_backup
 
-    try:
-        res = await restore_backup(password=password)
-        return HTMLResponse(content=f"""
-            <div class="alert alert--success">Backup restored successfully! System is restarting...</div>
-            <script>
-                showGlobal('Backup restored successfully! Restarting...', 'success');
-                setTimeout(() => {{
-                    const pollStart = Date.now();
-                    const poll = setInterval(async () => {{
-                        if (Date.now() - pollStart > 60000) {{
-                            clearInterval(poll);
-                            showGlobal('Server did not respond after 60s.', 'error');
-                            return;
-                        }}
-                        try {{
-                            const r = await fetch('/health');
-                            if (r.ok) {{
-                                clearInterval(poll);
-                                window.location.reload();
-                            }}
-                        }} catch (_) {{}}
-                    }}, 2000);
-                }}, 3000);
-            </script>
-        """)
-    except Exception as e:
-        logger.error(f"Restoration failed: {e}")
-        return HTMLResponse(content=f'<div class="alert alert--error">Restoration failed: {str(e)}</div>')
+    job_id = start_job(lambda: restore_backup(password=password))
+    return job_response(job_id, "Restoring Backup", "Restoring settings and modules. This can take a few minutes...",
+                        "Backup restored successfully.")
 
 
 @router.post("/panels/backup/create", dependencies=[Depends(require_api_key)])
@@ -346,12 +321,7 @@ async def create_panel_backup(request: Request):
     password = form_data.get("password")
 
     if encrypt and (not password or len(password) < 4):
-        return HTMLResponse(content="""
-            <div class="alert alert--error">Password must be at least 4 characters for encryption.</div>
-            <script>
-                showGlobal('Password must be at least 4 characters for encryption.', 'error');
-            </script>
-        """)
+        return notify("Password must be at least 4 characters for encryption.", "error")
 
     payload = {}
     if encrypt:
@@ -360,12 +330,4 @@ async def create_panel_backup(request: Request):
     res = await create_backup(payload=payload)
     filename = res.get("filename")
 
-    return HTMLResponse(content=f"""
-        <div class="alert alert--success">Backup {filename} generated successfully.</div>
-        <script>
-            showGlobal('Backup generated successfully.', 'success');
-            htmx.trigger("#backups-list-tbody", "refreshBackups");
-            const pwdInput = document.getElementById('backup-password');
-            if (pwdInput) pwdInput.value = '';
-        </script>
-    """)
+    return notify(f"Backup {filename} generated successfully.", refreshBackups=True, **{"backup-created": True})

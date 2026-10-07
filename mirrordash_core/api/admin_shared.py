@@ -1,12 +1,16 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import asyncio
 import binascii
 import hashlib
+import json
 import secrets
+import uuid
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Awaitable, Callable
 
 from fastapi import Header, HTTPException
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from mirrordash_core.config import load_config
@@ -49,3 +53,59 @@ async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> 
     provided_hash = hash_password(x_api_key, salt)
     if not secrets.compare_digest(provided_hash, expected_hash):
         raise HTTPException(status_code=401, detail="Invalid password")
+
+
+# Changes on every process start, so clients can tell for certain that a restart finished.
+BOOT_ID = uuid.uuid4().hex
+
+# Package operations (venv copy + uv install) take minutes on a Pi 3, longer than nginx's
+# proxy timeout, so they run in the background and the admin UI polls /admin/jobs/current.
+# ponytail: one job at a time and state lives in memory; that matches the A/B venv swap,
+# which can't run concurrently anyway, and a restart ends every job.
+_job: dict = {"id": None, "state": "idle", "error": ""}
+_job_task: asyncio.Task | None = None
+
+
+def start_job(work: Callable[[], Awaitable[object]]) -> str | None:
+    """Run work() in the background. Returns the job id, or None if a job is already running."""
+    global _job_task
+    if _job["state"] == "running":
+        return None
+    job_id = uuid.uuid4().hex[:8]
+    _job.update(id=job_id, state="running", error="")
+
+    async def runner():
+        try:
+            await work()
+            _job["state"] = "restarting"  # every package operation ends by restarting the app
+        except Exception as e:
+            _job.update(state="failed", error=str(getattr(e, "detail", "") or e))
+
+    _job_task = asyncio.create_task(runner())
+    return job_id
+
+
+def job_status() -> dict:
+    return {"boot_id": BOOT_ID, **_job}
+
+
+def ui_events(**events) -> HTMLResponse:
+    """Empty HTMX response that fires page events after the swap (admin.html listens for them).
+
+    Using the HX-Trigger-After-Swap header instead of returning <script> tags: a script that
+    rewrote the swap target while htmx was still inserting it crashed htmx mid-swap.
+    """
+    return HTMLResponse(content="", headers={"HX-Trigger-After-Swap": json.dumps(events)})
+
+
+def notify(message: str, kind: str = "success", **more_events) -> HTMLResponse:
+    """Show a status message in the admin page (more_events: extra page events to fire)."""
+    return ui_events(**{"md-notify": {"message": message, "kind": kind}}, **more_events)
+
+
+def job_response(job_id: str | None, title: str, message: str, success_msg: str, target_panel: str = "") -> HTMLResponse:
+    """Show the progress overlay and follow the job until the app has restarted."""
+    if job_id is None:
+        return notify("Another install or update is still running. Please wait for it to finish.", "error")
+    return ui_events(**{"md-follow": {"jobId": job_id, "bootId": BOOT_ID, "title": title, "message": message,
+                                      "successMsg": success_msg, "targetPanel": target_panel}})

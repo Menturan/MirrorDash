@@ -400,9 +400,44 @@ pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
 EOF
   chmod 440 /etc/sudoers.d/mirrordash
   visudo -cf /etc/sudoers.d/mirrordash
+}
+
+step_gpio_helper() {
+  # Root-owned helper the admin page calls (via sudo) to set the GPIO button and DHT11 pins.
+  # It only writes a managed block of device-tree overlays to config.txt; the firmware applies
+  # them at the next boot (overlays applied at boot can't be swapped safely at runtime).
+  cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays
+#!/bin/bash
+# Usage: mirrordash-gpio-overlays <button_gpio|none> <dht11_gpio|none>
+set -euo pipefail
+
+valid() { [ "$1" = none ] || { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 2 ] && [ "$1" -le 27 ]; }; }
+if [ $# -ne 2 ] || ! valid "$1" || ! valid "$2" || { [ "$1" != none ] && [ "$1" = "$2" ]; }; then
+  echo "usage: $0 <button_gpio|none> <dht11_gpio|none> (GPIO 2-27, two different pins)" >&2
+  exit 2
+fi
+
+CONFIG=/boot/firmware/config.txt
+BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
+END='# --- end MirrorDash GPIO ---'
+
+{
+  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
+  echo "$BEGIN"
+  # Button between the GPIO and GND: kernel debounce, reported as KEY_PROG1 (148)
+  if [ "$1" != none ]; then echo "dtoverlay=gpio-key,gpio=$1,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button"; fi
+  if [ "$2" != none ]; then echo "dtoverlay=dht11,gpiopin=$2"; fi
+  echo "$END"
+} > "$CONFIG.mirrordash-tmp"
+mv "$CONFIG.mirrordash-tmp" "$CONFIG"
+sync
+EOF
+  chmod 755 /usr/local/bin/mirrordash-gpio-overlays
 }
 
 step_watchdog_boot_optimization() {
@@ -882,6 +917,7 @@ run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_c
 run_step "6" "setting_up_wayland" "Setting up Wayland Auto-launch & Kiosk Config" step_setting_up_wayland
 run_step "7" "installing_app" "Installing uv & MirrorDash App" step_installing_app
 run_step "8" "passwordless_sudo" "Setting up Passwordless Sudo" step_passwordless_sudo
+run_step "8b" "gpio_helper" "Installing GPIO Overlay Helper" step_gpio_helper
 run_step "9" "watchdog_boot_optimization" "Enabling Watchdog & Optimizing Boot" step_watchdog_boot_optimization
 run_step "10" "plymouth_splash" "Configuring Plymouth Splash Screen" step_plymouth_splash
 run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_sync

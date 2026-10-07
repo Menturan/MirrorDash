@@ -7,9 +7,8 @@
     <link rel="manifest" href="/static/manifest.json">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Fira+Code&display=swap" rel="stylesheet">
+    <!-- Self-hosted: a render-blocking Google Fonts request stalled the page without internet (setup hotspot) -->
+    <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/admin.css">
     <link rel="stylesheet" href="/static/fontawesome/css/all.min.css">
     <style>
@@ -281,9 +280,13 @@
             outline: none;
         }
 
-        .nav-item:hover {
-            color: var(--text-primary);
-            background-color: rgba(255, 255, 255, 0.03);
+        /* Only on devices with a real pointer: on touch screens :hover sticks after a tap,
+           which made a second tab look selected. */
+        @media (hover: hover) {
+            .nav-item:hover {
+                color: var(--text-primary);
+                background-color: rgba(255, 255, 255, 0.03);
+            }
         }
 
         .nav-item.active {
@@ -564,13 +567,22 @@
             .nav-item {
                 flex-direction: column;
                 gap: 4px;
-                padding: 6px 10px;
+                padding: 6px 2px;
                 border-radius: 8px;
                 font-size: 0.65rem;
-                flex: 1;
+                width: auto; /* undo the sidebar's width: 100% so flex-basis follows the label */
+                flex: 1 1 auto; /* "Dashboard" gets more room than "Logs" */
+                min-width: 0; /* all seven tabs share the width instead of overflowing it */
                 align-items: center;
                 text-align: center;
                 color: var(--text-secondary);
+            }
+
+            .nav-item span {
+                max-width: 100%;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: nowrap;
             }
 
             .nav-item i {
@@ -583,7 +595,7 @@
                 background-color: transparent;
                 border-radius: 0;
                 color: var(--text-primary);
-                padding-left: 10px;
+                padding-left: 2px;
                 padding-bottom: 4px;
             }
 
@@ -649,10 +661,10 @@
             </span>
         </div>
         <button id="rebuild-venv-btn" class="btn-action"
-                hx-post="/admin/rebuild-venv"
+                hx-post="/admin/panels/system/rebuild-venv"
+                hx-target="#global-status"
                 hx-confirm="Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes."
-                hx-swap="none"
-                onclick="this.disabled = true; this.innerHTML = '<i class=&quot;fas fa-spinner fa-spin&quot;></i> Rebuilding...';">
+                hx-disabled-elt="this">
             <i class="fas fa-tools"></i> Rebuild Active Environment
         </button>
     </div>
@@ -725,9 +737,7 @@
 
         <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
 
-        <div class="page-panels" id="tab-content">
-            {{ dashboard_panel_html | safe }}
-        </div>
+        <div class="page-panels" id="tab-content"></div>
     </div>
 
     <!-- Release Notes Modal Overlay -->
@@ -846,7 +856,7 @@
 
     <!-- Load local HTMX library -->
     <script src="/static/js/htmx.min.js"></script>
-    <script src="/static/js/lucide.min.js"></script>
+    <script src="/static/js/lucide.min.js" defer></script>
     <script>
         let currentApiKey = localStorage.getItem('mirrordash_api_key') || '';
         let authPromiseResolve;
@@ -1191,17 +1201,10 @@
 
         function handleHashChange() {
             const hash = window.location.hash;
-            if (hash) {
-                const tabId = 'page-tab-' + hash.replace('#', '');
-                const tabBtn = document.getElementById(tabId);
-                if (tabBtn && !tabBtn.classList.contains('active')) {
-                    tabBtn.click();
-                }
-            } else {
-                const tabBtn = document.getElementById('page-tab-dashboard');
-                if (tabBtn && !tabBtn.classList.contains('active')) {
-                    tabBtn.click();
-                }
+            const tabBtn = document.getElementById(hash ? 'page-tab-' + hash.replace('#', '') : 'page-tab-dashboard');
+            const empty = !document.getElementById('tab-content').children.length;
+            if (tabBtn && (empty || !tabBtn.classList.contains('active'))) {
+                tabBtn.click();
             }
         }
         window.addEventListener('hashchange', handleHashChange);
@@ -1217,17 +1220,20 @@
             const btn = document.getElementById('restart-btn');
             btn.disabled = true;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting…';
+            let bootId = null;
             try {
                 const res = await fetch('/admin/restart', { method: 'POST', headers: { 'X-API-Key': currentApiKey } });
-                if (!res.ok) {
-                    showGlobal('Restart request failed.', 'error');
-                    btn.disabled = false;
-                    btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
-                    return;
-                }
-            } catch (_) {}
-            
+                if (!res.ok) throw new Error();
+                bootId = (await res.json()).boot_id;
+            } catch (_) {
+                showGlobal('Restart request failed.', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-power-off" aria-hidden="true"></i> Restart';
+                return;
+            }
+
             window.pollRestartAndReload({
+                bootId,
                 successMsg: 'System restarted successfully.',
                 title: 'Restarting MirrorDash',
                 message: 'Waiting for the backend server to come back online...',
@@ -1420,76 +1426,106 @@
             }
         };
 
+        // Follows a background job (options.jobId) and the restart that ends it. The server
+        // reports a new boot_id once it has restarted, so there is no guessing from timings.
         window.pollRestartAndReload = function(options = {}) {
-            const targetPanel = options.targetPanel || '';
-            const successMsg = options.successMsg || 'Changes applied successfully.';
-            
-            window.showRestartOverlay(
-                options.title || 'Restarting MirrorDash',
-                options.message || 'Applying configuration changes and restarting backend...'
-            );
-            
-            let isDown = false;
-            const pollStart = Date.now();
-            
-            const poll = setInterval(async () => {
-                // Timeout after 90 seconds
-                if (Date.now() - pollStart > 90000) {
-                    clearInterval(poll);
-                    window.hideRestartOverlay();
-                    showGlobal('Restart timed out. Please refresh the page manually.', 'error');
-                    if (options.onFinish) options.onFinish();
-                    return;
+            const startedAt = Date.now();
+            const baseMessage = options.message || 'Restarting MirrorDash...';
+            const messageEl = document.getElementById('restart-overlay-message');
+            window.showRestartOverlay(options.title || 'Restarting MirrorDash', baseMessage);
+
+            const finish = (ok, msg) => {
+                window.hideRestartOverlay();
+                showGlobal(msg, ok ? 'success' : 'error');
+                if (options.onFinish) options.onFinish();
+                if (!ok) return;
+                if (options.targetPanel) {
+                    htmx.ajax('GET', '/admin/panels/' + options.targetPanel, {target: '#tab-content'});
+                } else {
+                    window.location.reload();
                 }
-                
+            };
+
+            const tick = async () => {
+                const secs = Math.round((Date.now() - startedAt) / 1000);
+                if (secs > 900) {
+                    return finish(false, 'This is taking unusually long. Check the mirror, then reload this page.');
+                }
+                let status = null;
                 try {
-                    const res = await fetch('/health?t=' + Date.now());
-                    
-                    if (!isDown) {
-                        // Wait for server to go down. If it is already up after 5s, assume it cycled fast.
-                        if (Date.now() - pollStart > 5000) {
-                            isDown = true;
-                        }
-                    } else if (res.ok) {
-                        clearInterval(poll);
-                        window.hideRestartOverlay();
-                        showGlobal(successMsg, 'success');
-                        if (options.onFinish) options.onFinish();
-                        
-                        if (targetPanel) {
-                            htmx.ajax('GET', '/admin/panels/' + targetPanel, {target: '#tab-content'});
-                        } else {
-                            window.location.reload();
-                        }
-                    }
-                } catch (err) {
-                    // Connection error means server is down
-                    isDown = true;
+                    const res = await fetch(options.jobId ? '/admin/jobs/current' : '/health', {
+                        headers: { 'X-API-Key': currentApiKey },
+                        cache: 'no-store',
+                        signal: AbortSignal.timeout(4000),
+                    });
+                    if (res.ok) status = await res.json();
+                } catch (_) {
+                    // No answer: the server is restarting or Wi-Fi hiccupped. Keep waiting.
                 }
-            }, 1000);
+                if (status && status.boot_id !== options.bootId) {
+                    return finish(true, options.successMsg || 'Changes applied successfully.');
+                }
+                if (status && options.jobId && status.id === options.jobId && status.state === 'failed') {
+                    return finish(false, status.error || 'The operation failed.');
+                }
+                const installing = status && status.state === 'running';
+                messageEl.textContent = `${installing ? baseMessage : 'Restarting MirrorDash...'} (${secs} s)`;
+                setTimeout(tick, 1500);
+            };
+            setTimeout(tick, 1000);
         };
+
+        // Server responses ask for UI feedback through HX-Trigger-After-Swap events (see ui_events()).
+        document.body.addEventListener('md-notify', (e) => showGlobal(e.detail.message, e.detail.kind));
+        document.body.addEventListener('md-follow', (e) => window.pollRestartAndReload(e.detail));
+        document.body.addEventListener('md-overlay', (e) => window.showRestartOverlay(e.detail.title, e.detail.message));
+        document.body.addEventListener('backup-created', () => {
+            const pwd = document.getElementById('backup-password');
+            if (pwd) pwd.value = '';
+        });
+
+        // Route every hx-confirm through the app's own dialog instead of the browser's confirm().
+        document.body.addEventListener('htmx:confirm', async (event) => {
+            if (!event.detail.question) return;
+            event.preventDefault();
+            if (await showConfirm('Are you sure?', event.detail.question)) {
+                event.detail.issueRequest(true);
+            }
+        });
 
         document.body.addEventListener('htmx:configRequest', (event) => {
             event.detail.headers['X-API-Key'] = currentApiKey;
         });
 
         document.body.addEventListener('htmx:responseError', (event) => {
-            if (event.detail.xhr.status === 401 || event.detail.xhr.status === 403) {
+            const xhr = event.detail.xhr;
+            if (xhr.status === 401 || xhr.status === 403) {
                 if (currentApiKey) {
                     localStorage.removeItem('mirrordash_api_key');
                     currentApiKey = '';
                     window.location.reload();
                 }
+                return;
             }
+            // Never fail silently: show FastAPI's {"detail": ...} message, or a generic one.
+            let detail = '';
+            try { detail = JSON.parse(xhr.responseText).detail; } catch (_) {}
+            showGlobal(typeof detail === 'string' && detail ? detail : `Something went wrong (error ${xhr.status}).`, 'error');
+        });
+
+        document.body.addEventListener('htmx:sendError', () => {
+            showGlobal('Could not reach the mirror. Check that it is on and connected to Wi-Fi.', 'error');
         });
 
         document.body.addEventListener('htmx:afterSwap', (event) => {
-            triggerLucide();
+            triggerLucide(event.detail.target);
         });
 
-        function triggerLucide() {
+        // Lucide is only needed for the module icon picker (the same icons the mirror draws).
+        // Scan just the swapped element: a full-document scan on every swap was slow on phones.
+        function triggerLucide(root) {
             if (typeof lucide !== 'undefined') {
-                lucide.createIcons();
+                lucide.createIcons(root ? { root } : undefined);
             }
         }
 
@@ -1630,42 +1666,6 @@
             if (event.target && event.target.classList.contains('array-items-container')) {
                 reindexArrayContainer(event.target);
                 triggerLucide();
-            }
-        });
-
-        document.body.addEventListener('htmx:afterRequest', (event) => {
-            if (event.detail.pathInfo.requestPath === '/admin/rebuild-venv') {
-                const btn = document.getElementById('rebuild-venv-btn');
-                if (event.detail.successful) {
-                    showGlobal('Rebuild succeeded. Restarting system...', 'success');
-                    setTimeout(() => {
-                        const pollStart = Date.now();
-                        const poll = setInterval(async () => {
-                            if (Date.now() - pollStart > 60000) {
-                                clearInterval(poll);
-                                showGlobal('Server did not respond after 60s.', 'error');
-                                if (btn) {
-                                    btn.disabled = false;
-                                    btn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
-                                }
-                                return;
-                            }
-                            try {
-                                const r = await fetch('/health');
-                                if (r.ok) {
-                                    clearInterval(poll);
-                                    window.location.reload();
-                                }
-                            } catch (_) {}
-                        }, 2000);
-                    }, 3000);
-                } else {
-                    showGlobal('Rebuild failed.', 'error');
-                    if (btn) {
-                        btn.disabled = false;
-                        btn.innerHTML = '<i class="fas fa-tools"></i> Rebuild Active Environment';
-                    }
-                }
             }
         });
 

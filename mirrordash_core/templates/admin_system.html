@@ -2,9 +2,11 @@
 <div class="page-panel active" id="page-panel-system" role="tabpanel" aria-labelledby="page-tab-system">
     <section class="card">
         <h2><i class="fas fa-desktop" aria-hidden="true"></i> Hardware Settings</h2>
-        <p class="panel-subtitle">Manage screen brightness, volume, rotation, and resolution directly from the dashboard.</p>
-        
-        <form id="system-settings-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML">
+        <p class="panel-subtitle">Changes are applied right away.</p>
+
+        <!-- Saves on every change. Turning SSH on waits for the new password instead. -->
+        <form id="system-settings-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML"
+              hx-trigger="change[!waitsForSshPassword(event)]">
             <!-- Screen Brightness -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
@@ -76,21 +78,73 @@
                 <div id="sys-ssh-password-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-top: 10px;">
                     <label for="sys-ssh-password" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 6px;">Set New Password for System User 'pi'</label>
                     <input type="password" id="sys-ssh-password" name="pi_password" class="form-control" placeholder="Enter password (min 8 chars)" style="max-width: 300px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border); border-radius: 8px; color: white; padding: 8px 12px; outline: none;">
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 6px 0 0 0;">SSH is turned on as soon as you leave this field.</p>
+                </div>
+            </div>
+        </form>
+    </section>
+
+    <!-- GPIO: push button and DHT11 sensor -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-microchip" aria-hidden="true"></i> Button &amp; Sensor</h2>
+        <p class="panel-subtitle">Choose which GPIO each part is connected to. Changes are applied right away.</p>
+
+        <form id="gpio-settings-form" hx-post="/admin/panels/system/gpio" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="gpio-button-pin" style="font-weight: 500; font-size: 0.9rem; color: white;">Push Button</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Connect the button between this GPIO and a GND pin.</p>
+                </div>
+                <select id="gpio-button-pin" name="button_pin" class="form-control" onchange="document.getElementById('gpio-button-actions').hidden = !this.value">
+                    <option value="" {% if settings.button.pin is none %}selected{% endif %}>Not connected</option>
+                    {% for bcm, header in gpio_pins %}
+                        <option value="{{ bcm }}" {% if settings.button.pin == bcm %}selected{% endif %}>GPIO {{ bcm }} (pin {{ header }})</option>
+                    {% endfor %}
+                </select>
+
+                <div id="gpio-button-actions" {% if settings.button.pin is none %}hidden{% endif %} style="padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-top: 12px; display: grid; gap: 10px;">
+                    {% for press, label in press_labels %}
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                        <label for="gpio-action-{{ press }}" style="font-size: 0.8rem; color: white; min-width: 110px;">{{ label }}</label>
+                        <select id="gpio-action-{{ press }}" name="action_{{ press }}" class="form-control" style="flex: 1; min-width: 180px;">
+                            {% for value, action_label in button_actions.items() %}
+                                <option value="{{ value }}" {% if settings.button.actions[press] == value %}selected{% endif %}>{{ action_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
                 </div>
             </div>
 
-            <div class="card-actions">
-                <button type="submit" id="save-system-btn" class="btn primary" aria-label="Apply hardware settings">
-                    <i class="fas fa-save" aria-hidden="true"></i>
-                    <span id="save-system-label">Apply Settings</span>
-                </button>
+            <div class="form-group" style="margin-bottom: 20px;">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="gpio-dht11-pin" style="font-weight: 500; font-size: 0.9rem; color: white;">DHT11 Temperature &amp; Humidity Sensor</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">The sensor's data pin. Power it from a 3.3V pin and GND. Readings are shown on the Dashboard.</p>
+                </div>
+                <select id="gpio-dht11-pin" name="dht11_pin" class="form-control">
+                    <option value="" {% if settings.dht11.pin is none %}selected{% endif %}>Not connected</option>
+                    {% for bcm, header in gpio_pins %}
+                        <option value="{{ bcm }}" {% if settings.dht11.pin == bcm %}selected{% endif %}>GPIO {{ bcm }} (pin {{ header }})</option>
+                    {% endfor %}
+                </select>
             </div>
         </form>
+
+        <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s"
+             style="font-size: 0.8rem; color: var(--text-secondary); display: grid; gap: 4px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
+            Checking...
+        </div>
     </section>
 </div>
 
 <script>
     let initialSshState = {% if settings.ssh %}true{% else %}false{% endif %};
+
+    // Turning SSH on needs a new password first: don't save until the password field changes.
+    function waitsForSshPassword(event) {
+        return event.target.id === 'sys-ssh' && event.target.checked && !initialSshState;
+    }
+    document.getElementById('sys-ssh-password').addEventListener('change', () => { initialSshState = true; });
     
     function toggleSSHPasswordGroup(checked) {
         if (checked && !initialSshState) {

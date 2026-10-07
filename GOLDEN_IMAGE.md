@@ -647,9 +647,45 @@ pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
+pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
 EOF
 sudo chmod 440 /etc/sudoers.d/mirrordash
 sudo visudo -cf /etc/sudoers.d/mirrordash
+```
+
+### 3.3 GPIO Overlay Helper (Push Button & DHT11)
+
+The admin page sets the GPIO pins of the push button and the DHT11 sensor through this root-owned helper (allowed in the sudoers file above). It validates its arguments (GPIO 2–27, two different pins) and only rewrites a managed block of device-tree overlays in `config.txt`; the firmware applies them at the next boot. The kernel drivers then do the work: `gpio-key` debounces the button and reports it as an input device (`KEY_PROG1`), and `dht11` exposes the readings under `/sys/bus/iio/devices/`. No Python GPIO library is needed. Reading `/dev/input/event*` relies on `pi` being in the `input` group, which Raspberry Pi OS sets up for the first user.
+
+```bash
+sudo tee /usr/local/bin/mirrordash-gpio-overlays > /dev/null << 'EOF'
+#!/bin/bash
+# Usage: mirrordash-gpio-overlays <button_gpio|none> <dht11_gpio|none>
+set -euo pipefail
+
+valid() { [ "$1" = none ] || { [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 2 ] && [ "$1" -le 27 ]; }; }
+if [ $# -ne 2 ] || ! valid "$1" || ! valid "$2" || { [ "$1" != none ] && [ "$1" = "$2" ]; }; then
+  echo "usage: $0 <button_gpio|none> <dht11_gpio|none> (GPIO 2-27, two different pins)" >&2
+  exit 2
+fi
+
+CONFIG=/boot/firmware/config.txt
+BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
+END='# --- end MirrorDash GPIO ---'
+
+{
+  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
+  echo "$BEGIN"
+  # Button between the GPIO and GND: kernel debounce, reported as KEY_PROG1 (148)
+  if [ "$1" != none ]; then echo "dtoverlay=gpio-key,gpio=$1,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button"; fi
+  if [ "$2" != none ]; then echo "dtoverlay=dht11,gpiopin=$2"; fi
+  echo "$END"
+} > "$CONFIG.mirrordash-tmp"
+mv "$CONFIG.mirrordash-tmp" "$CONFIG"
+sync
+EOF
+sudo chmod 755 /usr/local/bin/mirrordash-gpio-overlays
 ```
 
 ---
