@@ -408,15 +408,13 @@ async def get_panel_dashboard(request: Request):
         get_disk_usage(), get_ntp_status(), get_wifi_info(), get_undervoltage_detected()
     )
     
-    # Get active modules from module_loader
-    active_instances = []
-    for name, instance in module_loader.instances.items():
-        inst_cfg = getattr(instance, "config", {})
-        active_instances.append({
-            "id": name,
-            "module": inst_cfg.get("module", name),
-            "position": inst_cfg.get("position", "middle_center")
-        })
+    # What is placed where on the screen (from the config, so stopped or disabled modules show too)
+    screen_layout = {}
+    for inst_id, inst_cfg in load_config().get("modules", {}).items():
+        if isinstance(inst_cfg, dict):
+            name = re.sub(r"^mirrordash[-_]", "", inst_id).replace("_", " ").replace("-", " ").title()
+            screen_layout.setdefault(inst_cfg.get("position", "middle_center"), []).append(
+                {"name": name, "enabled": inst_cfg.get("enabled", True)})
         
     # Get CPU Temperature (e.g. Raspberry Pi)
     cpu_temp = None
@@ -443,7 +441,7 @@ async def get_panel_dashboard(request: Request):
         request=request,
         name="admin_dashboard.html",
         context={
-            "active_instances": active_instances,
+            "screen_layout": screen_layout,
             "disk_usage": disk_usage,
             "cpu_temp": cpu_temp,
             "local_ip": local_ip,

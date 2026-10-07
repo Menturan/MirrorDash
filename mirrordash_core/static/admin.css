@@ -975,8 +975,16 @@ input:checked + .slider:before {
     border: 1px solid var(--card-border);
     border-radius: 8px;
     padding: 15px;
-    max-height: 500px;
+    height: max(300px, calc(100vh - 380px)); /* fill the screen below the controls */
     overflow-y: auto;
+}
+
+.logs-viewer .log-error {
+    color: #fca5a5;
+}
+
+.logs-viewer .log-warning {
+    color: #fcd34d;
 }
 
 .logs-viewer {

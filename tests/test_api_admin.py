@@ -1215,11 +1215,16 @@ def test_get_panel_dashboard(
     mock_loader.instances = {"clock-one": mock_inst}
     mock_loader.tasks = {"clock-one": MagicMock()}
 
-    response = client.get("/admin/panels/dashboard", headers=headers)
+    cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
+                       "mirrordash_news": {"position": "top_left", "enabled": False}}}
+    with patch("mirrordash_core.api.admin_config.load_config", return_value=cfg):
+        response = client.get("/admin/panels/dashboard", headers=headers)
     assert response.status_code == 200
-    assert "Screen Layout Matrix" in response.text
+    assert "On the Screen" in response.text
     assert "System Analytics" in response.text
-    assert "TL" in response.text
+    # Configured modules are named in their screen position, the disabled one dimmed
+    assert "var(--text-primary);\">Clock</span>" in response.text
+    assert "var(--text-muted);\">News</span>" in response.text
     assert "Memory (RAM)" in response.text
     assert "50.0% Used" in response.text
     assert "Home-WiFi" in response.text
@@ -1263,3 +1268,12 @@ def test_get_dashboard_updates_none(mock_check, client):
 
 
 
+
+
+def test_logs_viewer_escapes_html(client):
+    """Log lines can contain anything (request paths, module output); they must never become markup."""
+    with patch("mirrordash_core.api.admin_logs.get_logs", new_callable=AsyncMock,
+               return_value={"logs": 'GET /<img src=x onerror=alert(1)> 404'}):
+        response = client.get("/admin/panels/logs/viewer", headers={"X-API-Key": "secret"})
+    assert "<img" not in response.text
+    assert "&lt;img src=x onerror=alert(1)&gt;" in response.text

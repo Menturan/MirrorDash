@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import html
 import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -113,4 +114,4 @@ async def get_panel_logs(request: Request):
 async def get_logs_viewer(type: str = "system", lines: int = 100, module: str | None = None):
     log_data = await get_logs(type=type, lines=lines, module=module)
     logs_content = log_data.get("logs", "No logs found.")
-    return HTMLResponse(content=logs_content)
+    return HTMLResponse(content=html.escape(logs_content))  # log lines can contain anything, e.g. request paths

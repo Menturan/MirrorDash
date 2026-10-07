@@ -47,38 +47,25 @@
         <!-- Screen Layout Matrix -->
         <section class="card" style="grid-column: span 5; display: flex; flex-direction: column;">
             <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
-                <i class="fas fa-th-large" style="color: var(--primary);"></i> Screen Layout Matrix
+                <i class="fas fa-th-large" style="color: var(--primary);"></i> On the Screen
             </h2>
             <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
-                Visualizes screen positions currently populated with active modules.
+                Where each module sits on the mirror. Dimmed ones are turned off.
             </p>
-            
-            {% set filled_positions = [] %}
-            {% for inst in active_instances %}
-                {% if inst.position not in filled_positions %}
-                    {% set _ = filled_positions.append(inst.position) %}
-                {% endif %}
-            {% endfor %}
 
-            <div class="matrix-grid" style="display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 75px); gap: 6px; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.03);">
+            <a class="matrix-grid" href="#modules" aria-label="Open Modules" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(75px, auto); gap: 6px; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.03); text-decoration: none;">
                 {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
-                    {% set is_filled = pos in filled_positions %}
-                    <div class="matrix-cell {% if is_filled %}filled{% endif %}" 
-                         style="background: {% if is_filled %}rgba(99, 102, 241, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %}; 
-                                border: 1px solid {% if is_filled %}var(--primary){% else %}rgba(255, 255, 255, 0.04){% endif %}; 
-                                border-radius: 6px; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; position: relative;"
-                         title="{{ pos.replace('_', ' ').title() }}{% if is_filled %} (Active Modules Running){% endif %}">
-                        <span style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 600;">
-                            {% if pos == 'top_left' %}TL{% elif pos == 'top_center' %}TC{% elif pos == 'top_right' %}TR
-                            {% elif pos == 'middle_left' %}ML{% elif pos == 'middle_center' %}MC{% elif pos == 'middle_right' %}MR
-                            {% elif pos == 'bottom_left' %}BL{% elif pos == 'bottom_center' %}BC{% elif pos == 'bottom_right' %}BR{% endif %}
-                        </span>
-                        {% if is_filled %}
-                            <div style="width: 6px; height: 6px; background: var(--primary); border-radius: 50%; box-shadow: 0 0 6px var(--primary); position: absolute; bottom: 6px;"></div>
-                        {% endif %}
+                    {% set placed = screen_layout.get(pos, []) %}
+                    <div class="matrix-cell" title="{{ pos.replace('_', ' ').capitalize() }}"
+                         style="background: {% if placed %}rgba(99, 102, 241, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %};
+                                border: 1px solid {% if placed %}var(--primary){% else %}rgba(255, 255, 255, 0.04){% endif %};
+                                border-radius: 6px; padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; min-width: 0;">
+                        {% for m in placed %}
+                            <span style="font-size: 0.72rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; color: {% if m.enabled %}var(--text-primary){% else %}var(--text-muted){% endif %};">{{ m.name }}</span>
+                        {% endfor %}
                     </div>
                 {% endfor %}
-            </div>
+            </a>
         </section>
 
         <!-- System Analytics: re-fetched every 10 s while the dashboard tab is open (switching tab

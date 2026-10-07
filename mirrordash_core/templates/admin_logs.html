@@ -3,13 +3,13 @@
     <section class="card">
         <form id="logs-form" hx-get="/admin/panels/logs/viewer" hx-target="#logs-viewer" hx-trigger="change from:select, refreshLogs">
             <div class="logs-header">
-                <h2><i class="fas fa-file-alt" aria-hidden="true"></i> System & Module Logs</h2>
+                <h2><i class="fas fa-file-alt" aria-hidden="true"></i> Logs</h2>
                 <div class="logs-actions">
                     <label for="log-type-select">Source:</label>
                     <select id="log-type-select" name="type" class="form-control log-select" onchange="toggleModuleSelectContainer(this.value)">
-                        <option value="system" selected>System Logs (Core)</option>
-                        <option value="modules">Module Logs</option>
-                        <option value="raspberry">Raspberry Pi Logs</option>
+                        <option value="system" selected>MirrorDash</option>
+                        <option value="modules">Modules</option>
+                        <option value="raspberry">Raspberry Pi</option>
                     </select>
                     
                     <span id="log-module-select-container" style="display: none; align-items: center; gap: 5px; margin-right: 5px;">
@@ -39,6 +39,8 @@
                 </div>
             </div>
         </form>
+        <input type="search" id="logs-filter" class="form-control" placeholder="Show only lines containing…"
+               aria-label="Filter log lines" oninput="renderLogs()" style="margin-bottom: 12px;">
         <div class="logs-viewer-container">
             <pre id="logs-viewer" class="logs-viewer">{{ logs_content }}</pre>
         </div>
@@ -61,15 +63,29 @@
             .catch(() => showGlobal('Failed to copy logs.', 'error'));
     }
     
-    // Local container scroll handler
+    // Errors and warnings stand out, and the filter hides other lines. The raw text is kept
+    // so filtering never needs a new request; spans are built with textContent (no HTML).
+    let rawLogs = '';
+    function renderLogs() {
+        const viewer = document.getElementById('logs-viewer');
+        const filter = document.getElementById('logs-filter').value.toLowerCase();
+        viewer.replaceChildren(...rawLogs.split('\n')
+            .filter(line => !filter || line.toLowerCase().includes(filter))
+            .map(line => {
+                const span = document.createElement('span');
+                span.textContent = line + '\n';
+                if (/\b(ERROR|CRITICAL)\b|Traceback|Exception/.test(line)) span.className = 'log-error';
+                else if (/\bWARNING\b/.test(line)) span.className = 'log-warning';
+                return span;
+            }));
+        viewer.parentElement.scrollTop = viewer.parentElement.scrollHeight;
+    }
     (function() {
         const viewer = document.getElementById('logs-viewer');
-        if (viewer) {
-            viewer.parentElement.scrollTop = viewer.parentElement.scrollHeight;
-            viewer.addEventListener('htmx:afterSwap', function() {
-                viewer.parentElement.scrollTop = viewer.parentElement.scrollHeight;
-            });
-        }
+        if (!viewer) return;
+        rawLogs = viewer.textContent;
+        renderLogs();
+        viewer.addEventListener('htmx:afterSwap', () => { rawLogs = viewer.textContent; renderLogs(); });
     })();
 </script>
 
