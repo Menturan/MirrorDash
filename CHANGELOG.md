@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+## [0.6.0-os1] - 2026-10-08
+
+OS image with MirrorDash 0.6.0.
+
 ### Fixed
 - The clock (or any module) no longer keeps pulsing when the mirror's screen switches to the mirror page right after setup.
 
