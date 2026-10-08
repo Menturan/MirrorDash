@@ -50,6 +50,8 @@ def main() -> None:
             reload_dirs.append(sibling_dir)
             
         reload_kwargs["reload_dirs"] = reload_dirs
+        # A module's templates, settings and translations count as code too: saving any of them restarts
+        reload_kwargs["reload_includes"] = ["*.py", "*.html", "*.json", "*.css"]
         logging.info(f"Starting server in DEVELOPMENT mode. Watching directories: {reload_dirs}")
     else:
         logging.info("Starting server in PRODUCTION mode.")
