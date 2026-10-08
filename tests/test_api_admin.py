@@ -374,6 +374,25 @@ def test_update_screen_state(client):
     assert client.post("/admin/screen", json={"state": "on", "timeout_minutes": 0}).status_code == 400
     assert client.post("/admin/screen", json={"state": "on", "timeout_minutes": "5"}).status_code == 400
 
+def test_mirror_page_hears_the_version_first(client):
+    """The kiosk reloads itself when the version it hears differs from the one it was loaded with."""
+    from mirrordash_core.ws_manager import manager
+    manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
+    with patch("mirrordash_core.ws_manager.get_core_version", return_value="1.2.3"):
+        with client.websocket_connect("/ws") as ws:
+            assert ws.receive_json() == {"type": "hello", "version": "1.2.3"}
+            assert ws.receive_json()["module"] == "clock"  # then the modules, as before
+    manager.latest_messages = {}
+
+
+def test_reload_screen_button(client):
+    with patch("mirrordash_core.ws_manager.manager.broadcast", new_callable=AsyncMock) as broadcast:
+        r = client.post("/admin/panels/system/reload-screen", headers={"X-API-Key": "secret"})
+    assert r.status_code == 200
+    broadcast.assert_awaited_once_with({"action": "reload"})
+    assert client.post("/admin/panels/system/reload-screen").status_code == 401
+
+
 @patch("mirrordash_core.app.module_loader")
 def test_public_active_modules_endpoint(mock_loader, client):
     # Setup mock active modules

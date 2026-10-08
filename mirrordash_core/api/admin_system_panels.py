@@ -231,6 +231,13 @@ async def post_panel_screen(request: Request):
     return notify(f"Screen turned {state}.")
 
 
+@router.post("/panels/system/reload-screen", dependencies=[Depends(require_api_key)])
+async def post_reload_screen():
+    from mirrordash_core.ws_manager import manager
+    await manager.broadcast({"action": "reload"})
+    return notify("The mirror's screen is reloading.")
+
+
 @router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])
 async def get_system_update_check():
     try:

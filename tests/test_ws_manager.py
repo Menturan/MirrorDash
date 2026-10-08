@@ -76,8 +76,9 @@ async def test_ws_manager_replay_cache_on_connect():
     ws = MockWebSocket()
     await manager.connect(ws)
     
-    # Verify that the new client immediately received both cached messages
-    assert len(ws.sent_messages) == 2
+    # The version first (the page reloads on a new one), then both cached messages
+    assert len(ws.sent_messages) == 3
+    assert ws.sent_messages[0]["type"] == "hello"
     assert msg1 in ws.sent_messages
     assert msg2 in ws.sent_messages
 
@@ -97,9 +98,8 @@ async def test_ws_manager_broadcast_dead_connection_cleanup():
     msg = {"module": "test", "html": "<div>test</div>"}
     await manager.broadcast(msg)
     
-    # Verify good socket received the message
-    assert len(ws_good.sent_messages) == 1
-    assert ws_good.sent_messages[0] == msg
+    # Verify good socket received the message (after its hello)
+    assert ws_good.sent_messages[1:] == [msg]
     
     # Verify bad socket was automatically cleaned up and disconnected
     assert ws_good in manager.active_connections

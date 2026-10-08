@@ -137,7 +137,7 @@
         <h2><i class="fas fa-tv" aria-hidden="true"></i> Screen Right Now</h2>
         <div class="form-group" style="margin-bottom: 15px; margin-top: 15px;">
             <div class="form-label-desc" style="margin-bottom: 8px;">
-                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn the screen on or off right now. When the setting above has the screen off, ON wakes it for the screen timeout.</p>
+                <p class="field-description" style="font-size: 0.85rem; color: var(--text-muted); margin: 0;">Turn the screen on or off right now. When the setting above has the screen off, ON wakes it for the screen timeout. Reload Screen loads the mirror's page again, for example if it looks wrong.</p>
                 <div id="screen-status" hx-get="/admin/panels/power/screen-status" hx-trigger="load, every 5s" hx-target="this"
                      style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"></div>
             </div>
@@ -157,6 +157,13 @@
                         hx-swap="innerHTML"
                         hx-disabled-elt="this">
                     <i class="fas fa-power-off" aria-hidden="true"></i> Turn Screen OFF
+                </button>
+                <button type="button" id="screen-reload-btn" class="btn secondary" style="flex: 1; justify-content: center;"
+                        hx-post="/admin/panels/system/reload-screen"
+                        hx-target="#global-status"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this">
+                    <i class="fas fa-rotate-right" aria-hidden="true"></i> Reload Screen
                 </button>
             </div>
         </div>

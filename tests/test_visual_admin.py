@@ -482,6 +482,41 @@ def test_module_script_gets_its_own_shadow_root(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_mirror_page_reloads_only_for_a_new_version(page):
+    """After an update the page's own code is new too: it reloads when the server's version changed,
+    not when MirrorDash merely restarted."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    hello = lambda version: page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                                          json.dumps({"type": "hello", "version": version}))
+    page.evaluate("window.__loaded = true")
+
+    hello("1.0.0")  # the version the page was loaded with
+    hello("1.0.0")  # MirrorDash restarted, same version: nothing to do
+    assert page.evaluate("window.__loaded") is True
+
+    with page.expect_navigation():
+        hello("1.1.0")  # updated: the page loads its new code
+    assert page.evaluate("window.__loaded === undefined")
+
+
+@pytest.mark.only_browser("webkit")
 def test_a_module_never_pulses_after_its_loading_placeholder(page):
     """The order of the first start after setup: the placeholder (pulsing) comes first, the module is
     then drawn into the same element. Nothing in the module may keep animating."""
@@ -553,6 +588,16 @@ def test_mirror_says_when_the_app_stops_responding(page, server_url):
     page.evaluate("lostAt = Date.now() - 3 * 60 * 1000; setStatus('disconnected')")
     assert page.locator("#ws-status .ws-status__label").text_content() == "MirrorDash isn’t responding"
     assert "ws-status--failed" in page.locator("#ws-status").get_attribute("class")
+
+
+def test_power_tab_has_a_reload_screen_button(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+    page.click("#page-tab-power")
+    page.wait_for_selector("#screen-reload-btn")
+    with page.expect_response("**/admin/panels/system/reload-screen") as response:
+        page.click("#screen-reload-btn")
+    assert response.value.ok
 
 
 def test_admin_shows_a_loading_line_while_a_tab_loads(page, server_url):

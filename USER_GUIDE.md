@@ -109,6 +109,7 @@ Changes are applied as soon as you make them.
         *   `POST http://mirrordash.local/admin/screen` with `{"state": "on"}` wakes it for the chosen time, `{"state": "on", "timeout_minutes": 2}` for 2 minutes, and `{"state": "off"}` turns it off right away.
     *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 *   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
+*   **Reload Screen**: Loads the mirror's page again, for example if it looks wrong. After a MirrorDash update the page reloads by itself.
 
 ### 4.6. Backup Tab
 Protect your configurations and personal data files:

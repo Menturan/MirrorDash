@@ -11,6 +11,8 @@ const MAX_RETRY_DELAY = 30000;
 // After this long without the app, say so instead of "Reconnecting…" forever (it keeps trying)
 const NOT_RESPONDING_AFTER = 2 * 60 * 1000;
 let lostAt = null;
+// The MirrorDash version this page was loaded with (the server says it on every connect)
+let pageVersion = null;
 
 function setStatus(state) {
     if (state !== 'connected' && lostAt && Date.now() - lostAt > NOT_RESPONDING_AFTER) state = 'failed';
@@ -96,6 +98,16 @@ function connect() {
         }
 
         if (data.type === 'ping') return;
+
+        if (data.type === 'hello') {
+            // A new version (update, rollback) brings new page code; a plain restart doesn't reload
+            if (pageVersion && pageVersion !== data.version) {
+                window.location.reload();
+                return;
+            }
+            pageVersion = data.version;
+            return;
+        }
 
         const targetElement = document.getElementById(data.position);
         if (!targetElement) return;

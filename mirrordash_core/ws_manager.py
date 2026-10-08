@@ -4,6 +4,8 @@ import logging
 import asyncio
 from fastapi import WebSocket
 
+from mirrordash_core.config import get_core_version
+
 logger = logging.getLogger("mirrordash.core.ws_manager")
 
 class ConnectionManager:
@@ -15,6 +17,13 @@ class ConnectionManager:
         await websocket.accept()
         self.active_connections.append(websocket)
         logger.info(f"New client connected. Total clients: {len(self.active_connections)}")
+
+        # The mirror page's code comes with MirrorDash: on another version than the page was loaded
+        # with (an update or a rollback), the page reloads itself (js/kiosk/core.js)
+        try:
+            await websocket.send_json({"type": "hello", "version": get_core_version()})
+        except Exception as e:
+            logger.error(f"Error greeting new client: {e}")
 
         # Send the latest state of all active modules immediately to prevent blank/delayed load
         for msg in list(self.latest_messages.values()):
