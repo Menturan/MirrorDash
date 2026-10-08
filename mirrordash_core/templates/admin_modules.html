@@ -142,13 +142,13 @@
 
     <!-- Install Custom Module -->
     <section class="card" style="margin-top: 2rem;">
-        <h2><i class="fas fa-download" aria-hidden="true"></i> Install Custom Module Package</h2>
-        <p>Enter the PyPI package name or a local filesystem path to install a custom module via <code>uv</code>.</p>
+        <h2><i class="fas fa-download" aria-hidden="true"></i> Install a Module from GitHub</h2>
+        <p>Paste the module's Git URL. The repository needs a GitHub Release. A local folder path works too, for development.</p>
         <form hx-post="/admin/panels/modules/install" hx-target="#global-status" hx-swap="innerHTML">
             <div class="input-group" style="display: flex; gap: 12px; margin-top: 1rem;">
                 <input type="text" id="custom-package-name" name="package_name"
-                       placeholder="e.g. mirrordash-weather or /path/to/local/mirrordash-custom"
-                       aria-label="Custom package name or path"
+                       placeholder="e.g. git+https://github.com/you/mirrordash-my-widget.git"
+                       aria-label="Git URL or local path of the module"
                        style="flex: 1; background: #0c0c0e; border: 1px solid #27272a; color: white; border-radius: 6px; padding: 10px 14px;"
                        autocomplete="off" required>
                 <button type="submit" id="custom-install-btn" class="btn secondary" aria-label="Install custom module"

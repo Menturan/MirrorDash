@@ -155,7 +155,7 @@ function connect() {
         moduleDiv.style.opacity   = data.opacity  != null ? String(data.opacity)  : '';
 
         const shadow = moduleDiv.shadowRoot || moduleDiv.attachShadow({ mode: 'open' });
-        shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}</style>` + data.html;
+        shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}</style>` + data.html;
         if (window.lucide) {
             lucide.createIcons({ root: shadow });
         }
@@ -287,7 +287,14 @@ async function loadActiveModules() {
 }
 
 loadActiveModules();
-connect();
+
+// The component library (modules.css, what /design shows) goes into every module's shadow root, so it
+// is loaded once before any module renders. Inline <style>, not a <link>: that would reload on every update.
+let MODULES_CSS = '';
+fetch('/static/modules.css')
+    .then(r => (r.ok ? r.text() : ''))
+    .catch(() => '')
+    .then(css => { MODULES_CSS = css; connect(); });
 
 // Global Internet Connectivity Monitoring
 function updateOfflineIndicator() {

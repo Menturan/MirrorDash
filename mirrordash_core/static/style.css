@@ -3,6 +3,10 @@
    style.css — single source of truth for the mirror display
    ============================================================ */
 
+/* The component library modules use (typography, lists, icons, …); kept in one file
+   so the mirror and every module see the same rules. */
+@import url("modules.css");
+
 :root {
     color-scheme: dark; /* #28: native dark scrollbars/form elements */
 
@@ -175,7 +179,7 @@ body, html {
 }
 
 /* Notification / Alert card style */
-.notification-card, [data-module="notification"] {
+[data-module="notification"] {
     border-radius: var(--radius-alert);
 }
 
@@ -210,126 +214,6 @@ body, html {
     opacity: 1;
     visibility: visible;
     pointer-events: auto;
-}
-
-/* ============================================================
-   Typography — DESIGN.md scale
-   ============================================================ */
-.display-xl, h1 {
-    font-size: 75px;
-    font-weight: 100;
-    line-height: 1.0;
-    letter-spacing: -0.04em;
-    color: var(--color-high-contrast);
-}
-
-.display-lg {
-    font-size: 64px;
-    font-weight: 300;
-    line-height: 1.1;
-    letter-spacing: -0.02em;
-    color: var(--color-high-contrast);
-}
-
-.headline-md {
-    font-size: 32px;
-    font-weight: 500;
-    line-height: 1.2;
-    letter-spacing: 0;
-}
-
-.body-base {
-    font-size: 20px;
-    font-weight: 400;
-    line-height: 1.5;
-}
-
-.body-sm {
-    font-size: 16px;
-    font-weight: 400;
-    line-height: 1.4;
-}
-
-.label-caps, h2, .module-header {  /* #5: .module-header alias */
-    font-size: 0.875rem; /* 14px */
-    font-weight: 600; /* Medium-bold */
-    line-height: 1.0;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--color-standard-gray);
-    border-bottom: 1px solid var(--color-dimmed-charcoal);
-    padding-bottom: var(--label-gap);
-    margin-bottom: var(--internal-padding);
-    display: block;
-    width: 100%;
-}
-
-/* #5: Utility text color classes used in MODULE_GUIDE.md */
-.text-primary   { color: var(--color-high-contrast); }
-.text-secondary { color: var(--color-standard-gray); }
-.text-dimmed    { color: var(--color-dimmed-charcoal); }
-.text-error     { color: var(--color-error); }
-
-/* ============================================================
-   #18: Status indicators (DESIGN.md spec)
-   ============================================================ */
-.status-indicator {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    margin-left: 0.5rem;
-    flex-shrink: 0;
-}
-.status-indicator--online  { background-color: var(--color-status-online); }
-.status-indicator--warning { background-color: var(--color-status-warning); }
-
-/* ============================================================
-   #18: Data lists (DESIGN.md spec — label left, value right)
-   ============================================================ */
-.data-list {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-}
-.data-list__item {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 1rem;
-}
-.data-list__label { color: var(--color-standard-gray); font-size: 0.875rem; }
-.data-list__value { color: var(--color-high-contrast); font-variant-numeric: tabular-nums; }
-.data-list__value--up   { color: var(--color-status-online); }
-.data-list__value--down { color: var(--color-status-warning); }
-
-/* ============================================================
-   #18: Atmospheric Glow (DESIGN.md — subtle outer glow)
-   ============================================================ */
-.glow {
-    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.15));
-}
-
-/* ============================================================
-   Widget helper components
-   ============================================================ */
-.widget-header {
-    border-bottom: 1px solid var(--color-dimmed-charcoal);
-    padding-bottom: var(--label-gap);
-    margin-bottom: var(--internal-padding);
-    width: 100%;
-}
-.widget-header .module-header {
-    border-bottom: none;
-    padding-bottom: 0;
-    margin-bottom: 0;
-}
-
-.separator-hr {
-    border: none;
-    border-top: 1px solid var(--color-dimmed-charcoal);
-    margin: var(--internal-padding) 0;
 }
 
 /* ============================================================
@@ -452,120 +336,11 @@ body, html {
 }
 
 /* ============================================================
-   Extended UI Components
-   ============================================================ */
-
-/* 1. Progress / Gauge Bars */
-.gauge-bar {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.gauge-bar__label-row {
-    display: flex;
-    justify-content: space-between;
-    font-size: 12px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-standard-gray);
-}
-.gauge-bar__track {
-    width: 100%;
-    height: 4px;
-    background: var(--surface-3);
-    border-radius: 2px;
-    overflow: hidden;
-}
-.gauge-bar__fill {
-    height: 100%;
-    background: var(--color-high-contrast);
-    border-radius: 2px;
-    transition: width 0.3s ease;
-}
-
-/* 2. Stat Grid */
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    width: 100%;
-    gap: 1rem;
-}
-.stats-grid__item {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 0.5rem;
-    text-align: center;
-}
-.stats-grid__value {
-    font-size: 28px;
-    font-weight: 200;
-    color: var(--color-high-contrast);
-    line-height: 1;
-    margin-bottom: 4px;
-}
-.stats-grid__label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    color: var(--color-standard-gray);
-    letter-spacing: 0.05em;
-}
-
-/* 3. Alert Callouts */
-.alert-callout {
-    width: 100%;
-    background: rgba(255, 180, 171, 0.05);
-    border-left: 3px solid var(--color-error);
-    padding: 12px 16px;
-    border-radius: 0 var(--radius-alert) var(--radius-alert) 0;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-.alert-callout__title {
-    font-size: 13px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--color-error);
-    margin-bottom: 2px;
-}
-.alert-callout__desc {
-    font-size: 14px;
-    color: var(--color-standard-gray);
-    line-height: 1.4;
-}
-
-/* ============================================================
    Backdrop Blur (DESIGN.md — critical alert focus mode)
    ============================================================ */
 .backdrop-blur-active [data-module] {
     filter: blur(2px) brightness(0.5);
     transition: filter 0.3s ease;
-}
-
-/* ============================================================
-   Layout Utility Classes (Flexbox helpers for module developers)
-   ============================================================ */
-.flex-row { display: flex; align-items: center; gap: 8px; }
-.flex-row-between { display: flex; align-items: center; justify-content: space-between; width: 100%; }
-.flex-column { display: flex; flex-direction: column; gap: 8px; }
-.flex-center { display: flex; align-items: center; justify-content: center; }
-
-/* ============================================================
-   Lucide SVG Icon styling
-   ============================================================ */
-svg.lucide, .lucide {
-    width: 24px;
-    height: 24px;
-    stroke-width: 1.5px;
-    stroke: currentColor;
-    fill: none;
-    display: inline-block;
-    vertical-align: middle;
 }
 
 /* ============================================================

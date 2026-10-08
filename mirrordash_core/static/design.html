@@ -283,6 +283,22 @@
             color: var(--color-standard-gray);
             border-radius: 2px;
         }
+        .explorer-intro {
+            border: 1px solid var(--color-dimmed-charcoal);
+            border-radius: 8px;
+            padding: 1.25rem 1.5rem;
+            margin-bottom: 3rem;
+            font-size: 15px;
+            line-height: 1.6;
+            color: var(--color-standard-gray);
+        }
+        .explorer-intro strong, .explorer-intro code { color: var(--color-high-contrast); }
+        .explorer-own-ui {
+            font-size: 13px;
+            color: var(--color-error);
+            margin: 0 1.5rem 0 1.5rem;
+            padding: 0.75rem 0;
+        }
         .mini-grid__cell--center {
             border: 1px solid rgba(255, 180, 171, 0.2);
             color: var(--color-error);
@@ -315,6 +331,12 @@
 
         <!-- Main Workspace -->
         <main class="explorer-main">
+            <div class="explorer-intro">
+                <strong>The component library for modules.</strong> Everything on this page works inside your module,
+                except the parts marked as the mirror's own UI. Find a component that looks like what you want to show,
+                press <strong>Copy</strong>, paste it into your module's <code>templates/widget.html</code>, and put your own
+                values in it. No CSS needed.
+            </div>
             
             <!-- SECTION: Typography -->
             <section id="typography" class="explorer-section">
@@ -757,6 +779,7 @@
                         <span class="component-name">Module Container ([data-module])</span>
                         <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 4px | Padding: 16px</span>
                     </div>
+                    <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
                     <div class="component-body">
                         <div data-module="demo-box" style="width: 250px;">
                             <h2 class="module-header" style="margin-bottom: 8px;">Demo Module</h2>
@@ -795,6 +818,7 @@
                         <span class="component-name">Backdrop Blur (.backdrop-blur-active)</span>
                         <span class="component-tag">Critical Alert Focus Mode | blur(2px) brightness(50%)</span>
                     </div>
+                    <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
                     <div class="demo-control-bar">
                         <span class="demo-label">Simulator:</span>
                         <button class="btn-action" onclick="toggleBackdropBlur(this)">Toggle Backdrop Blur</button>
@@ -873,6 +897,7 @@
                         <span class="component-name">Notification Card (.notification-card)</span>
                         <span class="component-tag">Backdrop: rgba(0,0,0,0.93) | Radius: 16px (1rem) | Padding: 16px</span>
                     </div>
+                    <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
                     <div class="component-body" style="background: #000;">
                         <div class="notification-card" data-module="notification-demo" style="width: 320px;">
                             <div class="body-sm text-primary" style="font-weight: 500; margin-bottom: 4px;">System Update Available</div>
@@ -885,6 +910,23 @@
     &lt;div class="body-sm text-primary"&gt;System Update Available&lt;/div&gt;
     &lt;div class="body-sm text-secondary"&gt;Details here.&lt;/div&gt;
 &lt;/div&gt;</code></pre>
+                    </div>
+                </div>
+
+                <!-- Module Message -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Module Message (.module-message)</span>
+                        <span class="component-tag">A quiet line with an icon: errors, empty states, hints</span>
+                    </div>
+                    <div class="component-body component-body--left component-body--column" style="background: #111;">
+                        <div class="module-message"><i data-lucide="cloud-off"></i><span>Couldn't update. Last updated 14:05.</span></div>
+                        <div class="module-message"><i data-lucide="key-round"></i><span>Add an API key in the module's settings.</span></div>
+                        <div class="module-message"><i data-lucide="calendar-x"></i><span>Nothing today.</span></div>
+                    </div>
+                    <div class="code-container">
+                        <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                        <pre><code>&lt;div class="module-message"&gt;&lt;i data-lucide="cloud-off"&gt;&lt;/i&gt;&lt;span&gt;Couldn't update.&lt;/span&gt;&lt;/div&gt;</code></pre>
                     </div>
                 </div>
 
@@ -975,6 +1017,7 @@
                         <span class="component-name">Carousel Containers (.carousel-group-container)</span>
                         <span class="component-tag">Cross-fading overlapping slides</span>
                     </div>
+                    <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
                     <div class="demo-control-bar">
                         <span class="demo-label">Simulator:</span>
                         <button class="btn-action btn-active" onclick="cycleDemoCarousel()">Cycle Carousel</button>
@@ -1634,6 +1677,7 @@
                 <p class="explorer-section-desc">
                     System-level indicators displayed at the top-center to show connection statuses. Use the buttons below to preview the states.
                 </p>
+                <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
 
                 <!-- WebSocket Status Pill -->
                 <div class="component-card">
@@ -1671,6 +1715,7 @@
                 <p class="explorer-section-desc">
                     Visual skeletons displayed on page load before WebSocket messages populate data. Click "Simulate Load Done" to see the fade-in and slide entrance animation.
                 </p>
+                <p class="explorer-own-ui">The mirror's own UI, shown for reference. Not for modules: the mirror adds it by itself.</p>
 
                 <!-- Loading Placeholder Simulator -->
                 <div class="component-card">
