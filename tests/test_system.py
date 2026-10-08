@@ -43,7 +43,7 @@ async def test_remount_rw_success(mock_subproc):
             res = await remount_rw()
             assert res is True
             mock_subproc.assert_called_once_with(
-                "sudo", "mount", "-o", "remount,rw", "/",
+                "sudo", "-n", "mount", "-o", "remount,rw", "/",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -61,7 +61,7 @@ async def test_remount_ro_success(mock_subproc):
             res = await remount_ro()
             assert res is True
             mock_subproc.assert_called_once_with(
-                "sudo", "mount", "-o", "remount,ro", "/",
+                "sudo", "-n", "mount", "-o", "remount,ro", "/",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -96,7 +96,7 @@ async def test_apply_system_timezone(mock_subproc):
     res = await apply_system_timezone("Europe/Stockholm")
     assert res is True
     mock_subproc.assert_called_once_with(
-        "sudo", "timedatectl", "set-timezone", "Europe/Stockholm",
+        "sudo", "-n", "timedatectl", "set-timezone", "Europe/Stockholm",
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE
     )
@@ -197,7 +197,7 @@ async def test_apply_system_password_hash(mock_subproc):
     res = await apply_system_password_hash("somehash")
     assert res is True
     mock_subproc.assert_called_once_with(
-        "sudo", "chpasswd", "-e",
+        "sudo", "-n", "chpasswd", "-e",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

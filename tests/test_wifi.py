@@ -169,7 +169,7 @@ def test_teardown_keeps_the_hotspot_profile(mock_exec):
     mock_exec.return_value.returncode = 0
     asyncio.run(_teardown_captive_ap())
     commands = [call.args for call in mock_exec.call_args_list]
-    assert commands == [("sudo", "nmcli", "connection", "down", "MirrorDash-Setup")]
+    assert commands == [("sudo", "-n", "nmcli", "connection", "down", "MirrorDash-Setup")]
 
 @patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_index_serves_admin_prompt_when_setup_required(mock_hotspot, client):

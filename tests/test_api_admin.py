@@ -560,7 +560,7 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     # Verify both chpasswd and openssl were called
     assert mock_subproc.call_count == 2
     mock_subproc.assert_any_call(
-        "sudo", "chpasswd",
+        "sudo", "-n", "chpasswd",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

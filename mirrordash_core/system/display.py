@@ -80,7 +80,7 @@ async def apply_system_settings(rotation: str, resolution: str, brightness: int,
             target_val = int((brightness / 100.0) * max_val)
             # Write target value using sudo tee
             proc = await asyncio.create_subprocess_exec(
-                "sudo", "tee", backlight_paths[0],
+                "sudo", "-n", "tee", backlight_paths[0],
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
             )
             await proc.communicate(input=f"{target_val}\n".encode())

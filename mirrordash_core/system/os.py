@@ -50,7 +50,7 @@ async def remount_rw() -> bool:
     logger.info("Attempting to remount filesystem as Read-Write...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "mount", "-o", "remount,rw", "/",
+            "sudo", "-n", "mount", "-o", "remount,rw", "/",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -83,7 +83,7 @@ async def remount_ro() -> bool:
     logger.info("Attempting to remount filesystem as Read-Only...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "mount", "-o", "remount,ro", "/",
+            "sudo", "-n", "mount", "-o", "remount,ro", "/",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -152,7 +152,7 @@ async def apply_system_timezone(timezone: str) -> bool:
     logger.info(f"Applying system timezone: {timezone}")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "timedatectl", "set-timezone", timezone,
+            "sudo", "-n", "timedatectl", "set-timezone", timezone,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -172,7 +172,7 @@ async def apply_system_password_hash(pwd_hash: str) -> bool:
     try:
         chpasswd_input = f"pi:{pwd_hash}\n".encode()
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "chpasswd", "-e",
+            "sudo", "-n", "chpasswd", "-e",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

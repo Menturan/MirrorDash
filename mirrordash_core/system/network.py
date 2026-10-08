@@ -72,7 +72,7 @@ async def _scan_live() -> list[str]:
     logger.info("Scanning for WiFi networks...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
+            "sudo", "-n", "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -129,7 +129,7 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
     except Exception as e:
         logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
 
-    cmd = ["sudo", "nmcli", "dev", "wifi", "connect", ssid]
+    cmd = ["sudo", "-n", "nmcli", "dev", "wifi", "connect", ssid]
     if password:
         cmd.extend(["password", password])
 
@@ -181,14 +181,14 @@ async def set_ssh_status(enabled: bool) -> bool:
     try:
         action = "enable" if enabled else "disable"
         proc1 = await asyncio.create_subprocess_exec(
-            "sudo", "systemctl", action, "ssh",
+            "sudo", "-n", "systemctl", action, "ssh",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         await proc1.wait()
 
         start_stop = "start" if enabled else "stop"
         proc2 = await asyncio.create_subprocess_exec(
-            "sudo", "systemctl", start_stop, "ssh",
+            "sudo", "-n", "systemctl", start_stop, "ssh",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
         await proc2.wait()
@@ -242,7 +242,7 @@ async def is_wifi_hotspot_active() -> bool:
     # Fast path: read active connections without sudo (no TTY needed)
     for cmd in (
         ["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
-        ["sudo", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
+        ["sudo", "-n", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
     ):
         try:
             proc = await asyncio.create_subprocess_exec(
@@ -269,7 +269,7 @@ async def get_hotspot_password() -> str:
     """The setup hotspot's password, read from its NetworkManager profile; "" if it can't be read."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
+            "sudo", "-n", "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -290,7 +290,7 @@ async def _teardown_captive_ap() -> None:
     global _hotspot_active_cached, _hotspot_checked_at
     _hotspot_active_cached = False
     _hotspot_checked_at = time.monotonic()
-    cmd = ["sudo", "nmcli", "connection", "down", HOTSPOT_SSID]
+    cmd = ["sudo", "-n", "nmcli", "connection", "down", HOTSPOT_SSID]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,

@@ -481,7 +481,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
                 try:
                     chpasswd_input = f"pi:{pi_password}\n".encode()
                     proc = await asyncio.create_subprocess_exec(
-                        "sudo", "chpasswd",
+                        "sudo", "-n", "chpasswd",
                         stdin=asyncio.subprocess.PIPE,
                         stdout=asyncio.subprocess.PIPE,
                         stderr=asyncio.subprocess.PIPE,
