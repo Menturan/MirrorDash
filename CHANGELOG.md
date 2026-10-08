@@ -22,6 +22,7 @@ There are two kinds of releases:
 - A button on GPIO 3 can also start the mirror again after it has been shut down (shown as a tip in the Hardware tab).
 
 ### Changed
+- For module developers: `self.fetch_json(url, headers=…)` fetches data with a timeout and falls back to the last answer when it fails, and the layout classes from the module guide (`.flex-row`, `.display-lg`, `.text-secondary`, `.module-message` and more) now work inside modules.
 - For module developers: a module's script now gets its own part of the screen as `root`, so it no longer needs `document.currentScript` (which never worked there). Each copy of a module can keep its own timers there.
 - Hardware and Power settings are applied as soon as you change them; the Apply buttons are gone.
 - Installing, updating and removing modules shows progress right away, with a timer, and the page knows exactly when the mirror is back. If something goes wrong you see what failed.

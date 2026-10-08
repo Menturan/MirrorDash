@@ -64,7 +64,43 @@ const DESIGN_TOKENS_CSS = `
         line-height: 1;
         text-rendering: auto;
     }
-    h2, .module-header {
+    /* Module building blocks: the same values as in style.css, which can't reach into a shadow root */
+    .display-xl {
+        font-size: 75px;
+        font-weight: 100;
+        line-height: 1.0;
+        letter-spacing: -0.04em;
+        color: var(--color-high-contrast, #ffffff);
+    }
+    .display-lg {
+        font-size: 64px;
+        font-weight: 300;
+        line-height: 1.1;
+        letter-spacing: -0.02em;
+        color: var(--color-high-contrast, #ffffff);
+    }
+    .headline-md { font-size: 32px; font-weight: 500; line-height: 1.2; }
+    .body-base   { font-size: 20px; font-weight: 400; line-height: 1.5; }
+    .body-sm     { font-size: 16px; font-weight: 400; line-height: 1.4; }
+    .text-primary   { color: var(--color-high-contrast, #ffffff); }
+    .text-secondary { color: var(--color-standard-gray, #999999); }
+    .text-dimmed    { color: var(--color-dimmed-charcoal, #666666); }
+    .text-error     { color: var(--color-error, #ffb4ab); }
+    .flex-row { display: flex; align-items: center; gap: 8px; }
+    .flex-row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+    .flex-column { display: flex; flex-direction: column; gap: 8px; }
+    .flex-center { display: flex; align-items: center; justify-content: center; }
+    /* A calm line with an icon: "API key missing", "Could not update", "Nothing today" */
+    .module-message {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 16px;
+        line-height: 1.4;
+        color: var(--color-standard-gray, #999999);
+    }
+    .module-message svg { width: 18px; height: 18px; flex: none; stroke-width: 1.5px; }
+    h2, .module-header, .label-caps {
         font-size: 0.875rem;
         font-weight: 600;
         line-height: 1.0;

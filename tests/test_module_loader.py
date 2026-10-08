@@ -223,3 +223,41 @@ async def test_module_loader_backoff():
         mock_sleep.assert_any_call(0.02)
 
     await loader.stop_modules()
+
+@pytest.mark.asyncio
+async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_path, caplog):
+    """fetch_json against a real local server: data, a rejected key, not-JSON, then the server gone."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+    from mirrordash_core.module_loader import _inject_module_helpers
+
+    seen_headers = []
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen_headers.append(self.headers.get("X-Api-Key"))
+            status, body = {"/ok": (200, b'{"temp": 21}'), "/denied": (401, b"{}"),
+                            "/html": (200, b"<html>")}[self.path.split("?")[0]]
+            self.send_response(status)
+            self.end_headers()
+            self.wfile.write(body)
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{server.server_port}"
+
+    plugin = DummyPlugin({})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(tmp_path)})
+    key = {"X-Api-Key": "secret-key-123"}
+
+    assert await plugin.fetch_json(f"{base}/ok", headers=key, params={"q": "Oslo"}) == ({"temp": 21}, None)
+    assert seen_headers[-1] == "secret-key-123"
+    assert await plugin.fetch_json(f"{base}/denied", headers=key) == (None, "rejected")
+    assert await plugin.fetch_json(f"{base}/html") == (None, "invalid")
+
+    server.shutdown()
+    server.server_close()
+    # The server is gone: the last good answer for the same URL comes back, marked offline
+    assert await plugin.fetch_json(f"{base}/ok", headers=key, params={"q": "Oslo"}, timeout=2) == ({"temp": 21}, "offline")
+    assert "secret-key-123" not in caplog.text and "Oslo" not in caplog.text

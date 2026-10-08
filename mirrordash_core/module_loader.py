@@ -1,12 +1,16 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import hashlib
 import logging
 import importlib.metadata
 import importlib.util
 import os
 import json
-from mirrordash_core.config import load_config, get_base_dir
+import urllib.error
+import urllib.parse
+import urllib.request
+from mirrordash_core.config import load_config, get_base_dir, get_core_version
 from mirrordash_core.ws_manager import manager
 from mirrordash_core.event_bus import event_bus
 from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
@@ -43,8 +47,60 @@ def load_translations(package_name: str, lang: str) -> dict:
 
     return translations
 
+def _make_fetch_json(cache_dir: str | None, module_name: str):
+    """A module's `await self.fetch_json(url, headers=..., params=...)` -> (data, error).
+
+    error is None, "rejected" (401/403: usually the API key), "offline" (no answer), "http <code>" or
+    "invalid" (not JSON). On an error, data is the last good answer (kept in the module's cache_dir), or None.
+    ponytail: no retry or backoff; the module's own interval is the retry. Upgrade path: backoff here.
+    """
+    user_agent = f"MirrorDash/{get_core_version()}"
+
+    async def fetch_json(url: str, *, headers: dict | None = None, params: dict | None = None,
+                         timeout: float = 10) -> tuple[object, str | None]:
+        if params:
+            url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+        parts = urllib.parse.urlsplit(url)
+        where = parts.netloc + parts.path  # never the query or headers: they can hold API keys
+        cache_file = (os.path.join(cache_dir, f"fetch-{hashlib.sha256(url.encode()).hexdigest()[:16]}.json")
+                      if cache_dir else None)
+
+        def get():
+            request = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json",
+                                                           **(headers or {})})
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.loads(response.read().decode("utf-8"))
+
+        try:
+            data = await asyncio.to_thread(get)
+        except urllib.error.HTTPError as e:
+            error = "rejected" if e.code in (401, 403) else f"http {e.code}"
+        except (urllib.error.URLError, OSError):  # includes timeouts
+            error = "offline"
+        except ValueError:  # not JSON, or not UTF-8
+            error = "invalid"
+        else:
+            if cache_file:
+                try:
+                    with open(cache_file + ".tmp", "w", encoding="utf-8") as f:
+                        json.dump(data, f)
+                    os.replace(cache_file + ".tmp", cache_file)
+                except OSError as e:
+                    logger.debug(f"{module_name}: could not cache {where}: {e}")
+            return data, None
+
+        logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
+        try:
+            with open(cache_file, encoding="utf-8") as f:
+                return json.load(f), error
+        except (TypeError, OSError, ValueError):  # no cache_dir, nothing cached yet, or a broken file
+            return None, error
+
+    return fetch_json
+
+
 def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict) -> None:
-    """Inject translation and template rendering helpers into the plugin instance if missing."""
+    """Inject translation, data fetching and template rendering helpers into the plugin instance if missing."""
     plugin_instance.translations = translations
 
     if not hasattr(plugin_instance, "translate"):
@@ -54,6 +110,9 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
                 return val
             return default if default is not None else key
         plugin_instance.translate = translate
+
+    if not hasattr(plugin_instance, "fetch_json"):
+        plugin_instance.fetch_json = _make_fetch_json(config.get("cache_dir"), module_name)
 
     if not hasattr(plugin_instance, "render_template"):
         try:
