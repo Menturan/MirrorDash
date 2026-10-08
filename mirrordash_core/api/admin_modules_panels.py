@@ -575,11 +575,19 @@ async def get_module_notes(module_name: str):
     """)
 
 
+def _shown_name(package_name: str) -> str:
+    """A Git URL as people say it: .../mirrordash-weather.git@v1.2.0 -> mirrordash-weather (v1.2.0)."""
+    name, _, version = package_name.rstrip("/").rsplit("/", 1)[-1].partition("@")
+    name = name.removesuffix(".git")
+    return f"{name} ({version})" if version else name
+
+
 @router.post("/panels/modules/install", dependencies=[Depends(require_api_key)])
 async def install_panel_module(package_name: str = Form(...)):
     job_id = start_job(lambda: install_module(package_name=package_name))
-    return job_response(job_id, "Installing Module", f"Installing {package_name}. This can take a few minutes...",
-                        f"Successfully installed {package_name}!", "modules")
+    shown = _shown_name(package_name)
+    return job_response(job_id, "Installing Module", f"Installing {shown}. This can take a few minutes...",
+                        f"Installed {shown}.", "modules")
 
 
 @router.post("/panels/modules/uninstall", dependencies=[Depends(require_api_key)])
@@ -592,5 +600,6 @@ async def uninstall_panel_module(package_name: str = Form(...)):
 @router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
 async def upgrade_panel_module(package_name: str = Form(...)):
     job_id = start_job(lambda: update_module(package_name=package_name))
-    return job_response(job_id, "Upgrading Module", f"Upgrading {package_name}. This can take a few minutes...",
-                        f"Successfully upgraded {package_name}!", "modules")
+    shown = _shown_name(package_name)
+    return job_response(job_id, "Upgrading Module", f"Upgrading {shown}. This can take a few minutes...",
+                        f"Upgraded {shown}.", "modules")

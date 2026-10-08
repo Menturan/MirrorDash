@@ -196,7 +196,7 @@ MirrorDash is designed to be a plug-and-play appliance. If you move your mirror 
 2. **Enter Setup Password**: The mirror shows its own password for this network, with a QR code. Point your phone's camera at the code to join without typing, or type the password shown. It stays the same for this mirror until its SD card is flashed again.
 3. **Sign in**: Your phone says you need to sign in to the network (like on a hotel Wi-Fi). Tap it and the setup page opens. If your phone doesn't ask, open `http://mirrordash.setup` in the browser.
 4. **Choose your Wi-Fi**: Tap your home network (or *Network not listed?*), type its password (tap *Show* to check it) and tap **Connect the mirror**.
-5. **Afterwards**: The mirror restarts and shows its clock in about a minute. Reconnect your phone to your home Wi-Fi and open `mirrordash.local` to reach the admin page. If the password was wrong, `MirrorDash-Setup` appears again within a few minutes; connect and try again.
+5. **Afterwards**: The mirror shows its clock in a moment, without restarting. Reconnect your phone to your home Wi-Fi and open `mirrordash.local` to reach the admin page. If the password was wrong, `MirrorDash-Setup` appears again within a minute, with the same password; connect and try again.
 
 ---
 

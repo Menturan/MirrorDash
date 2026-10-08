@@ -21,6 +21,7 @@ from mirrordash_core.system.network import (
     set_ssh_status,
     is_wifi_hotspot_active,
     get_hotspot_password,
+    restore_captive_ap,
 )
 
 __all__ = [
@@ -42,5 +43,6 @@ __all__ = [
     "set_ssh_status",
     "is_wifi_hotspot_active",
     "get_hotspot_password",
+    "restore_captive_ap",
 ]
 

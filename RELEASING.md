@@ -87,8 +87,10 @@ the speed and the time left, and asks to try again if the download breaks (witho
 1. **Boot**: the MirrorDash start screen shows, no system messages or login prompt, no mouse cursor.
 2. **Wi-Fi setup**: with no network, the `MirrorDash-Setup` hotspot appears within about a minute and
    the mirror shows its password and a QR code. Scanning the code joins the phone, which opens the setup
-   page (otherwise go to `http://mirrordash.setup/wifi-setup`); pick a network, and the mirror connects
-   and restarts. Unplug the network again: after the restart the same password is shown.
+   page (otherwise go to `http://mirrordash.setup/wifi-setup`). First try a wrong Wi-Fi password:
+   `MirrorDash-Setup` comes back within a minute, with the same password. Then the right one: the mirror
+   connects and shows its clock without restarting. Restart it with no network: the same hotspot
+   password is shown.
 3. **Mirror**: the page loads, the "Loading" placeholders turn into modules, the clock ticks.
 4. **Admin**: `http://mirrordash.local/admin` asks for a password to be set, then opens.
 

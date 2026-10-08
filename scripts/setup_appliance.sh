@@ -59,7 +59,7 @@ GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
 UV_VERSION="0.12.23"
-CLOCK_REF="v0.1.1"  # a tag in Menturan/mirrordash-clock
+CLOCK_REF="v1.0.1"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
@@ -156,6 +156,7 @@ step_installing_packages() {
       nginx \
       parted \
       zip \
+      overlayroot \
       git
 }
 
@@ -241,6 +242,9 @@ TTYVTDisallocate=yes
 StandardOutput=journal
 StandardError=journal
 Environment=WLR_LIBINPUT_NO_DEVICES=1
+# The empty cursor theme (below), set here too: with only labwc/environment the pointer still showed
+Environment=XCURSOR_THEME=empty
+Environment=XCURSOR_SIZE=24
 ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/bin/labwc
 Restart=always
@@ -285,6 +289,10 @@ Name=empty
 EOF
   echo "XCURSOR_THEME=empty" > "$PI_HOME/.config/labwc/environment"
   chown -R "$PI_USER:$PI_USER" "$PI_HOME/.config" "$PI_HOME/.icons"
+  # Also the system's default theme, so anything that falls back to "default" gets no pointer either
+  cp -r "$PI_HOME/.icons/empty" /usr/share/icons/empty
+  mkdir -p /usr/share/icons/default
+  printf '[Icon Theme]\nInherits=empty\n' > /usr/share/icons/default/index.theme
 
   echo "Configuring cog kiosk systemd service..."
   cat << 'EOF' > /etc/systemd/system/cog-kiosk.service
@@ -483,6 +491,10 @@ EOF
 step_watchdog_boot_optimization() {
   # Watchdog RuntimeWatchdogSec=14s
   sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
+
+  # No apt in the background: the app updates itself, and a new OS comes as a new image.
+  # These timers only downloaded package lists, writing to the system disk for nothing.
+  systemctl --root=/ mask apt-daily.timer apt-daily-upgrade.timer
 
   # Suppress splash, boot delay, Bluetooth, allocate gpu memory in config.txt
   if ! grep -q "disable_splash=1" /boot/firmware/config.txt; then
@@ -931,6 +943,10 @@ ConditionPathIsMountPoint=/storage
 
 [Service]
 Type=oneshot
+# overlayroot is installed in the image. raspi-config would otherwise apt-get it here, which fails
+# on a mirror without Wi-Fi yet, and still set overlayroot=tmpfs: a root that never locks. Without
+# the package this fails instead, and the lock is tried again at the next boot.
+ExecStartPre=/usr/bin/dpkg -s overlayroot
 ExecStart=/usr/bin/raspi-config nonint enable_overlayfs
 # Disabled on the still-writable root, so it never runs again once locked
 ExecStart=/usr/bin/systemctl disable mirrordash-lock.service

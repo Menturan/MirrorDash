@@ -39,12 +39,17 @@
         }
 
         .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             margin: 0 0 48px;
             font-size: 15px;
             font-weight: 300;
             letter-spacing: 0.02em;
             color: var(--gray);
         }
+        /* The MD monogram, as on the mirror's start screen; heavier stroke at this small size */
+        .brand svg { width: 32px; height: 32px; flex: none; }
 
         h1 {
             margin: 0 0 8px;
@@ -212,7 +217,7 @@
 </head>
 <body>
 <main>
-    <p class="brand">MirrorDash</p>
+    <p class="brand"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>MirrorDash</p>
 
     <!-- Only when the mirror is already set up: changing Wi-Fi needs the admin password -->
     <section id="step-auth" hidden>
@@ -270,11 +275,11 @@
 
     <section id="step-done" hidden aria-live="polite">
         <h1>The mirror is connecting</h1>
-        <p class="lead">It restarts and shows its clock in about a minute.</p>
+        <p class="lead">It shows its clock in a moment.</p>
         <p>Reconnect your phone to <strong id="done-ssid"></strong>, then open</p>
         <a class="address" href="http://mirrordash.local/admin">mirrordash.local</a>
         <p class="hint">If the mirror can't connect, for example because of a wrong password, the network
-            MirrorDash-Setup appears again within a few minutes, with the same password. Connect to it and try again.</p>
+            MirrorDash-Setup appears again within a minute, with the same password. Connect to it and try again.</p>
     </section>
 </main>
 

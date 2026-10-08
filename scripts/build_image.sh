@@ -83,6 +83,13 @@ systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR"
 # The repo copy is only build input — never ship source or the dev config.json
 rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
+# The read-only root needs overlayroot inside the initramfs; without it the first-boot lock sets
+# overlayroot=tmpfs and nothing happens, and the SD card stays writable. Never ship that.
+if ! systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8 | grep -q overlayroot; then
+    echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the image would never become read-only.\e[0m"
+    exit 1
+fi
+
 # --- Unmount & Shrink ---
 echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
 cleanup

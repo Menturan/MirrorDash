@@ -315,14 +315,53 @@ def test_admin_system_panel(page, server_url):
     # Turning SSH on waits for the password instead of saving immediately
     page.evaluate("document.getElementById('global-status').hidden = true")
     assert not page.locator("#sys-ssh-password-group").is_visible()
-    with page.expect_request("**/admin/panels/system/save") as saved:
-        page.evaluate("document.getElementById('sys-ssh').checked = true; document.getElementById('sys-ssh').dispatchEvent(new Event('change', {bubbles: true}))")
-        page.wait_for_selector("#sys-ssh-password-group", state="visible")
-        page.fill("#sys-ssh-password", "pi_password_123")
-        page.dispatch_event("#sys-ssh-password", "change")
-    assert "pi_password=pi_password_123" in saved.value.post_data
+    saves = []
+    page.on("request", lambda r: saves.append(r.post_data) if r.url.endswith("/admin/panels/system/save") else None)
+    page.evaluate("document.getElementById('sys-ssh').checked = true; document.getElementById('sys-ssh').dispatchEvent(new Event('change', {bubbles: true}))")
+    page.wait_for_selector("#sys-ssh-password-group", state="visible")
+    page.wait_for_timeout(300)
+    assert saves == []  # nothing saved yet: SSH waits for its password
+    # Type the password and press the button, as a user would (no Enter)
+    page.fill("#sys-ssh-password", "pi_password_123")
+    page.click("#sys-ssh-save")
     page.wait_for_selector("#global-status", state="visible")
     assert "Saved." in page.locator("#global-status").text_content()
+    page.wait_for_timeout(300)
+    assert len(saves) == 1 and "pi_password=pi_password_123" in saves[0]  # saved once, not twice
+
+
+def test_module_upgrade_shows_progress(page, server_url):
+    """Upgrade on a module card (the button the update check adds) shows the progress overlay."""
+    import json
+    from unittest.mock import MagicMock
+    dist = MagicMock(version="0.1.0")
+    dist.name = "mirrordash-clock"
+    dist.read_text.return_value = json.dumps({"url": "https://github.com/Menturan/mirrordash-clock.git",
+                                              "vcs_info": {"vcs": "git", "commit_id": "abc", "requested_revision": "v1.0.0"}})
+    ep = MagicMock(dist=dist)
+    with patch("mirrordash_core.api.admin_modules_panels.find_entry_point", return_value=ep), \
+         patch("mirrordash_core.api.admin_modules_panels.fetch_json_cached", new_callable=AsyncMock,
+               return_value={"tag_name": "v1.0.1", "body": "Fixes"}), \
+         patch("mirrordash_core.api.admin_modules_panels.update_module", new_callable=AsyncMock):
+        navigate_authenticated(page, server_url)
+        page.wait_for_selector("h1")
+        # The card's placeholders, filled by the update check exactly as on the Modules tab
+        page.evaluate("""() => {
+            document.body.insertAdjacentHTML('beforeend',
+                '<div id="update-badge-clock"></div><div id="update-actions-clock"></div>');
+            htmx.ajax('GET', '/admin/panels/modules/check-update/clock', {target: '#update-badge-clock', swap: 'none'});
+        }""")
+        upgrade = page.locator("#update-actions-clock button", has_text="Upgrade")
+        upgrade.wait_for(state="visible")
+        upgrade.click()
+        page.click("#confirm-ok-btn")
+        page.wait_for_selector("#restart-overlay", state="visible", timeout=5000)
+        assert "Upgrading" in page.locator("#restart-overlay-title").text_content()
+        assert "mirrordash-clock (v1.0.1)" in page.locator("#restart-overlay-message").text_content()
+        # "visible" ignores opacity: the overlay was there but fully transparent, so check what the eye sees
+        page.wait_for_function("getComputedStyle(document.getElementById('restart-overlay')).opacity === '1'", timeout=2000)
+        if os.environ.get("UPGRADE_SHOT"):
+            page.screenshot(path=os.environ["UPGRADE_SHOT"])
 
 
 def test_add_to_mirror(page, server_url):

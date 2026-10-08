@@ -1,5 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import asyncio
 import os
 import logging
 from contextlib import asynccontextmanager
@@ -14,7 +15,7 @@ from mirrordash_core.ws_manager import manager
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
 from mirrordash_core.api.backup import router as backup_router
-from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active, get_hotspot_password
+from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active, get_hotspot_password, restore_captive_ap
 from mirrordash_core.system.network import HOTSPOT_SSID
 
 from mirrordash_core.display_power import display_power_manager
@@ -174,9 +175,10 @@ async def post_wifi_setup(body: dict) -> dict:
     success, message = await connect_wifi(ssid, password)
     if not success and from_hotspot:
         # Otherwise the mirror is left with neither Wi-Fi nor hotspot until it's unplugged.
-        # After the restart the Wi-Fi fallback opens MirrorDash-Setup again.
-        logger.warning(f"Could not connect to '{ssid}' from the setup hotspot; restarting to bring it back.")
-        await reboot_system(delay_sec=3.0)
+        # Bring MirrorDash-Setup back (same password) so the phone can try again; restart only if that fails.
+        logger.warning(f"Could not connect to '{ssid}' from the setup hotspot; bringing it back.")
+        if not await restore_captive_ap():
+            await reboot_system(delay_sec=3.0)
     if success:
         if timezone:
             from mirrordash_core.config import load_config, save_config
@@ -195,8 +197,10 @@ async def post_wifi_setup(body: dict) -> dict:
             # Apply system timezone
             await apply_system_timezone(timezone)
 
-        await reboot_system(delay_sec=3.0)
-        return {"status": "success", "message": "Connected. The mirror is restarting."}
+        # No restart needed: the mirror's screen notices the hotspot is gone and reloads, the clock and
+        # mirrordash.local follow the new network by themselves. Modules start over to fetch data now.
+        asyncio.create_task(module_loader.reload_modules())
+        return {"status": "success", "message": "Connected."}
     else:
         return {"status": "error", "message": message}
 

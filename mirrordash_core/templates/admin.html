@@ -63,6 +63,7 @@
             margin-bottom: 1.5rem;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
+        .auth-icon .auth-monogram { width: 36px; height: 36px; }
         .auth-icon.corrupt {
             background: rgba(255, 180, 171, 0.1);
             border: 1px solid #ffb4ab;
@@ -830,7 +831,7 @@
     <div id="auth-overlay" class="auth-overlay" role="dialog" aria-modal="true">
         <div class="auth-card">
             <div class="auth-icon" id="auth-icon">
-                <i data-lucide="lock"></i>
+                <svg class="auth-monogram" viewBox="0 0 100 100" aria-label="MirrorDash"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
             </div>
             <h2 id="auth-title" class="auth-title">Welcome to MirrorDash</h2>
             <p id="auth-desc" class="auth-desc">Enter your password to unlock the admin dashboard.</p>
@@ -963,6 +964,9 @@
             input.focus();
         }));
 
+        // The MD monogram from the start screen, shown when you log in or set the first password
+        const MONOGRAM_SVG = document.getElementById('auth-icon').innerHTML;
+
         function showAuthModal(mode) {
             const overlay = document.getElementById('auth-overlay');
             const icon = document.getElementById('auth-icon');
@@ -997,7 +1001,7 @@
 
             if (mode === 'login') {
                 icon.className = 'auth-icon';
-                icon.innerHTML = '<i data-lucide="lock"></i>';
+                icon.innerHTML = MONOGRAM_SVG;
                 title.textContent = 'Enter Password';
                 desc.textContent = 'Enter your MirrorDash admin password to unlock the dashboard.';
                 passwordGroup.style.display = 'block';
@@ -1007,7 +1011,7 @@
                 submitBtn.className = 'auth-btn';
             } else if (mode === 'setup') {
                 icon.className = 'auth-icon';
-                icon.innerHTML = '<i data-lucide="monitor-smartphone"></i>';
+                icon.innerHTML = MONOGRAM_SVG;
                 title.textContent = 'Welcome to MirrorDash';
                 desc.textContent = 'Please create an admin password to secure your mirror (at least 4 characters).';
                 passwordGroup.style.display = 'block';
@@ -1446,12 +1450,14 @@
                 document.getElementById('restart-overlay-title').textContent = title || 'Restarting System';
                 document.getElementById('restart-overlay-message').textContent = message || 'Please wait...';
                 overlay.style.display = 'flex';
+                overlay.classList.add('open');  // .modal-overlay is transparent until it's open
             }
         };
 
         window.hideRestartOverlay = function() {
             const overlay = document.getElementById('restart-overlay');
             if (overlay) {
+                overlay.classList.remove('open');
                 overlay.style.display = 'none';
             }
         };

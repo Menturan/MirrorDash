@@ -281,6 +281,27 @@ async def get_hotspot_password() -> str:
     return ""
 
 
+async def restore_captive_ap() -> bool:
+    """Bring the setup hotspot back after a failed connection, with the same profile and password.
+    Returns False if NetworkManager couldn't start it."""
+    global _hotspot_active_cached, _hotspot_checked_at
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "-n", "nmcli", "connection", "up", HOTSPOT_SSID,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+    except Exception as e:
+        logger.warning(f"Bringing the setup hotspot back failed: {e}")
+        return False
+    if proc.returncode != 0:
+        logger.warning(f"Bringing the setup hotspot back failed: {stderr.decode(errors='replace').strip()}")
+        return False
+    _hotspot_active_cached, _hotspot_checked_at = True, time.monotonic()
+    logger.info("The setup hotspot is back.")
+    return True
+
+
 async def _teardown_captive_ap() -> None:
     """Deactivate the captive-portal AP connection so wlan0 can become a client.
 

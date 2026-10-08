@@ -39,6 +39,8 @@
             height: 48px;
             stroke-width: 1.5px;
         }
+        /* The MD monogram, as on the start screen */
+        .icon svg.monogram { width: 64px; height: 64px; }
         h1 {
             font-size: 1.25rem;
             font-weight: 600;
@@ -107,7 +109,7 @@
             
             <p class="subtext">This recovery mode requires physical screen verification. Once access is restored, you will be prompted to set a new password.</p>
         {% else %}
-            <div class="icon"><i data-lucide="monitor-smartphone"></i></div>
+            <div class="icon"><svg class="monogram" viewBox="0 0 100 100" aria-label="MirrorDash"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
             <h1>Welcome to MirrorDash</h1>
             <p class="main-text">Your mirror is running. Open a browser on any device connected to the same network and visit the admin dashboard to complete setup.</p>
             <div class="url-box">

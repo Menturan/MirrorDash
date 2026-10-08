@@ -39,16 +39,18 @@ def test_wifi_scan(mock_scan, client):
     assert response.json() == {"networks": ["MyHomeWiFi", "CoffeeShopWiFi"]}
     mock_scan.assert_called_once()
 
+@patch("mirrordash_core.app.module_loader.reload_modules", new_callable=AsyncMock)
 @patch("mirrordash_core.app.connect_wifi", new_callable=AsyncMock)
 @patch("mirrordash_core.app.reboot_system", new_callable=AsyncMock)
-def test_wifi_setup_success(mock_reboot, mock_connect, client):
+def test_wifi_setup_success_needs_no_restart(mock_reboot, mock_connect, mock_reload, client):
+    """Connected: no restart (the mirror's screen follows by itself), only the modules start over."""
     mock_connect.return_value = (True, "Successfully connected!")
     response = client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "pass"})
     assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert "restarting" in response.json()["message"]
+    assert response.json() == {"status": "success", "message": "Connected."}
     mock_connect.assert_called_once_with("HomeNet", "pass")
-    mock_reboot.assert_called_once_with(delay_sec=3.0)
+    mock_reboot.assert_not_called()
+    mock_reload.assert_awaited_once()
 
 @patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=False)
 @patch("mirrordash_core.app.connect_wifi", new_callable=AsyncMock)
@@ -62,14 +64,38 @@ def test_wifi_setup_failure(mock_reboot, mock_connect, _hotspot, client):
     mock_connect.assert_called_once_with("HomeNet", "wrong")
     mock_reboot.assert_not_called()
 
+@patch("mirrordash_core.app.restore_captive_ap", new_callable=AsyncMock, return_value=True)
 @patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=True)
 @patch("mirrordash_core.app.connect_wifi", new_callable=AsyncMock, return_value=(False, "Wrong password"))
 @patch("mirrordash_core.app.reboot_system", new_callable=AsyncMock)
-def test_wifi_setup_failure_from_hotspot_restarts(mock_reboot, _connect, _hotspot, client):
-    """The hotspot is already gone when the connection fails: restart so it comes back."""
+def test_wifi_setup_failure_from_hotspot_brings_the_hotspot_back(mock_reboot, _connect, _hotspot, mock_restore, client):
+    """The hotspot is already gone when the connection fails: start it again, no restart."""
     response = client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "wrong"})
     assert response.json()["status"] == "error"
+    mock_restore.assert_awaited_once()
+    mock_reboot.assert_not_called()
+
+
+@patch("mirrordash_core.app.restore_captive_ap", new_callable=AsyncMock, return_value=False)
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=True)
+@patch("mirrordash_core.app.connect_wifi", new_callable=AsyncMock, return_value=(False, "Wrong password"))
+@patch("mirrordash_core.app.reboot_system", new_callable=AsyncMock)
+def test_wifi_setup_failure_restarts_if_the_hotspot_wont_come_back(mock_reboot, _connect, _hotspot, _restore, client):
+    """Last resort: if the hotspot can't be started, restart so the Wi-Fi check at boot opens it."""
+    client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "wrong"})
     mock_reboot.assert_called_once_with(delay_sec=3.0)
+
+
+@patch("mirrordash_core.system.network.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+def test_restore_captive_ap_starts_the_same_profile(mock_exec):
+    """The hotspot comes back with nmcli up on the kept profile, so its password stays the same."""
+    import asyncio
+    from mirrordash_core.system.network import restore_captive_ap
+    proc = AsyncMock(returncode=0)
+    proc.communicate.return_value = (b"", b"")
+    mock_exec.return_value = proc
+    assert asyncio.run(restore_captive_ap()) is True
+    assert mock_exec.call_args.args == ("sudo", "-n", "nmcli", "connection", "up", "MirrorDash-Setup")
 
 def test_wifi_setup_missing_ssid(client):
     response = client.post("/api/wifi/setup", json={"password": "wrong"})
@@ -127,10 +153,11 @@ def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
     assert result == []
 
 
+@patch("mirrordash_core.app.module_loader.reload_modules", new_callable=AsyncMock)
 @patch("mirrordash_core.system.network._teardown_captive_ap", new_callable=AsyncMock)
 @patch("mirrordash_core.app.reboot_system", new_callable=AsyncMock)
 @patch("mirrordash_core.app.connect_wifi")
-def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, client):
+def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, _reload, client):
     """connect_wifi should tear down the captive AP before connecting."""
     mock_connect.return_value = (True, "Successfully connected!")
     response = client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "pass"})

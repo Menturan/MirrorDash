@@ -77,8 +77,11 @@
                 <!-- Password input when SSH is enabled -->
                 <div id="sys-ssh-password-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-top: 10px;">
                     <label for="sys-ssh-password" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 6px;">Set New Password for System User 'pi'</label>
-                    <input type="password" id="sys-ssh-password" name="pi_password" class="form-control" placeholder="Enter password (min 8 chars)" style="max-width: 300px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border); border-radius: 8px; color: white; padding: 8px 12px; outline: none;">
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 6px 0 0 0;">SSH is turned on as soon as you leave this field.</p>
+                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <input type="password" id="sys-ssh-password" name="pi_password" class="form-control" placeholder="Enter password (min 8 chars)" autocomplete="new-password" style="flex: 1 1 200px; max-width: 300px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border); border-radius: 8px; color: white; padding: 8px 12px; outline: none;">
+                        <button type="button" id="sys-ssh-save" class="btn primary" onclick="saveSshPassword()">Turn on SSH</button>
+                    </div>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 6px 0 0 0;">Type a password of at least 8 characters, then press Turn on SSH (or Enter).</p>
                 </div>
             </div>
         </form>
@@ -96,7 +99,15 @@
         return event.target.id === 'sys-ssh' && event.target.checked && !initialSshState;
     }
     document.getElementById('sys-ssh-password').addEventListener('change', () => { initialSshState = true; });
-    
+
+    // The button saves like Enter does. Clicking it moves focus out of the field, which usually has
+    // saved already (the field's change event); only send it if that didn't happen.
+    function saveSshPassword() {
+        const field = document.getElementById('sys-ssh-password');
+        if (!field.value) { field.focus(); return; }
+        if (!initialSshState) field.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
     function toggleSSHPasswordGroup(checked) {
         if (checked && !initialSshState) {
             document.getElementById('sys-ssh-password-group').style.display = 'block';
