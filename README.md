@@ -1,7 +1,7 @@
 # 🪞 MirrorDash
 
 [![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](#)
-[![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](LICENSE)
+[![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](https://github.com/Menturan/MirrorDash/blob/master/LICENSE.md)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%2F%20Linux-orange.svg)](#)
 [![PyPI version](https://img.shields.io/pypi/v/mirrordash.svg)](https://pypi.org/project/mirrordash/)
 [![Downloads](https://pepy.tech/badge/mirrordash)](https://pepy.tech/project/mirrordash)
@@ -56,6 +56,6 @@ Our standalone **MirrorDash SDK** makes bootstrapping a new widget incredibly ea
    uvx mirrordash-cli create-module mirrordash-my-widget --description "My custom display widget"
    ```
 2. **💻 Develop with standard tools**: Write simple Python logic to fetch data, and structure your layout with a clean Jinja2 HTML template and vanilla CSS.
-3. **📦 Share it**: Packages are standard Python distributions. You can publish your module to PyPI, host it on GitHub, or install it locally on your mirror.
+3. **📦 Share it**: Push your module to GitHub and make a GitHub Release; mirrors install it from its Git URL.
 
-Whether you want to show transit schedules, air quality indexes, plant soil moisture, or custom stock charts, the community is always looking for new modules. Check out [mirrordash-sdk](file:///home/menturan/repos/mirrordash-sdk) to get started!
+Whether you want to show transit schedules, air quality indexes, plant soil moisture, or custom stock charts, the community is always looking for new modules. Check out [mirrordash-sdk](https://github.com/Menturan/MirrorDash-sdk) to get started!
