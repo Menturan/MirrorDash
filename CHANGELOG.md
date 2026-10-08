@@ -24,6 +24,7 @@ There are two kinds of releases:
 ### Changed
 - For module developers: `self.fetch_json(url, headers=…)` fetches data with a timeout and falls back to the last answer when it fails, and every component on the design page (`/design`: data lists, forecast and agenda lists, gauges, stats, callouts, `.module-message` and more) now works inside modules: copy its markup into the module's template. The forecast and agenda components on the design page have their styling back.
 - Installing a module by hand under Modules now asks for its GitHub address (Git URL) instead of a package name.
+- For module developers: on a local mirror started with `mirrordash-sdk start`, saving a template, setting or translation file shows the change by itself, and the mirror no longer asks for your computer's password.
 - For module developers: a module's script now gets its own part of the screen as `root`, so it no longer needs `document.currentScript` (which never worked there). Each copy of a module can keep its own timers there.
 - Hardware and Power settings are applied as soon as you change them; the Apply buttons are gone.
 - Installing, updating and removing modules shows progress right away, with a timer, and the page knows exactly when the mirror is back. If something goes wrong you see what failed.
