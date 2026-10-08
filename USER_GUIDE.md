@@ -1,224 +1,84 @@
 # MirrorDash User Guide
 
-Welcome to MirrorDash! This guide is designed for end-users and mirror administrators to help you set up, customize, and manage your smart mirror display. You do **not** need to be a programmer or software developer to follow this guide.
+The admin page explains most settings where you change them. This guide covers what it can't: setting the mirror up before the admin page is reachable, wiring, the rules for when the screen is on, recovery, and Home Assistant.
 
-## Table of Contents
-
-- [1. What is MirrorDash?](#1-what-is-mirrordash)
-- [2. Accessing the System](#2-accessing-the-system)
-- [3. Initial Setup & Security](#3-initial-setup--security)
-- [4. Using the Admin Dashboard](#4-using-the-admin-dashboard)
-- [5. Screen Layout & Module Stacking](#5-screen-layout--module-stacking)
-- [6. Setting Up Carousels (Switching Modules)](#6-setting-up-carousels-switching-modules)
-- [7. Troubleshooting FAQ](#7-troubleshooting-faq)
-- [8. Network Setup (WiFi Captive Portal)](#8-network-setup-wifi-captive-portal)
-- [9. Failsafe Operation & SD Card Preservation](#9-failsafe-operation--sd-card-preservation)
-- [10. Home Assistant](#10-home-assistant)
+- [1. Reaching the mirror](#1-reaching-the-mirror)
+- [2. First start: Wi-Fi setup](#2-first-start-wi-fi-setup)
+- [3. Where things go on the screen](#3-where-things-go-on-the-screen)
+- [4. When the screen is on](#4-when-the-screen-is-on)
+- [5. Connecting hardware](#5-connecting-hardware)
+- [6. Updates, backups and recovery](#6-updates-backups-and-recovery)
+- [7. Home Assistant](#7-home-assistant)
+- [8. When something is wrong](#8-when-something-is-wrong)
+- [9. How the SD card is protected](#9-how-the-sd-card-is-protected)
 
 ---
 
-## 1. What is MirrorDash?
+## 1. Reaching the mirror
 
-MirrorDash is an ambient heads-up display (HUD) designed to run on a screen behind a semi-reflective two-way mirror (often powered by a Raspberry Pi). 
+Open **`http://mirrordash.local/admin`** on a phone or computer on the same Wi-Fi as the mirror. If your device can't find `mirrordash.local`, use the mirror's IP address instead (shown in your router).
 
-*   **Ambient Display**: It is designed to be a passive, glanceable information screen (e.g. showing the time, calendar, Swedish name days, weather) — not an interactive tablet.
-*   **The Zero-Light Philosophy**: The background is solid black. In a physical mirror, black areas behave as a standard reflective mirror, while the white/gray text and symbols float on the glass.
+The first time, you choose an admin password. Forgot it? Tap **Forgot password?** on the login page: the mirror shows a 6-digit PIN on its screen, and with it you set a new password.
 
----
-
-## 2. Accessing the System
-
-Once your mirror server is running, you can access it via a web browser on any device (phone, tablet, or computer) connected to the same local Wi-Fi network:
-
-*   **Mirror Display**: `http://mirrordash.local/`
-*   **Admin Dashboard**: `http://mirrordash.local/admin`
-
-> **Tip:** The `.local` address works automatically on macOS, Linux, and Windows 10/11 without any configuration. If it doesn't resolve on your device, fall back to the IP address: `http://<your-pi-ip>/admin`.
-
-> **Tip:** Put the admin page on your phone's home screen, so it opens like an app. iPhone: open `http://mirrordash.local/admin` in Safari, tap *Share* → *Add to Home Screen*. Android: open it in Chrome, tap the menu (⋮) → *Add to Home screen*. (A full app install needs https, which a mirror on the home network doesn't have, so Android opens it in a browser tab.)
+> **Tip:** Put the admin page on your phone's home screen, so it opens like an app. iPhone: open it in Safari, tap *Share* → *Add to Home Screen*. Android: open it in Chrome, tap the menu (⋮) → *Add to Home screen*.
 
 ---
 
-## 3. Initial Setup & Security
+## 2. First start: Wi-Fi setup
 
-The first time you open the **Admin Dashboard**, you will be prompted to secure your mirror:
+A new mirror (or one that can't find its Wi-Fi) starts its own network for the setup:
 
-1.  **Set Admin Password**: Choose a secure password. This password will protect your configuration and system controls.
-2.  **API Authentication**: Background scripts and automated backup utilities access the system by providing your admin password in the `X-API-Key` HTTP header.
+1. **Join `MirrorDash-Setup`** on your phone. The mirror shows its password with a QR code: point the camera at it, or type the password. It stays the same until the SD card is flashed again.
+2. **Sign in**: the phone says you need to sign in to the network, like on a hotel Wi-Fi. Tap it and the setup page opens. If it doesn't ask, open `http://mirrordash.setup`.
+3. **Choose your Wi-Fi**, type its password (*Show* lets you check it) and tap **Connect the mirror**.
+4. The mirror shows its clock in a moment. Put your phone back on your home Wi-Fi and open `mirrordash.local`. If the password was wrong, `MirrorDash-Setup` comes back within a minute: join it and try again.
 
-For subsequent visits, simply log in using your admin password.
-
----
-
-## 4. Using the Admin Dashboard
-
-The Admin Dashboard is organized into seven main tabs:
-
-### 4.1. Dashboard Tab
-Provides a high-level overview of the mirror's current status:
-*   **Sensors**: Temperature and humidity (DHT11), light level (BH1750) and the fan, if they are connected (see the Hardware tab). Updates every 30 seconds.
-*   **Screen Layout Matrix**: A 3x3 grid showing which screen regions (Top Left, Top Center, etc.) are currently occupied by active module instances.
-*   **System Analytics**: Real-time telemetry cards showing CPU temperature, persistent storage disk usage, system memory (RAM) usage, active modules running, local IP address, network connection status (SSID and signal strength), system uptime, and NTP time synchronization status.
-*   **Power Throttling Warning**: Displayed automatically if Raspberry Pi under-voltage is detected (dropping below 4.63V), warning the user of potential system instability or file system corruption.
-*   **Update Banners**: Displayed dynamically if there is a pending update to the core software or any installed module. Clicking the banner redirects you directly to the correct management tab (System Settings or Modules) to trigger the upgrade.
-
-### 4.2. Modules Tab
-This is where you manage the widgets displayed on your mirror.
-*   **Root Partition Storage (Virtual Env)**: Displays a real-time disk usage gauge showing the total, used, and free space on the system's root partition. Since modules and their dependencies are installed in the A/B virtual environments, this gauge helps you monitor the 6GB boundary. A warning will appear if free space drops below 500MB.
-*   **Failsafe Recovery & Rebuild**: If the system is running in rollback mode or Safe Mode due to a startup crash, a warning banner will be displayed at the top of the Admin dashboard. You can click the **Rebuild Active Environment** button to trigger a fresh rebuild of the virtual environment, reinstalling the core system and configured modules.
-*   **Active Modules**: Lists all currently running widgets. You can click **Configure** next to any active module to adjust its settings (e.g., changing refresh intervals, adding calendar URLs, or toggling headers).
-*   **Install New Modules**: Search the community module database. Click **Details** on any module to read its setup guide and view screenshots. Click **Install** to add it to your system.
-*   **Uninstalling**: If you no longer need a module, click **Uninstall** to cleanly remove it from the system and configuration.
-
-### 4.3. Configuration Tab
-Controls global settings shared by all modules. Adjust these to localize your mirror:
-*   **Language**: Set display language (e.g., `en` for English, `sv` for Swedish).
-*   **Timezone**: Your region's timezone identifier (e.g., `Europe/Stockholm`). It also sets the country for Wi-Fi (which channels the mirror may use), from the next restart. Wi-Fi setup takes the time zone from your phone.
-*   **Time Format**: Choose between `24h` or `12h` display.
-*   **Units**: Change temperature units (`C` or `F`) and distance (`km` or `mi`).
-*   **Coordinates**: Latitude and longitude (used by weather modules to locate your mirror).
-*   **MirrorDash Updates**: Check for a newer version and install it. The mirror restarts on the new version, and goes back to the old one by itself if the new one doesn't start.
-*   **Test versions**: Turn on to get new versions before everyone else, to try them out. They can have bugs; turn it off to wait for the regular release.
-
-### 4.4. Hardware Tab
-Changes are applied as soon as you make them; there is no Apply button. (Turning SSH on waits until you have entered the new password.)
-*   **Screen Rotation**: Rotate the screen layout (`normal`, `left`, `right`, or `inverted`) to support portrait-oriented mirrors.
-*   **Screen Resolution**: Set display resolution or keep it on `auto`.
-*   **Screen Brightness**: How bright the screen is (10% to 100%). A screen on the Pi's ribbon cable (DSI) sets its backlight. An HDMI screen gets the setting over the cable (DDC/CI), which most computer monitors understand and most TVs don't; if yours doesn't, the setting says so and you use the screen's own buttons. (Needs an OS image newer than 0.5.0.)
-*   **System Volume**: Control mirror audio output levels.
-*   **Sensors & Inputs**: Everything connected to the GPIO header, as a list. Choose **Connect something new**, pick the type and the GPIO (or the I²C address), and follow the wiring hint shown under it. Up to four push buttons can be connected, everything else once:
-    *   *Push button* (between a GPIO and GND): choose what a *single*, *double*, *triple* and *long* press does: wake the screen, turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down. *Long press is* sets how long the button is held for a long press (1, 1.5, 2 or 3 seconds; 1.5 to begin with). Each button has its own settings, and changes take effect on the next press. (A second, third and fourth button need an OS image newer than 0.5.0.)
-        *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so it can't be combined with the light sensor.
-    *   *PIR motion sensor* and *mmWave presence sensor* (e.g. LD2410; it also notices someone standing still): used by the Power tab to turn the screen on and off.
-    *   *DHT11 temperature & humidity sensor* and *BH1750 light sensor* (I²C, uses GPIO 2 and 3): their readings appear on the Dashboard.
-    *   *Fan*: cools the Pi by CPU temperature; you choose the temperature it starts at. An *on/off* fan (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone; it turns off again 5 °C lower. A *PWM fan* (4 wires) gets its speed from the GPIO and speeds up in steps as the Pi gets warmer. The fan's state is shown on the Dashboard.
-*   Adding or removing something takes effect after the mirror restarts; the card then shows a **Restart Mirror** button. The status line at the bottom shows whether each part is detected, its latest reading, or the last motion.
-*   **API Access**: a token for Home Assistant and other systems (see [10. Home Assistant](#10-home-assistant)). **Create Token** shows it once; copy it right away. A new token replaces the old one, and **Remove Token** shuts the API. The token can read the status and run the screen, nothing else, and it is kept in backups.
-
-### 4.5. Power Tab
-Changes are applied as soon as you make them.
-*   **Mirror Power**: **Restart Mirror** and **Shut Down**. Always shut down before unplugging the power, so the SD card can't be damaged. To start the mirror again, unplug the power and plug it back in.
-*   **When is the screen on?**
-    *   *Always on*: the screen is on, unless you turn it off yourself.
-    *   *On a schedule*: on between a start and an end time (e.g. `07:00`–`22:30`). Outside them the screen is off, but it can still be woken.
-    *   *Off until woken*: the screen is off and only lights up when something wakes it. Saves the most energy and screen life.
-*   **Waking the screen** (for the schedule and "off until woken"): something wakes the screen for a number of minutes, then it turns off again by itself.
-    *   *From the last activity* (recommended): every new movement or call starts the countdown again, and it waits while someone is still in front of the mirror.
-    *   *A fixed time*: the screen stays on exactly that long after it was woken, even if someone is still there. Good for showing something briefly, like a doorbell.
-    *   What wakes it: someone in front of the mirror (with a PIR or mmWave sensor, if *Wake when someone is in front of the mirror* is on), the push button (a press set to *Wake the screen*), the **Turn Screen ON** button, and other systems such as Home Assistant:
-        *   `POST http://mirrordash.local/admin/screen` with `{"state": "on"}` wakes it for the chosen time, `{"state": "on", "timeout_minutes": 2}` for 2 minutes, and `{"state": "off"}` turns it off right away.
-    *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
-*   **Screen Power**: Instantly turn the mirror display output ON or OFF. (Manually overriding automation states will temporarily trigger that state).
-*   **Reload Screen**: Loads the mirror's page again, for example if it looks wrong. After a MirrorDash update the page reloads by itself.
-
-### 4.6. Backup Tab
-Protect your configurations and personal data files:
-*   **Create Backup**: Saves a `.mirror` file with all your settings, your modules (and the data they keep), and the hardware settings. You can protect it with a password. The admin password and saved Wi-Fi networks are not included.
-*   **Restore Backup**: Upload a backup file, for example on a freshly flashed mirror, to get that setup back. The mirror keeps its current admin password, installs the modules again (this needs internet) and restarts. If the backup has a push button, sensors or a fan, the whole mirror restarts so the pins take effect.
-
-### 4.7. Logs Tab
-Displays real-time system logs. If a module fails to fetch data or the screen behaves unexpectedly, open this tab to inspect the error messages.
+The time zone is taken from your phone. It also sets the country for Wi-Fi (which channels may be used) from the next restart; until then, networks on channel 12 or 13 don't show up.
 
 ---
 
-## 5. Screen Layout & Module Stacking
+## 3. Where things go on the screen
 
-The mirror display is split into a **3x3 Grid** with nine regions:
-```
-+---------------+-----------------+---------------+
-|   top_left    |   top_center    |   top_right   |
-+---------------+-----------------+---------------+
-|  middle_left  |  middle_center  | middle_right  |
-+---------------+-----------------+---------------+
-|  bottom_left  |  bottom_center  | bottom_right  |
-+---------------+-----------------+---------------+
-```
-*   **Default Stacking**: If you assign multiple modules to the same position (e.g., both Clock and Name Day to `top_right`), they will stack vertically.
-*   **Multiple Instances**: You can add and run multiple instances of a module on the mirror. For example, you can add two separate clock modules with different positions, different timezone offsets, or different formatting. Each instance can be configured independently and has isolated data directories.
-*   **Center Void**: By default, the `middle_center` region is kept empty to preserve the physical reflective surface of the mirror.
+The screen has nine areas: top, middle and bottom, each left, center and right. Each module has a position in its settings (Modules tab → **Configure**).
+
+*   Several modules in the same area are stacked.
+*   A module can be added more than once, for example two clocks in different time zones, each with its own settings.
+*   **Taking turns (carousel):** give modules in the same area the same **Carousel Group** name, and they show one at a time, switching every **Carousel Interval** seconds. Modules in that area without the group name stay stacked as usual.
 
 ---
 
-## 6. Setting Up Carousels (Switching Modules)
+## 4. When the screen is on
 
-If you have many modules but limited screen space, you can group modules in the same region to automatically cycle (cross-fade) on a timer instead of stacking.
+The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside the schedule, and in *Off until woken*, the screen can still be woken for a while:
 
-### How to set it up:
-1.  Go to the **Modules** tab on the Admin Dashboard.
-2.  Click **Configure** on the first module you want to cycle (e.g. `mirrordash-calendar`).
-3.  Set the **Position** (e.g. `middle_left`).
-4.  Add a **Carousel Group** name (e.g., `left-cycle`).
-5.  Set a **Carousel Interval** (e.g., `20` to rotate every 20 seconds).
-6.  Click **Save**.
-7.  Repeat this for the other modules you want in the loop (e.g., `mirrordash-weather`), using the **exact same** Position and Carousel Group name.
+*   What wakes it: someone in front of the mirror (with a motion or presence sensor, if *Wake when someone is in front of the mirror* is on), a button press set to *Wake the screen*, **Turn Screen ON**, or Home Assistant (see [7](#7-home-assistant)).
+*   *From the last activity* keeps it on while someone is still there; *A fixed time* turns it off after exactly that time, for example for a doorbell.
+*   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 
-All other modules in that region (e.g., a Todo list with no group name) will stack normally, while your grouped modules cycle smoothly in place.
+Always use **Shut Down** (Power tab) before unplugging the mirror. To start it again, unplug the power and plug it back in, or use a button on GPIO 3 (below).
 
 ---
 
-## 7. Troubleshooting FAQ
+## 5. Connecting hardware
 
-### The mirror display is blank or only shows a spinner
-*   Check if the server is running.
-*   Open the **Logs** tab in the Admin panel to check for errors.
-*   Verify that your device is connected to the internet if modules depend on external feeds (like calendar files).
+Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it shows how to wire each one. Some things it doesn't say:
 
-### System settings (brightness/rotation) are not applying
-*   Brightness on an HDMI screen only works if the screen understands DDC/CI; the Hardware tab says when it doesn't. Some monitors have DDC/CI turned off in their own menu: turn it on there and move the slider again.
-*   On Raspberry Pi, the system volume and brightness controls require administrative hardware privileges. Ensure your user has permissions to run system control scripts.
-
-### I forgot my admin password. How do I reset it?
-If you forget your admin password, you can reset it securely without resetting your entire configuration:
-
-#### Option A: Direct Web Recovery (Recommended for most users)
-1. Go to the Admin Dashboard login page in your browser.
-2. Click the **Forgot password?** link under the password input field.
-3. Confirm the prompt to initialize recovery. This will immediately display a 6-digit Recovery PIN on your physical mirror screen (reloading the display if necessary).
-4. Enter this 6-digit Recovery PIN into the recovery prompt in your web browser and set a new password.
-
-#### Option B: Manual Command-Line Reset (For developers/system administrators)
-1. Connect to your mirror via SSH (or access the terminal on the device).
-2. Open the active configuration file:
-   ```bash
-   nano ~/.mirrordash/data/config.json
-   ```
-3. Locate the `"admin_auth"` section at the top of the file:
-   ```json
-   "admin_auth": {
-     "hash": "...",
-     "salt": "..."
-   },
-   ```
-4. Delete the entire `"admin_auth"` block (making sure the remaining JSON is syntactically valid) and save the file.
-5. Restart the server or reboot the mirror. The next time you open the Admin Dashboard in your browser, you will be prompted to set a new password during the first-run setup wizard.
+*   Something new is used after the mirror restarts; the card then shows a **Restart Mirror** button.
+*   A **push button on GPIO 3** (pin 5) also starts the mirror again after it has been shut down. With *Shut down the mirror* on its long press, the button works as an on/off switch. GPIO 3 is also used by the light sensor, so the two can't be combined.
+*   An **on/off fan** (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone. A 4-wire PWM fan is connected directly.
+*   **Brightness on an HDMI screen** is sent over the cable (DDC/CI). Most computer monitors understand it, most TVs don't. Some monitors have it turned off in their own menu: turn it on there and move the slider again.
 
 ---
 
-## 8. Network Setup (WiFi Captive Portal)
+## 6. Updates, backups and recovery
 
-MirrorDash is designed to be a plug-and-play appliance. If you move your mirror to a new network or boot it for the first time without configuring WiFi, the system enters **Captive Portal fallback mode** automatically.
-
-1. **Connect to Hotspot**: On your phone or computer, open WiFi settings and look for the network named **`MirrorDash-Setup`**.
-2. **Enter Setup Password**: The mirror shows its own password for this network, with a QR code. Point your phone's camera at the code to join without typing, or type the password shown. It stays the same for this mirror until its SD card is flashed again.
-3. **Sign in**: Your phone says you need to sign in to the network (like on a hotel Wi-Fi). Tap it and the setup page opens. If your phone doesn't ask, open `http://mirrordash.setup` in the browser.
-4. **Choose your Wi-Fi**: Tap your home network (or *Network not listed?*), type its password (tap *Show* to check it) and tap **Connect the mirror**.
-5. **Afterwards**: The mirror shows its clock in a moment, without restarting. Reconnect your phone to your home Wi-Fi and open `mirrordash.local` to reach the admin page. If the password was wrong, `MirrorDash-Setup` appears again within a minute, with the same password; connect and try again.
+*   **Updates** are in the Settings tab. *Test versions* gets new versions before everyone else; they can have bugs. After an update the mirror's screen reloads by itself; **Reload Screen** (Power tab) does the same by hand.
+*   **If an update doesn't start**, the mirror goes back to the version before by itself and shows *System Restored*. If even that fails, it starts in *Safe Mode* without extra modules (the mirror shows *Safe Mode Active*): use **Rebuild Active Environment** in the admin page's banner to install everything again.
+*   **A backup** (Backup tab) contains your settings, modules and their data, the hardware settings and the Home Assistant token. It doesn't contain the admin password or the Wi-Fi. Restoring keeps the mirror's admin password, installs the modules again (this needs internet) and restarts.
 
 ---
 
-## 9. Failsafe Operation & SD Card Preservation
-
-To ensure 100% crash resilience and protect physical SD media from wear, MirrorDash runs on a locked read-only system (OverlayFS) with split directory lifecycles:
-
-*   **Persistent Configuration & Virtual Environments (`/storage/mirrordash/`)**: All permanent files, user settings (including timezone, SSH daemon configurations, and password hashes), databases, authentication tokens, and the primary A/B virtual environments survive reboots on the writeable storage partition.
-*   **Volatile Caching (`~/.mirrordash/cache/`)**: Ephemeral files, network logs, and downloaded icons live entirely in a RAM-disk buffer and are wiped cleanly when the system loses power.
-*   **Failsafe Recovery**: If a software update causes a startup crash, the system automatically rolls back the symlink to the previous stable copy (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode) to keep the mirror online.
-
-You can safely pull the power plug at any time without risking database or partition corruption.
-
----
-
-## 10. Home Assistant
+## 7. Home Assistant
 
 Home Assistant can show the mirror's status and sensors, turn its screen on and off (for example when nobody is home) and set its brightness.
 
@@ -317,3 +177,18 @@ What the API answers, for your own scripts (all with the header `Authorization: 
 
 A wrong or missing token gets `401`. (The older `POST /admin/screen` still works without a token, so existing automations keep running.)
 
+---
+
+## 8. When something is wrong
+
+*   **"Power Warning: Under-voltage Detected" on the dashboard:** the power supply is too weak. The mirror slows down and the SD card can be damaged. Use the official Raspberry Pi power supply (5.1 V, 2.5 A for a Pi 3).
+*   **Modules are empty or missing:** check the mirror's internet connection, and the Logs tab for errors.
+*   **"MirrorDash isn't responding" on the mirror:** it lost contact with its software for more than two minutes and keeps trying. If it doesn't come back, use **Restart MirrorDash** in the Power tab, or unplug and plug in the mirror.
+*   **"MirrorDash didn't start" on the mirror:** unplug it and plug it in again. If it keeps happening, the SD card may need a fresh MirrorDash image (restore your backup afterwards).
+*   **The screen looks wrong:** **Reload Screen** in the Power tab.
+
+---
+
+## 9. How the SD card is protected
+
+The system part of the SD card is read-only: everything written there during use is gone at the next start, so the system can't wear out or slowly break. Your settings, modules and Wi-Fi are kept on a separate storage partition. That is the part a sudden power cut can damage, which is why you should use **Shut Down** before unplugging.
