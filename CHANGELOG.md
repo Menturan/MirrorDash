@@ -10,6 +10,9 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### OS image
+- Settings, Wi-Fi, installed modules and updates are kept when the mirror restarts. Before, the read-only protection also covered the storage partition, so everything saved after the first start was lost at the next restart.
+- The Wi-Fi password is no longer written in plain text to the system log (also shown on the admin page's Logs tab).
+- The mirror uses compressed memory as swap, so it no longer runs out of memory as easily. Before, swap failed to start and a failing system service was retried every time something started.
 - Brightness on HDMI screens (ddcutil).
 - Allows a second, third and fourth push button.
 - Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.

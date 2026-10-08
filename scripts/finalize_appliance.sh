@@ -31,8 +31,11 @@ echo "  [OK] Wi-Fi connections and profiles purged."
 
 # --- 3. Enable OverlayFS and Reboot ---
 echo "Enabling Hardware Read-Only OverlayFS..."
-# Använd inbyggda kommandot
-raspi-config nonint enable_overlayfs
+# The lock is one kernel parameter (same as mirrordash-lock.service). recurse=0 overlays only /,
+# so /storage (settings, Wi-Fi) stays on the SD card.
+dpkg -s overlayroot > /dev/null
+sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt
+grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt
 
 echo "=========================================================="
 echo " MirrorDash Appliance successfully finalized and locked!"

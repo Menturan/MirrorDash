@@ -118,7 +118,8 @@ async def _set_ddc_brightness(brightness: int) -> bool:
         logger.warning("ddcutil didn't answer within 10 s; the screen doesn't take brightness over HDMI")
         return False
     if proc.returncode != 0:
-        logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {stderr.decode(errors='replace').strip()}")
+        reason = (stderr.decode(errors='replace').strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
+        logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {reason}")
         return False
     logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI")
     return True

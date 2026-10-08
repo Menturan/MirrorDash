@@ -421,6 +421,9 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
+# nmcli gets the Wi-Fi password as an argument: keep it out of the journal (and the admin Logs tab).
+# ponytail: it still shows in `ps` while nmcli runs (local only); passwd-file would close that.
+Defaults!/usr/bin/nmcli !log_allowed
 EOF
   chmod 440 /etc/sudoers.d/mirrordash
   visudo -cf /etc/sudoers.d/mirrordash
@@ -852,6 +855,9 @@ Description=MirrorDash MBR Partition Expander
 DefaultDependencies=no
 After=systemd-udevd.service
 Before=local-fs-pre.target
+# Only before the lock: the lock needs /storage mounted, so a locked mirror has its partition.
+# (Under overlayroot `findmnt /` is "overlayroot", which this script can't resolve to a disk.)
+ConditionKernelCommandLine=!overlayroot
 
 [Service]
 Type=oneshot
@@ -932,9 +938,24 @@ EOF
 }
 
 step_first_boot_lock() {
-  # raspi-config builds the overlay initramfs for the running kernel (uname -r), so it
-  # cannot run in the build container. Image builds lock once on the Pi's first boot;
-  # manual (on-device) builds lock explicitly via mirrordash-finalize.sh instead.
+  # On the locked root, / is an overlay that can't be remounted: systemd-remount-fs fails, and is
+  # retried (and fails) every time a unit starts. Nothing to remount there, so skip it.
+  mkdir -p /etc/systemd/system/systemd-remount-fs.service.d
+  cat << 'EOF' > /etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf
+[Unit]
+ConditionKernelCommandLine=!overlayroot
+EOF
+  # Swap in compressed RAM only: the default zram+file puts a swap file on the root partition,
+  # which is a RAM overlay once locked (and needs systemd-remount-fs).
+  mkdir -p /etc/rpi/swap.conf.d
+  cat << 'EOF' > /etc/rpi/swap.conf.d/mirrordash.conf
+[Main]
+Mechanism=zram
+EOF
+
+  # The first boot needs a writable root (partition, storage, SSH keys), so image builds lock once
+  # at the end of it (build_image.sh checks that overlayroot is in the initramfs); manual
+  # (on-device) builds lock explicitly via mirrordash-finalize.sh instead.
   if [ -z "${BUILDING_IMAGE:-}" ]; then
     echo "Not an image build — skipping (run mirrordash-finalize.sh to lock)."
     return 0
@@ -944,18 +965,21 @@ step_first_boot_lock() {
 [Unit]
 Description=MirrorDash First-Boot OverlayFS Lock
 After=multi-user.target mirrordash-storage-init.service
-ConditionKernelCommandLine=!boot=overlay
+ConditionKernelCommandLine=!overlayroot
 # Never lock without the persistent partition: /storage is nofail, so a failed repart or
 # mount would otherwise put all data on the RAM overlay. Skipped (not disabled) => retried next boot.
 ConditionPathIsMountPoint=/storage
 
 [Service]
 Type=oneshot
-# overlayroot is installed in the image. raspi-config would otherwise apt-get it here, which fails
-# on a mirror without Wi-Fi yet, and still set overlayroot=tmpfs: a root that never locks. Without
-# the package this fails instead, and the lock is tried again at the next boot.
+# overlayroot must be installed (it is, in the image): without it the parameter below does nothing
+# and the root never locks. Without the package this fails, and the lock is tried again next boot.
 ExecStartPre=/usr/bin/dpkg -s overlayroot
-ExecStart=/usr/bin/raspi-config nonint enable_overlayfs
+# The lock itself is one kernel parameter, written once (no-op if any overlayroot= is there; the
+# check below then fails instead of rebooting). recurse=0 overlays only /: by default overlayroot
+# also puts every fstab mount (/storage!) on the RAM overlay, losing settings and Wi-Fi at reboot.
+ExecStart=/usr/bin/sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt
+ExecStart=/usr/bin/grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt
 # Disabled on the still-writable root, so it never runs again once locked
 ExecStart=/usr/bin/systemctl disable mirrordash-lock.service
 ExecStart=/usr/bin/systemctl reboot

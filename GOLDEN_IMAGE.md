@@ -60,7 +60,7 @@ The complete production-ready SD card image is built automatically on real ARM h
 
 - **Pinned inputs**: the base Raspberry Pi OS image and its SHA-256 (`TARGET_URL`, `TARGET_SHA256` in `build_image.sh`; a download that doesn't match is deleted and the build stops), uv (`UV_VERSION`) and the clock module (`CLOCK_REF`) in `setup_appliance.sh`, the PiShrink commit in the workflow, and the Python dependencies in `uv.lock`. Bump them deliberately; [RELEASING.md](RELEASING.md#what-is-pinned-and-how-to-bump-it) says how.
 - **Core app from source**: the core is installed from a wheel built from the checked-out repository, not from PyPI, so the image contains exactly the tagged code. Its dependencies are installed at the versions in `uv.lock`, the same ones the tests run with. The repository copy (`/opt/MirrorDash`) is deleted from the image after setup, so no source code or dev `config.json` ships.
-- **First-boot lock**: `raspi-config nonint enable_overlayfs` builds an initramfs for the *running* kernel (`uname -r`), so it cannot run inside the build container. Image builds install `mirrordash-lock.service` instead. On the Pi's first boot (after `multi-user.target`, so first-boot user/SSH-key setup has finished) it enables OverlayFS, disables itself on the still-writable root and reboots once. `ConditionKernelCommandLine=!boot=overlay` guarantees it never runs on a locked system. `ConditionPathIsMountPoint=/storage` skips the lock (and retries on the next boot) if the persistent partition is not mounted, so a failed repart or mount can never leave all data on the RAM overlay. Manual builds (no `BUILDING_IMAGE`) skip this service and lock via Section 7.
+- **First-boot lock**: the first boot needs a writable root (partition, storage, SSH keys), so image builds install `mirrordash-lock.service`. On the Pi's first boot (after `multi-user.target`, so first-boot user/SSH-key setup has finished) it writes the one kernel parameter `overlayroot=tmpfs:recurse=0` to `cmdline.txt` (only if no `overlayroot=` is there), checks it is there, disables itself on the still-writable root and reboots once. `recurse=0` overlays only `/`: by default overlayroot also puts every fstab mount on the RAM overlay, read-only underneath, so `/storage` (settings, Wi-Fi, modules) would be lost at every reboot. `ConditionKernelCommandLine=!overlayroot` guarantees it never runs on a locked system. `ConditionPathIsMountPoint=/storage` skips the lock (and retries on the next boot) if the persistent partition is not mounted, so a failed repart or mount can never leave all data on the RAM overlay. Manual builds (no `BUILDING_IMAGE`) skip this service and lock via Section 7.
 
 ### Requirements
 
@@ -207,6 +207,9 @@ Instead of resizing partitions manually, MirrorDash utilizes a custom, determini
    DefaultDependencies=no
    After=systemd-udevd.service
    Before=local-fs-pre.target
+   # Only before the lock: the lock needs /storage mounted, so a locked mirror has its partition.
+   # (Under overlayroot `findmnt /` is "overlayroot", which this script can't resolve to a disk.)
+   ConditionKernelCommandLine=!overlayroot
 
    [Service]
    Type=oneshot
@@ -295,7 +298,7 @@ echo "i2c-dev" | sudo tee /etc/modules-load.d/mirrordash-i2c.conf
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
 | `zip` | Writes backup files, optionally password protected (Python's `zipfile` can't encrypt). |
-| `overlayroot` | The read-only root (OverlayFS). Installed in the image so the first-boot lock needs no network: `raspi-config` would otherwise download it then, which fails on a mirror without Wi-Fi yet and leaves the root writable. `build_image.sh` stops if it's missing from the initramfs. |
+| `overlayroot` | The read-only root (OverlayFS). Installed in the image so the first-boot lock needs no network: the lock only writes `overlayroot=tmpfs:recurse=0` to `cmdline.txt`, which does nothing without the package. `build_image.sh` stops if it's missing from the initramfs. |
 | `ddcutil` | Sets an HDMI screen's brightness over the cable (DDC/CI, VCP code 0x10). An HDMI screen has no `/sys/class/backlight`, and `xrandr` only works under X11, so without it the brightness setting does nothing on HDMI. `build_image.sh` stops if it's missing. |
 | `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
 
@@ -666,6 +669,9 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
+# nmcli gets the Wi-Fi password as an argument: keep it out of the journal (and the admin Logs tab).
+# ponytail: it still shows in `ps` while nmcli runs (local only); passwd-file would close that.
+Defaults!/usr/bin/nmcli !log_allowed
 EOF
 sudo chmod 440 /etc/sudoers.d/mirrordash
 sudo visudo -cf /etc/sudoers.d/mirrordash
@@ -1011,7 +1017,22 @@ sudo systemctl enable mirrordash.service
 To finalize the Golden Image deployment, the environment must be stripped of development artifacts and locked into a write-protected template.
 
 > [!WARNING]
-> Ensure **all** configurations, packages, system services, and baseline settings are fully tested **before** executing this section. Once OverlayFS is enabled, the root filesystem is permanently read-only (disable via `raspi-config` to make further changes).
+> Ensure **all** configurations, packages, system services, and baseline settings are fully tested **before** executing this section. Once OverlayFS is enabled, the root filesystem is permanently read-only. To make further changes, remove `overlayroot=tmpfs:recurse=0 ` from `cmdline.txt` on the boot partition (from any computer) and reboot; `raspi-config`'s disable only matches a plain `overlayroot=tmpfs`.
+
+### 7.0 Boot Settings for the Locked Root
+
+On the locked root, `/` is an overlay that can't be remounted: `systemd-remount-fs` would fail at boot and again every time a unit starts. There is nothing to remount, so it is skipped there. Swap stays in compressed RAM only: the default `zram+file` puts a swap file on the root partition, which is a RAM overlay once locked.
+```bash
+sudo mkdir -p /etc/systemd/system/systemd-remount-fs.service.d /etc/rpi/swap.conf.d
+sudo tee /etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf << 'EOF'
+[Unit]
+ConditionKernelCommandLine=!overlayroot
+EOF
+sudo tee /etc/rpi/swap.conf.d/mirrordash.conf << 'EOF'
+[Main]
+Mechanism=zram
+EOF
+```
 
 ### 7.1 Fast-Track Finalization Script (Recommended)
 
@@ -1097,7 +1118,8 @@ sudo timedatectl set-timezone UTC
 # Note: These commands are chained with '&&' in a single sequence so they run to completion even after your Wi-Fi/SSH connection drops.
 for uuid in $(nmcli --fields UUID,TYPE connection show | awk '$2 ~ /wifi|802-11-wireless/ {print $1}'); do sudo nmcli connection delete "$uuid" 2>/dev/null || true; done && \
 sudo rm -rf /etc/NetworkManager/system-connections/* && \
-sudo raspi-config nonint enable_overlayfs && \
+sudo sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt && \
+grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt && \
 sync && \
 sudo reboot
 ```
