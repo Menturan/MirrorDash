@@ -9,6 +9,24 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+- Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
+- Includes `zip`, which creating a backup needs.
+- Comes with clock module 0.1.1, where the clock ticks again (each clock on the screen keeps its own time).
+- The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
+- A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
+- Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
+- Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).
+- Updates and installed modules are no longer undone when the mirror restarts.
+- On first start without Wi-Fi, the Wi-Fi setup screen is shown right away.
+- The SD card is now protected automatically: the mirror switches to read-only mode by itself after its first start (this takes one extra restart), and only once the storage partition is ready.
+- Wi-Fi no longer stalls for long periods on the Raspberry Pi 3 (Wi-Fi power saving is turned off).
+- The browser no longer crashes a couple of times on every start-up.
+- Every image contains exactly the app version it is released with, built from fixed versions of its tools.
+- Source code and developer settings are no longer included in the image.
+
+## [0.5.0] - 2026-10-08
+
 ### Added
 - The Wi-Fi setup screen on the mirror shows a QR code: point your phone's camera at it to join the setup network without typing.
 - Try new versions of MirrorDash before everyone else: turn on "Test versions" under Settings → MirrorDash Updates.
@@ -66,22 +84,6 @@ There are two kinds of releases:
 - The PIR motion sensor works again: it never did on the OS image, because the app's Python had no GPIO library. The screen can now also be controlled by an mmWave presence sensor.
 - Modules no longer receive the same event several times after settings have been saved.
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
-
-### OS image
-- Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
-- Includes `zip`, which creating a backup needs.
-- Comes with clock module 0.1.1, where the clock ticks again (each clock on the screen keeps its own time).
-- The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
-- A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
-- Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
-- Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).
-- Updates and installed modules are no longer undone when the mirror restarts.
-- On first start without Wi-Fi, the Wi-Fi setup screen is shown right away.
-- The SD card is now protected automatically: the mirror switches to read-only mode by itself after its first start (this takes one extra restart), and only once the storage partition is ready.
-- Wi-Fi no longer stalls for long periods on the Raspberry Pi 3 (Wi-Fi power saving is turned off).
-- The browser no longer crashes a couple of times on every start-up.
-- Every image contains exactly the app version it is released with, built from fixed versions of its tools.
-- Source code and developer settings are no longer included in the image.
 
 ## [0.4.0-os1] - 2026-10-06
 
