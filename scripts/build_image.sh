@@ -85,7 +85,10 @@ rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
 # The read-only root needs overlayroot inside the initramfs; without it the first-boot lock sets
 # overlayroot=tmpfs and nothing happens, and the SD card stays writable. Never ship that.
-if ! systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8 | grep -q overlayroot; then
+# The list is read in full first: `| grep -q` stops reading at the first match, the container is
+# killed for it, and with pipefail that counted as a failure even when overlayroot was there.
+initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8) || true
+if ! grep -q overlayroot <<< "$initramfs_files"; then
     echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the image would never become read-only.\e[0m"
     exit 1
 fi
