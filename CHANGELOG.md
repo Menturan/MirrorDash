@@ -14,7 +14,7 @@ There are two kinds of releases:
 - Allows a second, third and fourth push button.
 - Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
 - Includes `zip`, which creating a backup needs.
-- Comes with clock module 1.0.1, where the clock ticks again (each clock on the screen keeps its own time). Before, the mirror offered the old clock as an "update".
+- Comes with clock module 1.1.0, where the clock ticks again (each clock on the screen keeps its own time). Before, the mirror offered the old clock as an "update".
 - No mouse pointer in the top left corner of the screen.
 - No package lists downloaded in the background (the app updates itself, the OS comes as a new image).
 - The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.

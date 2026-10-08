@@ -555,7 +555,7 @@ uv venv --allow-existing --python 3.14 base_venv
 # (build_image.sh installs a wheel built from the checked-out repo instead of PyPI,
 #  so the image always contains exactly the tagged code, with the dependency versions
 #  from uv.lock as constraints: uv export --frozen --no-dev --no-emit-project --no-hashes)
-uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v1.0.1
+uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v1.1.0
 
 # 6. Download the launcher script and loading HTML page
 curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh
