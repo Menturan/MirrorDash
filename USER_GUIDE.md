@@ -108,8 +108,8 @@ Changes are applied as soon as you make them.
 
 ### 4.6. Backup Tab
 Protect your configurations and personal data files:
-*   **Create Backup**: Downloads a single `.zip` file containing your entire setup, module settings, and authentication details.
-*   **Restore Backup**: Upload a previously saved backup file to restore your mirror to that state instantly.
+*   **Create Backup**: Saves a `.mirror` file with all your settings, your modules (and the data they keep), and the hardware settings. You can protect it with a password. The admin password and saved Wi-Fi networks are not included.
+*   **Restore Backup**: Upload a backup file, for example on a freshly flashed mirror, to get that setup back. The mirror keeps its current admin password, installs the modules again (this needs internet) and restarts. If the backup has a push button, sensors or a fan, the whole mirror restarts so the pins take effect.
 
 ### 4.7. Logs Tab
 Displays real-time system logs. If a module fails to fetch data or the screen behaves unexpectedly, open this tab to inspect the error messages.

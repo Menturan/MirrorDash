@@ -44,6 +44,9 @@ There are two kinds of releases:
 - On phones, all tabs fit in the bottom bar, only the selected tab is highlighted, and the Backup page no longer hides the tab bar.
 - On phones, the saved backups' Restore, Download and Delete buttons are no longer cut off, the dashboard values fit two per row, and the screen buttons in the Power tab no longer run off the edge.
 - Help texts are easier to read (higher contrast).
+- Restoring a backup keeps the admin password of the mirror you restore on; before, the old mirror's password came back after the restart. Backups no longer contain the admin password at all.
+- After restoring a backup, the push button, sensors and fan work again: the mirror sets their pins and restarts itself.
+- Modules installed from GitHub are installed again when you restore a backup (before, they went missing).
 - Switching tabs quickly no longer sometimes shows the previous tab.
 - Log text is always shown as plain text in the admin page.
 - Wi-Fi setup no longer ends with "Network request failed" when the mirror leaves its setup network to connect.
@@ -60,6 +63,7 @@ There are two kinds of releases:
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image
+- Includes `zip`, which creating a backup needs.
 - The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
 - A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
 - Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).

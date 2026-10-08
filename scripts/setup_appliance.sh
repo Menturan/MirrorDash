@@ -155,6 +155,7 @@ step_installing_packages() {
       dnsmasq-base \
       nginx \
       parted \
+      zip \
       git
 }
 

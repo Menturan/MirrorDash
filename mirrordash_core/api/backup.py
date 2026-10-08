@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -17,7 +18,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
 
 from mirrordash_core.config import load_config, save_config, get_base_dir, get_core_version
-from mirrordash_core.system import remount_ro, remount_rw, run_restart
+from mirrordash_core.system import reboot_system, remount_ro, remount_rw, run_restart
+from mirrordash_core.hardware import sync_gpio_overlays
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import require_api_key
 
@@ -119,8 +121,13 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
         temp_data_dir = temp_dir / "data"
         if os.path.exists(DATA_DIR):
             try:
-                # Copy entire data directory (ignoring backup folder to prevent nesting)
-                shutil.copytree(DATA_DIR, temp_data_dir, ignore=shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm', 'backups'))
+                # Copy entire data directory (ignoring backup folder to prevent nesting). The live
+                # config.json lives here too: skip it, the sanitized copy above is the only one.
+                skip = shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm', 'backups')
+                def ignore(directory, names):
+                    ignored = skip(directory, names)
+                    return ignored | {"config.json"} if Path(directory) == Path(DATA_DIR) else ignored
+                shutil.copytree(DATA_DIR, temp_data_dir, ignore=ignore)
             except Exception as e:
                 logger.error(f"Failed to copy data dir: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to package data files: {e}")
@@ -155,13 +162,18 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
                         ignore=shutil.ignore_patterns('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
                     )
                 else:
-                    # Module is PyPI
-                    modules_list.append({
+                    # Module is PyPI, or installed from GitHub: PEP 610 records where it came from
+                    entry = {
                         "name": name,
                         "package_name": package_name,
                         "version": version,
                         "type": "pypi"
-                    })
+                    }
+                    direct_url = json.loads((ep.dist.read_text("direct_url.json") if ep.dist else None) or "{}")
+                    vcs = direct_url.get("vcs_info")
+                    if vcs and direct_url.get("url"):
+                        entry["source"] = f"git+{direct_url['url']}@{vcs['commit_id']}"
+                    modules_list.append(entry)
         except Exception as e:
             logger.error(f"Failed to package modules metadata: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")
@@ -417,9 +429,12 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
                     python_target = ["--python", "/storage/mirrordash/venv/bin/python"]
 
                 if mod_type == "pypi":
-                    logger.info(f"Restoring PyPI module: {package_name} (version {version})")
+                    # GitHub modules go back to the exact commit; only GitHub, like install_module
+                    source = mod.get("source") or ""
+                    target = source if source.startswith("git+https://github.com/") else f"{package_name}=={version}"
+                    logger.info(f"Restoring module: {package_name} from {target}")
                     # Try installing with strict version, fallback to standard install if fails
-                    cmd_install = ["uv", "pip", "install"] + python_target + [f"{package_name}=={version}"]
+                    cmd_install = ["uv", "pip", "install"] + python_target + [target]
                     proc_inst = await asyncio.create_subprocess_exec(
                         *cmd_install,
                         stdout=asyncio.subprocess.PIPE,
@@ -435,6 +450,8 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
                             stderr=asyncio.subprocess.PIPE
                         )
                         await proc_fallback.communicate()
+                        if proc_fallback.returncode != 0:
+                            logger.error(f"Could not restore module {package_name}: install failed")
 
                 elif mod_type == "local":
                     folder_name = mod.get("folder_name")
@@ -468,6 +485,13 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
 
             # Overwrite config.json credentials with current admin credentials
             restored_config["admin_auth"] = admin_auth
+
+            # GPIO overlays live in the boot config, not in the backup: write them for this card
+            system_cfg = restored_config.setdefault("system", {})
+            system_cfg.pop("gpio_overlays", None)
+            reboot_needed, gpio_error = await sync_gpio_overlays(system_cfg)
+            if gpio_error:
+                logger.error(f"Could not restore GPIO settings: {gpio_error}")
             save_config(restored_config)
             logger.info("Configuration files restored successfully.")
 
@@ -476,6 +500,8 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
             if src_data_dir.exists():
                 # Re-create/clean current data dir
                 for item in src_data_dir.iterdir():
+                    if item.name == "config.json":
+                        continue  # older backups carry the raw config with admin credentials
                     dest_item = Path(DATA_DIR) / item.name
                     if item.is_dir():
                         if dest_item.exists():
@@ -491,9 +517,12 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
         if os.path.exists(temp_upload_path):
             os.remove(temp_upload_path)
 
-        logger.info("Restoration completed successfully! Restarting mirror server...")
-        # Trigger server reboot
-        asyncio.create_task(run_restart())
+        if reboot_needed:
+            logger.info("Restoration completed successfully! Rebooting to load the GPIO overlays...")
+            asyncio.create_task(reboot_system())
+        else:
+            logger.info("Restoration completed successfully! Restarting mirror server...")
+            asyncio.create_task(run_restart())
 
         return {"status": "success", "message": "Restoration completed successfully. System restarting..."}
     except Exception as e:

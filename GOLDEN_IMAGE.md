@@ -271,6 +271,7 @@ sudo apt install -y --no-install-recommends \
     pix-plym-splash \
     parted \
     python3 \
+    zip \
     git && \
 sudo apt autoclean -y && sudo apt autoremove -y
 ```
@@ -289,6 +290,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `pix-plym-splash` | Raspberry Pi's Plymouth theme. Not used by our own `mirrordash` theme (its script plugin ships with `plymouth`); kept only to leave the package set unchanged. |
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
+| `zip` | Writes backup files, optionally password protected (Python's `zipfile` can't encrypt). |
 | `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
 
 > [!NOTE]

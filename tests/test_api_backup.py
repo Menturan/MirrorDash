@@ -1,6 +1,8 @@
 import pytest
+import asyncio
 import os
 import json
+import shutil
 import zipfile
 import tempfile
 from pathlib import Path
@@ -258,3 +260,81 @@ def test_find_local_module_dir(tmp_path):
         
         # Should return None for nonexistent
         assert find_local_module_dir("mirrordash_nonexistent") is None
+
+def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
+    """A real backup (real zip) restored on a freshly flashed mirror: settings, module data and
+    GitHub modules come back, the new mirror's admin password stays, GPIO overlays get written."""
+    backups_dir, data_dir = mock_backup_dirs
+    old_config = {
+        "admin_auth": {"hash": "old-hash", "salt": "old-salt"},
+        "globals": {"language": "sv", "timezone": "Europe/Oslo"},
+        "system": {"rotation": "left", "devices": [{"type": "button", "pin": 17}],
+                   "gpio_overlays": ["button:17"]},
+        "modules": {"mirrordash-weather": {"module": "mirrordash-weather", "position": "top_right"}},
+    }
+    # The old mirror: the live config.json sits in the data dir next to module data
+    (data_dir / "config.json").write_text(json.dumps(old_config))
+    (data_dir / "mirrordash-weather").mkdir()
+    (data_dir / "mirrordash-weather" / "state.json").write_text('{"city": "Oslo"}')
+
+    commit = "a" * 40
+    dist = MagicMock(version="1.2.0")
+    dist.name = "mirrordash-weather"
+    dist.read_text.return_value = json.dumps({
+        "url": "https://github.com/someone/mirrordash-weather.git",
+        "vcs_info": {"vcs": "git", "commit_id": commit}})
+    ep = MagicMock(dist=dist)
+    ep.name = "mirrordash-weather"
+    source = f"git+https://github.com/someone/mirrordash-weather.git@{commit}"
+
+    real_exec = asyncio.create_subprocess_exec
+    uv_calls = []
+    async def fake_exec(*cmd, **kwargs):
+        if cmd[0] == "zip":
+            return await real_exec(*cmd, **kwargs)
+        uv_calls.append(cmd)
+        proc = MagicMock(returncode=0)
+        proc.communicate = AsyncMock(return_value=(b"", b""))
+        return proc
+
+    with patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock), \
+         patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock), \
+         patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+         patch("mirrordash_core.api.backup.find_local_module_dir", return_value=None), \
+         patch("mirrordash_core.api.backup.importlib.metadata.entry_points", return_value=[ep]):
+        with patch("mirrordash_core.api.backup.load_config", return_value=old_config):
+            r = client.post("/admin/backup/create", json={}, headers={"X-API-Key": "secret"})
+        assert r.status_code == 200, r.text
+        archive = backups_dir / r.json()["filename"]
+
+        with zipfile.ZipFile(archive) as zf:
+            assert not any(b"old-hash" in zf.read(n) for n in zf.namelist() if not n.endswith("/"))
+            assert json.loads(zf.read("backup_manifest.json"))["modules"][0]["source"] == source
+
+        # A freshly flashed mirror: only the new admin password is set up
+        shutil.rmtree(data_dir)
+        data_dir.mkdir()
+        fresh_config = json.dumps({"admin_auth": MOCK_CONFIG["admin_auth"]})
+        (data_dir / "config.json").write_text(fresh_config)
+        shutil.copy(archive, backups_dir / "tmp_upload.mirror")
+
+        with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock,
+                   return_value=None) as mock_gpio, \
+             patch("mirrordash_core.api.backup.reboot_system", new_callable=AsyncMock) as mock_reboot, \
+             patch("mirrordash_core.api.backup.run_restart", new_callable=AsyncMock) as mock_restart, \
+             patch("mirrordash_core.api.backup.save_config") as mock_save:
+            r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})
+            assert r.status_code == 200, r.text
+
+    restored = mock_save.call_args[0][0]
+    assert restored["admin_auth"] == MOCK_CONFIG["admin_auth"]
+    assert restored["globals"]["timezone"] == "Europe/Oslo"
+    assert restored["system"]["rotation"] == "left"
+    assert restored["modules"]["mirrordash-weather"]["position"] == "top_right"
+    # The data copy must not put the old credentials back over the saved config
+    assert (data_dir / "config.json").read_text() == fresh_config
+    assert (data_dir / "mirrordash-weather" / "state.json").read_text() == '{"city": "Oslo"}'
+    assert any(source in cmd for cmd in uv_calls)
+    mock_gpio.assert_awaited_once_with(["button:17"])
+    mock_reboot.assert_called_once()
+    mock_restart.assert_not_called()
