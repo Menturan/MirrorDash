@@ -52,6 +52,26 @@ def test_download_gets_every_byte_with_progress(tmp_path, capsys, supports_range
         server.shutdown()
     assert (tmp_path / "image.zip").read_bytes() == DATA
     if supports_range:
-        assert len(ranges) == 1 + 4  # the probe, then four parts at once
+        assert len(ranges) == 1 + 16  # the probe, then sixteen parts at once
     output = capsys.readouterr().out
     assert re.search(r"\d+ MB in \d+:\d\d \([\d.]+ MB/s\)", output)
+
+
+def test_fetch_uses_aria2c_when_installed(tmp_path, monkeypatch):
+    calls = []
+    monkeypatch.setattr(release.shutil, "which", lambda name: "/usr/bin/aria2c" if name == "aria2c" else None)
+    monkeypatch.setattr(release.subprocess, "run", lambda cmd, **kw: calls.append(cmd) or type("R", (), {"returncode": 0}))
+    monkeypatch.setattr(release, "download", lambda *a, **kw: pytest.fail("the built-in download shouldn't run"))
+    release.fetch("https://storage.example/image.zip", tmp_path / "image.zip")
+    cmd = calls[0]
+    assert cmd[0] == "aria2c" and "-x16" in cmd and "-c" in cmd  # 16 connections, resumes on the next try
+    assert cmd[cmd.index("-d") + 1] == str(tmp_path) and cmd[cmd.index("-o") + 1] == "image.zip"
+    assert cmd[-1] == "https://storage.example/image.zip"
+
+
+def test_fetch_downloads_by_itself_without_aria2c(tmp_path, monkeypatch):
+    used = []
+    monkeypatch.setattr(release.shutil, "which", lambda name: None)
+    monkeypatch.setattr(release, "download", lambda url, path: used.append((url, path)))
+    release.fetch("https://storage.example/image.zip", tmp_path / "image.zip")
+    assert used == [("https://storage.example/image.zip", tmp_path / "image.zip")]

@@ -225,7 +225,20 @@ def _clock(seconds):
     return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
 
 
-def download(url, path, parts=4, chunk=1 << 20):
+def fetch(url, path):
+    """Download url to path: with aria2c when it's installed (16 connections, resumes a broken
+    download on the next try), otherwise with download() below."""
+    path = Path(path)
+    if shutil.which("aria2c"):
+        cmd = ["aria2c", "-x16", "-s16", "-k1M", "-c", "--file-allocation=none", "--console-log-level=warn",
+               "--summary-interval=0", "--download-result=hide", "-d", str(path.parent), "-o", path.name, url]
+        if subprocess.run(cmd).returncode != 0:
+            raise OSError("aria2c failed")
+    else:
+        download(url, path)
+
+
+def download(url, path, parts=16, chunk=1 << 20):
     """Download url to path, showing size, percent, speed and time left on one line.
 
     With several parts at once (HTTP Range) when the server allows it: GitHub's artifact storage is
@@ -330,7 +343,7 @@ def download_artifact(run_id, name, target):
     print(f"\n  Downloading the image ({artifact['size_in_bytes'] / 1e6:,.0f} MB):")
     while True:  # a broken download only needs another try, not another 30-minute build
         try:
-            download(address(), archive)
+            fetch(address(), archive)
             break
         except Exception as e:
             if ask(f"\n  The download failed ({e}). Try again? [Y/n] ").lower() == "n":

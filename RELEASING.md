@@ -28,6 +28,8 @@ The SDK (`mirrordash-sdk`) and modules are released from their own repositories:
    with it.
 3. Try the script without changing anything: `python3 scripts/release.py --dry-run`. It shows every
    change and command instead of making it.
+4. Optional, for faster image downloads: `sudo apt install aria2`. Without it the script downloads by
+   itself, a little slower.
 
 Publishing to PyPI needs no password: GitHub Actions does it (trusted publishing, already set up).
 
@@ -77,8 +79,8 @@ The image contains the app version on master, so release the app first if it cha
 **1. Build a test image.** Run the script and choose **3**. GitHub Actions runs the tests and builds the
 image (about 30 minutes); the script waits and downloads it to
 `build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz`. The image is about 750 MB: the script
-shows how far it has come, the speed and the time left, and asks to try again if the download breaks
-(without building again).
+downloads it over 16 connections at once (with `aria2c` if it's installed), shows how far it has come,
+the speed and the time left, and asks to try again if the download breaks (without building again).
 
 **2. Test it.** Flash it with Raspberry Pi Imager and go through this checklist:
 
