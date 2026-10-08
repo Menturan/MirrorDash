@@ -631,9 +631,16 @@ def test_ssh_already_enabled_does_not_require_password(
     mock_subproc.assert_not_called()
 
 
+@patch("mirrordash_core.api.admin_modules.scan_community_modules_now", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_modules.load_config")
-def test_list_community_modules(mock_load, client):
+def test_list_community_modules(mock_load, mock_scan, client):
+    import mirrordash_core.api.admin_modules as adm_mods
     mock_load.return_value = MOCK_CONFIG
+    adm_mods.LAST_SCAN_TIMESTAMP = None
+    async def scan():
+        adm_mods.DISCOVERED_COMMUNITY_MODULES = [{"name": "mirrordash-clock", "install_name": "git+https://github.com/Menturan/mirrordash-clock.git"}]
+        adm_mods.LAST_SCAN_TIMESTAMP = "now"
+    mock_scan.side_effect = scan
     headers = {"X-API-Key": "secret"}
     response = client.get("/admin/community-modules", headers=headers)
     assert response.status_code == 200
@@ -905,61 +912,45 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_ro, mock_
 
 @patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
 @patch("mirrordash_core.api.admin_modules.load_config")
-def test_scan_community_modules_filters_releases(mock_load, mock_urlopen, client):
+def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, client):
+    """GitHub allows 60 unauthenticated requests an hour per IP, shared by the home network: the
+    scan makes one (the search); the release is looked up when a module is installed."""
     mock_load.return_value = MOCK_CONFIG
-    
-    # Mock search response (1 repo 'mirrordash-widget-ok', 1 repo 'mirrordash-widget-norelease')
-    search_data = {
-        "items": [
-            {
-                "name": "mirrordash-widget-ok",
-                "owner": {"login": "user1"},
-                "html_url": "https://github.com/user1/mirrordash-widget-ok",
-                "description": "An ok widget"
-            },
-            {
-                "name": "mirrordash-widget-norelease",
-                "owner": {"login": "user2"},
-                "html_url": "https://github.com/user2/mirrordash-widget-norelease",
-                "description": "Under construction"
-            }
-        ]
-    }
-    
-    mock_resp_search = MagicMock()
-    mock_resp_search.__enter__.return_value = mock_resp_search
-    mock_resp_search.read.return_value = json.dumps(search_data).encode("utf-8")
-    
-    mock_resp_ok_release = MagicMock()
-    mock_resp_ok_release.__enter__.return_value = mock_resp_ok_release
-    mock_resp_ok_release.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
-    
-    def urlopen_side_effect(req, *args, **kwargs):
+    search = {"items": [
+        {"name": "mirrordash-weather", "owner": {"login": "u"}, "html_url": "https://github.com/u/mirrordash-weather", "description": "Weather"},
+        {"name": "mirrordash-calendar", "owner": {"login": "u"}, "html_url": "https://github.com/u/mirrordash-calendar", "description": None},
+        {"name": "MirrorDashboard", "owner": {"login": "x"}, "html_url": "https://github.com/x/MirrorDashboard", "description": "not a module"},
+    ]}
+    github_urls = []
+
+    def urlopen(req, *args, **kwargs):
         url = req.full_url if hasattr(req, "full_url") else req
-        if "search/repositories" in url:
-            return mock_resp_search
-        elif "mirrordash-widget-ok/releases/latest" in url:
-            return mock_resp_ok_release
-        else:
-            raise Exception("Not Found")
-            
-    mock_urlopen.side_effect = urlopen_side_effect
-    
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.info.return_value.get.return_value = None
+        if "api.github.com" in url:
+            github_urls.append(url)
+            resp.read.return_value = json.dumps(search).encode()
+        else:  # PyPI: no mirrordash-* packages
+            resp.read.return_value = b""
+        return resp
+
+    mock_urlopen.side_effect = urlopen
     headers = {"X-API-Key": "secret"}
-    response = client.post("/admin/community-modules/scan", headers=headers)
-    assert response.status_code == 200
-    
-    # Verify ok widget is listed with tag, and norelease widget is excluded
-    get_resp = client.get("/admin/community-modules", headers=headers)
-    assert get_resp.status_code == 200
-    modules = get_resp.json()
-    
-    ok_mod = next((m for m in modules if m["name"] == "mirrordash-widget-ok"), None)
-    norelease_mod = next((m for m in modules if m["name"] == "mirrordash-widget-norelease"), None)
-    
-    assert ok_mod is not None
-    assert ok_mod["install_name"] == "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0"
-    assert norelease_mod is None
+    assert client.post("/admin/community-modules/scan", headers=headers).status_code == 200
+    modules = {m["name"]: m for m in client.get("/admin/community-modules", headers=headers).json()}
+
+    assert len(github_urls) == 1 and "search/repositories" in github_urls[0]
+    assert set(modules) == {"mirrordash-weather", "mirrordash-calendar"}
+    assert modules["mirrordash-weather"]["install_name"] == "git+https://github.com/u/mirrordash-weather.git"
+
+    # GitHub refusing (hourly limit): the refresh fails visibly and the earlier list stays
+    from urllib.error import HTTPError
+    mock_urlopen.side_effect = lambda req, *a, **k: (_ for _ in ()).throw(HTTPError(req.full_url, 403, "rate limit", {}, None)) \
+        if "api.github.com" in req.full_url else urlopen(req)
+    with pytest.raises(HTTPError):
+        client.post("/admin/community-modules/scan", headers=headers)
+    assert {m["name"] for m in client.get("/admin/community-modules", headers=headers).json()} == set(modules)
 
 
 @patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
@@ -986,16 +977,24 @@ def test_install_module_enforce_releases(mock_exec, mock_ro, mock_rw, mock_resta
     mock_resp_ok.read.return_value = json.dumps({"tag_name": "v1.0.0"}).encode("utf-8")
     mock_urlopen.return_value = mock_resp_ok
     
-    payload_ok = {"package_name": "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0"}
+    # A module from Discover comes without a tag: it is pinned to the latest release
+    payload_ok = {"package_name": "git+https://github.com/user1/mirrordash-widget-ok.git"}
     r1 = client.post("/admin/install", json=payload_ok, headers=headers)
     assert r1.status_code == 200
-    
-    # Failure case: repo has no release (raises Exception)
-    mock_urlopen.side_effect = Exception("Not Found")
+    assert any(c.args[-1] == "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0" for c in mock_exec.call_args_list)
+
+    from urllib.error import HTTPError
     payload_fail = {"package_name": "git+https://github.com/user2/mirrordash-widget-norelease.git"}
+    # No release at all
+    mock_urlopen.side_effect = HTTPError("url", 404, "Not Found", {}, None)
     r2 = client.post("/admin/install", json=payload_fail, headers=headers)
     assert r2.status_code == 400
     assert "does not have any official releases" in r2.json()["detail"]
+    # GitHub's hourly limit is not reported as "no releases"
+    mock_urlopen.side_effect = HTTPError("url", 403, "rate limit exceeded", {}, None)
+    r3 = client.post("/admin/install", json=payload_fail, headers=headers)
+    assert r3.status_code == 503
+    assert "Try again in an hour" in r3.json()["detail"]
 
 
 @patch("mirrordash_core.system.network.urllib.request.urlopen")

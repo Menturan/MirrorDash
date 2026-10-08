@@ -14,6 +14,7 @@ There are two kinds of releases:
 OS image with MirrorDash 0.6.0.
 
 ### Fixed
+- Discover New Modules lists every module on GitHub again (weather, calendar, Home Assistant, …), not just the clock. It now asks GitHub once per refresh instead of once per module, which used up GitHub's hourly limit for the home network. When GitHub refuses anyway, the page says the refresh failed instead of quietly showing only the clock.
 - The clock (or any module) no longer keeps pulsing when the mirror's screen switches to the mirror page right after setup.
 
 ### OS image
