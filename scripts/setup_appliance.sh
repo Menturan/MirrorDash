@@ -59,7 +59,7 @@ GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
 UV_VERSION="0.12.23"
-CLOCK_REF="v1.1.0"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
+CLOCK_REF="v1.1.1"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
