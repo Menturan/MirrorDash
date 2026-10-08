@@ -30,7 +30,7 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
 
 4. **Minimize dependency inflation and prefer robust standard libraries.** Prefer utilizing well-known, popular, and robust packages (e.g. `Babel` for localization, `pytest` for tests) to avoid reinventing the wheel for complex domain tasks. However, remain conservative—do not add dependencies for simple utilities that can be written in a few lines of clean, native code. Make well-considered dependency decisions.
 
-5. **Always use the mirrordash-cli scaffolder when creating new modules.** Never manually scaffold module directories from scratch. Always run the `mirrordash-cli create-module mirrordash-<name> --description "<desc>"` command to ensure a fully compatible packaging, template directory, and entry point layout structure is generated automatically.
+5. **Always use the SDK scaffolder when creating new modules.** Never manually scaffold module directories from scratch. Always run the `uvx mirrordash-sdk create-module mirrordash-<name> --description "<desc>"` command to ensure a fully compatible packaging, template directory, and entry point layout structure is generated automatically.
 
 6. **Professional Grade IoT & Consumer Simplicity.** The system must operate with professional-grade IoT reliability, designed to run continuously for years without manual intervention, memory leaks, or filesystem corruption. Every user-facing interface, including the captive portal network setup wizard, must be designed with ultimate simplicity in mind, ensuring that non-technical users (such as your parents) can use and configure the device safely, intuitively, and without command-line access.
 

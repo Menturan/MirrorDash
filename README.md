@@ -1,61 +1,87 @@
 # 🪞 MirrorDash
 
-[![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](#)
-[![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](https://github.com/Menturan/MirrorDash/blob/master/LICENSE.md)
-[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi%20%2F%20Linux-orange.svg)](#)
+[![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](pyproject.toml)
+[![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](LICENSE.md)
+[![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-orange.svg)](#get-started)
 [![PyPI version](https://img.shields.io/pypi/v/mirrordash.svg)](https://pypi.org/project/mirrordash/)
 [![Downloads](https://pepy.tech/badge/mirrordash)](https://pepy.tech/project/mirrordash)
 
-**The ambient, zero-friction smart display designed to bring your home to life—silently, elegantly, and beautifully.**
+**A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. No touchscreen, no voice assistant, no notifications.**
 
-Imagine a morning routine without screens, clutter, or notification fatigue. You walk into your bathroom or hallway, look in the mirror, and see the time, today's weather forecast, and your upcoming calendar appointments floating gently on the glass. No buttons to press, no voice assistants to argue with, and no touchscreen smudges. 
+![MirrorDash on a mirror](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_concept.png)
 
-That is **MirrorDash**—a professional-grade, ambient smart display that turns any two-way mirror into a quiet, glanceable dashboard.
+### From SD card to mirror in three steps
 
----
+1. **Flash** the MirrorDash image onto an SD card and put it in the Pi.
+2. **Join** the mirror's own Wi-Fi with your phone (scan the QR code on the screen) and pick your home network.
+3. **Done.** Open `mirrordash.local` on your phone to choose what the mirror shows.
 
-![MirrorDash Ambient Smart Display Preview](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_concept.png)
+No keyboard, no terminal, no config files, now or later.
 
----
+## Why it's different from the smart mirror you built last time
 
-## ✨ Why MirrorDash is Different
+| | A typical DIY smart mirror | MirrorDash |
+|---|---|---|
+| Setting it up | Keyboard, terminal, config files | Join its Wi-Fi from your phone, pick your network |
+| Changing things | Edit a file over SSH | Your phone, in the admin page |
+| An update goes wrong | A black screen, and an evening of debugging | It goes back to the last version by itself |
+| The SD card | Wears out from constant writing | The system part is read-only |
+| The screen | On all night | On when someone's there, on a schedule, or from Home Assistant |
+| New widgets | Copy code into the project | Tap *Install* in the admin page |
 
-While smart mirrors and screens have existed for years, they are notoriously difficult to set up, maintain, and develop for. MirrorDash is built from the ground up to solve these pain points, offering a premium experience that sets it apart from traditional platforms:
+![The mirror's screen](https://raw.githubusercontent.com/Menturan/MirrorDash/master/screenshot.png)
 
-* **🛡️ True "Set and Forget" Reliability**: Standard DIY smart displays frequently corrupt their SD cards due to constant writing of logs and cache files. MirrorDash is built to run on write-restricted, read-only operating systems (OverlayFS). Dynamic configurations are isolated to a protected, persistent partition, ensuring your display runs continuously for years without filesystem degradation or SD card wear.
-* **📱 No-Code Phone Configuration**: Most open-source smart mirror platforms require you to edit complicated configuration files using terminal commands or SSH. MirrorDash provides an elegant, local Admin Dashboard that lets you change settings, toggle widgets, enter API keys, and manage backups directly from your phone.
-* **⚡ Ultra-Lightweight, Zero-Build Frontend**: Unlike modern web setups that rely on heavy frameworks (like React or Vue) and bloat the CPU, MirrorDash uses pure, native HTML, CSS, and JavaScript connected via direct WebSockets. By eliminating heavy build steps and runtimes, the interface updates instantly with near-zero CPU and memory overhead on the Raspberry Pi.
-* **🧩 Decoupled Widget Ecosystem**: Instead of a massive, messy codebase where one broken module crashes the entire system, MirrorDash treats every widget as a fully isolated, standard Python package. Developers can build, test, and distribute widgets independently using the MirrorDash SDK without touching the core system.
+## Get started
 
----
+**You need**
 
-![MirrorDash Ambient Smart Display Preview](https://raw.githubusercontent.com/Menturan/MirrorDash/master/screenshot.png)
+* A Raspberry Pi 3 or newer (MirrorDash is developed and tested on a Pi 3 B).
+* An SD card of at least 8 GB.
+* The official power supply (5.1 V, 2.5 A for a Pi 3). A weaker one makes the mirror slow, and it warns you.
+* A screen behind a two-way mirror.
 
----
+**Then**
 
-## ⚙️ Technical Deep-Dive (For Developers)
+1. Download the latest image (`mirrordash-os-….img.xz`) from [Releases](https://github.com/Menturan/MirrorDash/releases): the newest release whose name ends in `-os1`, `-os2`, ….
+2. Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (*Choose OS* → *Use custom*).
+3. Start the mirror. On its first start it restarts once by itself, then shows the Wi-Fi setup. The [user guide](USER_GUIDE.md#2-first-start-wi-fi-setup) takes it from there.
 
-Under the hood, MirrorDash is a production-grade IoT platform optimized for the Raspberry Pi running in full-screen kiosk mode.
+## Modules
 
-* **🐍 Backend**: FastAPI (Python 3.14) driving a high-performance, asynchronous event loop. Communication with the frontend is handled via real-time WebSockets with local frame caching for instant layout rendering on client connect.
-* **🎨 Frontend & Styling**: Zero-framework vanilla HTML5, CSS Grid/Flexbox, and native JavaScript.
-* **✨ Live Design Explorer**: Served at `http://localhost:8000/design` when running the application. It acts as a live interactive kitchen-sink containing styling tokens, typography examples, and copy-pasteable layout/component markups matching the Ethereal Design System.
-* **🔒 OS Hardening**: Configured to run on a read-only OverlayFS root filesystem (Debian 13 Trixie). Dynamic configs and data are written exclusively to a persistent user partition, preventing SD card corruption from frequent write cycles.
-* **🏗️ Decoupled Architecture**: Widgets are fully isolated, pip-installable Python packages discovered at runtime via metadata entry points.
+The clock comes with the mirror. Install the others in the admin page under **Modules → Discover New Modules**.
 
----
+| Module | Shows |
+|---|---|
+| [Clock](https://github.com/Menturan/mirrordash-clock) | The time and date |
+| [Weather](https://github.com/Menturan/mirrordash-weather) | The weather now and the forecast |
+| [Calendar](https://github.com/Menturan/mirrordash-calendar) | Your upcoming events |
+| [News](https://github.com/Menturan/mirrordash-news) | The latest headlines from built-in or your own sources |
+| [Home Assistant](https://github.com/Menturan/mirrordash-homeassistant) | Sensors from Home Assistant |
+| [Krisinformation](https://github.com/Menturan/mirrordash-krisinformation) | Swedish crisis information from Krisinformation.se |
+| [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
 
-## 🚀 Build for MirrorDash (Pushing Community Modules)
+### Make your own
 
-Do you have a smart device, a custom API, or a unique idea you want to show on your mirror? MirrorDash is built for developers. We invite you to build and share custom widgets with the community!
+```bash
+uvx mirrordash-sdk quickstart mirrordash-my-widget
+```
 
-Our standalone **MirrorDash SDK** makes bootstrapping a new widget incredibly easy:
+This creates a module with example data and starts a mirror on your computer that shows every change as you save. Put the module on GitHub as `mirrordash-<something>` and publish a GitHub Release: it then shows up in every mirror's Discover list. The [SDK](https://github.com/Menturan/mirrordash-sdk) and its [module guide](https://github.com/Menturan/mirrordash-sdk/blob/master/MODULE_GUIDE.md) have the details.
 
-1. **🛠️ Scaffold a new module in seconds**:
-   ```bash
-   uvx mirrordash-cli create-module mirrordash-my-widget --description "My custom display widget"
-   ```
-2. **💻 Develop with standard tools**: Write simple Python logic to fetch data, and structure your layout with a clean Jinja2 HTML template and vanilla CSS.
-3. **📦 Share it**: Push your module to GitHub and make a GitHub Release; mirrors install it from its Git URL.
+## Under the hood
 
-Whether you want to show transit schedules, air quality indexes, plant soil moisture, or custom stock charts, the community is always looking for new modules. Check out [mirrordash-sdk](https://github.com/Menturan/MirrorDash-sdk) to get started!
+* **Server:** FastAPI (Python 3.14). Modules push their content to the screen over a WebSocket, and a page that reconnects gets everything again right away.
+* **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by Cog (WPE WebKit) on labwc. Every mirror has its component library at `/design`.
+* **Modules:** each is its own Python package, found through entry points. A module that crashes is restarted on its own.
+* **System:** Raspberry Pi OS (Debian 13) with a read-only root (overlayroot). Settings, modules and Wi-Fi live on a separate partition. Updates go into a second environment, and the mirror switches back if the new one doesn't start.
+
+## Documentation
+
+* [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, Home Assistant.
+* [Changelog](CHANGELOG.md): what's new in each release.
+* [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): for contributors.
+* [Golden image](GOLDEN_IMAGE.md) and [Releasing](RELEASING.md): how the OS image is built and released.
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE.md): free to use and change for personal, non-commercial use.
