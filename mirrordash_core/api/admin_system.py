@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import re
+import sys
 import urllib.request
 from pathlib import Path
 from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
@@ -206,7 +207,9 @@ async def update_core() -> dict:
     await remount_rw()
     try:
         logger.info(f"Upgrading mirrordash (current version: {current_version})")
-        cmd = ["uv", "pip", "install", "--upgrade"]
+        # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
+        # cached for up to 10 minutes), or a version published moments ago isn't seen yet.
+        cmd = ["uv", "pip", "install", "--upgrade", "--refresh-package", "mirrordash"]
         if prerelease_enabled():
             cmd.append("--prerelease=allow")
         if swap_info:
@@ -229,7 +232,19 @@ async def update_core() -> dict:
                 await revert_venv_next(*swap_info)
             raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
 
-        logger.info("mirrordash upgraded successfully. Restarting server...")
+        # uv succeeds when there is nothing newer to install, too: only restart for a new version
+        python = str(Path(swap_info[1]) / "bin" / "python") if swap_info else sys.executable
+        version_proc = await asyncio.create_subprocess_exec(
+            python, "-c", "import importlib.metadata as m; print(m.version('mirrordash'))",
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        installed = (await version_proc.communicate())[0].decode().strip()
+        if version_key(installed) <= version_key(current_version):
+            logger.warning(f"mirrordash upgrade installed {installed or 'nothing'}, not newer than {current_version}")
+            # The except below reverts the swap
+            raise HTTPException(status_code=409, detail="The new version isn't available yet. Try again in a few minutes.")
+
+        logger.info(f"mirrordash upgraded to {installed}. Restarting server...")
         if swap_info:
             await commit_venv_next(*swap_info)
         asyncio.create_task(run_restart())

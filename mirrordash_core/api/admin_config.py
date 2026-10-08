@@ -195,7 +195,7 @@ async def get_globals_schema() -> dict:
         enum_codes = [code for code, name in lang_list]
         enum_titles = [name for code, name in lang_list]
     except Exception as e:
-        logger.error(f"Error loading languages from babel: {e}")
+        logger.info(f"Short language list (babel not installed): {e}")
         enum_codes = ["en", "sv", "de", "fr", "nl"]
         enum_titles = ["English", "Swedish", "German", "French", "Dutch"]
 

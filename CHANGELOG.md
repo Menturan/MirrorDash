@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Fixed
+- Updating MirrorDash right after a new version is published installs that version. Before, it could reinstall the current one, say it had updated and restart for nothing; now it says the new version isn't available yet and stays as it is.
 - Discover New Modules lists every module on GitHub again (weather, calendar, Home Assistant, …), not just the clock. It now asks GitHub once per refresh instead of once per module, which used up GitHub's hourly limit for the home network. When GitHub refuses anyway, the page says the refresh failed instead of quietly showing only the clock.
 - The clock (or any module) no longer keeps pulsing when the mirror's screen switches to the mirror page right after setup.
 

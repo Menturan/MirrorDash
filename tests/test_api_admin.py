@@ -728,10 +728,11 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     """POST /admin/core-update succeeds, triggers restart, and installs test versions only when opted in."""
     mock_load.return_value = {**MOCK_CONFIG, "system": {**MOCK_CONFIG.get("system", {}), "prerelease": prerelease}}
 
-    mock_proc = MagicMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate = AsyncMock(return_value=(b"", b""))
-    mock_exec.return_value = mock_proc
+    def proc(stdout):
+        p = MagicMock(returncode=0)
+        p.communicate = AsyncMock(return_value=(stdout, b""))
+        return p
+    mock_exec.side_effect = [proc(b""), proc(b"1.1.0rc1\n")]  # uv install, then the installed version
 
     headers = {"X-API-Key": "secret"}
     response = client.post("/admin/core-update", headers=headers)
@@ -742,7 +743,32 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     mock_rw.assert_awaited_once()
     mock_ro.assert_awaited_once()
     mock_create_task.assert_called_once()
-    assert ("--prerelease=allow" in mock_exec.call_args.args) is prerelease
+    install = mock_exec.call_args_list[0].args
+    assert ("--prerelease=allow" in install) is prerelease
+    assert install[install.index("--refresh-package") + 1] == "mirrordash"  # a fresh index, not uv's cache
+
+
+@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.asyncio.create_task")
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_create_task, mock_exec,
+                                                           mock_ro, mock_rw, mock_load, client):
+    """uv also succeeds when PyPI's index doesn't show the new version yet: no restart, a clear message."""
+    mock_load.return_value = MOCK_CONFIG
+    def proc(stdout):
+        p = MagicMock(returncode=0)
+        p.communicate = AsyncMock(return_value=(stdout, b""))
+        return p
+    mock_exec.side_effect = [proc(b""), proc(b"1.0.0\n")]
+
+    response = client.post("/admin/core-update", headers={"X-API-Key": "secret"})
+    assert response.status_code == 409
+    assert "isn't available yet" in response.json()["detail"]
+    mock_create_task.assert_not_called()
+    mock_ro.assert_awaited_once()
 
 
 @patch("mirrordash_core.api.admin_system.load_config")
