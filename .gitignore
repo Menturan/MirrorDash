@@ -35,3 +35,4 @@ modules/*/
 scratch/
 
 /.claude
+/build_workspace/
