@@ -93,6 +93,9 @@ the speed and the time left, and asks to try again if the download breaks (witho
    password is shown.
 3. **Mirror**: the page loads, the "Loading" placeholders turn into modules, the clock ticks.
 4. **Admin**: `http://mirrordash.local/admin` asks for a password to be set, then opens.
+5. **Hardware tab**: moving *Screen Brightness* dims the screen (on an HDMI monitor with DDC/CI;
+   otherwise the tab says the screen can't take it). With two buttons connected, each one does what
+   its own settings say.
 
 **3. Release that same image.** Run the script and choose **4**. It publishes `vX.Y.Z-osN` with the
 file you tested; nothing is rebuilt. If master changed since the build, it lists what the image doesn't

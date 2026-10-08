@@ -124,9 +124,43 @@ h2 {
     margin-bottom: 20px;
     border: 1px solid transparent;
 }
-.alert--info    { color: var(--text-color);  background: rgba(255, 255, 255, 0.04); border-color: var(--card-border); }
-.alert--success { color: var(--success-color); background: rgba(160, 255, 186, 0.08); border-color: var(--success-color); }
-.alert--error   { color: var(--error-color);   background: rgba(255, 180, 171, 0.08); border-color: var(--error-color); }
+.alert--info    { color: var(--text-color);  background-image: linear-gradient(rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04)); border-color: var(--card-border); }
+.alert--success { color: var(--success-color); background-image: linear-gradient(rgba(160, 255, 186, 0.08), rgba(160, 255, 186, 0.08)); border-color: var(--success-color); }
+.alert--error   { color: var(--error-color);   background-image: linear-gradient(rgba(255, 180, 171, 0.08), rgba(255, 180, 171, 0.08)); border-color: var(--error-color); }
+
+/* Floating status message (#global-status): over the page, so nothing below it moves. The alert
+   tint is a background-image, so the solid colour here keeps the text readable over content.
+   Above the module drawer (2100), below the dialogs (10000+). */
+.toast {
+    position: fixed;
+    z-index: 2200;
+    top: 20px;
+    right: 20px;
+    max-width: min(420px, calc(100vw - 32px));
+    margin: 0;
+    background-color: var(--surface-container-high);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    animation: toast-in 0.2s ease-out;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(6px); }
+}
+
+/* Phones: at the bottom, above the tab bar (70px), where the thumb and eye already are */
+@media (max-width: 900px) {
+    .toast {
+        top: auto;
+        left: 16px;
+        right: 16px;
+        margin-inline: auto;
+        bottom: calc(86px + env(safe-area-inset-bottom));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast { animation: none; }
+}
 
 /* Cards — removed GPU-heavy backdrop-filter */
 .card {

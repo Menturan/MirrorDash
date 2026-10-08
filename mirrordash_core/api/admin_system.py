@@ -13,7 +13,9 @@ from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
 from mirrordash_core.config import load_config, save_config, get_core_version, version_key
+from mirrordash_core.system import display
 from mirrordash_core.system import (
+    apply_brightness,
     apply_system_settings,
     get_available_resolutions,
     remount_ro,
@@ -379,6 +381,7 @@ async def get_system_settings() -> dict:
             "rotation": system_cfg.get("rotation", "normal"),
             "resolution": system_cfg.get("resolution", "auto"),
             "brightness": system_cfg.get("brightness", 100),
+            "brightness_supported": display.brightness_supported is not False,
             "volume": system_cfg.get("volume", 80),
             "ssh": ssh_active,
             "prerelease": system_cfg.get("prerelease", False),
@@ -543,8 +546,10 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
 
     # Queue display/audio settings to apply asynchronously (re-applying an unchanged
     # rotation/resolution can make the screen flicker, so only when they were sent)
-    if any(k in settings for k in ("rotation", "resolution", "brightness", "volume")):
+    if any(k in settings for k in ("rotation", "resolution", "volume")):
         asyncio.create_task(apply_system_settings(rotation, resolution, brightness, volume))
+    elif "brightness" in settings:  # the slider, or Home Assistant: only the brightness
+        asyncio.create_task(apply_brightness(brightness))
 
     return {"status": "success", "message": "System settings saved and applied successfully"}
 

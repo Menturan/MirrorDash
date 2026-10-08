@@ -66,3 +66,12 @@ def test_rejects_bad_fans(tmp_path):
         code, text = run_helper(tmp_path, *args)
         assert code == 2, args
         assert text == ORIGINAL
+
+
+def test_up_to_four_buttons(tmp_path):
+    code, text = run_helper(tmp_path, "button:17", "button_2:22", "button_3:23", "button_4:24")
+    assert code == 0
+    for gpio, keycode in ((17, 148), (22, 656), (23, 657), (24, 658)):
+        assert f"dtoverlay=gpio-key,gpio={gpio},active_low=1,gpio_pull=up,keycode={keycode}" in text
+    code, text = run_helper(tmp_path, "button_5:25")
+    assert code == 2

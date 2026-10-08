@@ -395,6 +395,7 @@ async def add_array_item_route(
 async def get_panel_dashboard(request: Request):
     from mirrordash_core.api.admin_system import get_disk_usage
     from mirrordash_core.system.telemetry import (
+        get_cpu_temperature,
         get_uptime_string,
         get_ram_usage,
         get_ntp_status,
@@ -417,14 +418,8 @@ async def get_panel_dashboard(request: Request):
             screen_layout.setdefault(inst_cfg.get("position", "middle_center"), []).append(
                 {"name": name, "enabled": inst_cfg.get("enabled", True)})
         
-    # Get CPU Temperature (e.g. Raspberry Pi)
-    cpu_temp = None
-    try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-            cpu_temp = round(int(f.read().strip()) / 1000.0, 1)
-    except Exception:
-        pass
-        
+    cpu_temp = get_cpu_temperature()
+
     # Get local routing IP address
     local_ip = "127.0.0.1"
     try:

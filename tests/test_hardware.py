@@ -12,9 +12,9 @@ from mirrordash_core.event_bus import event_bus
 from mirrordash_core.hardware import PressClassifier
 
 
-def presses(events):
+def presses(events, long_press=1.0):
     """Feed (time, 'down'|'up') events, polling every 50 ms like the event loop timers would."""
-    c, out, t, i = PressClassifier(), [], 0.0, 0
+    c, out, t, i = PressClassifier(long_press), [], 0.0, 0
     while t <= events[-1][0] + 2:
         while i < len(events) and events[i][0] <= t:
             kind = c.down(t) if events[i][1] == "down" else c.up(t)
@@ -32,9 +32,16 @@ def test_press_classifier():
     assert presses([(0, "down"), (0.1, "up"), (0.3, "down"), (0.4, "up"), (0.6, "down"), (0.7, "up")]) == ["triple"]
     assert presses([(0, "down"), (2.0, "up")]) == ["long"]  # fires while held, release adds nothing
     assert presses([(0, "down"), (0.1, "up"), (1.0, "down"), (1.1, "up")]) == ["single", "single"]
-    c = PressClassifier()
+    c = PressClassifier(1.0)
     c.down(0.0)
     assert c.up(1.5) == "long"  # release after the threshold, even if poll() never ran
+
+
+def test_long_press_time_is_chosen():
+    assert hardware.DEFAULT_LONG_PRESS == 1.5
+    assert presses([(0, "down"), (1.2, "up")], long_press=1.5) == ["single"]
+    assert presses([(0, "down"), (1.6, "up")], long_press=1.5) == ["long"]
+    assert presses([(0, "down"), (2.5, "up")], long_press=3.0) == ["single"]
 
 
 def test_validate_devices():
@@ -42,6 +49,8 @@ def test_validate_devices():
     assert v([{"type": "button", "pin": 17}, {"type": "pir", "pin": 18}, {"type": "light", "address": "0x23"}]) is None
     assert "already uses GPIO 17" in v([{"type": "button", "pin": 17}, {"type": "dht11", "pin": 17}])
     assert "Only one" in v([{"type": "pir", "pin": 17}, {"type": "pir", "pin": 18}])
+    assert v([{"type": "button", "pin": 17}, {"type": "button_2", "pin": 22}]) is None
+    assert "already uses GPIO 17" in v([{"type": "button", "pin": 17}, {"type": "button_2", "pin": 17}])
     assert "can't be used" in v([{"type": "button", "pin": 1}])
     assert "needs address" in v([{"type": "light", "address": "0x40"}])
     assert "needed for I²C" in v([{"type": "button", "pin": 3}, {"type": "light", "address": "0x23"}])
@@ -111,7 +120,7 @@ def test_gpio_inputs_button_and_presence_events():
         event_bus.subscribe("hardware.motion", handler)
         inputs, r, w = _pipe_inputs()
         dispatched = []
-        inputs._dispatch = lambda press: press and dispatched.append(press)
+        inputs._dispatch = lambda button, press: press and dispatched.append(press)
         try:
             os.write(w, ev.pack(0, 0, 4, 4, 1234) + key("button", 1) + ev.pack(0, 0, 0, 0, 0))  # MSC, down, SYN
             inputs._on_readable("dev")
@@ -189,6 +198,7 @@ def test_add_and_remove_devices(mock_load, mock_save, _rw, _ro, client):
         write.assert_awaited_once_with(["button:3", "mmwave:22"])
         assert mock_save.call_args[0][0]["system"]["devices"][-1] == {"type": "mmwave", "pin": 22}
         assert "mmWave presence sensor" in r.text
+        assert "Push button 2" in r.text and "Push button 3" not in r.text  # one more button at a time
 
     mock_load.return_value = mock_save.call_args[0][0]
     with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
@@ -202,12 +212,20 @@ def test_add_and_remove_devices(mock_load, mock_save, _rw, _ro, client):
 @patch("mirrordash_core.api.admin_system_panels.save_config")
 @patch("mirrordash_core.api.admin_system_panels.load_config")
 def test_button_actions(mock_load, mock_save, _rw, _ro, client):
-    mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 17, "actions": {}}]}}
-    assert "Unknown button action" in _message(client.post("/admin/panels/system/devices/button-actions", data={"action_long": "rm -rf"}))
-    r = client.post("/admin/panels/system/devices/button-actions", data={"action_long": "shutdown"})
+    mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 17, "actions": {}},
+                                                     {"type": "button_2", "pin": 22, "actions": {}}]}}
+    url = "/admin/panels/system/devices/button-actions"
+    assert "Unknown button action" in _message(client.post(url, data={"action_long": "rm -rf"}))
+    assert "how long" in _message(client.post(url, data={"long_press": "0.1"}))
+    assert "isn't connected" in _message(client.post(url, data={"type": "button_3"}))
+    r = client.post(url, data={"action_long": "shutdown", "long_press": "2.0"})
     assert _message(r) == "Saved."
-    assert mock_save.call_args[0][0]["system"]["devices"][0]["actions"] == {
-        "single": "none", "double": "none", "triple": "none", "long": "shutdown"}
+    saved = mock_save.call_args[0][0]["system"]["devices"][0]
+    assert saved["actions"] == {"single": "none", "double": "none", "triple": "none", "long": "shutdown"}
+    assert saved["long_press"] == 2.0
+    client.post(url, data={"type": "button_2", "action_single": "wake", "long_press": "3"})
+    assert mock_save.call_args[0][0]["system"]["devices"][1]["actions"]["single"] == "wake"
+    assert mock_save.call_args[0][0]["system"]["devices"][1]["long_press"] == 3.0
 
 
 def test_device_problem_does_not_block_other_settings():
@@ -223,3 +241,40 @@ def test_device_problem_does_not_block_other_settings():
         asyncio.run(update_system_settings(settings={"brightness": 40}))
         asyncio.run(update_system_settings(settings={"display_control": {"mode": "wake"}}))
     assert save.call_count == 2
+
+
+def test_each_button_has_its_own_presses_and_actions():
+    ev = hardware.GpioInputs.EVENT
+    key = lambda name, value: ev.pack(0, 0, 1, hardware.KEYCODES[name], value)
+    cfg = {"system": {"devices": [
+        {"type": "button", "pin": 17, "actions": {"single": "wake"}},
+        {"type": "button_2", "pin": 22, "actions": {"single": "toggle_display"}, "long_press": 1.0}]}}
+
+    async def scenario():
+        received = []
+        handler = lambda data: received.append(data)
+        event_bus.subscribe("hardware.button", handler)
+        inputs, r, w = _pipe_inputs()
+        try:
+            with patch("mirrordash_core.hardware.load_config", return_value=cfg), \
+                 patch("mirrordash_core.hardware.run_button_action", new_callable=AsyncMock):
+                os.write(w, key("button", 1) + key("button_2", 1))  # both held at once
+                inputs._on_readable("dev")
+                await asyncio.sleep(0.05)
+                os.write(w, key("button", 0))
+                inputs._on_readable("dev")
+                await asyncio.sleep(1.1)  # button_2 is still held: past its 1 s long press
+                os.write(w, key("button_2", 0))
+                inputs._on_readable("dev")
+                await asyncio.sleep(hardware.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
+        finally:
+            event_bus.unsubscribe("hardware.button", handler)
+            os.close(r)
+            os.close(w)
+        return received, inputs.classifiers["button_2"].long_press
+
+    received, long_press = asyncio.run(scenario())
+    assert sorted(received, key=lambda e: e["button"]) == [
+        {"press": "single", "action": "wake", "button": "button"},
+        {"press": "long", "action": "none", "button": "button_2"}]
+    assert long_press == 1.0

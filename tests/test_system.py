@@ -204,3 +204,25 @@ async def test_apply_system_password_hash(mock_subproc):
     )
     mock_proc.communicate.assert_called_once_with(input=b"pi:somehash\n")
 
+
+
+def test_hdmi_brightness_goes_over_ddc(monkeypatch):
+    """No backlight device (HDMI): the brightness goes to the screen over DDC/CI, and a screen
+    that doesn't answer is reported as unsupported."""
+    from mirrordash_core.system import apply_brightness, display
+    monkeypatch.setattr(display, "brightness_supported", None)  # restored for the other tests
+
+    def ddc(returncode):
+        proc = MagicMock(returncode=returncode)
+        proc.communicate = AsyncMock(return_value=(b"", b"No monitor detected"))
+        return AsyncMock(return_value=proc)
+
+    with patch("mirrordash_core.system.display.glob.glob", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", ddc(0)) as run:
+            assert asyncio.run(apply_brightness(40)) is True
+        run.assert_awaited_once()
+        assert run.await_args.args == ("sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", "40")
+        assert display.brightness_supported is True
+        with patch("asyncio.create_subprocess_exec", ddc(1)):
+            assert asyncio.run(apply_brightness(40)) is False
+        assert display.brightness_supported is False

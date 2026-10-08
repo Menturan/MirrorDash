@@ -6,7 +6,7 @@ The app's Python (uv, 3.14) has no GPIO library, and lgpio can't be built on the
 every device is a device-tree overlay instead (written to config.txt by the root helper
 /usr/local/bin/mirrordash-gpio-overlays; the firmware applies them at the next boot):
 
-- gpio-key (button, PIR, mmWave): the kernel debounces the pin and exposes it as an input
+- gpio-key (buttons, PIR, mmWave): the kernel debounces the pin and exposes it as an input
   device, read here as raw evdev events.
 - dht11, i2c-sensor (BH1750): the kernel does the sensor protocol and exposes the readings
   under /sys/bus/iio.
@@ -14,7 +14,8 @@ every device is a device-tree overlay instead (written to config.txt by the root
   we only read its state from /sys/class/thermal.
 
 The devices are a list in config (system.devices), at most one of each type:
-  {"type": "button", "pin": 17, "actions": {...}}, {"type": "light", "address": "0x23"}, ...
+  {"type": "button", "pin": 17, "actions": {...}, "long_press": 1.5}, {"type": "light", "address": "0x23"}, ...
+Up to four buttons, as the types button, button_2, button_3 and button_4.
 """
 
 import asyncio
@@ -41,9 +42,12 @@ I2C_PINS = (2, 3)  # SDA, SCL: taken as soon as an I2C device is added
 
 # Everything the Hardware tab can add. "pin": wired to one GPIO; "addresses": an I2C device.
 # The overlay lines themselves live in the root helper, which only accepts these types.
+BUTTON_WIRING = "Connect the button between the GPIO and a GND pin."
 DEVICE_TYPES = {
-    "button": {"label": "Push button", "pin": True,
-               "wiring": "Connect the button between the GPIO and a GND pin."},
+    "button": {"label": "Push button", "pin": True, "wiring": BUTTON_WIRING},
+    "button_2": {"label": "Push button 2", "pin": True, "wiring": BUTTON_WIRING},
+    "button_3": {"label": "Push button 3", "pin": True, "wiring": BUTTON_WIRING},
+    "button_4": {"label": "Push button 4", "pin": True, "wiring": BUTTON_WIRING},
     "pir": {"label": "PIR motion sensor", "pin": True,
             "wiring": "Sensor output to the GPIO; power from a 5V pin and GND."},
     "mmwave": {"label": "mmWave presence sensor (e.g. LD2410)", "pin": True,
@@ -67,7 +71,9 @@ DEVICE_TYPES = {
 }
 FAN_TYPES = ("fan", "pwm_fan")
 FAN_TEMPERATURE_RANGE = (40, 80)  # °C; the Pi throttles at 80
-KEYCODES = {"button": 148, "pir": 149, "mmwave": 150}  # KEY_PROG1..3: ignored by the kiosk
+BUTTON_TYPES = ("button", "button_2", "button_3", "button_4")
+# KEY_PROG1..3 and KEY_MACRO1..3: keys the kiosk ignores
+KEYCODES = {"button": 148, "pir": 149, "mmwave": 150, "button_2": 656, "button_3": 657, "button_4": 658}
 PRESENCE_TYPES = ("pir", "mmwave")
 
 BUTTON_ACTIONS = {
@@ -79,6 +85,8 @@ BUTTON_ACTIONS = {
     "shutdown": "Shut down the mirror",
 }
 PRESS_TYPES = ("single", "double", "triple", "long")
+LONG_PRESS_CHOICES = (1.0, 1.5, 2.0, 3.0)  # seconds a button is held for a long press
+DEFAULT_LONG_PRESS = 1.5
 
 
 # --- Device list -------------------------------------------------------------------------
@@ -157,7 +165,10 @@ async def write_gpio_overlays(args: list[str]) -> str | None:
     )
     _, stderr = await proc.communicate()
     if proc.returncode != 0:
-        logger.error(f"GPIO overlay helper failed ({proc.returncode}): {stderr.decode(errors='replace')}")
+        error = stderr.decode(errors="replace")
+        logger.error(f"GPIO overlay helper failed ({proc.returncode}): {error}")
+        if "unknown device type" in error:  # e.g. button_2 on an image from before it existed
+            return "This mirror's OS image is too old for this device. Flash the latest MirrorDash OS image."
         return "Could not save the GPIO settings. See the logs for details."
     return None
 
@@ -186,14 +197,14 @@ class PressClassifier:
     """Turns key down/up timestamps into single/double/triple/long presses.
 
     Pure logic (times are passed in), so it is testable without hardware. The caller feeds
-    down()/up() and calls poll() after LONG_PRESS (while held) and MULTI_PRESS_WINDOW
+    down()/up() and calls poll() after long_press (while held) and MULTI_PRESS_WINDOW
     (after a release) to collect the finished press.
     """
 
-    LONG_PRESS = 1.0          # held at least this long -> "long"
     MULTI_PRESS_WINDOW = 0.4  # next press must start within this time to count as double/triple
 
-    def __init__(self):
+    def __init__(self, long_press: float = DEFAULT_LONG_PRESS):
+        self.long_press = long_press  # held at least this long -> "long"
         self.count = 0
         self.down_at: float | None = None
         self.last_up = 0.0
@@ -210,7 +221,7 @@ class PressClassifier:
         self.down_at = None
         if self.long_fired:
             return None
-        if held >= self.LONG_PRESS:  # poll() didn't run in time; still a long press
+        if held >= self.long_press:  # poll() didn't run in time; still a long press
             self.count = 0
             return "long"
         self.count += 1
@@ -219,7 +230,7 @@ class PressClassifier:
 
     def poll(self, t: float) -> str | None:
         if self.down_at is not None:
-            if not self.long_fired and t - self.down_at >= self.LONG_PRESS:
+            if not self.long_fired and t - self.down_at >= self.long_press:
                 self.long_fired = True
                 self.count = 0
                 return "long"
@@ -244,7 +255,8 @@ class GpioInputs:
     """Reads the gpio-keys input devices and polls the IIO sensors.
 
     Publishes on the event bus, for modules:
-      hardware.button   {"press": "single"|"double"|"triple"|"long", "action": str}
+      hardware.button   {"press": "single"|"double"|"triple"|"long", "action": str,
+                         "button": "button"|"button_2"|"button_3"|"button_4"}
       hardware.motion   {"motion": bool, "sensor": "pir"|"mmwave"}   when presence starts / stops
       hardware.climate  {"temperature_c": float, "humidity": int}    every SENSOR_INTERVAL s
       hardware.light    {"lux": float}                               every SENSOR_INTERVAL s
@@ -260,7 +272,7 @@ class GpioInputs:
         self.task: asyncio.Task | None = None
         self.sensor_task: asyncio.Task | None = None
         self.fds: dict[str, int] = {}
-        self.classifier = PressClassifier()
+        self.classifiers: dict[str, PressClassifier] = {}  # per button type
         self.detected: set[str] = set()       # device types whose input device was found
         self.presence: dict[str, bool] = {}   # per presence sensor type
         self.last_motion_at = 0.0             # time.monotonic()
@@ -334,8 +346,9 @@ class GpioInputs:
             _, _, ev_type, code, value = self.EVENT.unpack_from(data, i)
             if ev_type != self.EV_KEY or value == 2:  # 2 = auto-repeat
                 continue
-            if code == KEYCODES["button"]:
-                self._on_button(value == 1)
+            for button in BUTTON_TYPES:
+                if code == KEYCODES[button]:
+                    self._on_button(button, value == 1)
             for sensor in PRESENCE_TYPES:
                 if code == KEYCODES[sensor]:
                     self.presence[sensor] = value == 1
@@ -357,26 +370,29 @@ class GpioInputs:
                     event_bus.publish("hardware.fan", fan)
             await asyncio.sleep(self.SENSOR_INTERVAL)
 
-    def _on_button(self, pressed: bool) -> None:
+    def _on_button(self, button: str, pressed: bool) -> None:
         loop = asyncio.get_running_loop()
         now = time.monotonic()
+        classifier = self.classifiers.setdefault(button, PressClassifier())
         if pressed:
-            self.classifier.down(now)
-            loop.call_later(PressClassifier.LONG_PRESS, self._poll)
+            device = find_device(load_config().get("system", {}), button) or {}
+            classifier.long_press = device.get("long_press", DEFAULT_LONG_PRESS)  # a change applies on the next press
+            classifier.down(now)
+            loop.call_later(classifier.long_press, self._poll, button)
         else:
-            self._dispatch(self.classifier.up(now))
-            loop.call_later(PressClassifier.MULTI_PRESS_WINDOW, self._poll)
+            self._dispatch(button, classifier.up(now))
+            loop.call_later(PressClassifier.MULTI_PRESS_WINDOW, self._poll, button)
 
-    def _poll(self) -> None:
-        self._dispatch(self.classifier.poll(time.monotonic()))
+    def _poll(self, button: str) -> None:
+        self._dispatch(button, self.classifiers[button].poll(time.monotonic()))
 
-    def _dispatch(self, press: str | None) -> None:
+    def _dispatch(self, button: str, press: str | None) -> None:
         if not press:
             return
-        button = find_device(load_config().get("system", {}), "button") or {}
-        action = button.get("actions", {}).get(press, "none")
-        logger.info(f"Button {press} press -> {action}")
-        event_bus.publish("hardware.button", {"press": press, "action": action})
+        device = find_device(load_config().get("system", {}), button) or {}
+        action = device.get("actions", {}).get(press, "none")
+        logger.info(f"{button} {press} press -> {action}")
+        event_bus.publish("hardware.button", {"press": press, "action": action, "button": button})
         asyncio.create_task(run_button_action(action))
 
 

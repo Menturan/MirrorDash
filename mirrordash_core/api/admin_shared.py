@@ -55,6 +55,21 @@ async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> 
         raise HTTPException(status_code=401, detail="Invalid password")
 
 
+def token_hash(token: str) -> str:
+    # A plain sha256 is enough: the token is 256 random bits, nothing to guess from a list.
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+async def require_api_token(authorization: Annotated[str | None, Header()] = None) -> None:
+    """FastAPI dependency for /api/v1: `Authorization: Bearer <token>` with the token from the
+    API Access card. The admin password is not accepted here."""
+    stored = load_config().get("api_token", {}).get("hash")
+    scheme, _, token = (authorization or "").partition(" ")
+    if not stored or scheme.lower() != "bearer" or not secrets.compare_digest(token_hash(token.strip()), stored):
+        raise HTTPException(status_code=401, detail="Missing or wrong API token. Create one under Hardware > API Access.",
+                            headers={"WWW-Authenticate": "Bearer"})
+
+
 # Changes on every process start, so clients can tell for certain that a restart finished.
 BOOT_ID = uuid.uuid4().hex
 

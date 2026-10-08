@@ -11,6 +11,7 @@ from mirrordash_core.system.os import (
 )
 from mirrordash_core.system.display import (
     get_available_resolutions,
+    apply_brightness,
     apply_system_settings,
     set_screen_power,
 )
@@ -35,6 +36,7 @@ __all__ = [
     "apply_system_timezone",
     "apply_system_password_hash",
     "get_available_resolutions",
+    "apply_brightness",
     "apply_system_settings",
     "set_screen_power",
     "scan_wifi_networks",

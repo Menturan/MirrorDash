@@ -21,25 +21,36 @@
             </button>
         </div>
 
+        {% if d.type in button_types %}
         {% if d.type == "button" %}
         <p class="field-description" style="font-size: 0.75rem; color: var(--text-secondary); margin: 10px 0 0 0;">
             <i class="fas fa-lightbulb" aria-hidden="true"></i> Tip: on GPIO 3 (pin 5) the same button also starts the mirror again after it has been shut down.
             Choose "Shut down the mirror" for a long press and the button works as an on/off switch.
             (GPIO 3 can't be used together with the I²C light sensor.)
         </p>
+        {% endif %}
         <!-- Actions apply on the next press: saved on change, no restart -->
         <form hx-post="/admin/panels/system/devices/button-actions" hx-trigger="change" hx-swap="none"
               style="display: grid; gap: 10px; margin-top: 12px; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal);">
+            <input type="hidden" name="type" value="{{ d.type }}">
             {% for press, label in press_labels %}
             <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <label for="action-{{ press }}" style="font-size: 0.8rem; color: white; min-width: 110px;">{{ label }}</label>
-                <select id="action-{{ press }}" name="action_{{ press }}" class="form-control" style="flex: 1; min-width: 180px;">
+                <label for="action-{{ d.type }}-{{ press }}" style="font-size: 0.8rem; color: white; min-width: 110px;">{{ label }}</label>
+                <select id="action-{{ d.type }}-{{ press }}" name="action_{{ press }}" class="form-control" style="flex: 1; min-width: 180px;">
                     {% for value, action_label in button_actions.items() %}
                         <option value="{{ value }}" {% if d.actions[press] == value %}selected{% endif %}>{{ action_label }}</option>
                     {% endfor %}
                 </select>
             </div>
             {% endfor %}
+            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+                <label for="long-press-{{ d.type }}" style="font-size: 0.8rem; color: white; min-width: 110px;">Long press is</label>
+                <select id="long-press-{{ d.type }}" name="long_press" class="form-control" style="flex: 1; min-width: 180px;">
+                    {% for seconds in long_press_choices %}
+                        <option value="{{ seconds }}" {% if d.long_press | default(default_long_press) == seconds %}selected{% endif %}>Held {{ "%g" | format(seconds) }} seconds</option>
+                    {% endfor %}
+                </select>
+            </div>
         </form>
         {% endif %}
     </div>

@@ -4,9 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MirrorDash Admin</title>
-    <link rel="manifest" href="/static/manifest.json">
+    <!-- On the phone's home screen it opens /admin full screen. iOS only takes a PNG icon. -->
+    <link rel="manifest" href="/static/admin-manifest.json">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
+    <link rel="apple-touch-icon" href="/static/icon-180.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="MirrorDash">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="theme-color" content="#131313">
     <!-- Self-hosted: a render-blocking Google Fonts request stalled the page without internet (setup hotspot) -->
     <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/admin.css">
@@ -757,7 +763,7 @@
             </div>
         </header>
 
-        <div id="global-status" class="alert" role="alert" aria-live="assertive" hidden></div>
+        <div id="global-status" class="alert toast" role="alert" aria-live="assertive" hidden></div>
 
         <div class="page-panels" id="tab-content"></div>
     </div>
@@ -889,13 +895,21 @@
         let currentApiKey = localStorage.getItem('mirrordash_api_key') || '';
         let authPromiseResolve;
 
-        function showGlobal(msg, type = 'info') {
+        // A floating message. Errors stay 8 s, others 4 s; stayMs = 0 keeps it until hideGlobal().
+        let globalTimer = null;
+        function showGlobal(msg, type = 'info', stayMs = type === 'error' ? 8000 : 4000) {
             const globalStatus = document.getElementById('global-status');
             if (!globalStatus) return;
             globalStatus.textContent = msg;
-            globalStatus.className = `alert alert--${type}`;
+            globalStatus.className = `alert toast alert--${type}`;
             globalStatus.hidden = false;
-            setTimeout(() => { globalStatus.hidden = true; }, 5000);
+            clearTimeout(globalTimer);
+            if (stayMs) globalTimer = setTimeout(() => { globalStatus.hidden = true; }, stayMs);
+        }
+
+        function hideGlobal() {
+            clearTimeout(globalTimer);
+            document.getElementById('global-status').hidden = true;
         }
 
         function showAuthError(msg) {
@@ -1564,8 +1578,27 @@
             document.getElementById('page-loading').hidden = true;
         });
 
-        document.body.addEventListener('htmx:sendError', () => {
-            showGlobal('Could not reach the mirror. Check that it is on and connected to Wi-Fi.', 'error');
+        // A request got no answer. Often the phone just woke up and its Wi-Fi isn't back yet, so
+        // say "Reconnecting" and only call the mirror unreachable after 20 s without an answer.
+        const RECONNECTING = 'Reconnecting to the mirror…';
+        const UNREACHABLE = 'Could not reach the mirror. Check that it is on and connected to Wi-Fi.';
+        let reconnecting = false;
+        document.body.addEventListener('htmx:sendError', async () => {
+            if (reconnecting) return;
+            reconnecting = true;
+            showGlobal(RECONNECTING, 'info', 0);
+            const started = Date.now();
+            while (true) {
+                try {
+                    const res = await fetch('/health', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+                    if (res.ok) break;
+                } catch (_) {}
+                if (Date.now() - started > 20000) showGlobal(UNREACHABLE, 'error', 0);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+            reconnecting = false;
+            const text = document.getElementById('global-status').textContent;
+            if (text === RECONNECTING || text === UNREACHABLE) hideGlobal();
         });
 
         document.body.addEventListener('htmx:afterSwap', (event) => {

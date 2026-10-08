@@ -11,10 +11,14 @@
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
                     <label for="sys-brightness" style="font-weight: 500; font-size: 0.9rem; color: white;">Screen Brightness</label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Control display backlight level (10% - 100%).</p>
+                    {% if settings.brightness_supported %}
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">How bright the screen is (10% - 100%).</p>
+                    {% else %}
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--warning-color); margin: 0;">Your screen doesn't accept brightness over HDMI. Use the screen's own buttons.</p>
+                    {% endif %}
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
-                    <input type="range" id="sys-brightness" name="brightness" min="10" max="100" value="{{ settings.brightness }}" class="form-control-range" style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);" oninput="document.getElementById('sys-brightness-val').textContent = this.value + '%'">
+                    <input type="range" id="sys-brightness" name="brightness" min="10" max="100" value="{{ settings.brightness }}" class="form-control-range" {% if not settings.brightness_supported %}disabled{% endif %} style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);" oninput="document.getElementById('sys-brightness-val').textContent = this.value + '%'">
                     <span id="sys-brightness-val" style="font-weight: 600; min-width: 45px; text-align: right;">{{ settings.brightness }}%</span>
                 </div>
             </div>
@@ -89,6 +93,9 @@
 
     <!-- Sensors & Inputs: loaded on its own, re-rendered after every change -->
     <div hx-get="/admin/panels/system/devices" hx-trigger="load" hx-swap="outerHTML"></div>
+
+    <!-- API Access: a token for Home Assistant -->
+    <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
 </div>
 
 <script>

@@ -527,3 +527,33 @@ def test_admin_shows_a_loading_line_while_a_tab_loads(page, server_url):
     page.wait_for_selector("#page-loading:not([hidden])")
     page.wait_for_selector("#logs-viewer")
     page.wait_for_selector("#page-loading[hidden]", state="attached")
+
+
+def test_status_message_floats_over_the_page(page, server_url):
+    for width in (1280, 390):
+        page.set_viewport_size({"width": width, "height": 844})
+        navigate_authenticated(page, server_url)
+        page.wait_for_selector("h1")
+        top = lambda: page.evaluate("document.getElementById('tab-content').getBoundingClientRect().top")
+        before = top()
+        page.evaluate("showGlobal('Saved.', 'success')")
+        page.wait_for_selector("#global-status", state="visible")
+        assert top() == before  # the page under it doesn't move
+        assert page.evaluate("getComputedStyle(document.getElementById('global-status')).position") == "fixed"
+
+
+def test_admin_says_reconnecting_before_unreachable(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+    back_at = time.time() + 3
+
+    def health(route):
+        if time.time() < back_at:
+            return route.abort()
+        route.continue_()
+    page.route("**/health", health)
+    page.route("**/admin/panels/logs", lambda route: route.abort())  # the phone's Wi-Fi is still asleep
+    page.click("#page-tab-logs")
+    page.wait_for_selector("#global-status", state="visible")
+    assert page.locator("#global-status").text_content() == "Reconnecting to the mirror…"
+    page.wait_for_selector("#global-status", state="hidden", timeout=10000)

@@ -11,6 +11,13 @@ def get_uptime_seconds() -> float:
     except Exception:
         return 0.0
 
+def get_cpu_temperature() -> float | None:
+    try:
+        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+            return round(int(f.read().strip()) / 1000.0, 1)
+    except Exception:
+        return None
+
 def get_uptime_string() -> str:
     uptime_sec = get_uptime_seconds()
     if uptime_sec == 0.0:

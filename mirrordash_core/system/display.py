@@ -62,53 +62,74 @@ async def get_available_resolutions() -> list[str]:
     res_list.sort(key=res_key, reverse=True)
     return ["auto"] + res_list
 
+# False once neither a backlight nor DDC/CI took the brightness (the admin page then says so).
+# None: not tried yet since the app started.
+brightness_supported: bool | None = None
+
+
+async def apply_brightness(brightness: int) -> bool:
+    """Set the screen brightness (10-100 %). A DSI screen has a backlight device; an HDMI screen
+    can only be asked over DDC/CI, which most monitors understand and most TVs don't."""
+    global brightness_supported
+    brightness_supported = await _set_backlight(brightness) or await _set_ddc_brightness(brightness)
+    return brightness_supported
+
+
+async def _set_backlight(brightness: int) -> bool:
+    backlight_paths = glob.glob("/sys/class/backlight/*/brightness")
+    max_backlight_paths = glob.glob("/sys/class/backlight/*/max_brightness")
+    if not (backlight_paths and max_backlight_paths):
+        return False
+    try:
+        with open(max_backlight_paths[0], "r") as f:
+            max_val = int(f.read().strip())
+        target_val = int((brightness / 100.0) * max_val)
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "-n", "tee", backlight_paths[0],
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        await proc.communicate(input=f"{target_val}\n".encode())
+    except Exception as e:
+        logger.warning(f"Failed to write to backlight device: {e}")
+        return False
+    if proc.returncode != 0:
+        logger.warning(f"Failed to write to backlight device {backlight_paths[0]}")
+        return False
+    logger.info(f"Applied hardware brightness {target_val}/{max_val} via {backlight_paths[0]}")
+    return True
+
+
+async def _set_ddc_brightness(brightness: int) -> bool:
+    # ponytail: VCP 0x10 is written as a percentage; nearly every monitor's maximum is 100. One
+    # with another maximum would need `ddcutil getvcp 10` first to scale the value.
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+    except OSError as e:
+        logger.warning(f"Cannot run ddcutil for the HDMI brightness: {e}")
+        return False
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        logger.warning("ddcutil didn't answer within 10 s; the screen doesn't take brightness over HDMI")
+        return False
+    if proc.returncode != 0:
+        logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {stderr.decode(errors='replace').strip()}")
+        return False
+    logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI")
+    return True
+
+
 async def apply_system_settings(rotation: str, resolution: str, brightness: int, volume: int) -> None:
     """Asynchronously applies screen rotation, screen mode/resolution, display brightness, and system audio volume."""
     logger.info(f"Applying system settings: rotation={rotation}, resolution={resolution}, brightness={brightness}%, volume={volume}%")
 
     # A. Apply Brightness
-    # 1. Try Linux /sys/class/backlight
-    backlight_paths = glob.glob("/sys/class/backlight/*/brightness")
-    max_backlight_paths = glob.glob("/sys/class/backlight/*/max_brightness")
-    applied_hardware = False
-    if backlight_paths and max_backlight_paths:
-        try:
-            # Read max brightness
-            with open(max_backlight_paths[0], "r") as f:
-                max_val = int(f.read().strip())
-            # Calculate target value (0 to max_val based on brightness 0-100)
-            target_val = int((brightness / 100.0) * max_val)
-            # Write target value using sudo tee
-            proc = await asyncio.create_subprocess_exec(
-                "sudo", "-n", "tee", backlight_paths[0],
-                stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate(input=f"{target_val}\n".encode())
-            logger.info(f"Applied hardware brightness {target_val}/{max_val} via {backlight_paths[0]}")
-            applied_hardware = True
-        except Exception as e:
-            logger.warning(f"Failed to write to backlight device: {e}")
-
-    # 2. Try xrandr software brightness (fallback or X11 utility)
-    if not applied_hardware:
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                "xrandr", "--verbose",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await proc.communicate()
-            if proc.returncode == 0:
-                displays = re.findall(r"(\S+)\s+connected", stdout.decode("utf-8", errors="ignore"))
-                for display in displays:
-                    software_val = max(0.1, brightness / 100.0)
-                    proc_brightness = await asyncio.create_subprocess_exec(
-                        "xrandr", "--output", display, "--brightness", f"{software_val:.2f}",
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                    )
-                    await proc_brightness.wait()
-                    logger.info(f"Applied xrandr software brightness {software_val:.2f} for {display}")
-        except Exception as e:
-            logger.debug(f"xrandr brightness setting skipped or failed: {e}")
+    await apply_brightness(brightness)
 
     # B. Apply Volume
     # Try PulseAudio / PipeWire first via pactl

@@ -273,8 +273,11 @@ sudo apt install -y --no-install-recommends \
     python3 \
     zip \
     overlayroot \
+    ddcutil \
     git && \
 sudo apt autoclean -y && sudo apt autoremove -y
+# ddcutil talks to an HDMI screen over /dev/i2c-*, which needs the i2c-dev module
+echo "i2c-dev" | sudo tee /etc/modules-load.d/mirrordash-i2c.conf
 ```
 
 **Package rationale:**
@@ -293,6 +296,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
 | `zip` | Writes backup files, optionally password protected (Python's `zipfile` can't encrypt). |
 | `overlayroot` | The read-only root (OverlayFS). Installed in the image so the first-boot lock needs no network: `raspi-config` would otherwise download it then, which fails on a mirror without Wi-Fi yet and leaves the root writable. `build_image.sh` stops if it's missing from the initramfs. |
+| `ddcutil` | Sets an HDMI screen's brightness over the cable (DDC/CI, VCP code 0x10). An HDMI screen has no `/sys/class/backlight`, and `xrandr` only works under X11, so without it the brightness setting does nothing on HDMI. `build_image.sh` stops if it's missing. |
 | `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
 
 > [!NOTE]
@@ -658,6 +662,7 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
+pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
@@ -668,13 +673,13 @@ sudo visudo -cf /etc/sudoers.d/mirrordash
 
 ### 3.3 GPIO Overlay Helper (Sensors & Inputs)
 
-The admin page's *Sensors & Inputs* list (push button, PIR, mmWave, DHT11, BH1750 light sensor, on/off or PWM fan) is applied through this root-owned helper (allowed in the sudoers file above). It only accepts a fixed set of `type:value` arguments (GPIO 2–27, each GPIO and type once, I²C addresses 0x23/0x5c, GPIO 2/3 reserved while I²C is used, fans as `GPIO:°C` with 40–80 °C and only one fan) and only rewrites a managed `[all]` block of device-tree overlays in `config.txt`; the firmware applies them at the next boot. The kernel drivers then do the work: `gpio-key` debounces the button and the presence sensors and reports them as input devices (`KEY_PROG1`–`KEY_PROG3`), `dht11` and `i2c-sensor` expose readings under `/sys/bus/iio/devices/`, and `gpio-fan`/`pwm-gpio-fan` let the kernel's thermal framework run the fan by CPU temperature. No Python GPIO library is needed. Reading `/dev/input/event*` relies on `pi` being in the `input` group, which Raspberry Pi OS sets up for the first user.
+The admin page's *Sensors & Inputs* list (up to four push buttons, PIR, mmWave, DHT11, BH1750 light sensor, on/off or PWM fan) is applied through this root-owned helper (allowed in the sudoers file above). It only accepts a fixed set of `type:value` arguments (GPIO 2–27, each GPIO and type once, I²C addresses 0x23/0x5c, GPIO 2/3 reserved while I²C is used, fans as `GPIO:°C` with 40–80 °C and only one fan) and only rewrites a managed `[all]` block of device-tree overlays in `config.txt`; the firmware applies them at the next boot. The kernel drivers then do the work: `gpio-key` debounces the button and the presence sensors and reports them as input devices (`KEY_PROG1`–`KEY_PROG3`, and `KEY_MACRO1`–`KEY_MACRO3` for buttons 2–4), `dht11` and `i2c-sensor` expose readings under `/sys/bus/iio/devices/`, and `gpio-fan`/`pwm-gpio-fan` let the kernel's thermal framework run the fan by CPU temperature. No Python GPIO library is needed. Reading `/dev/input/event*` relies on `pi` being in the `input` group, which Raspberry Pi OS sets up for the first user.
 
 ```bash
 sudo tee /usr/local/bin/mirrordash-gpio-overlays > /dev/null << 'EOF'
 #!/bin/bash
 # Usage: mirrordash-gpio-overlays [type:value ...]
-#   button, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
+#   button, button_2..4, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
 #   fan, pwm_fan: GPIO:temperature, e.g. fan:14:60 (switch-on temperature 40-80 °C)
 # Each type at most once, one fan, every GPIO at most once, GPIO 2/3 reserved while I2C is used.
 set -euo pipefail
@@ -691,7 +696,7 @@ for arg in "$@"; do
   [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
   seen_type[$type]=1
   case "$type" in
-    button|pir|mmwave|dht11|fan|pwm_fan)
+    button|button_2|button_3|button_4|pir|mmwave|dht11|fan|pwm_fan)
       { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
       [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
       seen_pin[$value]=1 ;;
@@ -701,8 +706,11 @@ for arg in "$@"; do
       die "unknown device type: $arg" ;;
   esac
   case "$type" in
-    # Buttons/sensors become input devices (keycodes KEY_PROG1-3): kernel debounce, no polling
+    # Buttons/sensors become input devices (keycodes KEY_PROG1-3, KEY_MACRO1-3): kernel debounce, no polling
     button) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button") ;;
+    button_2) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=656,label=mirrordash-button-2") ;;
+    button_3) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=657,label=mirrordash-button-3") ;;
+    button_4) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=658,label=mirrordash-button-4") ;;
     pir)    lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir") ;;
     mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
     dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;

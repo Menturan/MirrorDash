@@ -10,17 +10,26 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Added
+- Home Assistant can show the mirror's status and sensors, turn the screen on and off and set the brightness. Create a token under Hardware → API Access; the user guide has a ready setup to paste.
+- Up to four push buttons, each with its own actions.
+- Choose how long a long press is (1, 1.5, 2 or 3 seconds). It is 1.5 seconds to begin with; before, it was 1 second.
+- Add the admin page to your phone's home screen and it opens full screen, with the MD icon (also on iPhone).
 - A "Turn on SSH" button next to the new SSH password; before, only Enter saved it.
 - The MD monogram on the Wi-Fi setup screens and the admin password screens.
 
 ### Changed
+- Messages in the admin page float over it, instead of pushing the whole page down and back up.
+- When the phone wakes up with the admin page open, it says "Reconnecting to the mirror…" and only says it can't reach the mirror after 20 seconds without an answer.
 - After Wi-Fi setup the mirror no longer restarts: it shows its clock right away. With a wrong Wi-Fi password, MirrorDash-Setup comes back within a minute (same password) instead of after a restart.
 - Installing or updating a module names it plainly, for example "mirrordash-clock (v1.0.1)", instead of showing its full web address.
 
 ### Fixed
+- Brightness works on HDMI screens that understand DDC/CI (most computer monitors). Before, the setting did nothing on HDMI; now the Hardware tab says when a screen can't take it. Needs the new OS image.
 - The progress window while a module is installed, updated or removed, MirrorDash is updated or restarted, was invisible, so nothing seemed to happen. It shows again.
 
 ### OS image
+- Brightness on HDMI screens (ddcutil).
+- Allows a second, third and fourth push button.
 - Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
 - Includes `zip`, which creating a backup needs.
 - Comes with clock module 1.0.1, where the clock ticks again (each clock on the screen keeps its own time). Before, the mirror offered the old clock as an "update".

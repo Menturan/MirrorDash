@@ -313,10 +313,13 @@ def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: s
                   restart_needed: bool = False):
     """The Sensors & Inputs card, plus the page events that report what happened."""
     from mirrordash_core.hardware import (
-        BUTTON_ACTIONS, DEVICE_TYPES, FAN_TYPES, GPIO_HEADER_PINS, I2C_PINS, get_devices,
+        BUTTON_ACTIONS, BUTTON_TYPES, DEVICE_TYPES, FAN_TYPES, GPIO_HEADER_PINS, I2C_PINS,
+        DEFAULT_LONG_PRESS, LONG_PRESS_CHOICES, get_devices,
     )
 
     devices = get_devices(system_cfg)
+    used_types = {d["type"] for d in devices}
+    next_button = next((t for t in BUTTON_TYPES if t not in used_types), None)  # offer one button at a time
     used_pins = {d["pin"] for d in devices if "pin" in d}
     if any("address" in d for d in devices):
         used_pins |= set(I2C_PINS)
@@ -331,13 +334,17 @@ def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: s
         context={
             "devices": devices,
             "device_types": DEVICE_TYPES,
-            "available_types": [t for t in DEVICE_TYPES if t not in {d["type"] for d in devices}
+            "available_types": [t for t in DEVICE_TYPES if t not in used_types
+                                and (t not in BUTTON_TYPES or t == next_button)
                                 and not (t in FAN_TYPES and any(d["type"] in FAN_TYPES for d in devices))],
             "free_pins": [(bcm, header) for bcm, header in sorted(GPIO_HEADER_PINS.items()) if bcm not in used_pins],
             "header_pins": GPIO_HEADER_PINS,
+            "button_types": BUTTON_TYPES,
             "button_actions": BUTTON_ACTIONS,
+            "long_press_choices": LONG_PRESS_CHOICES,
+            "default_long_press": DEFAULT_LONG_PRESS,
             "press_labels": [("single", "Single press"), ("double", "Double press"),
-                             ("triple", "Triple press"), ("long", "Long press (1 s)")],
+                             ("triple", "Triple press"), ("long", "Long press")],
         },
         headers=events_header(**events) if events else None,
     )
@@ -371,7 +378,7 @@ async def get_devices_card(request: Request):
 
 @router.post("/panels/system/devices/add", dependencies=[Depends(require_api_key)])
 async def add_device(request: Request):
-    from mirrordash_core.hardware import DEVICE_TYPES, PRESS_TYPES
+    from mirrordash_core.hardware import BUTTON_TYPES, DEFAULT_LONG_PRESS, DEVICE_TYPES, PRESS_TYPES
 
     form = await request.form()
     device_type = form.get("type", "")
@@ -390,8 +397,9 @@ async def add_device(request: Request):
     if spec.get("temperature"):
         temperature = form.get("temperature", "")
         device["temperature"] = int(temperature) if temperature.isdigit() else -1
-    if device_type == "button":
+    if device_type in BUTTON_TYPES:
         device["actions"] = {p: "none" for p in PRESS_TYPES}
+        device["long_press"] = DEFAULT_LONG_PRESS
     return await _save_devices(request, config, devices + [device], f"{spec['label']} added.")
 
 
@@ -408,17 +416,27 @@ async def remove_device(request: Request):
 
 @router.post("/panels/system/devices/button-actions", dependencies=[Depends(require_api_key)])
 async def save_button_actions(request: Request):
-    from mirrordash_core.hardware import BUTTON_ACTIONS, PRESS_TYPES, find_device
+    from mirrordash_core.hardware import (
+        BUTTON_ACTIONS, BUTTON_TYPES, DEFAULT_LONG_PRESS, LONG_PRESS_CHOICES, PRESS_TYPES, find_device,
+    )
 
     form = await request.form()
     actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
     if any(a not in BUTTON_ACTIONS for a in actions.values()):
         return notify("Unknown button action.", "error")
+    try:
+        long_press = float(form.get("long_press", DEFAULT_LONG_PRESS))
+    except ValueError:
+        long_press = -1.0
+    if long_press not in LONG_PRESS_CHOICES:
+        return notify("Choose how long a long press is.", "error")
+    button_type = form.get("type", "button")
     config = load_config()
-    button = find_device(config.get("system", {}), "button")
+    button = find_device(config.get("system", {}), button_type) if button_type in BUTTON_TYPES else None
     if not button:
-        return notify("No push button is connected.", "error")
+        return notify("That push button isn't connected.", "error")
     button["actions"] = actions  # takes effect on the next press, no restart needed
+    button["long_press"] = long_press
     await remount_rw()
     try:
         save_config(config)
@@ -427,10 +445,56 @@ async def save_button_actions(request: Request):
     return notify("Saved.")
 
 
+def _api_access_card(request: Request, new_token: str = "", message: str = ""):
+    created = load_config().get("api_token", {}).get("created", "")
+    return templates.TemplateResponse(
+        request=request, name="admin_api_access.html",
+        context={"created": created, "new_token": new_token},
+        headers=events_header(**{"md-notify": {"message": message, "kind": "success"}}) if message else None,
+    )
+
+
+@router.get("/panels/system/api-access", dependencies=[Depends(require_api_key)])
+async def get_api_access_card(request: Request):
+    return _api_access_card(request)
+
+
+@router.post("/panels/system/api-token/create", dependencies=[Depends(require_api_key)])
+async def create_api_token(request: Request):
+    """A new token replaces the old one. Only its hash is kept, so it is shown this once."""
+    import datetime
+    import secrets
+    from mirrordash_core.api.admin_shared import token_hash
+
+    token = secrets.token_urlsafe(32)
+    config = load_config()
+    config["api_token"] = {"hash": token_hash(token), "created": datetime.date.today().isoformat()}
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+    return _api_access_card(request, new_token=token, message="Token created.")
+
+
+@router.post("/panels/system/api-token/remove", dependencies=[Depends(require_api_key)])
+async def remove_api_token(request: Request):
+    config = load_config()
+    config.pop("api_token", None)
+    await remount_rw()
+    try:
+        save_config(config)
+    finally:
+        await remount_ro()
+    return _api_access_card(request, message="Token removed.")
+
+
 @router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
 async def get_gpio_status():
     import time
-    from mirrordash_core.hardware import DEVICE_TYPES, PRESENCE_TYPES, get_devices, gpio_inputs, kernel_boot_id
+    from mirrordash_core.hardware import (
+        BUTTON_TYPES, DEVICE_TYPES, PRESENCE_TYPES, get_devices, gpio_inputs, kernel_boot_id,
+    )
 
     system_cfg = load_config().get("system", {})
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
@@ -447,8 +511,8 @@ async def get_gpio_status():
     lines = []
     for d in get_devices(system_cfg):
         label = DEVICE_TYPES[d["type"]]["label"]
-        if d["type"] == "button":
-            status = "Ready" if "button" in gpio_inputs.detected else "Not detected. Restart the mirror to load the driver."
+        if d["type"] in BUTTON_TYPES:
+            status = "Ready" if d["type"] in gpio_inputs.detected else "Not detected. Restart the mirror to load the driver."
         elif d["type"] in PRESENCE_TYPES:
             if d["type"] not in gpio_inputs.detected:
                 status = "Not detected. Restart the mirror to load the driver."

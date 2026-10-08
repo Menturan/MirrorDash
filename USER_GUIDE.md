@@ -13,6 +13,7 @@ Welcome to MirrorDash! This guide is designed for end-users and mirror administr
 - [7. Troubleshooting FAQ](#7-troubleshooting-faq)
 - [8. Network Setup (WiFi Captive Portal)](#8-network-setup-wifi-captive-portal)
 - [9. Failsafe Operation & SD Card Preservation](#9-failsafe-operation--sd-card-preservation)
+- [10. Home Assistant](#10-home-assistant)
 
 ---
 
@@ -33,6 +34,8 @@ Once your mirror server is running, you can access it via a web browser on any d
 *   **Admin Dashboard**: `http://mirrordash.local/admin`
 
 > **Tip:** The `.local` address works automatically on macOS, Linux, and Windows 10/11 without any configuration. If it doesn't resolve on your device, fall back to the IP address: `http://<your-pi-ip>/admin`.
+
+> **Tip:** Put the admin page on your phone's home screen, so it opens like an app. iPhone: open `http://mirrordash.local/admin` in Safari, tap *Share* → *Add to Home Screen*. Android: open it in Chrome, tap the menu (⋮) → *Add to Home screen*. (A full app install needs https, which a mirror on the home network doesn't have, so Android opens it in a browser tab.)
 
 ---
 
@@ -81,15 +84,16 @@ Controls global settings shared by all modules. Adjust these to localize your mi
 Changes are applied as soon as you make them; there is no Apply button. (Turning SSH on waits until you have entered the new password.)
 *   **Screen Rotation**: Rotate the screen layout (`normal`, `left`, `right`, or `inverted`) to support portrait-oriented mirrors.
 *   **Screen Resolution**: Set display resolution or keep it on `auto`.
-*   **Screen Brightness**: Adjust display backlight brightness (0% to 100%).
+*   **Screen Brightness**: How bright the screen is (10% to 100%). A screen on the Pi's ribbon cable (DSI) sets its backlight. An HDMI screen gets the setting over the cable (DDC/CI), which most computer monitors understand and most TVs don't; if yours doesn't, the setting says so and you use the screen's own buttons. (Needs an OS image newer than 0.5.0.)
 *   **System Volume**: Control mirror audio output levels.
-*   **Sensors & Inputs**: Everything connected to the GPIO header, as a list. Choose **Connect something new**, pick the type and the GPIO (or the I²C address), and follow the wiring hint shown under it. Each type can be connected once:
-    *   *Push button* (between a GPIO and GND): choose what a *single*, *double*, *triple* and *long* (1 second) press does: turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down. Changing these takes effect immediately.
+*   **Sensors & Inputs**: Everything connected to the GPIO header, as a list. Choose **Connect something new**, pick the type and the GPIO (or the I²C address), and follow the wiring hint shown under it. Up to four push buttons can be connected, everything else once:
+    *   *Push button* (between a GPIO and GND): choose what a *single*, *double*, *triple* and *long* press does: wake the screen, turn the screen on/off, restart MirrorDash, restart the mirror, or shut it down. *Long press is* sets how long the button is held for a long press (1, 1.5, 2 or 3 seconds; 1.5 to begin with). Each button has its own settings, and changes take effect on the next press. (A second, third and fourth button need an OS image newer than 0.5.0.)
         *   *Tip*: on **GPIO 3 (pin 5)** the same button also starts the mirror again after it has been shut down (the Raspberry Pi wakes up when GPIO 3 is connected to GND). With *Shut down the mirror* on a long press, the button works as an on/off switch. GPIO 3 is also the I²C clock line, so it can't be combined with the light sensor.
     *   *PIR motion sensor* and *mmWave presence sensor* (e.g. LD2410; it also notices someone standing still): used by the Power tab to turn the screen on and off.
     *   *DHT11 temperature & humidity sensor* and *BH1750 light sensor* (I²C, uses GPIO 2 and 3): their readings appear on the Dashboard.
     *   *Fan*: cools the Pi by CPU temperature; you choose the temperature it starts at. An *on/off* fan (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone; it turns off again 5 °C lower. A *PWM fan* (4 wires) gets its speed from the GPIO and speeds up in steps as the Pi gets warmer. The fan's state is shown on the Dashboard.
 *   Adding or removing something takes effect after the mirror restarts; the card then shows a **Restart Mirror** button. The status line at the bottom shows whether each part is detected, its latest reading, or the last motion.
+*   **API Access**: a token for Home Assistant and other systems (see [10. Home Assistant](#10-home-assistant)). **Create Token** shows it once; copy it right away. A new token replaces the old one, and **Remove Token** shuts the API. The token can read the status and run the screen, nothing else, and it is kept in backups.
 
 ### 4.5. Power Tab
 Changes are applied as soon as you make them.
@@ -159,6 +163,7 @@ All other modules in that region (e.g., a Todo list with no group name) will sta
 *   Verify that your device is connected to the internet if modules depend on external feeds (like calendar files).
 
 ### System settings (brightness/rotation) are not applying
+*   Brightness on an HDMI screen only works if the screen understands DDC/CI; the Hardware tab says when it doesn't. Some monitors have DDC/CI turned off in their own menu: turn it on there and move the slider again.
 *   On Raspberry Pi, the system volume and brightness controls require administrative hardware privileges. Ensure your user has permissions to run system control scripts.
 
 ### I forgot my admin password. How do I reset it?
@@ -209,4 +214,105 @@ To ensure 100% crash resilience and protect physical SD media from wear, MirrorD
 *   **Failsafe Recovery**: If a software update causes a startup crash, the system automatically rolls back the symlink to the previous stable copy (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode) to keep the mirror online.
 
 You can safely pull the power plug at any time without risking database or partition corruption.
+
+---
+
+## 10. Home Assistant
+
+Home Assistant can show the mirror's status and sensors, turn its screen on and off (for example when nobody is home) and set its brightness.
+
+1.  **Create a token**: in the admin page, *Hardware* → *API Access* → **Create Token**, and copy it.
+2.  **Save it in Home Assistant**: add this line to `secrets.yaml`, with `Bearer`, a space and your token:
+    ```yaml
+    mirrordash_token: "Bearer paste-your-token-here"
+    ```
+3.  **Add the mirror**: paste this into `configuration.yaml` and restart Home Assistant. Delete the sensors you don't have connected (temperature, humidity, light, motion). If Home Assistant can't find `mirrordash.local`, use the mirror's IP address instead.
+
+```yaml
+rest:
+  - resource: http://mirrordash.local/api/v1/status
+    headers:
+      Authorization: !secret mirrordash_token
+    scan_interval: 30
+    sensor:
+      - name: "Mirror CPU temperature"
+        value_template: "{{ value_json.cpu_temperature_c }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+      - name: "Mirror brightness"
+        value_template: "{{ value_json.brightness }}"
+        unit_of_measurement: "%"
+      - name: "Mirror room temperature"
+        value_template: "{{ value_json.sensors.temperature_c }}"
+        unit_of_measurement: "°C"
+        device_class: temperature
+      - name: "Mirror humidity"
+        value_template: "{{ value_json.sensors.humidity }}"
+        unit_of_measurement: "%"
+        device_class: humidity
+      - name: "Mirror light"
+        value_template: "{{ value_json.sensors.lux }}"
+        unit_of_measurement: "lx"
+        device_class: illuminance
+    binary_sensor:
+      - name: "Mirror screen on"
+        value_template: "{{ value_json.screen_on }}"
+      - name: "Mirror motion"
+        value_template: "{{ value_json.sensors.motion }}"
+        device_class: motion
+
+rest_command:
+  mirror_screen:
+    url: http://mirrordash.local/api/v1/screen
+    method: POST
+    headers:
+      Authorization: !secret mirrordash_token
+    content_type: application/json
+    payload: '{"state": "{{ state }}"}'
+  mirror_brightness:
+    url: http://mirrordash.local/api/v1/brightness
+    method: POST
+    headers:
+      Authorization: !secret mirrordash_token
+    content_type: application/json
+    payload: '{"value": {{ value | int }}}'
+
+switch:
+  - platform: template
+    switches:
+      mirror_screen:
+        friendly_name: "Mirror screen"
+        value_template: "{{ is_state('binary_sensor.mirror_screen_on', 'on') }}"
+        turn_on:
+          action: rest_command.mirror_screen
+          data:
+            state: "on"
+        turn_off:
+          action: rest_command.mirror_screen
+          data:
+            state: "off"
+
+template:
+  - number:
+      - name: "Mirror screen brightness"
+        state: "{{ states('sensor.mirror_brightness') | int(100) }}"
+        min: 10
+        max: 100
+        step: 10
+        unit_of_measurement: "%"
+        set_value:
+          - action: rest_command.mirror_brightness
+            data:
+              value: "{{ value }}"
+```
+
+What the API answers, for your own scripts (all with the header `Authorization: Bearer <token>`):
+
+| Call | What it does |
+|------|--------------|
+| `GET /api/v1/status` | Version, uptime, CPU temperature, `screen_on`, `brightness`, running modules and `sensors` (`temperature_c`, `humidity`, `lux`, `motion`, `fan_level`, for what is connected). |
+| `POST /api/v1/screen` `{"state": "on"}` | Wakes the screen for the screen timeout; add `"timeout_minutes": 2` for two minutes. `{"state": "off"}` turns it off. |
+| `POST /api/v1/brightness` `{"value": 60}` | Sets and saves the brightness (10–100). |
+
+A wrong or missing token gets `401`. (The older `POST /admin/screen` still works without a token, so existing automations keep running.)
 

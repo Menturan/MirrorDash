@@ -90,6 +90,12 @@ if ! systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8 | g
     exit 1
 fi
 
+# HDMI brightness goes through ddcutil; without it the brightness setting does nothing on HDMI.
+if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/bin/ddcutil; then
+    echo -e "\e[31m[ERROR] ddcutil is missing: brightness would not work on HDMI screens.\e[0m"
+    exit 1
+fi
+
 # --- Unmount & Shrink ---
 echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
 cleanup

@@ -157,7 +157,11 @@ step_installing_packages() {
       parted \
       zip \
       overlayroot \
+      ddcutil \
       git
+
+  # HDMI screens take brightness over DDC/CI (I2C on the HDMI cable); ddcutil needs /dev/i2c-*
+  echo "i2c-dev" > /etc/modules-load.d/mirrordash-i2c.conf
 }
 
 step_setting_hostname() {
@@ -413,6 +417,7 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
+pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
@@ -428,7 +433,7 @@ step_gpio_helper() {
   cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays
 #!/bin/bash
 # Usage: mirrordash-gpio-overlays [type:value ...]
-#   button, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
+#   button, button_2..4, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
 #   fan, pwm_fan: GPIO:temperature, e.g. fan:14:60 (switch-on temperature 40-80 °C)
 # Each type at most once, one fan, every GPIO at most once, GPIO 2/3 reserved while I2C is used.
 set -euo pipefail
@@ -445,7 +450,7 @@ for arg in "$@"; do
   [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
   seen_type[$type]=1
   case "$type" in
-    button|pir|mmwave|dht11|fan|pwm_fan)
+    button|button_2|button_3|button_4|pir|mmwave|dht11|fan|pwm_fan)
       { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
       [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
       seen_pin[$value]=1 ;;
@@ -455,8 +460,11 @@ for arg in "$@"; do
       die "unknown device type: $arg" ;;
   esac
   case "$type" in
-    # Buttons/sensors become input devices (keycodes KEY_PROG1-3): kernel debounce, no polling
+    # Buttons/sensors become input devices (keycodes KEY_PROG1-3, KEY_MACRO1-3): kernel debounce, no polling
     button) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button") ;;
+    button_2) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=656,label=mirrordash-button-2") ;;
+    button_3) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=657,label=mirrordash-button-3") ;;
+    button_4) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=658,label=mirrordash-button-4") ;;
     pir)    lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir") ;;
     mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
     dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;

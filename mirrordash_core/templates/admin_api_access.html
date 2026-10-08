@@ -1,0 +1,42 @@
+<!-- API Access card (System tab): one token for Home Assistant and other systems. Re-rendered after every change. -->
+<section class="card" id="api-access-card" style="margin-top: 24px;">
+    <h2><i class="fas fa-key" aria-hidden="true"></i> API Access</h2>
+    <p class="panel-subtitle">A token lets Home Assistant or another system read the mirror's status and sensors, turn the screen on and off and set the brightness. It can't change anything else, and it isn't your admin password.</p>
+
+    {% if new_token %}
+    <div style="display: grid; gap: 8px;">
+        <label for="api-token-value" style="font-size: 0.85rem; color: white;">Your new token. Copy it now: it isn't shown again.</label>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input type="text" id="api-token-value" class="form-control" readonly value="{{ new_token }}"
+                   style="flex: 1 1 240px; font-family: var(--mono-family); font-size: 0.8rem;" onclick="this.select()">
+            <!-- navigator.clipboard needs https; the mirror is plain http on the home network -->
+            <button type="button" class="btn secondary"
+                    onclick="const f = document.getElementById('api-token-value'); f.select(); document.execCommand('copy'); showGlobal('Token copied.', 'success');">
+                <i class="fas fa-copy" aria-hidden="true"></i> Copy
+            </button>
+        </div>
+    </div>
+    {% elif created %}
+    <p style="font-size: 0.85rem; margin: 0;">A token was created on {{ created }}. Home Assistant sends it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+    {% else %}
+    <p style="font-size: 0.85rem; margin: 0;">No token yet. Create one to connect Home Assistant.</p>
+    {% endif %}
+
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;">
+        <button type="button" class="btn primary" hx-post="/admin/panels/system/api-token/create"
+                hx-target="#api-access-card" hx-swap="outerHTML" hx-disabled-elt="this"
+                {% if created %}hx-confirm="Create a new token? The old one stops working, so put the new one in Home Assistant."{% endif %}>
+            <i class="fas fa-plus" aria-hidden="true"></i> {% if created %}Create New Token{% else %}Create Token{% endif %}
+        </button>
+        {% if created %}
+        <button type="button" class="btn danger" hx-post="/admin/panels/system/api-token/remove"
+                hx-target="#api-access-card" hx-swap="outerHTML" hx-disabled-elt="this"
+                hx-confirm="Remove the token? Home Assistant can't reach the mirror until you create a new one.">
+            <i class="fas fa-trash-alt" aria-hidden="true"></i> Remove Token
+        </button>
+        {% endif %}
+    </div>
+    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 12px 0 0 0;">
+        The status is at <code>http://mirrordash.local/api/v1/status</code>. The user guide has a ready Home Assistant setup.
+    </p>
+</section>

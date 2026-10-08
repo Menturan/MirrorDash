@@ -15,6 +15,7 @@ from mirrordash_core.ws_manager import manager
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
 from mirrordash_core.api.backup import router as backup_router
+from mirrordash_core.api.public import router as public_router
 from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active, get_hotspot_password, restore_captive_ap
 from mirrordash_core.system.network import HOTSPOT_SSID
 
@@ -96,6 +97,7 @@ async def captive_portal_redirect(request: Request, call_next):
 # Register admin API router
 app.include_router(admin_router)
 app.include_router(backup_router)
+app.include_router(public_router)
 
 # Serve static files
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
