@@ -1,272 +1,73 @@
-# MirrorDash Release & Deployment Process
+# Releasing MirrorDash
 
-This document outlines the release, testing, and deployment workflows for MirrorDash.
+There are two kinds of releases:
 
-> [!IMPORTANT]
-> **Core App Release vs. System OS Release: The Crucial Distinction**
->
-> | Property | Core Application (`mirrordash`) | System OS Image (`mirrordash-os`) |
-> | :--- | :--- | :--- |
-> | **What it is** | The Python application running the FastAPI server and Admin dashboard. | The underlying operating system configuration, drivers, Wayland compositor, and system packages. |
-> | **When to release** | Whenever new features, layout changes, module upgrades, or Python bug fixes are merged. | Only when system packages (e.g. `nginx`, `plymouth`, `labwc`), hardware configurations, or network fallback scripts are modified. |
-> | **Release target** | Published to PyPI via automated GitHub Actions. | Built on GitHub Actions `ubuntu-24.04-arm64` runners (real ARM hardware, no emulation) and attached directly to the GitHub Release. |
-> | **Deployment method** | **Non-Destructive**: Triggered via the Admin Dashboard's "Updates" tab (uses A/B `venv` partition updates). | **Destructive**: Requires flashing the SD card. Backup settings first, flash, configure Wi-Fi, and restore settings. |
-> | **Risk level** | **Low**: Handled by the A/B virtual environment update system with automatic rollback to `venv_old` or Safe Mode. | **High**: Overwrites all card data. System must be re-provisioned via the Wi-Fi Captive Portal on first boot. |
-> | **Tag format** | `vX.Y.Z` (e.g. `v0.2.4`) | `vX.Y.Z-osN` (e.g. `v0.2.4-os1`) |
+| | App (`mirrordash` on PyPI) | OS image (SD card) |
+| :--- | :--- | :--- |
+| **What** | The Python app: server, mirror page, admin page. | Raspberry Pi OS with MirrorDash set up: system packages, kiosk, Wi-Fi fallback, read-only filesystem. |
+| **When** | Any change mirror owners would notice in the app. | Only when something outside the app changes (`scripts/setup_appliance.sh`, `scripts/build_image.sh`, system configuration). |
+| **Tag** | `vX.Y.Z` (test versions `vX.Y.ZrcN`) | `vX.Y.Z-osN`: the image contains app `X.Y.Z` |
+| **Reaches mirrors** | **Settings → Check for Updates** in the admin page (A/B venv with automatic rollback). | Flashing the SD card. |
 
-## Table of Contents
-
-- [Release Guidelines](#release-guidelines)
-- [Two Release Tracks](#two-release-tracks)
-- [Track 1: Core App Release](#track-1-core-app-release)
-- [Track 2: System OS Image Release](#track-2-system-os-image-release)
-- [Architecture & Infrastructure Behind Releases](#architecture--infrastructure-behind-releases)
-- [Client Update & Deployment Procedures](#client-update--deployment-procedures)
-- [Manual Reference (Legacy)](#manual-reference-legacy)
-
----
-
-## Release Guidelines
-
-- **Only Release Stable Code**: Ensure all tests pass successfully before releasing.
-- **Strict SemVer**: Follow [Semantic Versioning](https://semver.org/). Bumps are:
-  - `patch` (e.g. `0.2.1` -> `0.2.2`) for backward-compatible bug fixes.
-  - `minor` (e.g. `0.2.x` -> `0.3.0`) for new, backward-compatible features.
-  - `major` (e.g. `0.x.x` -> `1.0.0`) for API-breaking changes.
-- **Do Not Manually Tag Locally**: Let the GitHub Release interface create the git tag. This ensures that the GitHub Release, git tag, and PyPI package version are always perfectly aligned.
-- **Hand-written Changelog**: `CHANGELOG.md` is written for mirror owners, not developers. Add an entry under `## [Unreleased]` in the same commit as any change a user would notice, in plain language (what changed for them, not how it was implemented). Use `### Added`, `### Changed` and `### Fixed`; put changes that only reach users through a new SD card image under `### OS image`. Leave out internal work (refactors, tests, docs, CI). The release scripts only move these entries into a version section; they refuse to release when there is nothing to move. To see what has changed since the last release: `git log --oneline vX.Y.Z..HEAD`.
-
----
-
-## Two Release Tracks
-
-MirrorDash produces **two independent artifacts** from the same repository. They have separate lifecycles, versioning, and deployment methods.
-
-| | **Track 1: Core App** | **Track 2: System OS Image** |
-|:---|:---|:---|
-| **Artifact** | `mirrordash` Python package (PyPI) | `mirrordash-os-vX.Y.Z.img.gz` (GitHub Release asset) |
-| **Trigger** | Push tag `vX.Y.Z` | Push tag `vX.Y.Z-osN` |
-| **Build** | GitHub Actions `publish.yml` (x86_64, build sdist/wheel) | GitHub Actions `build-os-image.yml` (ARM64, native build) |
-| **CHANGELOG** | Move `[Unreleased]` entries → `[X.Y.Z]` section (`### OS image` stays under `[Unreleased]`) | Move all `[Unreleased]` entries → new `[X.Y.Z-osN]` section (see Track 2 below) |
-| **When to use** | Every release with code changes | Only when OS-level changes (packages, scripts, boot config) need a new golden image |
-
-> [!IMPORTANT]
-> **CHANGELOG discipline**: `[X.Y.Z]` sections contain **only** app changes. OS image changes stay under `[Unreleased]` → `### OS image` until the golden image is tested and released with its own `vX.Y.Z-osN` tag. `release_core.py` enforces this automatically.
-
----
-
-## Track 1: Core App Release
-
-For Python package changes: new features, bug fixes, module updates, admin dashboard changes, API changes.
-
-### 1. Pre-Release (Automated)
-
-Use the release helper script to run tests, bump the version, reorganize the CHANGELOG, and push:
+Every real release is made from something you tested first, all with one script:
 
 ```bash
-python3 scripts/release_core.py [version]
+python3 scripts/release.py            # asks what to do
+python3 scripts/release.py --dry-run  # shows every change and command without making it
 ```
 
-> [!TIP]
-> **Interactive Wizard**: If you run `python3 scripts/release_core.py` with no version argument, it starts an interactive CLI wizard that parses the current version from `pyproject.toml` and guides you to select a **bugfix (patch)**, **minor**, **major**, or **prerelease** bump (with custom or standard `alpha`/`beta`/`rc` suffix selection). If the current version is already a prerelease (e.g. `0.2.5-rc1`), it offers to automatically increment it to the next prerelease build (`0.2.5-rc2`).
+| Choice | What it does |
+| :--- | :--- |
+| **1. Test version of the app** | Sets the version to `X.Y.ZrcN`, pushes and publishes it on GitHub and PyPI as a pre-release. Only mirrors with **Settings → Test versions** turned on are offered it. The CHANGELOG is left alone. |
+| **2. Release the app** | Sets the version to `X.Y.Z`, moves the `[Unreleased]` entries into `[X.Y.Z]` (the `### OS image` part stays), pushes and publishes `vX.Y.Z` for every mirror, with the CHANGELOG section as release notes. |
+| **3. Build a test OS image** | Runs the *Build OS Image* workflow on master (about 30 minutes) and downloads the image to `build_workspace/test-image/`. |
+| **4. Release the tested image** | Moves the CHANGELOG entries into `[X.Y.Z-osN]`, pushes and publishes `vX.Y.Z-osN` with **the file you tested**. Nothing is rebuilt. |
 
-The script will:
-1. Validate the SemVer version argument
-2. Ensure you are on `master` and pull latest
-3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
-4. Bump `version` in `pyproject.toml`
-5. Move the `[Unreleased]` entries in `CHANGELOG.md` to `[0.2.5]` (`### OS image` stays under `[Unreleased]`)
-6. Commit and push to `origin/master`
+Before it changes anything, the script stops if you're not on a clean `master` equal to `origin/master`, the tag already exists, `gh` isn't logged in, or the tests fail. It shows what it is about to do and asks first.
 
-> [!NOTE]
-> The script does **not** write CHANGELOG entries — someone must have already added them under `[Unreleased]` before running it. It only reorganizes existing entries into the correct versioned section.
+## Before your first release
 
-### 2. Create the GitHub Release
+- Install and log in to the GitHub CLI: `sudo apt install gh && gh auth login`.
+- The dev venv: `uv venv && uv pip install -e ".[dev]"` (the script runs `.venv/bin/pytest`).
+- PyPI publishes through trusted publishing (OIDC): `.github/workflows/publish.yml` runs in the `pypi` environment, which is registered as a Trusted Publisher for `mirrordash` on pypi.org. No tokens are stored anywhere. The workflow refuses to publish when the tag isn't `v` + the version in `pyproject.toml`.
 
-1. Navigate to **Releases** → **Draft a new release**.
-2. Choose a tag `v0.2.5` → **Create new tag on publish**.
-3. Title matches the tag (e.g. `v0.2.5`).
-4. Click **Publish release**.
+## Writing the CHANGELOG
 
-### 3. Verification
+`CHANGELOG.md` is for mirror owners, not developers. Add an entry under `## [Unreleased]` in the same commit as any change a user would notice, in plain language: what changed for them, not how. Use `### Added`, `### Changed` and `### Fixed`; put changes that only reach users through a new SD card image under `### OS image`. Leave out internal work (refactors, tests, docs, CI). The script refuses to release when there is nothing under `[Unreleased]`. To see what changed since the last release: `git log --oneline vX.Y.Z..HEAD`.
 
-The **Publish to PyPI** workflow runs automatically:
-1. Go to the **Actions** tab and monitor the workflow.
-2. Verify the package appears on [PyPI](https://pypi.org/project/mirrordash/).
+Versions follow [SemVer](https://semver.org/): `patch` for fixes, `minor` for new features, `major` for breaking changes.
 
-If you need to perform these steps manually instead of using the script, see the [manual reference](#manual-reference-track-1-core-app).
+## Releasing the app
 
----
+1. Choose **1** for a test version. On your test mirror, turn on **Settings → Test versions**, click **Check for Updates** and install it.
+2. Use it. If something is wrong, fix it on master and choose **1** again (`rc2`, …).
+3. Choose **2**: it suggests the version without `rc`. Every mirror is now offered the update.
 
-## Track 2: System OS Image Release
+## Releasing an OS image
 
-For OS-level changes: new system packages, Plymouth themes, labwc config, network fallback scripts, boot parameters, initramfs changes, `setup_appliance.sh` modifications.
+The app version in the image is whatever master has, so release the app first (choose **2**) if it changed.
 
-> [!IMPORTANT]
-> **Prerequisite**: The Core App `vX.Y.Z` release should already exist. The OS image tracks the Core App version (e.g. `v0.2.4-os1` is the first OS image for Core App `v0.2.4`).
+1. Choose **3**, then flash `build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz` with Raspberry Pi Imager and go through the checklist:
+   1. **Boot**: the MirrorDash splash shows, no system messages or login prompt, no mouse cursor.
+   2. **Wi-Fi setup**: with no network, the `MirrorDash-Setup` hotspot (password `mirrordash`) appears within 30 seconds. Joining it opens the setup page (otherwise go to `http://mirrordash.setup/wifi-setup`); pick a network, and the mirror connects and restarts.
+   3. **Mirror**: the page loads, placeholders turn into modules, the clock ticks.
+   4. **Admin**: `http://mirrordash.local/admin` asks for a password to be set, then opens.
+2. Choose **4** to release that same image. If master changed since the build, it lists what the image doesn't contain and asks before going on.
 
-### 1. Pre-Release (Automated)
+If the build fails (runner or network trouble), just choose **3** again.
 
-Use the release helper script to run tests, reorganize the CHANGELOG, and push:
+## Updating mirrors
+
+**App** (keeps everything): **Settings → Check for Updates** in the admin page. The new version is installed into the spare venv and the mirror restarts; if it doesn't come up within 10 seconds it boots the previous version again. Over SSH, as a fallback:
 
 ```bash
-python3 scripts/release_os.py [version]
+sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv --upgrade mirrordash
+sudo reboot
 ```
 
-> [!TIP]
-> **Interactive Wizard**: If you run `python3 scripts/release_os.py` with no version argument, it starts an interactive CLI wizard. To adhere to the dual-artifact model, the script automatically reads the active Core App version from `pyproject.toml` and scans `CHANGELOG.md` to recommend the next OS build number for that specific core version (e.g. `X.Y.Z-os1` or `X.Y.Z-os(N+1)`). You can select the recommended version or enter a custom build suffix for the active core base.
+**OS image** (erases the card):
 
-The script will:
-1. Validate the `X.Y.Z-osN` version argument
-2. Ensure you are on `master` and pull latest
-3. Run the full test suite (`.venv/bin/pytest`) — halts on failure
-4. Move all `[Unreleased]` entries in `CHANGELOG.md` to `[0.2.4-os1]`
-5. Commit and push to `origin/master`
-
-> [!NOTE]
-> The script does **not** write CHANGELOG entries — someone must have already added them under `[Unreleased]` before running it. It only moves existing entries to the correct versioned section.
-
-### 2. Create the GitHub Release
-
-1. Navigate to **Releases** → **Draft a new release**.
-2. Choose a tag `v0.2.4-os1` (first OS image for this version) → **Create new tag on publish**.
-3. Title matches the tag (e.g. `v0.2.4-os1`).
-4. Click **Publish release**.
-
-### 3. Automated Build & Upload
-
-The **Build OS Image** workflow triggers automatically on `ubuntu-24.04-arm64`:
-
-1. **Free disk space** (`EisBear/free-disk-space-ubuntu-runners@v1`)
-2. **Checkout** repository
-3. **Install deps**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, `pishrink.sh`
-4. **Run `scripts/build_image.sh`** — native ARM, produces `build_workspace/mirrordash-os-vX.Y.Z.img.gz` + `.sha256`
-5. **Upload** both files as GitHub Release assets
-
-> [!TIP]
-> Monitor the workflow in the **Actions** tab. Build time is typically 15–30 minutes.
-
-### 4. Verification & Testing Checklist
-
-Download the image from the GitHub Release and test on real hardware:
-
-1. **Boot Splash & Plymouth**: Custom splash appears, no systemd status messages or login prompts.
-2. **Invisible Mouse Cursor**: Cursor remains hidden on the kiosk display.
-3. **Failsafe Captive Portal**:
-   - Boot without Ethernet or saved WiFi → `MirrorDash Setup` AP activates within 30 seconds.
-   - Connect, visit `http://10.42.0.1/wifi-setup`, enter credentials, submit.
-   - System remounts, saves profiles, and reboots.
-4. **Dashboard & Mirror Load**: `index.html` loads, skeletons appear, WebSocket connects, widgets render.
-5. **Admin Access**: Dashboard reachable at `http://mirrordash.local/admin`, requires API key.
-
-### 5. Rebuilding a Failed Image
-
-If the workflow fails (runner issues, network timeouts):
-1. Delete the failed GitHub Release (or just the tag).
-2. Recreate the tag with the same name — a new workflow run starts automatically.
-3. No need to bump the `-osN` suffix unless you want to track multiple attempts.
-
----
-
-## Architecture & Infrastructure Behind Releases
-
-### GitHub Actions (OIDC)
-Our release workflow uses the official PyPA action `pypa/gh-action-pypi-publish@release/v1` combined with GitHub's OIDC (OpenID Connect) provider.
-
-Inside [.github/workflows/publish.yml](file:///home/menturan/repos/mymagicmirror/.github/workflows/publish.yml), we request specific token write permissions:
-```yaml
-permissions:
-  id-token: write
-```
-This is configured to match the registered **Trusted Publisher** on the PyPI dashboard under the `pypi` environment. This secures our publishing pipeline against credential leaks.
-
-### OS Image Build Infrastructure
-The OS image is built on `ubuntu-24.04-arm64` GitHub Actions runners — real ARM hardware with no emulation. The runner:
-
-- Has native `aarch64` CPU, so `update-initramfs`, `raspi-config`, and all ARM binaries execute directly
-- Uses `EisBear/free-disk-space-ubuntu-runners@v1` to clear pre-installed toolchains (dotnet, swift, android, haskell) before the build
-- Installs only the minimal required packages via `apt`
-- Downloads `pishrink.sh` at runtime
-
-This eliminates the QEMU-related initramfs corruption, white-screen boot issues, and pigz warnings that plagued the previous x86_64 + QEMU build pipeline.
-
----
-
-## Manual Reference (Legacy)
-
-If you need to perform release steps without the automation scripts (e.g. debugging, offline environment), the manual procedures below mirror what the scripts do.
-
-### Track 1: Core App (Manual)
-
-1. **Pre-Release Checklist**:
-   - Ensure you are on `master` and up to date
-   - Run `.venv/bin/pytest` — all tests must pass
-   - Bump `version` in `pyproject.toml`
-   - Move the entries under `[Unreleased]` → new `## [X.Y.Z] - YYYY-MM-DD` section
-   - Leave the `### OS image` subsection under `[Unreleased]`
-
-2. **Commit and Push**:
-   ```bash
-   git add pyproject.toml CHANGELOG.md
-   git commit --no-gpg-sign -m "chore: bump version to X.Y.Z"
-   git push origin master
-   ```
-
-3. Create the GitHub Release (tag `vX.Y.Z`) and verify PyPI publish.
-
-### Track 2: System OS Image (Manual)
-
-1. **Update CHANGELOG.md**:
-   - Move all entries from `[Unreleased]` → new `## [X.Y.Z-osN] - YYYY-MM-DD` section, starting with `OS image with MirrorDash X.Y.Z.`
-
-2. **Commit and Push**:
-   ```bash
-   git add CHANGELOG.md
-   git commit --no-gpg-sign -m "chore: organize CHANGELOG for vX.Y.Z-osN OS image release"
-   git push origin master
-   ```
-
-3. Create the GitHub Release (tag `vX.Y.Z-os1`) — the automated ARM build workflow will handle the rest.
-
----
-
-## Client Update & Deployment Procedures
-
-Once a new release is available, follow these instructions to apply it to a running MirrorDash kiosk.
-
-### 1. Deploying a Core App Update (Non-Destructive)
-
-To upgrade the core application on active devices:
-
-#### Method A: Online Dashboard Update (Recommended)
-1. Open the **Admin Dashboard** (`http://mirrordash.local/admin`).
-2. Go to the **Updates** tab.
-3. Click **Update Core** to trigger the update. The system will download the new package from PyPI, stage it in the offline virtual environment (`venv_next`), commit the atomic A/B swap, and automatically restart.
-
-#### Method B: SSH Command Line Update (Failsafe/Manual)
-1. Access the device over SSH.
-2. Manually invoke `uv` to update the active virtual environment:
-   ```bash
-   sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv --upgrade mirrordash
-   ```
-3. Restart the background service:
-   ```bash
-   sudo reboot
-   ```
-
-### 2. Deploying a System OS Update (Destructive)
-
-To update the OS configuration on active devices, you must flash the new image. Since this overwrites all SD card contents, follow this backup-and-restore protocol:
-
-1. **Back up Configuration**:
-   - Navigate to the **Backup** tab in the existing Admin Dashboard.
-   - Click **Create Backup** to download the `mirrordash_backup.zip` file. This contains all layouts, timezones, Wi-Fi credentials, and settings.
-2. **Flash the SD Card**:
-   - Flash the new `mirrordash-os-vX.Y.Z.img.gz` to the SD card using **Raspberry Pi Imager** or **BalenaEtcher**.
-3. **Provision Wi-Fi (Captive Portal)**:
-   - Insert the card and power on the Pi. The system will enter **Failsafe Captive Portal** mode within 30 seconds.
-   - Connect to the **`MirrorDash-Setup`** hotspot using password **`mirrordash`**.
-   - Navigate to `http://10.42.0.1/`, select your home network SSID, enter your password, and click **Connect & Reboot**.
-4. **Restore Configuration**:
-   - Once the mirror restarts, open the **Admin Dashboard** (`http://mirrordash.local/admin`).
-   - Go to the **Backup** tab, upload the backup `.zip` file, and restore it. The system will automatically restore your configuration and reboot to resume normal operation.
+1. **Backup → Create backup** in the admin page and download the `.mirror` file. It doesn't contain the admin password or Wi-Fi passwords.
+2. Flash the new image.
+3. Connect the mirror to Wi-Fi through the `MirrorDash-Setup` hotspot, as in the checklist above.
+4. Set an admin password, then **Backup → Restore** with the `.mirror` file.

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import job_response, notify, require_api_key, start_job, templates
-from mirrordash_core.config import find_module_config, load_config, save_config
+from mirrordash_core.config import find_module_config, load_config, save_config, version_key
 from mirrordash_core.module_loader import module_loader, find_entry_point
 from mirrordash_core.system import remount_ro, remount_rw
 from mirrordash_core.system.network import fetch_json_cached
@@ -455,12 +455,6 @@ async def check_module_update_route(module_name: str):
         except Exception:
             pass
 
-    def _parse_version(v: str) -> tuple:
-        try:
-            return tuple(int(x) for x in v.split(".")[:3])
-        except ValueError:
-            return (0,)
-
     if direct_url_info and "vcs_info" in direct_url_info:
         vcs_info = direct_url_info["vcs_info"]
         url = direct_url_info.get("url", "")
@@ -482,7 +476,7 @@ async def check_module_update_route(module_name: str):
                     # Installed from exactly this release (upgrades install git+url@tag): up to date,
                     # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
                     on_latest = vcs_info.get("requested_revision") == tag_name
-                    is_newer = not on_latest and _parse_version(latest_version) > _parse_version(current_version)
+                    is_newer = not on_latest and version_key(latest_version) > version_key(current_version)
                     if is_newer:
                         git_install_url = f"git+{url}@{tag_name}"
                         return HTMLResponse(content=f"""
@@ -506,7 +500,7 @@ async def check_module_update_route(module_name: str):
         return HTMLResponse(content="")
 
     latest_version = pypi_data.get("info", {}).get("version", current_version)
-    is_newer = _parse_version(latest_version) > _parse_version(current_version)
+    is_newer = version_key(latest_version) > version_key(current_version)
 
     if is_newer:
         return HTMLResponse(content=f"""

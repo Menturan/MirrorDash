@@ -30,7 +30,7 @@ This document provides **two build tracks** for producing the MirrorDash Golden 
 | **What it is** | GitHub Actions workflow building on real ARM64 hardware | Step-by-step guide for building directly on a Pi or ARM workstation |
 | **When to use** | **Primary/release path** — every OS image release should use this | **Reference and fallback** — for offline builds, debugging, or understanding the internals |
 | **QEMU** | Not used (real ARM runners) | Not used (native ARM only) |
-| **Output** | `.img.gz` + `.sha256` uploaded as GitHub Release assets | `.img.gz` on local disk, ready for flashing |
+| **Output** | `.img.xz` + `.sha256`, tested and then published by `scripts/release.py` | `.img.gz` on local disk, ready for flashing |
 | **Start here** | [Track A ↓](#track-a-automated-build-recommended) | [Track B ↓](#track-b-manual-build-reference-guide) |
 
 > [!TIP]
@@ -40,21 +40,21 @@ This document provides **two build tracks** for producing the MirrorDash Golden 
 
 ## Track A: Automated Build (Recommended)
 
-The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions whenever a tag matching `v*-os*` (e.g. `v0.2.4-os1`) is pushed. This eliminates QEMU emulation bugs and produces a compressed `.img.xz` ready for flashing. The image locks itself (OverlayFS) on its first boot, see below.
+The complete production-ready SD card image is built automatically on real ARM hardware via GitHub Actions, started by `scripts/release.py` (choice 3) or by hand from the Actions tab. This eliminates QEMU emulation bugs and produces a compressed `.img.xz` ready for flashing. The image locks itself (OverlayFS) on its first boot, see below.
 
 ### Triggering a Build
 
-1. Ensure the Core App version is already bumped and the `vX.Y.Z` release exists (the OS image tracks the Core App version).
-2. Create a new GitHub Release with a tag like `v0.2.4-os1`.
-3. The **Build OS Image** workflow starts automatically on `ubuntu-24.04-arm64` runners.
+1. Release the app first if it changed (the image contains whatever app version master has).
+2. Run `python3 scripts/release.py` and choose **3**. It runs the **Build OS Image** workflow on `ubuntu-24.04-arm` runners and downloads the image to flash and test.
+3. Choose **4** to publish that same image as `vX.Y.Z-osN`. See [RELEASING.md](RELEASING.md).
 
 ### What the Workflow Does
 
-1. **Free disk space** on the runner (`EisBear/free-disk-space-ubuntu-runners@v1`).
+1. **Free disk space** on the runner (`endersonmenezes/free-disk-space@v3`).
 2. **Checkout** the repository.
-3. **Install minimal dependencies**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, plus `pishrink.sh`.
+3. **Install minimal dependencies**: `parted`, `xz-utils`, `e2fsprogs`, `pigz`, `wget`, `curl`, plus a pinned `pishrink.sh`.
 4. **Run `scripts/build_image.sh`** natively on ARM — no emulation. Produces `build_workspace/mirrordash-os-vX.Y.Z.img.xz` + `.sha256`.
-5. **Upload** both files as GitHub Release assets.
+5. **Save** both files as a workflow artifact for 14 days; the release script publishes them once tested.
 
 ### Reproducibility & First-Boot Lock
 

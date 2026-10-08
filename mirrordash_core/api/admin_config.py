@@ -301,7 +301,8 @@ async def get_panel_config(request: Request):
         context={
             "visual_form_html": visual_form_html,
             "raw_json_str": raw_json_str,
-            "current_version": current_version
+            "current_version": current_version,
+            "prerelease": config.get("system", {}).get("prerelease", False),
         }
     )
 

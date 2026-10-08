@@ -715,10 +715,11 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
 @patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_task")
 @patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@pytest.mark.parametrize("prerelease", [False, True])
 def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_restart,
-                              mock_ro, mock_rw, mock_load, client):
-    """POST /admin/core-update succeeds, triggers restart, and returns success."""
-    mock_load.return_value = MOCK_CONFIG
+                              mock_ro, mock_rw, mock_load, prerelease, client):
+    """POST /admin/core-update succeeds, triggers restart, and installs test versions only when opted in."""
+    mock_load.return_value = {**MOCK_CONFIG, "system": {**MOCK_CONFIG.get("system", {}), "prerelease": prerelease}}
 
     mock_proc = MagicMock()
     mock_proc.returncode = 0
@@ -734,6 +735,7 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     mock_rw.assert_awaited_once()
     mock_ro.assert_awaited_once()
     mock_create_task.assert_called_once()
+    assert ("--prerelease=allow" in mock_exec.call_args.args) is prerelease
 
 
 @patch("mirrordash_core.api.admin_system.load_config")
@@ -758,6 +760,30 @@ def test_core_update_failure(mock_version, mock_create_task, mock_exec,
     assert "Upgrade failed" in response.json()["detail"]
     mock_create_task.assert_not_called()
     mock_ro.assert_awaited_once()  # remount_ro must still be called in finally block
+
+
+def test_version_key_orders_pre_releases_below_their_release():
+    from mirrordash_core.config import version_key
+    ordered = ["0.4.0", "0.5.0a1", "0.5.0b2", "0.5.0rc1", "0.5.0rc2", "0.5.0", "v0.5.1", "0.10.0"]
+    assert sorted(reversed(ordered), key=version_key) == ordered
+    assert version_key("0.5.0-rc1") == version_key("0.5.0rc1")
+    assert version_key("unknown") < version_key("0.0.1")
+
+
+@pytest.mark.parametrize("prerelease, expected", [(False, "0.4.0"), (True, "0.5.0rc1")])
+@patch("mirrordash_core.api.admin_system.get_core_version", return_value="0.4.0")
+def test_core_update_check_offers_test_versions_only_when_opted_in(mock_version, prerelease, expected, client):
+    """With "Test versions" on, the newest pre-release on PyPI is offered; otherwise only final releases."""
+    pypi = {"info": {"version": "0.4.0"},
+            "releases": {"0.3.9": [{}], "0.4.0": [{}], "0.5.0rc1": [{}], "0.6.0rc1": []}}  # no files: never offered
+    response_body = MagicMock()
+    response_body.__enter__.return_value.read.return_value = json.dumps(pypi).encode()
+    config = {**MOCK_CONFIG, "system": {**MOCK_CONFIG.get("system", {}), "prerelease": prerelease}}
+    with patch("mirrordash_core.api.admin_system.load_config", return_value=config), \
+         patch("mirrordash_core.api.admin_system.urllib.request.urlopen", return_value=response_body):
+        data = client.get("/admin/core-update-check", headers={"X-API-Key": "secret"}).json()
+    assert data["latest_version"] == expected
+    assert data["update_available"] is prerelease
 
 
 @patch("mirrordash_core.api.admin_system.load_config")

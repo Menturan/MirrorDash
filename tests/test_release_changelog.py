@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
-from release_core import release_changelog  # noqa: E402
+from release import release_changelog  # noqa: E402
 
 TODAY = date.today().isoformat()
 CHANGELOG = """# Changelog

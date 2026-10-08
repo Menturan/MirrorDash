@@ -33,6 +33,20 @@
             </button>
         </div>
 
+        <!-- Opt in to pre-releases; saves on change like the Hardware settings -->
+        <form class="form-group" style="margin-bottom: 16px;" hx-post="/admin/panels/system/save"
+              hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <label for="core-prerelease" style="font-weight: 500; font-size: 0.9rem; color: white;">Test versions</label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Get new versions of MirrorDash before everyone else, to try them out. They can have bugs; turn this off to wait for the regular release.</p>
+            </div>
+            <label class="switch">
+                <input type="hidden" name="prerelease" value="false">
+                <input type="checkbox" id="core-prerelease" name="prerelease" value="true" {% if prerelease %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+        </form>
+
         <!-- Dynamic result area -->
         <div id="core-update-result" style="display: block;">
             <!-- populated by check -->

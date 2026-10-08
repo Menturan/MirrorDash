@@ -25,6 +25,7 @@ This document records the core architectural decisions made during the design, d
 - [19. Sensors and Inputs via Kernel Device-Tree Overlays](#19-sensors-and-inputs-via-kernel-device-tree-overlays)
 - [20. Screen Wake Timer](#20-screen-wake-timer)
 - [21. Module Scripts Receive Their Shadow Root](#21-module-scripts-receive-their-shadow-root)
+- [22. Releases Are Made From What Was Tested](#22-releases-are-made-from-what-was-tested)
 
 ---
 
@@ -111,3 +112,7 @@ This document records the core architectural decisions made during the design, d
 ## 21. Module Scripts Receive Their Shadow Root
 * **Decision**: The kiosk wraps every inline `<script>` in a module's HTML as `(function (root) { … })(…)`, where `root` is that module instance's shadow root. The root is kept across re-renders, so a script keeps per-instance state such as a timer on it (`clearInterval(root._timer); root._timer = setInterval(…)`).
 * **Rationale**: Module HTML lives in a shadow root, and the HTML spec makes `document.currentScript` null there, so scripts had no reliable way to find their own markup; looking themselves up by `data-module` broke whenever the instance id differed from the package name, and globals made two instances of a module share one timer. One wrapper in the core gives every module the same answer without a client-side API.
+
+## 22. Releases Are Made From What Was Tested
+* **Decision**: One local script, `scripts/release.py`, makes every release, and each real release follows a test. The app is first published as a PyPI pre-release (`X.Y.ZrcN`) that only mirrors with `system.prerelease` ("Test versions") are offered and install (`uv pip install --prerelease=allow`); the release then bumps to `X.Y.Z`. The OS image is built only on request into a workflow artifact, flashed and checked, and the release publishes that artifact, so nothing is rebuilt. `publish.yml` refuses a tag that isn't `v` + the `pyproject.toml` version. Versions are compared with `config.version_key`, which orders a release above its own pre-releases.
+* **Rationale**: Releases were made by hand in the GitHub UI, nothing tied the tag to the published version, an OS image was rebuilt at tagging so the shipped file was never the tested one, and there was no way to try an app version on one mirror before all of them got it. The script keeps the GitHub CLI as its only extra tool and the mirror gains no dependency (`packaging` isn't installed there).

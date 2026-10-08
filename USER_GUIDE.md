@@ -74,6 +74,8 @@ Controls global settings shared by all modules. Adjust these to localize your mi
 *   **Time Format**: Choose between `24h` or `12h` display.
 *   **Units**: Change temperature units (`C` or `F`) and distance (`km` or `mi`).
 *   **Coordinates**: Latitude and longitude (used by weather modules to locate your mirror).
+*   **MirrorDash Updates**: Check for a newer version and install it. The mirror restarts on the new version, and goes back to the old one by itself if the new one doesn't start.
+*   **Test versions**: Turn on to get new versions before everyone else, to try them out. They can have bugs; turn it off to wait for the regular release.
 
 ### 4.4. Hardware Tab
 Changes are applied as soon as you make them; there is no Apply button. (Turning SSH on waits until you have entered the new password.)

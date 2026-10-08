@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Added
+- Try new versions of MirrorDash before everyone else: turn on "Test versions" under Settings → MirrorDash Updates.
 - Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting.
 - See the room's temperature, humidity and light level on the dashboard.
 - Restart and shut down the mirror from the Power tab.

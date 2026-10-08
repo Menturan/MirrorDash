@@ -12,7 +12,7 @@ from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import load_config, save_config, get_core_version
+from mirrordash_core.config import load_config, save_config, get_core_version, version_key
 from mirrordash_core.system import (
     apply_system_settings,
     get_available_resolutions,
@@ -142,6 +142,11 @@ async def restart_system() -> dict:
     return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
 
 
+def prerelease_enabled() -> bool:
+    """Whether this mirror opted in to test versions (pre-releases) of MirrorDash."""
+    return load_config().get("system", {}).get("prerelease", False) is True
+
+
 @router.get("/core-update-check", dependencies=[Depends(require_api_key)])
 async def check_core_update() -> dict:
     """Check PyPI for a newer release of mirrordash-core.
@@ -153,30 +158,25 @@ async def check_core_update() -> dict:
     current_version = get_core_version()
 
     # Fetch latest version from PyPI without blocking the event loop
-    def _fetch_pypi_version() -> str:
+    def _fetch_pypi_version(prerelease: bool) -> str:
         url = "https://pypi.org/pypi/mirrordash/json"
         try:
             with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
                 data = json.loads(resp.read())
-            return data["info"]["version"]
         except Exception as exc:
             raise RuntimeError(f"PyPI request failed: {exc}") from exc
+        if not prerelease:
+            return data["info"]["version"]  # PyPI's latest is always a final release
+        return max((v for v, files in data["releases"].items() if files), key=version_key)
 
     try:
-        latest_version = await asyncio.to_thread(_fetch_pypi_version)
+        latest_version = await asyncio.to_thread(_fetch_pypi_version, prerelease_enabled())
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    def _parse_version(v: str) -> tuple:
-        """Return a comparable tuple for a PEP-440-style version string."""
-        try:
-            return tuple(int(x) for x in v.split(".")[:3])
-        except ValueError:
-            return (0,)
-
     update_available = (
         current_version != "unknown"
-        and _parse_version(latest_version) > _parse_version(current_version)
+        and version_key(latest_version) > version_key(current_version)
     )
 
     return {
@@ -205,6 +205,8 @@ async def update_core() -> dict:
     try:
         logger.info(f"Upgrading mirrordash (current version: {current_version})")
         cmd = ["uv", "pip", "install", "--upgrade"]
+        if prerelease_enabled():
+            cmd.append("--prerelease=allow")
         if swap_info:
             active_path, next_path = swap_info
             cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
@@ -379,6 +381,7 @@ async def get_system_settings() -> dict:
             "brightness": system_cfg.get("brightness", 100),
             "volume": system_cfg.get("volume", 80),
             "ssh": ssh_active,
+            "prerelease": system_cfg.get("prerelease", False),
             "display_control": system_cfg.get("display_control", {
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
@@ -399,6 +402,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     brightness = settings.get("brightness", system_cfg.get("brightness", 100))
     volume = settings.get("volume", system_cfg.get("volume", 80))
     ssh_enabled = settings.get("ssh", system_cfg.get("ssh", True))
+    prerelease = settings.get("prerelease", system_cfg.get("prerelease", False))
     
     # Merge display_control securely
     from mirrordash_core.display_power import DEFAULT_WAKE
@@ -435,6 +439,8 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
         raise HTTPException(status_code=400, detail="The screen timeout must be 1 to 1440 minutes")
     if not all(isinstance(wake.get(k, True), bool) for k in ("extend", "presence")):
         raise HTTPException(status_code=400, detail="Invalid wake settings")
+    if not isinstance(prerelease, bool):
+        raise HTTPException(status_code=400, detail="Test versions must be on or off")
 
     if mode == "interval":
         interval = display_control.get("interval", {})
@@ -449,6 +455,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["volume"] = volume
     system_cfg["display_control"] = display_control
     system_cfg["ssh"] = ssh_enabled
+    system_cfg["prerelease"] = prerelease
 
     await remount_rw()
     try:
