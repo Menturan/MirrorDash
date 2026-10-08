@@ -9,13 +9,13 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-## [0.6.0-os1] - 2026-10-08
-
-OS image with MirrorDash 0.6.0.
-
 ### Fixed
 - Discover New Modules lists every module on GitHub again (weather, calendar, Home Assistant, …), not just the clock. It now asks GitHub once per refresh instead of once per module, which used up GitHub's hourly limit for the home network. When GitHub refuses anyway, the page says the refresh failed instead of quietly showing only the clock.
 - The clock (or any module) no longer keeps pulsing when the mirror's screen switches to the mirror page right after setup.
+
+## [0.6.0-os1] - 2026-10-08
+
+OS image with MirrorDash 0.6.0.
 
 ### OS image
 - Wi-Fi follows the country of the mirror's time zone (taken from your phone during Wi-Fi setup), from the next restart. Before, every mirror used the US rules, and could not see networks on channel 12 or 13, which are common in Europe.

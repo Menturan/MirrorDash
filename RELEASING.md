@@ -99,7 +99,8 @@ the speed and the time left, and asks to try again if the download breaks (witho
 
 **3. Release that same image.** Run the script and choose **4**. It publishes `vX.Y.Z-osN` with the
 file you tested; nothing is rebuilt. If master changed since the build, it lists what the image doesn't
-contain and asks before going on.
+contain and asks before going on. Only the `### OS image` entries under `[Unreleased]` move to the
+image's section; app entries stay for the next app release (they aren't in the image's app version).
 
 ## Writing the CHANGELOG
 

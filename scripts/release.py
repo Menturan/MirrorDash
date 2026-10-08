@@ -94,11 +94,13 @@ def set_version(version):
     path.write_text(content)
 
 
-def release_changelog(version, intro="", keep_os_image=False, path="CHANGELOG.md"):
+def release_changelog(version, intro="", keep_os_image=False, only_os_image=False, path="CHANGELOG.md"):
     """Move the hand-written [Unreleased] entries into a new [version] section.
 
     keep_os_image leaves the "### OS image" subsection under [Unreleased], since an app
-    release doesn't change the OS image. Exits if there is nothing to release.
+    release doesn't change the OS image. only_os_image is the other way round, for an image
+    release: only the OS image entries move; app entries wait for the next app release.
+    Exits if there is nothing to release.
     """
     with open(path, "r") as f:
         content = f.read()
@@ -116,6 +118,8 @@ def release_changelog(version, intro="", keep_os_image=False, path="CHANGELOG.md
     if keep_os_image and "### OS image" in body:
         body, kept = body.split("### OS image", 1)
         kept = "### OS image" + kept
+    elif only_os_image:
+        kept, _, body = body.partition("### OS image")
     if not body.strip():
         print(f"  ERROR: Nothing to release under [Unreleased] in {path}.")
         print("  Describe the changes there first, in plain language for mirror owners.")
@@ -439,7 +443,7 @@ def release_image():
     confirm(f"This releases {tag}: moves the CHANGELOG entries, pushes to master and publishes the tested image "
             f"{image.name} on GitHub. Nothing is rebuilt.")
 
-    move_changelog(version, intro=f"OS image with MirrorDash {core}.")
+    move_changelog(version, intro=f"OS image with MirrorDash {core}.", only_os_image=True)
     commit_and_push(f"chore: release {tag}", "CHANGELOG.md")
     notes = changelog_section(version) + f"\n\nImage built from {built['sha'][:7]} (Actions run {built['run_id']})."
     run("gh", "release", "create", tag, str(image), f"{image}.sha256", "--target", run("git", "rev-parse", "HEAD"),
