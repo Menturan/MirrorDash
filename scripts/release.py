@@ -19,8 +19,12 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import tomllib
+import urllib.error
+import urllib.request
+import zipfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -215,6 +219,127 @@ def now():
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# --- Downloading the test image -------------------------------------------------------------
+
+def _clock(seconds):
+    return f"{int(seconds) // 60}:{int(seconds) % 60:02d}"
+
+
+def download(url, path, parts=4, chunk=1 << 20):
+    """Download url to path, showing size, percent, speed and time left on one line.
+
+    With several parts at once (HTTP Range) when the server allows it: GitHub's artifact storage is
+    often slower per connection than the line. Otherwise one stream.
+    ponytail: an interrupted download starts over; resuming would need to remember the finished ranges.
+    """
+    path = Path(path)
+    probe = urllib.request.urlopen(urllib.request.Request(url, headers={"Range": "bytes=0-0"}), timeout=60)
+    ranged = probe.status == 206
+    if ranged:
+        total = int(probe.headers["Content-Range"].rsplit("/", 1)[1])
+        probe.close()
+    else:
+        total = int(probe.headers.get("Content-Length") or 0)
+    done, errors, lock, started = [0], [], threading.Lock(), time.monotonic()
+
+    def copy(response, f):
+        while data := response.read(chunk):
+            f.write(data)
+            with lock:
+                done[0] += len(data)
+
+    def fetch(start, end):
+        try:
+            request = urllib.request.Request(url, headers={"Range": f"bytes={start}-{end}"})
+            with urllib.request.urlopen(request, timeout=60) as response, open(path, "r+b") as f:
+                f.seek(start)
+                copy(response, f)
+        except Exception as e:  # reported after the other parts have finished
+            errors.append(e)
+
+    if ranged:
+        with open(path, "wb") as f:
+            f.truncate(total)
+        step = -(-total // parts)
+        workers = [threading.Thread(target=fetch, args=(i, min(i + step, total) - 1), daemon=True)
+                   for i in range(0, total, step)]
+    else:
+        def single():
+            try:
+                with probe, open(path, "wb") as f:
+                    copy(probe, f)
+            except Exception as e:
+                errors.append(e)
+        workers = [threading.Thread(target=single, daemon=True)]
+    for worker in workers:
+        worker.start()
+
+    def line():
+        elapsed = max(time.monotonic() - started, 1e-6)
+        speed = done[0] / elapsed
+        text = f"  {done[0] / 1e6:,.0f} MB"
+        if total:
+            left = (total - done[0]) / speed if speed else 0
+            text += f" / {total / 1e6:,.0f} MB   {100 * done[0] / total:3.0f} %"
+        text += f"   {speed / 1e6:5.1f} MB/s"
+        if total:
+            text += f"   {_clock(left)} left"
+        return text
+
+    while any(w.is_alive() for w in workers):
+        print(f"\r{line()}   ", end="", flush=True)
+        time.sleep(0.5)
+    elapsed = time.monotonic() - started
+    print(f"\r  {done[0] / 1e6:,.0f} MB in {_clock(elapsed)} ({done[0] / 1e6 / max(elapsed, 1e-6):.1f} MB/s)"
+          + " " * 30)
+    if errors:
+        raise errors[0]
+    if total and done[0] != total:
+        raise OSError(f"got {done[0]} of {total} bytes")
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None  # hand the redirect back: its Location is the download address
+
+
+def download_artifact(run_id, name, target):
+    """Download and unpack an Actions artifact into target, with progress (gh run download shows none)."""
+    repo = run("gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
+    artifacts = json.loads(run("gh", "api", f"repos/{repo}/actions/runs/{run_id}/artifacts"))["artifacts"]
+    artifact = next((a for a in artifacts if a["name"] == name), None)
+    if not artifact:
+        die(f"run {run_id} has no artifact called {name}.")
+    token = run("gh", "auth", "token")
+
+    def address():
+        """The API answers with a redirect to a short-lived address on GitHub's storage (needs no token)."""
+        request = urllib.request.Request(
+            f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}/zip",
+            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+        try:
+            urllib.request.build_opener(_NoRedirect).open(request, timeout=60)
+        except urllib.error.HTTPError as e:
+            if e.code in (301, 302, 303, 307, 308):
+                return e.headers["Location"]
+            die(f"GitHub refused the download ({e.code}); is gh logged in to this repository?")
+        die("GitHub didn't give a download address for the image.")
+
+    target.mkdir(parents=True, exist_ok=True)
+    archive = target / f"{name}.zip"
+    print(f"\n  Downloading the image ({artifact['size_in_bytes'] / 1e6:,.0f} MB):")
+    while True:  # a broken download only needs another try, not another 30-minute build
+        try:
+            download(address(), archive)
+            break
+        except Exception as e:
+            if ask(f"\n  The download failed ({e}). Try again? [Y/n] ").lower() == "n":
+                die(f"no image downloaded. The build is kept for 14 days: gh run download {run_id} -n {name}")
+    with zipfile.ZipFile(archive) as z:
+        z.extractall(target)
+    archive.unlink()
+
+
 # --- The four steps -------------------------------------------------------------------------
 
 def release_app(test):
@@ -268,10 +393,10 @@ def build_test_image():
         return
     target = TEST_IMAGE_DIR / run_id
     shutil.rmtree(TEST_IMAGE_DIR, ignore_errors=True)
-    run("gh", "run", "download", run_id, "--name", "mirrordash-os-image", "--dir", str(target), change=True)
+    download_artifact(run_id, "mirrordash-os-image", target)
     image = next(target.glob("*.img.xz"))
     if subprocess.run(["sha256sum", "--check", "--quiet", f"{image.name}.sha256"], cwd=target).returncode != 0:
-        die(f"the downloaded image doesn't match its checksum; download it again: gh run download {run_id}")
+        die("the downloaded image doesn't match its checksum; choose 3 again.")
     (TEST_IMAGE_DIR / "run.json").write_text(json.dumps(
         {"run_id": run_id, "sha": sha, "core_version": core, "image": str(image)}, indent=2))
     print(f"\n  Test image: {image}")

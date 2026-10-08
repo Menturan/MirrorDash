@@ -76,7 +76,9 @@ The image contains the app version on master, so release the app first if it cha
 
 **1. Build a test image.** Run the script and choose **3**. GitHub Actions runs the tests and builds the
 image (about 30 minutes); the script waits and downloads it to
-`build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz`.
+`build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz`. The image is about 750 MB: the script
+shows how far it has come, the speed and the time left, and asks to try again if the download breaks
+(without building again).
 
 **2. Test it.** Flash it with Raspberry Pi Imager and go through this checklist:
 
