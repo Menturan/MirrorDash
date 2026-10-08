@@ -48,6 +48,7 @@ There are two kinds of releases:
 - Restoring a backup keeps the admin password of the mirror you restore on; before, the old mirror's password came back after the restart. Backups no longer contain the admin password at all.
 - After restoring a backup, the push button, sensors and fan work again: the mirror sets their pins and restarts itself.
 - Modules installed from GitHub are installed again when you restore a backup (before, they went missing).
+- The global settings (language, time zone, units) load on every mirror; before, they could fail to load when no installed module happened to include a language list.
 - Switching tabs quickly no longer sometimes shows the previous tab.
 - Log text is always shown as plain text in the admin page.
 - Wi-Fi setup no longer ends with "Network request failed" when the mirror leaves its setup network to connect.

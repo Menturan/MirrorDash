@@ -34,11 +34,11 @@ jobs:
           remove_haskell: true
 
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Cache Base RPi OS Image
         id: cache-base-image
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build_workspace/downloads/
           key: rpi-os-lite-base-${{ hashFiles('scripts/build_image.sh') }}
@@ -69,7 +69,7 @@ jobs:
           echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
 
       - name: Save Image as Workflow Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mirrordash-os-image
           path: |

@@ -183,8 +183,10 @@ async def update_config(config: dict = Body(...)) -> dict:
 @router.get("/globals-schema", dependencies=[Depends(require_api_key)])
 async def get_globals_schema() -> dict:
     """Return the JSON schema defining global configuration settings."""
-    import babel
     try:
+        # ponytail: babel isn't a dependency (too big for one list); only when a module brought it along
+        # do all languages show, otherwise the short list below. Upgrade: ship the list as a JSON file.
+        import babel
         babel_locale = babel.Locale('en')
         lang_list = sorted(
             [(code, name) for code, name in babel_locale.languages.items() if len(code) == 2],
