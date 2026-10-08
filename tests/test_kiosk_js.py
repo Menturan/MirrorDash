@@ -14,10 +14,10 @@ def test_static_js_files_served(client):
     assert 'DESIGN_TOKENS_CSS' in resp.text
     assert 'color-standard-gray' in resp.text
 
-    # wifi_prompt.html
-    resp = client.get('/static/wifi_prompt.html')
+    # qrcode.js (local copy, draws the Wi-Fi QR code on the setup screen)
+    resp = client.get('/static/js/qrcode.js')
     assert resp.status_code == 200
-    assert 'Connect the mirror to Wi-Fi' in resp.text
+    assert 'createSvgTag' in resp.text
 
 
     # core.js

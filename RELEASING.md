@@ -49,7 +49,7 @@ The app version in the image is whatever master has, so release the app first (c
 
 1. Choose **3**, then flash `build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz` with Raspberry Pi Imager and go through the checklist:
    1. **Boot**: the MirrorDash splash shows, no system messages or login prompt, no mouse cursor.
-   2. **Wi-Fi setup**: with no network, the `MirrorDash-Setup` hotspot (password `mirrordash`) appears within 30 seconds. Joining it opens the setup page (otherwise go to `http://mirrordash.setup/wifi-setup`); pick a network, and the mirror connects and restarts.
+   2. **Wi-Fi setup**: with no network, the `MirrorDash-Setup` hotspot appears within 30 seconds and the mirror shows its password and a QR code. Scanning the code joins the phone, which opens the setup page (otherwise go to `http://mirrordash.setup/wifi-setup`); pick a network, and the mirror connects and restarts. Unplug the network again: after the restart the same password is shown.
    3. **Mirror**: the page loads, placeholders turn into modules, the clock ticks.
    4. **Admin**: `http://mirrordash.local/admin` asks for a password to be set, then opens.
 2. Choose **4** to release that same image. If master changed since the build, it lists what the image doesn't contain and asks before going on.
@@ -69,5 +69,5 @@ sudo reboot
 
 1. **Backup → Create backup** in the admin page and download the `.mirror` file. It doesn't contain the admin password or Wi-Fi passwords.
 2. Flash the new image.
-3. Connect the mirror to Wi-Fi through the `MirrorDash-Setup` hotspot, as in the checklist above.
+3. Connect the mirror to Wi-Fi through the `MirrorDash-Setup` hotspot: scan the QR code on the mirror, as in the checklist above.
 4. Set an admin password, then **Backup → Restore** with the `.mirror` file.

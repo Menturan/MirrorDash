@@ -137,12 +137,39 @@ def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, clie
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
+@patch("mirrordash_core.app.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
 @patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
-def test_index_serves_wifi_prompt_when_hotspot_active(mock_hotspot, client):
+def test_index_serves_wifi_prompt_when_hotspot_active(mock_hotspot, mock_password, client):
+    """A phone on the hotspot can claim to be localhost, but never gets the hotspot password."""
     mock_hotspot.return_value = True
     response = client.get("/", headers={"host": "localhost:8000"})
     assert response.status_code == 200
     assert "Connect the mirror to Wi-Fi" in response.text
+    assert "abcde23456" not in response.text and "qrcode.js" not in response.text
+    mock_password.assert_not_awaited()
+
+
+@patch("mirrordash_core.app.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
+@patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=True)
+def test_wifi_prompt_shows_password_and_qr_on_the_mirror(mock_hotspot, mock_password):
+    """The mirror's own screen (loopback) shows the hotspot password and a Wi-Fi QR code."""
+    mirror = TestClient(app, client=("127.0.0.1", 50000))
+    response = mirror.get("/", headers={"host": "localhost:8000"})
+    assert "abcde23456" in response.text
+    assert "/static/js/qrcode.js" in response.text
+    assert '"WIFI:T:WPA;S:MirrorDash-Setup;P:abcde23456;;"' in response.text
+
+
+@patch("mirrordash_core.system.network.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+def test_teardown_keeps_the_hotspot_profile(mock_exec):
+    """Setup only takes the hotspot down; deleting it would give the mirror a new password every time."""
+    import asyncio
+    from mirrordash_core.system.network import _teardown_captive_ap
+    mock_exec.return_value.wait = AsyncMock(return_value=0)
+    mock_exec.return_value.returncode = 0
+    asyncio.run(_teardown_captive_ap())
+    commands = [call.args for call in mock_exec.call_args_list]
+    assert commands == [("sudo", "nmcli", "connection", "down", "MirrorDash-Setup")]
 
 @patch("mirrordash_core.app.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_index_serves_admin_prompt_when_setup_required(mock_hotspot, client):
@@ -235,3 +262,58 @@ def test_hotspot_dns_answers_every_name_with_the_mirror():
     from pathlib import Path
     script = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
     assert "echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf" in script
+
+
+def run_wifi_check(tmp_path, saved_password=None):
+    """Run the real mirrordash-wifi-check.sh (from setup_appliance.sh) offline, against a fake nmcli
+    that keeps the hotspot profile's password in a file. Returns (password after the run, nmcli calls)."""
+    import os
+    import re
+    import subprocess
+    from pathlib import Path
+    setup = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
+    body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check\.sh\n(.*?)\nEOF\n", setup, re.S).group(1)
+    script = tmp_path / "wifi-check.sh"
+    script.write_text(body.replace("/var/lib/mirrordash-wifi-scan.cache", str(tmp_path / "scan.cache")))
+    psk, log = tmp_path / "psk", tmp_path / "nmcli.log"
+    if saved_password:
+        psk.write_text(saved_password)
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    fakes = {
+        "nm-online": "exit 1",  # offline, so the hotspot is needed
+        "logger": "exit 0",
+        "nmcli": f"""echo "$*" >> {log}
+case "$*" in
+  "-s -g 802-11-wireless-security.psk connection show MirrorDash-Setup") [ -f {psk} ] && cat {psk} || exit 10 ;;
+  "connection delete MirrorDash-Setup") rm -f {psk} ;;
+  "connection modify MirrorDash-Setup wifi-sec.psk "*) printf %s "$5" > {psk} ;;
+esac
+exit 0""",
+    }
+    for name, text in fakes.items():
+        (bin_dir / name).write_text(f"#!/bin/bash\n{text}\n")
+        (bin_dir / name).chmod(0o755)
+    subprocess.run(["bash", str(script)], check=True, env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    return (psk.read_text() if psk.exists() else None), log.read_text().splitlines()
+
+
+def test_first_hotspot_gets_its_own_password(tmp_path):
+    import re
+    password, calls = run_wifi_check(tmp_path)
+    assert re.fullmatch(r"[abcdefghjkmnpqrstuvwxyz23456789]{10}", password)
+    assert "connection modify MirrorDash-Setup connection.autoconnect no" in calls
+    assert calls[-1] == "connection up MirrorDash-Setup"
+
+
+def test_hotspot_keeps_its_password_across_starts(tmp_path):
+    password, calls = run_wifi_check(tmp_path, saved_password="k7mxp2qrtw")
+    assert password == "k7mxp2qrtw"
+    assert not any(c.startswith(("connection add", "connection delete")) for c in calls)
+    assert calls[-1] == "connection up MirrorDash-Setup"
+
+
+def test_hotspot_from_an_old_image_replaces_the_shared_password(tmp_path):
+    password, calls = run_wifi_check(tmp_path, saved_password="mirrordash")
+    assert password != "mirrordash" and len(password) == 10
+    assert "connection delete MirrorDash-Setup" in calls

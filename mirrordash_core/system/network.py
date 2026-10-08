@@ -265,25 +265,42 @@ async def is_wifi_hotspot_active() -> bool:
     return False
 
 
+async def get_hotspot_password() -> str:
+    """The setup hotspot's password, read from its NetworkManager profile; "" if it can't be read."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if proc.returncode == 0:
+            return stdout.decode("utf-8", errors="ignore").strip()
+    except Exception as e:
+        logger.debug(f"Reading the hotspot password failed: {e}")
+    return ""
+
+
 async def _teardown_captive_ap() -> None:
-    """Delete and deactivate the captive-portal AP connection so wlan0 can become a client."""
+    """Deactivate the captive-portal AP connection so wlan0 can become a client.
+
+    The profile is kept (it doesn't autoconnect), so the mirror's hotspot password stays the same
+    the next time Wi-Fi setup is needed.
+    """
     global _hotspot_active_cached, _hotspot_checked_at
     _hotspot_active_cached = False
     _hotspot_checked_at = time.monotonic()
-    for cmd in (
-        ["sudo", "nmcli", "connection", "down", HOTSPOT_SSID],
-        ["sudo", "nmcli", "connection", "delete", HOTSPOT_SSID],
-    ):
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await proc.wait()
-            if proc.returncode == 0:
-                logger.info(f"Executed: {' '.join(cmd)}")
-            else:
-                logger.debug(f"AP teardown: {' '.join(cmd)} returned {proc.returncode}")
-        except Exception as e:
-            logger.debug(f"AP teardown: {' '.join(cmd)} failed: {e}")
+    cmd = ["sudo", "nmcli", "connection", "down", HOTSPOT_SSID]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.wait()
+        if proc.returncode == 0:
+            logger.info(f"Executed: {' '.join(cmd)}")
+        else:
+            logger.debug(f"AP teardown: {' '.join(cmd)} returned {proc.returncode}")
+    except Exception as e:
+        logger.debug(f"AP teardown: {' '.join(cmd)} failed: {e}")

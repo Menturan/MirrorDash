@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Added
+- The Wi-Fi setup screen on the mirror shows a QR code: point your phone's camera at it to join the setup network without typing.
 - Try new versions of MirrorDash before everyone else: turn on "Test versions" under Settings → MirrorDash Updates.
 - Connect a push button and choose what a single, double, triple and long press does: turn the screen on or off, restart MirrorDash, restart the mirror, or shut it down. Replaces the old screen on/off button setting.
 - See the room's temperature, humidity and light level on the dashboard.
@@ -63,6 +64,7 @@ There are two kinds of releases:
 - On first start without Wi-Fi, the mirror switches to the Wi-Fi setup screen by itself instead of staying on the admin password screen, and phones that join the setup hotspot are sent straight to Wi-Fi setup.
 
 ### OS image
+- Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
 - Includes `zip`, which creating a backup needs.
 - The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
 - A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.

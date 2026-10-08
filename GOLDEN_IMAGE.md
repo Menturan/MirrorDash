@@ -864,7 +864,6 @@ sudo tee /usr/local/bin/mirrordash-wifi-check.sh << 'EOF'
 #!/bin/bash
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
-PASSWORD="mirrordash"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
@@ -888,15 +887,25 @@ echo "$SCAN_RESULT" > "$CACHE_FILE"
 chmod 644 "$CACHE_FILE"
 logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
 
-# Purge any existing MirrorDash-Setup profiles
-nmcli connection delete "$SSID" 2>/dev/null || true
-
-# Add and configure the AP hotspot
-nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode AP
-nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
-nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
-nmcli connection modify "$SSID" wifi-sec.pmf 1
-nmcli connection modify "$SSID" ipv4.method shared
+# Each mirror keeps its own hotspot password: the profile lives on /storage (bind-mounted
+# system-connections), so it survives reboots until the card is reflashed. The app reads the
+# password back from NetworkManager and shows it, with a QR code, on the mirror only.
+# Profiles from older images used the shared password "mirrordash"; those get a new one.
+SAVED_PASSWORD=$(nmcli -s -g 802-11-wireless-security.psk connection show "$SSID" 2>/dev/null || true)
+if [ -z "$SAVED_PASSWORD" ] || [ "$SAVED_PASSWORD" = "mirrordash" ]; then
+    nmcli connection delete "$SSID" 2>/dev/null || true
+    # 10 characters without look-alikes (no i l o 0 1); nothing that needs escaping in a Wi-Fi QR code.
+    # ponytail: ~50 bits, enough for a hotspot that is only up during setup; add characters if that changes.
+    PASSWORD=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10)
+    nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
+    nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
+    nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
+    nmcli connection modify "$SSID" wifi-sec.pmf 1
+    nmcli connection modify "$SSID" ipv4.method shared
+    # Only this script starts the hotspot; a saved AP profile must never come up on its own
+    nmcli connection modify "$SSID" connection.autoconnect no
+    logger -t mirrordash-wifi "Created hotspot '$SSID' with a new password."
+fi
 
 if nmcli connection up "$SSID"; then
     logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."

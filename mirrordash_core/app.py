@@ -14,7 +14,8 @@ from mirrordash_core.ws_manager import manager
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
 from mirrordash_core.api.backup import router as backup_router
-from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active
+from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active, get_hotspot_password
+from mirrordash_core.system.network import HOTSPOT_SSID
 
 from mirrordash_core.display_power import display_power_manager
 from mirrordash_core.hardware import gpio_inputs
@@ -106,7 +107,13 @@ async def get_index(request: Request):
         return RedirectResponse(url="/wifi-setup")
     
     if await is_wifi_hotspot_active():
-        return FileResponse(str(PACKAGE_DIR / "static" / "wifi_prompt.html"))
+        # The password goes to the mirror's own screen only: a phone on the hotspot can send any
+        # Host header (the captive-portal redirect trusts "localhost"), but not a loopback address.
+        on_mirror = request.client.host in ("127.0.0.1", "::1")
+        return templates.TemplateResponse(request=request, name="wifi_prompt.html", context={
+            "ssid": HOTSPOT_SSID,
+            "password": await get_hotspot_password() if on_mirror else "",
+        })
 
     config = load_config()
     auth = config.get("admin_auth")
