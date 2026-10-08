@@ -7,6 +7,10 @@ import pytest
 import contextlib
 from unittest.mock import patch, AsyncMock
 
+# The admin pages run in Chromium. The mirror's own pages (kiosk, modules) run in WebKit, the engine
+# of the mirror's Cog browser: marked only_browser("webkit"). Both come from addopts in pyproject.toml.
+pytestmark = pytest.mark.only_browser("chromium")
+
 # Setup mock config
 mock_salt = "0123456789abcdef"
 from mirrordash_core.api.admin import hash_password
@@ -446,6 +450,7 @@ def test_wifi_setup_flow(page, server_url):
     assert page.evaluate("document.documentElement.scrollWidth") <= 390
 
 
+@pytest.mark.only_browser("webkit")
 def test_module_script_gets_its_own_shadow_root(page):
     """A module's inline script receives its shadow root as `root`; it can't rely on document.currentScript."""
     import json
@@ -476,6 +481,40 @@ def test_module_script_gets_its_own_shadow_root(page):
     assert page.evaluate(read, "clock-b") == "root:1"  # and it's per instance
 
 
+@pytest.mark.only_browser("webkit")
+def test_a_module_never_pulses_after_its_loading_placeholder(page):
+    """The order of the first start after setup: the placeholder (pulsing) comes first, the module is
+    then drawn into the same element. Nothing in the module may keep animating."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": [{"name": "clock", "position": "top_left", "title": "Clock"}]})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_selector("[data-module='clock'].module-loading-placeholder")
+    page.wait_for_function("window.__ws")
+    module = page.locator("[data-module='clock']")
+    assert module.evaluate("e => e.getAnimations({ subtree: true }).length") > 0  # loading: it pulses
+
+    msg = json.dumps({"module": "clock", "position": "top_left", "html": "<p class='time'>12:00</p>"})
+    page.evaluate("msg => window.__ws.onmessage({ data: msg })", msg)
+    assert module.evaluate("e => e.shadowRoot.querySelector('.time').textContent") == "12:00"
+    assert module.evaluate("e => e.querySelector('.module-loading-content')") is None
+    assert module.evaluate("e => e.getAnimations().filter(a => a.playState === 'running' && a.effect.getComputedTiming().iterations === Infinity).length") == 0
+
+
+@pytest.mark.only_browser("webkit")
 def test_loading_page_shows_progress_then_error_then_recovers(page):
     """The kiosk's first page: something always moves while waiting, and it says so if the app never starts."""
     healthy = {"up": False}
@@ -507,6 +546,7 @@ def test_loading_page_shows_progress_then_error_then_recovers(page):
     page.wait_for_selector("#mirror")
 
 
+@pytest.mark.only_browser("webkit")
 def test_mirror_says_when_the_app_stops_responding(page, server_url):
     page.goto(f"{server_url}/")
     page.wait_for_selector("#ws-status")

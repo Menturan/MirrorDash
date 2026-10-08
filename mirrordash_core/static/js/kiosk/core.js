@@ -124,6 +124,7 @@ function connect() {
                 parentContainer.appendChild(moduleDiv);
             }
             if (moduleDiv.classList.contains('module-loading-placeholder')) {
+                moduleDiv.replaceChildren();  // the pulsing loading content goes, not just hidden behind the module
                 moduleDiv.classList.remove('module-loading-placeholder');
                 moduleDiv.classList.add('module-enter');
                 moduleDiv.addEventListener('animationend', () => {

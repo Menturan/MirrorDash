@@ -293,8 +293,9 @@ body, html {
 /* ============================================================
    Module Loading Skeletons
    ============================================================ */
+/* The module is later drawn into this same element, so the element itself never animates:
+   only its loading content pulses, and that content is removed when the module arrives. */
 .module-loading-placeholder {
-    animation: placeholderPulse 2s infinite ease-in-out;
     min-width: 220px;
     min-height: 80px;
     display: flex;
@@ -303,6 +304,7 @@ body, html {
 }
 
 .module-loading-content {
+    animation: placeholderPulse 2s infinite ease-in-out;
     display: flex;
     align-items: center;
     gap: 12px;

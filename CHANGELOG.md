@@ -9,6 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### Fixed
+- The clock (or any module) no longer keeps pulsing when the mirror's screen switches to the mirror page right after setup.
+
 ### OS image
 - Wi-Fi follows the country of the mirror's time zone (taken from your phone during Wi-Fi setup), from the next restart. Before, every mirror used the US rules, and could not see networks on channel 12 or 13, which are common in Europe.
 - Settings, Wi-Fi, installed modules and updates are kept when the mirror restarts. Before, the read-only protection also covered the storage partition, so everything saved after the first start was lost at the next restart.

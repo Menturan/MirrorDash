@@ -45,4 +45,4 @@ build-backend = "hatchling.build"
 packages = ["mirrordash_core"]
 
 [tool.pytest.ini_options]
-addopts = "--ignore=tests/test_visual_admin.py"
+addopts = "--ignore=tests/test_visual_admin.py --browser chromium --browser webkit"
