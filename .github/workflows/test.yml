@@ -1,0 +1,43 @@
+name: Tests
+
+# Runs the tests on every push to master (there are no branches or PRs, so this is the safety net),
+# and before every PyPI publish and OS image build, which call it. See RELEASING.md.
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push replaces a running test of an older one; runs called by publish/image builds are never cancelled
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+
+jobs:
+  test:
+    name: Tests and script checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+
+      # --frozen: exactly the versions in uv.lock, the same ones the OS image installs
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      # setup_appliance.sh builds the OS image; a typo there would otherwise show up an hour into a build
+      - name: Check shell scripts
+        run: |
+          for f in scripts/*.sh; do bash -n "$f"; done
+          shellcheck -S error scripts/*.sh

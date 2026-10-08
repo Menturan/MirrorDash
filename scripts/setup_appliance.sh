@@ -59,7 +59,7 @@ GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
 UV_VERSION="0.12.23"
-CLOCK_REF="v1.0.0"
+CLOCK_REF="v0.1.1"  # a tag in Menturan/mirrordash-clock
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
@@ -361,15 +361,20 @@ step_installing_app() {
   # Image builds install the checked-out source so the image matches its tag;
   # a standalone run (no repo copy) falls back to the latest PyPI release.
   CORE_PKG=mirrordash
+  CONSTRAINTS=()
   if [ -f /opt/MirrorDash/pyproject.toml ]; then
     echo 'Building MirrorDash wheel from the repository...'
     rm -rf "$HOME/mirrordash-dist"
     uv build --wheel --out-dir "$HOME/mirrordash-dist" /opt/MirrorDash
     CORE_PKG=$(ls "$HOME"/mirrordash-dist/mirrordash-*.whl)
+    # The exact dependency versions from uv.lock (the ones CI tested), not whatever is newest today
+    uv export --project /opt/MirrorDash --frozen --no-dev --no-emit-project --no-hashes \
+      -o "$HOME/mirrordash-dist/constraints.txt"
+    CONSTRAINTS=(-c "$HOME/mirrordash-dist/constraints.txt")
   fi
 
   echo "Installing $CORE_PKG and clock module ($CLOCK_REF) into golden venv..."
-  uv pip install --python "$HOME/mirrordash/base_venv" "$CORE_PKG" "git+https://github.com/Menturan/mirrordash-clock.git@${CLOCK_REF}"
+  uv pip install --python "$HOME/mirrordash/base_venv" "${CONSTRAINTS[@]}" "$CORE_PKG" "git+https://github.com/Menturan/mirrordash-clock.git@${CLOCK_REF}"
   rm -rf "$HOME/mirrordash-dist"
 EOF
 

@@ -32,13 +32,21 @@ cd "$BUILD_DIR"
 
 # Pinned base image so a given tag always builds the same OS. Bump deliberately
 # (current: curl -sLI -o /dev/null -w '%{url_effective}' https://downloads.raspberrypi.org/raspios_lite_arm64_latest).
+# Bump both together; the checksum is in "$TARGET_URL.sha256". A BASE_IMAGE_URL override must bring its own.
 TARGET_URL="${BASE_IMAGE_URL:-https://downloads.raspberrypi.org/raspios_lite_arm64/images/raspios_lite_arm64-2026-10-06/2026-10-06-raspios-trixie-arm64-lite.img.xz}"
+TARGET_SHA256="${BASE_IMAGE_SHA256:-483db18a48da399b5b7022ffae9a07bc6d99daab30e593aedac09b69ff422843}"
 IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "${IMAGE_NAME%.xz}" ]; then
     if [ ! -f "$DOWNLOAD_DIR/$IMAGE_NAME" ]; then
         echo -e "\e[34m[INFO] Downloading base image...\e[0m"
         wget -q -c -P "$DOWNLOAD_DIR" "$TARGET_URL"
+    fi
+    # A broken or changed download must not end up in the image (or in the CI cache)
+    if ! echo "$TARGET_SHA256  $DOWNLOAD_DIR/$IMAGE_NAME" | sha256sum -c --quiet; then
+        rm -f "$DOWNLOAD_DIR/$IMAGE_NAME"
+        echo -e "\e[31m[ERROR] The base image doesn't match its checksum; it was deleted. Run the build again.\e[0m"
+        exit 1
     fi
     echo -e "\e[34m[INFO] Decompressing base image...\e[0m"
     xz -d -c "$DOWNLOAD_DIR/$IMAGE_NAME" > "${IMAGE_NAME%.xz}"

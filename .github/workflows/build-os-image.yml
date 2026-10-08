@@ -2,20 +2,31 @@ name: Build OS Image
 
 # Builds a test image on request (scripts/release.py, option 3). The release is made from the
 # tested artifact (option 4), never by rebuilding, so what was flashed is exactly what ships.
+# See RELEASING.md.
 on:
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# One image build at a time; a second request waits instead of cancelling the first
+concurrency:
+  group: os-image
+  cancel-in-progress: false
+
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   build-os-image:
     name: Build and upload OS image
+    needs: test
     runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
 
     steps:
       - name: Free Disk Space (Critical for OS builds!)
-        uses: endersonmenezes/free-disk-space@v3
+        uses: endersonmenezes/free-disk-space@7901478139cff6e9d44df5972fd8ab8fcade4db1 # v3.2.2
         with:
           remove_dotnet: true
           remove_swift: true

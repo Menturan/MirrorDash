@@ -1,5 +1,7 @@
 name: Publish to PyPI
 
+# Publishes the app to PyPI when a vX.Y.Z (or vX.Y.ZrcN test version) release is published by
+# scripts/release.py, options 1 and 2. OS image releases (-osN) skip this. See RELEASING.md.
 on:
   release:
     types: [published]
@@ -8,43 +10,62 @@ permissions:
   contents: read
 
 jobs:
-  build-n-publish:
-    name: Build and publish to PyPI
-    runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/mirrordash
-    permissions:
-      # This permission is required for trusted publishing (OIDC)
-      id-token: write
-    # Skip publishing to PyPI for OS-only releases (tags containing '-os')
+  test:
     if: startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-os')
+    uses: ./.github/workflows/test.yml
+
+  build:
+    name: Build package
+    if: startsWith(github.event.release.tag_name, 'v') && !contains(github.event.release.tag_name, '-os')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.14"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
 
       # PyPI publishes whatever pyproject.toml says, so a mismatched tag would ship the wrong version under it
       - name: Check the tag matches pyproject.toml
         env:
           TAG: ${{ github.event.release.tag_name }}
         run: |
-          VERSION=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
+          VERSION=$(python3 -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')
           if [ "$TAG" != "v$VERSION" ]; then
             echo "::error::Release tag $TAG does not match pyproject.toml version $VERSION (expected v$VERSION)"
             exit 1
           fi
 
-      - name: Install build tools
-        run: python -m pip install --upgrade pip build
-
       - name: Build package distribution
-        run: python -m build
+        run: uv build
+
+      - name: Save package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  # Only this job can publish (id-token), and it runs no build code: it uploads what the build job made
+  publish:
+    name: Publish to PyPI
+    needs: [test, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/mirrordash
+    permissions:
+      # Required for trusted publishing (OIDC), so no PyPI password is stored anywhere
+      id-token: write
+
+    steps:
+      - name: Download package
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
 
       - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2

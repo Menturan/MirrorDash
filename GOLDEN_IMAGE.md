@@ -58,8 +58,8 @@ The complete production-ready SD card image is built automatically on real ARM h
 
 ### Reproducibility & First-Boot Lock
 
-- **Pinned inputs**: the base Raspberry Pi OS image (`BASE_IMAGE_URL` in `build_image.sh`), uv (`UV_VERSION`) and the clock module (`CLOCK_REF`) in `setup_appliance.sh`, and the PiShrink commit in the workflow. Bump them deliberately.
-- **Core app from source**: the core is installed from a wheel built from the checked-out repository, not from PyPI, so the image contains exactly the tagged code. The repository copy (`/opt/MirrorDash`) is deleted from the image after setup, so no source code or dev `config.json` ships.
+- **Pinned inputs**: the base Raspberry Pi OS image and its SHA-256 (`TARGET_URL`, `TARGET_SHA256` in `build_image.sh`; a download that doesn't match is deleted and the build stops), uv (`UV_VERSION`) and the clock module (`CLOCK_REF`) in `setup_appliance.sh`, the PiShrink commit in the workflow, and the Python dependencies in `uv.lock`. Bump them deliberately; [RELEASING.md](RELEASING.md#what-is-pinned-and-how-to-bump-it) says how.
+- **Core app from source**: the core is installed from a wheel built from the checked-out repository, not from PyPI, so the image contains exactly the tagged code. Its dependencies are installed at the versions in `uv.lock`, the same ones the tests run with. The repository copy (`/opt/MirrorDash`) is deleted from the image after setup, so no source code or dev `config.json` ships.
 - **First-boot lock**: `raspi-config nonint enable_overlayfs` builds an initramfs for the *running* kernel (`uname -r`), so it cannot run inside the build container. Image builds install `mirrordash-lock.service` instead. On the Pi's first boot (after `multi-user.target`, so first-boot user/SSH-key setup has finished) it enables OverlayFS, disables itself on the still-writable root and reboots once. `ConditionKernelCommandLine=!boot=overlay` guarantees it never runs on a locked system. `ConditionPathIsMountPoint=/storage` skips the lock (and retries on the next boot) if the persistent partition is not mounted, so a failed repart or mount can never leave all data on the RAM overlay. Manual builds (no `BUILDING_IMAGE`) skip this service and lock via Section 7.
 
 ### Requirements
@@ -540,8 +540,9 @@ uv venv --allow-existing --python 3.14 base_venv
 
 # 5. Install mirrordash and the pinned mirrordash-clock (GitHub) into the Golden Copy
 # (build_image.sh installs a wheel built from the checked-out repo instead of PyPI,
-#  so the image always contains exactly the tagged code)
-uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v1.0.0
+#  so the image always contains exactly the tagged code, with the dependency versions
+#  from uv.lock as constraints: uv export --frozen --no-dev --no-emit-project --no-hashes)
+uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v0.1.1
 
 # 6. Download the launcher script and loading HTML page
 curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh

@@ -25,6 +25,44 @@ python3 scripts/release.py --dry-run  # shows every change and command without m
 
 Before it changes anything, the script stops if you're not on a clean `master` equal to `origin/master`, the tag already exists, `gh` isn't logged in, or the tests fail. It shows what it is about to do and asks first.
 
+## How it fits together
+
+Everything is committed straight to `master`: there are no branches, pull requests or Dependabot (it works through pull requests). GitHub Actions runs the tests on every push instead.
+
+```
+git push (master)  ──► Tests
+release.py 1 or 2  ──► tag vX.Y.Z / vX.Y.ZrcN + GitHub release ──► Publish to PyPI: Tests → build → publish ──► mirrors update
+release.py 3       ──► Build OS Image: Tests → build ──► workflow artifact (kept 14 days) ──► you flash and test it
+release.py 4       ──► that same artifact becomes the vX.Y.Z-osN GitHub release (nothing is rebuilt)
+```
+
+| Workflow (`.github/workflows/`) | Started by | What it does | Result |
+| :--- | :--- | :--- | :--- |
+| `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
+| `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
+| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min). One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256`. |
+
+No secrets are stored in GitHub. PyPI trusts the `publish` job in the `pypi` environment (trusted publishing, OIDC); renaming `publish.yml` or the environment breaks that until it is changed on pypi.org too.
+
+### What is pinned, and how to bump it
+
+Pinned so that the same commit always builds the same image and runs the same tools. Bump them on purpose, one at a time, and build a test image (option 3) afterwards.
+
+| What | Where | Next value |
+| :--- | :--- | :--- |
+| Raspberry Pi OS base image and its SHA-256 | `TARGET_URL`, `TARGET_SHA256` in `scripts/build_image.sh` | `curl -sLI -o /dev/null -w '%{url_effective}' https://downloads.raspberrypi.org/raspios_lite_arm64_latest`; the checksum is that URL + `.sha256`. |
+| Python dependencies (app and image) | `uv.lock` | `uv lock --upgrade`, then run the tests. The image installs these exact versions. |
+| Clock module in the image | `CLOCK_REF` in `scripts/setup_appliance.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
+| uv in the image | `UV_VERSION` in `scripts/setup_appliance.sh` | The uv release you use locally. |
+| PiShrink | Commit in the URL in `build-os-image.yml` | The latest commit in `Drewsif/PiShrink`. |
+| Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |
+
+### When something fails
+
+- **Tests are red after a push**: open the run in the Actions tab (or `gh run view --log-failed`), fix it on `master`, push. Nothing reaches mirrors from a push alone.
+- **Publish to PyPI failed**: the tag and the GitHub release already exist, but PyPI doesn't have the version. Fix the cause and use *Re-run jobs* on that run; don't make a new tag. If the code itself was wrong, release the next version instead.
+- **Build OS Image failed**: usually the runner or a download. Choose 3 again. A *checksum* error means the base image download was broken or changed; it is deleted, so another try downloads it again.
+
 ## Before your first release
 
 - Install and log in to the GitHub CLI: `sudo apt install gh && gh auth login`.
@@ -54,7 +92,7 @@ The app version in the image is whatever master has, so release the app first (c
    4. **Admin**: `http://mirrordash.local/admin` asks for a password to be set, then opens.
 2. Choose **4** to release that same image. If master changed since the build, it lists what the image doesn't contain and asks before going on.
 
-If the build fails (runner or network trouble), just choose **3** again.
+If the build fails, see [When something fails](#when-something-fails).
 
 ## Updating mirrors
 

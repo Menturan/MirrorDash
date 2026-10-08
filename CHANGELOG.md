@@ -66,6 +66,7 @@ There are two kinds of releases:
 ### OS image
 - Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
 - Includes `zip`, which creating a backup needs.
+- Comes with clock module 0.1.1, where the clock ticks again (each clock on the screen keeps its own time).
 - The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
 - A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
 - Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
