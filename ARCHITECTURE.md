@@ -86,7 +86,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Minimizes appliance maintenance and makes the device plug-and-play across different network environments without requiring terminal access or physical disassembly.
 
 ## 15. Watchdog and Time Synchronization Boot Guard
-* **Decision**: Enabled the kernel hardware watchdog (`RuntimeWatchdogSec=14s` in `/etc/systemd/system.conf`) and modified the core systemd service file to require synchronization with network online and time wait-sync targets before startup.
+* **Decision**: Kept the kernel hardware watchdog that Raspberry Pi OS enables (`RuntimeWatchdogSec=1m`, its drop-in `40-rpi-enable-watchdog.conf`; our earlier 14 s edit of `system.conf` never applied, the drop-in overrides it) and modified the core systemd service file to require synchronization with network online and time wait-sync targets before startup.
 * **Rationale**: Ensures the system restarts automatically if a deadlock occurs, and prevents module SSL handshake failures at startup due to the Raspberry Pi's lack of a hardware RTC battery.
 
 ## 16. Failsafe A/B Virtual Environment Updates

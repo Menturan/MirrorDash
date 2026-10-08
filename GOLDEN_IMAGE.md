@@ -148,51 +148,53 @@ Before ejecting the SD card from your workstation and booting the Pi for the fir
 
 Instead of resizing partitions manually, MirrorDash utilizes a custom, deterministic systemd service (**`mirrordash-repart.service`**) executing **`parted`** on early boot (during sysinit) to create partition 3 (`mirrordash-data`) occupying the remaining disk space.
 
-1. **Patch OS firstboot to skip manual resize**:
-   Prevent the Raspberry Pi OS `firstboot` script from resizing the root partition to 100% (allowing space for the data partition):
-   ```bash
-   if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
-     sudo sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
-   fi
-   ```
+1. **Keep the root partition small**:
+   On Raspberry Pi OS Trixie the initramfs script `resize_early` grows the root partition over the whole card on the first boot, but only when `resize` is on the kernel command line. Remove that word from `cmdline.txt` on the boot partition **before the first boot** (the image build does this in step 9), so there is room for the data partition.
 
 2. **Configure MBR Partition expander script**:
    Write the partitioning logic to `/usr/local/bin/mirrordash-repart.sh`:
    ```bash
    sudo tee /usr/local/bin/mirrordash-repart.sh << 'EOF'
    #!/bin/bash
+   # MirrorDash MBR Partition Expander
    set -euo pipefail
-   ROOT_PART=$(findmnt -n -o SOURCE /)
-   PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-   if [ -n "$PARENT_NAME" ]; then
-       DISK="/dev/$PARENT_NAME"
-   else
-       if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-           DISK="${ROOT_PART%p[0-9]*}"
-       else
-           DISK="${ROOT_PART%[0-9]*}"
-       fi
-   fi
+
+   # Runs only before the lock (ConditionKernelCommandLine), so / is the ext4 root partition itself
+   ROOT_PART=$(findmnt -nvo SOURCE /)
+   ROOT_NAME=$(basename "$ROOT_PART")
+   DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_PART")"
    PART_NUM=3
-   if [[ "$DISK" == *nvme* || "$DISK" == *mmcblk* ]]; then
-       TARGET_PART="${DISK}p${PART_NUM}"
-   else
-       TARGET_PART="${DISK}${PART_NUM}"
-   fi
+   # The kernel's naming: a "p" before the number when the disk name ends in a digit (mmcblk0p3, sda3)
+   case "$DISK" in
+       *[0-9]) TARGET_PART="${DISK}p${PART_NUM}" ;;
+       *)      TARGET_PART="${DISK}${PART_NUM}" ;;
+   esac
+
    if [ ! -b "$TARGET_PART" ]; then
-       END_SECTOR=$(parted -s "$DISK" unit s print | awk '/^[[:space:]]*2/ {print $3}' | tr -d 's')
-       if [ -z "$END_SECTOR" ]; then
-           exit 1
-       fi
-       START_SECTOR=$((END_SECTOR + 1))
-       parted -s "$DISK" -- align optimal mkpart primary ext4 "${START_SECTOR}s" 100%
-       partprobe "$DISK"
+       echo "Persistent partition $TARGET_PART not found. Creating..."
+       
+       # Right after the root partition (start + size, in 512-byte sectors, from the kernel)
+       START_SECTOR=$(( $(cat "/sys/class/block/$ROOT_NAME/start") + $(cat "/sys/class/block/$ROOT_NAME/size") ))
+       echo "Creating partition $PART_NUM starting at ${START_SECTOR}s..."
+       
+       # Create partition using parted
+       parted -s -a optimal "$DISK" -- mkpart primary ext4 "${START_SECTOR}s" 100%
+       
+       # Reload partition table and wait for udev to create the device node (using fallback for busy partition tables)
+       partprobe "$DISK" || partx -a "$DISK" || true
        udevadm settle
+       
        if [ -b "$TARGET_PART" ]; then
+           echo "Formatting $TARGET_PART as ext4 with label 'mirrordash-data'..."
            mkfs.ext4 -F -L mirrordash-data "$TARGET_PART"
+           # Ensure udev processes the new disk label symlink before exiting
+           udevadm settle
        else
+           echo "Error: Partition device $TARGET_PART did not appear after udevadm settle" >&2
            exit 1
        fi
+   else
+       echo "Persistent partition $TARGET_PART already exists."
    fi
    EOF
    sudo chmod +x /usr/local/bin/mirrordash-repart.sh
@@ -499,16 +501,7 @@ PathExists=/run/user/1000/wayland-0
 WantedBy=multi-user.target
 EOF
 
-# 9. Set up an hourly OS safeguard to purge browser cache from the RAM overlay
-sudo tee /etc/cron.hourly/mirrordash-cache-purge << 'EOF'
-#!/bin/sh
-# Aggressively clear the WebKit browser cache to prevent RAM overlay exhaustion
-rm -rf /home/pi/.cache/wpe/* 2>/dev/null || true
-rm -rf /home/pi/.cache/cog/* 2>/dev/null || true
-EOF
-sudo chmod +x /etc/cron.hourly/mirrordash-cache-purge
-
-# 10. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
+# 9. Enable the systemd kiosk services and mask the default tty1 getty and autologin services
 sudo systemctl enable labwc-kiosk.service cog-kiosk.path
 sudo systemctl mask getty@tty1.service autologin@tty1.service
 ```
@@ -756,9 +749,8 @@ sudo chmod 755 /usr/local/bin/mirrordash-gpio-overlays
 Configure the watchdog daemon, optimize the boot files for fast silent booting, copy the Plymouth splash screen asset, and enable timezone/NTP sync guards in one combined step:
 
 ```bash
-# 1. Enable the hardware watchdog
-sudo sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf && \
-sudo systemctl daemon-reexec
+# 1. The hardware watchdog is already on: Raspberry Pi OS ships RuntimeWatchdogSec=1m as a drop-in
+#    (/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf). Nothing to do.
 
 # No apt in the background: the app updates itself and a new OS comes as a new image
 sudo systemctl mask apt-daily.timer apt-daily-upgrade.timer
@@ -767,6 +759,7 @@ sudo systemctl mask apt-daily.timer apt-daily-upgrade.timer
 sudo tee -a /boot/firmware/config.txt << 'EOF'
 
 # --- MirrorDash Hardware Hardening ---
+[all]
 disable_splash=1
 boot_delay=0
 dtoverlay=disable-bt
@@ -895,10 +888,7 @@ SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
-# Wait for NetworkManager to claim wlan0
-nmcli device wait wlan0 timeout 10 2>/dev/null || true
-nmcli dev set wlan0 managed yes 2>/dev/null || true
-
+# nm-online waits on NetworkManager's own state: startup finished, then a connection (or 30 s)
 if nm-online -q -t 30; then
     logger -t mirrordash-wifi "Network online. Exiting captive portal check."
     exit 0
@@ -906,11 +896,9 @@ fi
 
 logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
 
-# Force a physical radio hardware scan to populate the cache
-nmcli dev wifi rescan 2>/dev/null || true
-
-# Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
-SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
+# Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
+# --rescan yes returns once the fresh scan has finished.
+SCAN_RESULT=$(nmcli -t -f SSID dev wifi list --rescan yes | sort -u | grep -v '^$' || true)
 echo "$SCAN_RESULT" > "$CACHE_FILE"
 chmod 644 "$CACHE_FILE"
 logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."

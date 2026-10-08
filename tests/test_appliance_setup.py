@@ -36,3 +36,25 @@ def test_swap_is_zram_only():
 
 def test_sudo_doesnt_log_the_wifi_password():
     assert "Defaults!/usr/bin/nmcli !log_allowed" in unit("/etc/sudoers.d/mirrordash")
+
+
+def test_no_hobbyist_patterns_in_the_build():
+    """AGENTS rules (DevOps): no polling, no scraping human-readable output, no commands that don't
+    exist hidden behind `|| true`."""
+    build = (ROOT / "scripts" / "build_image.sh").read_text()
+    for script in (SETUP, FINALIZE, build):
+        assert "sleep " not in script
+        assert "nmcli device wait" not in script  # not an nmcli command
+        assert "/proc/cmdline | grep" not in script and "unit s print | awk" not in script
+        assert "grep -m 1 '^version" not in script
+    assert "cache-purge" not in SETUP
+    assert "dev wifi list --rescan yes" in unit("/usr/local/bin/mirrordash-wifi-check.sh")
+    assert "plymouth/themes/mirrordash/mirrordash.script" in build
+    assert "cfg80211.ieee80211_regdom=" in build
+
+
+def test_golden_image_shows_the_scripts_the_build_installs():
+    golden = (ROOT / "GOLDEN_IMAGE.md").read_text()
+    assert unit("/usr/local/bin/mirrordash-wifi-check.sh") in golden
+    repart = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh\n(.*?)\nEOF\n", SETUP, re.S).group(1)
+    assert "\n".join(("   " + l) if l else "" for l in repart.split("\n")) in golden

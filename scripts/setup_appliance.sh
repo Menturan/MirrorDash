@@ -30,19 +30,7 @@ chmod +x /usr/sbin/policy-rc.d
 # Ensure target disk has enough space (at least 8GB to fit bootfs + rootfs + storage)
 # Bypass the physical disk size check if we are building the image in the cloud
 if [ -z "${BUILDING_IMAGE:-}" ]; then
-  ROOT_DEV_PARAM=$(cat /proc/cmdline | grep -o 'root=[^ ]*' | cut -d= -f2-)
-  ROOT_PART=$(findfs "$ROOT_DEV_PARAM" 2>/dev/null || findmnt -n -o SOURCE /)
-  PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-
-  if [ -n "$PARENT_NAME" ]; then
-    ROOT_DISK="/dev/$PARENT_NAME"
-  else
-    if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-      ROOT_DISK="${ROOT_PART%p[0-9]*}"
-    else
-      ROOT_DISK="${ROOT_PART%[0-9]*}"
-    fi
-  fi
+  ROOT_DISK="/dev/$(lsblk -ndo PKNAME "$(findmnt -nvo SOURCE /)")"
 
   if [ -b "$ROOT_DISK" ]; then
     disk_size_bytes=$(blockdev --getsize64 "$ROOT_DISK")
@@ -337,15 +325,6 @@ EOF
   systemctl --root=/ disable cog-kiosk.service 2>/dev/null || true
   systemctl --root=/ enable cog-kiosk.path
 
-  echo "Setting up hourly OS safeguard to purge browser cache from RAM overlay..."
-  cat << 'EOF' > /etc/cron.hourly/mirrordash-cache-purge
-#!/bin/sh
-# Aggressively clear the WebKit browser cache to prevent RAM overlay exhaustion
-rm -rf /home/pi/.cache/wpe/* 2>/dev/null || true
-rm -rf /home/pi/.cache/cog/* 2>/dev/null || true
-EOF
-  chmod +x /etc/cron.hourly/mirrordash-cache-purge
-
   echo "Masking default getty and autologin on tty1 to prevent terminal login preemption..."
   systemctl --root=/ mask getty@tty1.service autologin@tty1.service
 }
@@ -502,8 +481,8 @@ EOF
 }
 
 step_watchdog_boot_optimization() {
-  # Watchdog RuntimeWatchdogSec=14s
-  sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf
+  # The hardware watchdog is already on: Raspberry Pi OS ships RuntimeWatchdogSec=1m as a drop-in
+  # (/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf).
 
   # No apt in the background: the app updates itself, and a new OS comes as a new image.
   # These timers only downloaded package lists, writing to the system disk for nothing.
@@ -514,6 +493,7 @@ step_watchdog_boot_optimization() {
     cat << 'EOF' >> /boot/firmware/config.txt
 
 # --- MirrorDash Hardware Hardening ---
+[all]
 disable_splash=1
 boot_delay=0
 dtoverlay=disable-bt
@@ -527,7 +507,8 @@ EOF
 
     declare -a new_opts
     for opt in "${current_opts[@]}"; do
-      # Skip auto-resize parameters or legacy console configurations
+      # "resize" makes the initramfs (resize_early) grow the root over the whole card, leaving no
+      # room for the data partition. Also drop legacy console settings.
       if [[ "$opt" == "resize" || "$opt" == init=*init_resize.sh || "$opt" == console=* ]]; then
         continue
       fi
@@ -673,10 +654,7 @@ SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
 logger -t mirrordash-wifi "Starting network connectivity check..."
-# Wait for NetworkManager to claim wlan0
-nmcli device wait wlan0 timeout 10 2>/dev/null || true
-nmcli dev set wlan0 managed yes 2>/dev/null || true
-
+# nm-online waits on NetworkManager's own state: startup finished, then a connection (or 30 s)
 if nm-online -q -t 30; then
     logger -t mirrordash-wifi "Network online. Exiting captive portal check."
     exit 0
@@ -684,11 +662,9 @@ fi
 
 logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
 
-# Force a physical radio hardware scan to populate the cache
-nmcli dev wifi rescan 2>/dev/null || true
-
-# Scan for nearby networks BEFORE entering AP mode (client-mode scanning only)
-SCAN_RESULT=$(nmcli -t -f SSID dev wifi list 2>/dev/null | sort -u | grep -v '^$' || true)
+# Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
+# --rescan yes returns once the fresh scan has finished.
+SCAN_RESULT=$(nmcli -t -f SSID dev wifi list --rescan yes | sort -u | grep -v '^$' || true)
 echo "$SCAN_RESULT" > "$CACHE_FILE"
 chmod 644 "$CACHE_FILE"
 logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
@@ -795,37 +771,22 @@ step_repart_service() {
 # MirrorDash MBR Partition Expander
 set -euo pipefail
 
-ROOT_DEV_PARAM=$(cat /proc/cmdline | grep -o 'root=[^ ]*' | cut -d= -f2-)
-ROOT_PART=$(findfs "$ROOT_DEV_PARAM" 2>/dev/null || findmnt -n -o SOURCE /)
-PARENT_NAME=$(lsblk -no pkname "$ROOT_PART" 2>/dev/null | tr -d '[:space:]')
-if [ -n "$PARENT_NAME" ]; then
-    DISK="/dev/$PARENT_NAME"
-else
-    if [[ "$ROOT_PART" =~ p[0-9]+$ ]]; then
-        DISK="${ROOT_PART%p[0-9]*}"
-    else
-        DISK="${ROOT_PART%[0-9]*}"
-    fi
-fi
-
+# Runs only before the lock (ConditionKernelCommandLine), so / is the ext4 root partition itself
+ROOT_PART=$(findmnt -nvo SOURCE /)
+ROOT_NAME=$(basename "$ROOT_PART")
+DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_PART")"
 PART_NUM=3
-if [[ "$DISK" == *nvme* || "$DISK" == *mmcblk* ]]; then
-    TARGET_PART="${DISK}p${PART_NUM}"
-else
-    TARGET_PART="${DISK}${PART_NUM}"
-fi
+# The kernel's naming: a "p" before the number when the disk name ends in a digit (mmcblk0p3, sda3)
+case "$DISK" in
+    *[0-9]) TARGET_PART="${DISK}p${PART_NUM}" ;;
+    *)      TARGET_PART="${DISK}${PART_NUM}" ;;
+esac
 
 if [ ! -b "$TARGET_PART" ]; then
     echo "Persistent partition $TARGET_PART not found. Creating..."
     
-    # Get the end sector of partition 2
-    END_SECTOR=$(parted -s "$DISK" unit s print | awk '/^[[:space:]]*2/ {print $3}' | tr -d 's')
-    if [ -z "$END_SECTOR" ]; then
-        echo "Error: Could not determine end sector of partition 2" >&2
-        exit 1
-    fi
-    
-    START_SECTOR=$((END_SECTOR + 1))
+    # Right after the root partition (start + size, in 512-byte sectors, from the kernel)
+    START_SECTOR=$(( $(cat "/sys/class/block/$ROOT_NAME/start") + $(cat "/sys/class/block/$ROOT_NAME/size") ))
     echo "Creating partition $PART_NUM starting at ${START_SECTOR}s..."
     
     # Create partition using parted
@@ -1004,16 +965,11 @@ step_system_cleanup() {
   cp /etc/fstab /etc/fstab.bak
   trap 'mv -f /etc/fstab.bak /etc/fstab 2>/dev/null || true' EXIT ERR INT TERM
   sed -i '/ \/ /s/^/#/' /etc/fstab
+  # ponytail: a non-zero exit is tolerated (it crashed under nspawn before); build_image.sh instead
+  # checks the result: overlayroot and the boot theme must be inside the initramfs.
   update-initramfs -u || echo "Warning: update-initramfs exited with a non-zero status"
   mv /etc/fstab.bak /etc/fstab
   trap - EXIT ERR INT TERM
-
-  echo "Patching RPi OS firstboot to skip partition expansion (preserving SSH/PARTUUID regen)..."
-  if [ -f /usr/lib/raspberrypi-sys-mods/firstboot ]; then
-    if ! grep -q "do_resize() { return 0; }" /usr/lib/raspberrypi-sys-mods/firstboot; then
-      sed -i '2i do_resize() { return 0; }' /usr/lib/raspberrypi-sys-mods/firstboot
-    fi
-  fi
 
   echo "Cleaning up build policies and caches..."
   rm -f /usr/sbin/policy-rc.d

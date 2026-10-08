@@ -60,19 +60,13 @@ jobs:
       - name: Build OS image
         run: sudo bash scripts/build_image.sh
 
-      - name: Upload image and checksum
-        run: |
-          IMAGE=$(ls build_workspace/mirrordash-os-*.img.xz | head -n 1)
-          CHECKSUM="${IMAGE}.sha256"
-          echo "IMAGE=$IMAGE" >> $GITHUB_ENV
-          echo "CHECKSUM=$CHECKSUM" >> $GITHUB_ENV
-
       - name: Save Image as Workflow Artifact
         uses: actions/upload-artifact@v7
         with:
           name: mirrordash-os-image
           path: |
-            ${{ env.IMAGE }}
-            ${{ env.CHECKSUM }}
+            build_workspace/mirrordash-os-*.img.xz
+            build_workspace/mirrordash-os-*.img.xz.sha256
+          if-no-files-found: error
           compression-level: 0 # We already compress using PiShrink in build
           retention-days: 14

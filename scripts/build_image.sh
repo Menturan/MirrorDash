@@ -8,7 +8,7 @@ set -euo pipefail
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
 if [[ "$BUILD_DIR" != /* ]]; then BUILD_DIR="$(pwd)/$BUILD_DIR"; fi
 REPOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VERSION=$(grep -m 1 '^version = ' "$REPOS_DIR/pyproject.toml" | cut -d'"' -f2 || echo "dev")
+VERSION=$(python3 -c 'import sys, tomllib; print(tomllib.load(open(sys.argv[1], "rb"))["project"]["version"])' "$REPOS_DIR/pyproject.toml")
 FINAL_IMAGE="mirrordash-os-v${VERSION}.img"
 MOUNT_DIR="$BUILD_DIR/mnt"
 
@@ -59,12 +59,10 @@ echo -e "\e[34m[INFO] Expanding rootfs for package installation...\e[0m"
 truncate -s +2G "$FINAL_IMAGE"
 parted -s "$FINAL_IMAGE" resizepart 2 100%
 
+# -P has the kernel read the partition table (already final: resized above, before attaching)
 LOOP_DEV=$(losetup -Pf --show "$FINAL_IMAGE")
-partprobe "$LOOP_DEV" || true
-
 echo -e "\e[34m[INFO] Waiting for loop device...\e[0m"
 udevadm settle
-partx -u "$LOOP_DEV" || true
 
 e2fsck -f -y "${LOOP_DEV}p2"
 resize2fs "${LOOP_DEV}p2"
@@ -90,6 +88,16 @@ rm -rf "$MOUNT_DIR/opt/MirrorDash"
 initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8) || true
 if ! grep -q overlayroot <<< "$initramfs_files"; then
     echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the image would never become read-only.\e[0m"
+    exit 1
+fi
+if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
+    echo -e "\e[31m[ERROR] The MirrorDash boot theme is missing from the initramfs.\e[0m"
+    exit 1
+fi
+
+# Without a Wi-Fi country the radio stays blocked: no hotspot, no way to set the mirror up.
+if ! grep -q 'cfg80211.ieee80211_regdom=' "$MOUNT_DIR/boot/firmware/cmdline.txt"; then
+    echo -e "\e[31m[ERROR] No Wi-Fi country in cmdline.txt: the mirror couldn't start its setup hotspot.\e[0m"
     exit 1
 fi
 
