@@ -272,6 +272,7 @@ sudo apt install -y --no-install-recommends \
     parted \
     python3 \
     zip \
+    overlayroot \
     git && \
 sudo apt autoclean -y && sudo apt autoremove -y
 ```
@@ -291,6 +292,7 @@ sudo apt autoclean -y && sudo apt autoremove -y
 | `parted` | Partition manipulation tool. Required to expand the root and data partitions early on boot. |
 | `python3` | Python 3 runtime interpreter. Required for running transparent cursor generation and local scripts. |
 | `zip` | Writes backup files, optionally password protected (Python's `zipfile` can't encrypt). |
+| `overlayroot` | The read-only root (OverlayFS). Installed in the image so the first-boot lock needs no network: `raspi-config` would otherwise download it then, which fails on a mirror without Wi-Fi yet and leaves the root writable. `build_image.sh` stops if it's missing from the initramfs. |
 | `git` | Distributed version control system. Required by `uv` to pull and install modules directly from GitHub. |
 
 > [!NOTE]
@@ -408,6 +410,11 @@ Name=empty
 EOF
 echo "XCURSOR_THEME=empty" > /home/pi/.config/labwc/environment
 chown -R pi:pi /home/pi/.config /home/pi/.icons
+# The same theme as the system default, and XCURSOR_THEME also in labwc-kiosk.service:
+# with only labwc/environment the pointer still showed in the top left corner
+sudo cp -r /home/pi/.icons/empty /usr/share/icons/empty
+sudo mkdir -p /usr/share/icons/default
+printf '[Icon Theme]\nInherits=empty\n' | sudo tee /usr/share/icons/default/index.theme
 
 # 6. Configure seatd permissions for unprivileged Wayland access and enable the service
 # (Note: We configure seatd to use the 'video' group since 'pi' is always in 'video' by default, avoiding first-boot group reset issues)
@@ -439,6 +446,8 @@ TTYVTDisallocate=yes
 StandardOutput=journal
 StandardError=journal
 Environment=WLR_LIBINPUT_NO_DEVICES=1
+Environment=XCURSOR_THEME=empty
+Environment=XCURSOR_SIZE=24
 ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
 ExecStart=/usr/bin/labwc
 Restart=always
@@ -542,7 +551,7 @@ uv venv --allow-existing --python 3.14 base_venv
 # (build_image.sh installs a wheel built from the checked-out repo instead of PyPI,
 #  so the image always contains exactly the tagged code, with the dependency versions
 #  from uv.lock as constraints: uv export --frozen --no-dev --no-emit-project --no-hashes)
-uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v0.1.1
+uv pip install --python base_venv mirrordash git+https://github.com/Menturan/mirrordash-clock.git@v1.0.1
 
 # 6. Download the launcher script and loading HTML page
 curl -sSLf https://raw.githubusercontent.com/Menturan/MirrorDash/master/scripts/launch.sh -o /home/pi/mirrordash/launch.sh
@@ -735,6 +744,9 @@ Configure the watchdog daemon, optimize the boot files for fast silent booting, 
 # 1. Enable the hardware watchdog
 sudo sed -i 's/#\?RuntimeWatchdogSec=.*/RuntimeWatchdogSec=14s/' /etc/systemd/system.conf && \
 sudo systemctl daemon-reexec
+
+# No apt in the background: the app updates itself and a new OS comes as a new image
+sudo systemctl mask apt-daily.timer apt-daily-upgrade.timer
 
 # 2. Append visual boot suppression and Bluetooth disabling to config.txt
 sudo tee -a /boot/firmware/config.txt << 'EOF'

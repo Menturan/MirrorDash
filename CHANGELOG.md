@@ -9,17 +9,30 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### Added
+- A "Turn on SSH" button next to the new SSH password; before, only Enter saved it.
+- The MD monogram on the Wi-Fi setup screens and the admin password screens.
+
+### Changed
+- After Wi-Fi setup the mirror no longer restarts: it shows its clock right away. With a wrong Wi-Fi password, MirrorDash-Setup comes back within a minute (same password) instead of after a restart.
+- Installing or updating a module names it plainly, for example "mirrordash-clock (v1.0.1)", instead of showing its full web address.
+
+### Fixed
+- The progress window while a module is installed, updated or removed, MirrorDash is updated or restarted, was invisible, so nothing seemed to happen. It shows again.
+
 ### OS image
 - Each mirror gets its own password for the MirrorDash-Setup network instead of `mirrordash`. The mirror shows it during Wi-Fi setup, and it stays the same until the SD card is flashed again.
 - Includes `zip`, which creating a backup needs.
-- Comes with clock module 0.1.1, where the clock ticks again (each clock on the screen keeps its own time).
+- Comes with clock module 1.0.1, where the clock ticks again (each clock on the screen keeps its own time). Before, the mirror offered the old clock as an "update".
+- No mouse pointer in the top left corner of the screen.
+- No package lists downloaded in the background (the app updates itself, the OS comes as a new image).
 - The start, restart and shutdown screens show a slowly breathing monogram, so a long start never looks frozen.
 - A sharp, pure-black start screen with the MD monogram, instead of a grainy picture that was scaled down (and blurry) on smaller screens. Restarting and shutting down now show their own screens; before, the screen just went black.
 - Phones say "Sign in to network" when they join MirrorDash-Setup, like on a hotel Wi-Fi, and open the setup page by themselves. No address needs to be typed (if needed: http://mirrordash.setup).
 - Allows shutting down and setting the button and sensor pins from the admin page (needed for the features above).
 - Updates and installed modules are no longer undone when the mirror restarts.
 - On first start without Wi-Fi, the Wi-Fi setup screen is shown right away.
-- The SD card is now protected automatically: the mirror switches to read-only mode by itself after its first start (this takes one extra restart), and only once the storage partition is ready.
+- The SD card is now protected automatically: the mirror switches to read-only mode by itself after its first start (this takes one extra restart), and only once the storage partition is ready. This also works when the mirror has no Wi-Fi yet at its first start; before, it then silently stayed writable.
 - Wi-Fi no longer stalls for long periods on the Raspberry Pi 3 (Wi-Fi power saving is turned off).
 - The browser no longer crashes a couple of times on every start-up.
 - Every image contains exactly the app version it is released with, built from fixed versions of its tools.
