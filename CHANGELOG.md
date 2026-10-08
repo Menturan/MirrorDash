@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### OS image
+- Wi-Fi follows the country of the mirror's time zone (taken from your phone during Wi-Fi setup), from the next restart. Before, every mirror used the US rules, and could not see networks on channel 12 or 13, which are common in Europe.
 - Settings, Wi-Fi, installed modules and updates are kept when the mirror restarts. Before, the read-only protection also covered the storage partition, so everything saved after the first start was lost at the next restart.
 - The Wi-Fi password is no longer written in plain text to the system log (also shown on the admin page's Logs tab).
 - The mirror uses compressed memory as swap, so it no longer runs out of memory as easily. Before, swap failed to start and a failing system service was retried every time something started.

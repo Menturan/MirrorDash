@@ -169,6 +169,7 @@ step_setting_hostname() {
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
 
   echo "Unblocking Wi-Fi radio permanently..."
+  # US until the mirror knows where it is: the time zone from Wi-Fi setup sets the real country
   raspi-config nonint do_wifi_country US 2>/dev/null || true
   rfkill unblock wifi 2>/dev/null || true
 
@@ -414,6 +415,7 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
+pi ALL=(ALL) NOPASSWD: /usr/bin/raspi-config nonint do_wifi_country *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness

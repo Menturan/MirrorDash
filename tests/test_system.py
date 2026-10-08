@@ -226,3 +226,28 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
         with patch("asyncio.create_subprocess_exec", ddc(1)):
             assert asyncio.run(apply_brightness(40)) is False
         assert display.brightness_supported is False
+
+
+def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
+    """The time zone (sent by the phone during Wi-Fi setup) picks the Wi-Fi country; cmdline.txt is
+    only rewritten when the country changes."""
+    from mirrordash_core.system import os as system_os
+    (tmp_path / "zone.tab").write_text("# comment\nSE\t+5920+01803\tEurope/Stockholm\nUS\t+404251-0740023\tAmerica/New_York\tEastern\n")
+    cmdline = tmp_path / "cmdline.txt"
+    cmdline.write_text("overlayroot=tmpfs:recurse=0 root=PARTUUID=x rootwait cfg80211.ieee80211_regdom=US console=tty3\n")
+    monkeypatch.setattr(system_os, "ZONE_TAB", str(tmp_path / "zone.tab"))
+    monkeypatch.setattr(system_os, "CMDLINE", str(cmdline))
+
+    assert system_os.wifi_country_for("Europe/Stockholm") == "SE"
+    assert system_os.wifi_country_for("America/New_York") == "US"
+    assert system_os.wifi_country_for("UTC") is None
+
+    proc = MagicMock(returncode=0)
+    proc.communicate = AsyncMock(return_value=(b"", b""))
+    with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)) as run:
+        assert asyncio.run(system_os.apply_wifi_country("US")) is True  # already set: nothing written
+        assert asyncio.run(system_os.apply_wifi_country(None)) is False
+        assert asyncio.run(system_os.apply_wifi_country("S;")) is False
+        run.assert_not_awaited()
+        assert asyncio.run(system_os.apply_wifi_country("SE")) is True
+    assert run.await_args.args == ("sudo", "-n", "raspi-config", "nonint", "do_wifi_country", "SE")

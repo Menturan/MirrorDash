@@ -73,7 +73,7 @@ This is where you manage the widgets displayed on your mirror.
 ### 4.3. Configuration Tab
 Controls global settings shared by all modules. Adjust these to localize your mirror:
 *   **Language**: Set display language (e.g., `en` for English, `sv` for Swedish).
-*   **Timezone**: Your region's timezone identifier (e.g., `Europe/Stockholm`).
+*   **Timezone**: Your region's timezone identifier (e.g., `Europe/Stockholm`). It also sets the country for Wi-Fi (which channels the mirror may use), from the next restart. Wi-Fi setup takes the time zone from your phone.
 *   **Time Format**: Choose between `24h` or `12h` display.
 *   **Units**: Change temperature units (`C` or `F`) and distance (`km` or `mi`).
 *   **Coordinates**: Latitude and longitude (used by weather modules to locate your mirror).

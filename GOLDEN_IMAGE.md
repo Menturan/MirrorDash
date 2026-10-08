@@ -662,6 +662,7 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
+pi ALL=(ALL) NOPASSWD: /usr/bin/raspi-config nonint do_wifi_country *
 pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
 pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
 pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness

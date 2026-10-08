@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+import re
 import sys
 
 logger = logging.getLogger("mirrordash.core.system.os")
@@ -161,10 +162,51 @@ async def apply_system_timezone(timezone: str) -> bool:
             logger.warning(f"timedatectl failed to set timezone to {timezone}: {stderr.decode().strip()}")
             return False
         logger.info(f"System timezone successfully set to {timezone}")
+        await apply_wifi_country(wifi_country_for(timezone))
         return True
     except Exception as e:
         logger.warning(f"Failed to set system timezone to {timezone}: {e}")
         return False
+
+
+ZONE_TAB = "/usr/share/zoneinfo/zone.tab"
+CMDLINE = "/boot/firmware/cmdline.txt"
+
+
+def wifi_country_for(timezone: str) -> str | None:
+    """The country a timezone belongs to (Europe/Stockholm -> SE), or None (UTC, unknown)."""
+    try:
+        with open(ZONE_TAB, encoding="utf-8") as f:
+            for line in f:
+                fields = line.split("\t")
+                if len(fields) >= 3 and not line.startswith("#") and fields[2].strip() == timezone:
+                    return fields[0]
+    except OSError as e:
+        logger.debug(f"Cannot read {ZONE_TAB}: {e}")
+    return None
+
+
+async def apply_wifi_country(country: str | None) -> bool:
+    """Set the Wi-Fi country (which channels may be used) in cmdline.txt; it applies at the next start.
+    Only written when it changes, so the boot partition isn't rewritten at every start."""
+    if not country or not re.fullmatch(r"[A-Z]{2}", country):
+        return False
+    try:
+        with open(CMDLINE, encoding="utf-8") as f:
+            if f" cfg80211.ieee80211_regdom={country}" in f" {f.read().strip()} ":
+                return True
+    except OSError:
+        return False  # not a Pi (development machine)
+    proc = await asyncio.create_subprocess_exec(
+        "sudo", "-n", "raspi-config", "nonint", "do_wifi_country", country,
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+    if proc.returncode != 0:
+        logger.warning(f"Setting the Wi-Fi country to {country} failed: {stderr.decode(errors='replace').strip()}")
+        return False
+    logger.info(f"Wi-Fi country set to {country} (from the time zone); applies at the next start")
+    return True
 
 async def apply_system_password_hash(pwd_hash: str) -> bool:
     """Apply system password hash for user 'pi' using chpasswd -e."""
