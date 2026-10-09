@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import zipfile
 import importlib.metadata
@@ -15,6 +16,7 @@ from mirrordash_core.config import load_config, save_config, get_base_dir, get_c
 from mirrordash_core.host import reboot_system, run_restart
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 
+from mirrordash_core.venv import uv_pip
 logger = logging.getLogger("mirrordash.core.backup")
 
 
@@ -116,7 +118,6 @@ async def create_backup(password: str | None = None) -> dict:
             config = load_config().copy()
             if "admin_auth" in config:
                 del config["admin_auth"]
-            import json
             with open(temp_dir / "config.json", "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
         except Exception as e:
@@ -233,150 +234,101 @@ async def delete_backup(filename: str) -> None:
     logger.info(f"Backup deleted: {filename}")
 
 
+LIVE_PYTHON = "/storage/mirrordash/venv/bin/python"
+
+
+async def _restore_module(mod: dict, extract_dir: Path, python: str) -> None:
+    """Install one module from the manifest: a GitHub module at its commit, a PyPI module at its
+    version (or the latest if that fails), a local module from the copy in the backup."""
+    package_name, version = mod.get("package_name"), mod.get("version")
+    if mod.get("type", "pypi") == "pypi":
+        source = mod.get("source") or ""
+        target = source if source.startswith("git+https://github.com/") else f"{package_name}=={version}"
+        logger.info(f"Restoring module: {package_name} from {target}")
+        if (await uv_pip(python, "install", target))[0] != 0:
+            logger.warning(f"Failed to install package {package_name}=={version}. Retrying general install...")
+            if (await uv_pip(python, "install", package_name))[0] != 0:
+                logger.error(f"Could not restore module {package_name}: install failed")
+        return
+    folder = mod.get("folder_name")
+    src_dir = extract_dir / "local_modules" / folder
+    if not src_dir.exists():
+        logger.error(f"Local module source code folder {folder} missing from backup!")
+        return
+    logger.info(f"Restoring Local module: {package_name} from folder {folder}")
+    dest_dir = get_modules_dir() / folder
+    shutil.rmtree(dest_dir, ignore_errors=True)
+    dest_dir.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src_dir, dest_dir)
+    await uv_pip(python, "install", "-e", str(dest_dir))
+
+
+async def _restore_config(extract_dir: Path, admin_auth: dict) -> bool:
+    """The backup's config with this mirror's admin password. True when the GPIO overlays
+    changed and the mirror must reboot."""
+    restored = json.loads((extract_dir / "config.json").read_text(encoding="utf-8"))
+    restored["admin_auth"] = admin_auth
+    # GPIO overlays live in the boot config, not in the backup: write them for this card
+    system_cfg = restored.setdefault("system", {})
+    system_cfg.pop("gpio_overlays", None)
+    reboot_needed, gpio_error = await sync_gpio_overlays(system_cfg)
+    if gpio_error:
+        logger.error(f"Could not restore GPIO settings: {gpio_error}")
+    save_config(restored)
+    logger.info("Configuration files restored successfully.")
+    return reboot_needed
+
+
+def _restore_data(src_data_dir: Path) -> None:
+    """Module data back into the data dir, replacing what's there."""
+    for item in src_data_dir.iterdir() if src_data_dir.exists() else []:
+        if item.name == "config.json":
+            continue  # older backups carry the raw config with admin credentials
+        dest = Path(DATA_DIR) / item.name
+        if dest.is_dir():
+            shutil.rmtree(dest)
+        elif dest.exists():
+            os.remove(dest)
+        (shutil.copytree if item.is_dir() else shutil.copy)(item, dest)
+    logger.info("Module persistent data files restored successfully.")
+
+
 async def restore_backup(password: str | None = None) -> dict:
-    """Execute the restore process using the pre-uploaded backup."""
-    temp_upload_path = temp_upload()
-    if not os.path.exists(temp_upload_path):
+    """Restore the backup waiting in temp_upload(): modules, settings (keeping this mirror's admin
+    password) and module data, then restart (or reboot, for new GPIO overlays)."""
+    upload = temp_upload()
+    if not os.path.exists(upload):
         raise HTTPException(status_code=400, detail="No uploaded backup file found. Please upload a file first.")
-
-    logger.info("Starting restoration process...")
-
-    # 1. Read and cache the current system's admin auth config
-    current_config = load_config()
-    admin_auth = current_config.get("admin_auth")
+    admin_auth = load_config().get("admin_auth")
     if not admin_auth:
         raise HTTPException(status_code=500, detail="Current system admin password is not configured.")
+    logger.info("Starting restoration process...")
+    python = LIVE_PYTHON if os.path.exists(LIVE_PYTHON) else sys.executable
 
-    # We will extract inside a temporary folder
+    def extract(to: str):
+        with zipfile.ZipFile(upload) as zf:
+            if password:
+                zf.setpassword(password.encode("utf-8"))
+            zf.extractall(to)
+
     try:
-        with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as extract_dir_path:
-            # 2. Extract ZIP using standard zipfile
+        with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as extract_dir:
             try:
-                def _extract():
-                    with zipfile.ZipFile(temp_upload_path) as zf:
-                        if password:
-                            zf.setpassword(password.encode('utf-8'))
-                        zf.extractall(extract_dir_path)
-                await asyncio.to_thread(_extract)
+                await asyncio.to_thread(extract, extract_dir)
             except Exception as e:
                 logger.error(f"Unzip failed during restore: {e}")
                 raise Exception("Failed to decrypt or extract backup file.")
-
-            extract_dir = Path(extract_dir_path)
-
-            # Read manifest
-            import json
-            with open(extract_dir / "backup_manifest.json", "r", encoding="utf-8") as f:
-                manifest = json.load(f)
-
-            # 3. Re-install modules
-            modules = manifest.get("modules", [])
-            for mod in modules:
-                mod_type = mod.get("type", "pypi")
-                package_name = mod.get("package_name")
-                version = mod.get("version")
-
-                python_target = []
-                if os.path.exists("/storage/mirrordash/venv/bin/python"):
-                    python_target = ["--python", "/storage/mirrordash/venv/bin/python"]
-
-                if mod_type == "pypi":
-                    # GitHub modules go back to the exact commit; only GitHub, like install_module
-                    source = mod.get("source") or ""
-                    target = source if source.startswith("git+https://github.com/") else f"{package_name}=={version}"
-                    logger.info(f"Restoring module: {package_name} from {target}")
-                    # Try installing with strict version, fallback to standard install if fails
-                    cmd_install = ["uv", "pip", "install"] + python_target + [target]
-                    proc_inst = await asyncio.create_subprocess_exec(
-                        *cmd_install,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE
-                    )
-                    await proc_inst.communicate()
-                    if proc_inst.returncode != 0:
-                        logger.warning(f"Failed to install package {package_name}=={version}. Retrying general install...")
-                        cmd_fallback = ["uv", "pip", "install"] + python_target + [package_name]
-                        proc_fallback = await asyncio.create_subprocess_exec(
-                            *cmd_fallback,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await proc_fallback.communicate()
-                        if proc_fallback.returncode != 0:
-                            logger.error(f"Could not restore module {package_name}: install failed")
-
-                elif mod_type == "local":
-                    folder_name = mod.get("folder_name")
-                    logger.info(f"Restoring Local module: {package_name} from folder {folder_name}")
-                    src_dir = extract_dir / "local_modules" / folder_name
-                    dest_modules_dir = get_modules_dir()
-                    dest_dir = dest_modules_dir / folder_name
-
-                    if src_dir.exists():
-                        # Delete existing module folder if exists
-                        if dest_dir.exists():
-                            shutil.rmtree(dest_dir)
-                        # Ensure parent dir exists
-                        dest_modules_dir.mkdir(parents=True, exist_ok=True)
-                        # Copy back
-                        shutil.copytree(src_dir, dest_dir)
-                        # Install editable mode
-                        cmd_local = ["uv", "pip", "install"] + python_target + ["-e", str(dest_dir)]
-                        proc_local = await asyncio.create_subprocess_exec(
-                            *cmd_local,
-                            stdout=asyncio.subprocess.PIPE,
-                            stderr=asyncio.subprocess.PIPE
-                        )
-                        await proc_local.communicate()
-                    else:
-                        logger.error(f"Local module source code folder {folder_name} missing from backup!")
-
-            # 4. Restore configuration & restore current admin credentials
-            with open(extract_dir / "config.json", "r", encoding="utf-8") as f:
-                restored_config = json.load(f)
-
-            # Overwrite config.json credentials with current admin credentials
-            restored_config["admin_auth"] = admin_auth
-
-            # GPIO overlays live in the boot config, not in the backup: write them for this card
-            system_cfg = restored_config.setdefault("system", {})
-            system_cfg.pop("gpio_overlays", None)
-            reboot_needed, gpio_error = await sync_gpio_overlays(system_cfg)
-            if gpio_error:
-                logger.error(f"Could not restore GPIO settings: {gpio_error}")
-            save_config(restored_config)
-            logger.info("Configuration files restored successfully.")
-
-            # 5. Restore data files
-            src_data_dir = extract_dir / "data"
-            if src_data_dir.exists():
-                # Re-create/clean current data dir
-                for item in src_data_dir.iterdir():
-                    if item.name == "config.json":
-                        continue  # older backups carry the raw config with admin credentials
-                    dest_item = Path(DATA_DIR) / item.name
-                    if item.is_dir():
-                        if dest_item.exists():
-                            shutil.rmtree(dest_item)
-                        shutil.copytree(item, dest_item)
-                    else:
-                        if dest_item.exists():
-                            os.remove(dest_item)
-                        shutil.copy(item, dest_item)
-                logger.info("Module persistent data files restored successfully.")
-
-        # Clean up temp file
-        if os.path.exists(temp_upload_path):
-            os.remove(temp_upload_path)
-
-        if reboot_needed:
-            logger.info("Restoration completed successfully! Rebooting to load the GPIO overlays...")
-            asyncio.create_task(reboot_system())
-        else:
-            logger.info("Restoration completed successfully! Restarting mirror server...")
-            asyncio.create_task(run_restart())
-
-        return {"status": "success", "message": "Restoration completed successfully. System restarting..."}
+            extract_dir = Path(extract_dir)
+            manifest = json.loads((extract_dir / "backup_manifest.json").read_text(encoding="utf-8"))
+            for mod in manifest.get("modules", []):
+                await _restore_module(mod, extract_dir, python)
+            reboot_needed = await _restore_config(extract_dir, admin_auth)
+            _restore_data(extract_dir / "data")
+        os.remove(upload)
     except Exception as e:
         logger.error(f"Error during restoration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Restoration failed: {e}")
+
+    logger.info(f"Restoration completed successfully! {'Rebooting to load the GPIO overlays' if reboot_needed else 'Restarting mirror server'}...")
+    asyncio.create_task(reboot_system() if reboot_needed else run_restart())
+    return {"status": "success", "message": "Restoration completed successfully. System restarting..."}
