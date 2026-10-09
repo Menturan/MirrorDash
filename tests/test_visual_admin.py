@@ -13,7 +13,7 @@ pytestmark = pytest.mark.only_browser("chromium")
 
 # Setup mock config
 mock_salt = "0123456789abcdef"
-from mirrordash_core.api.admin import hash_password
+from mirrordash_core.admin import hash_password
 mock_hash = hash_password("secret", mock_salt)
 
 MOCK_CONFIG = {
@@ -63,7 +63,7 @@ def patch_all_system():
     async def fake_restart():
         # A real restart starts a new process with a new boot id; the admin UI waits for that.
         import uuid
-        from mirrordash_core.api import admin_shared
+        from mirrordash_core import admin as admin_shared
         admin_shared.BOOT_ID = uuid.uuid4().hex
         return True
     mock_restart = AsyncMock(side_effect=fake_restart)
@@ -76,16 +76,20 @@ def patch_all_system():
     mock_proc.communicate = AsyncMock(return_value=(b"mocked_hash\n", b""))
     
     modules = [
-        "mirrordash_core.api.admin_system",
-        "mirrordash_core.api.admin_system_panels",
-        "mirrordash_core.api.admin_auth",
-        "mirrordash_core.api.admin_config",
-        "mirrordash_core.api.admin_modules_panels",
-        "mirrordash_core.api.admin_shared",
+        "mirrordash_core.admin",
         "mirrordash_core.config",
-        "mirrordash_core.system",
-        "mirrordash_core.system.os",
-        "mirrordash_core.system.network"
+        "mirrordash_core.host",
+        "mirrordash_core.system_settings",
+        "mirrordash_core.features.auth.routes",
+        "mirrordash_core.features.hardware.routes",
+        "mirrordash_core.features.modules.routes",
+        "mirrordash_core.features.modules.service",
+        "mirrordash_core.features.power.routes",
+        "mirrordash_core.features.settings.routes",
+        "mirrordash_core.features.settings.schema",
+        "mirrordash_core.features.settings.ssh",
+        "mirrordash_core.features.updates.service",
+        "mirrordash_core.features.wifi.network",
     ]
     
     stack = contextlib.ExitStack()
@@ -108,16 +112,16 @@ def patch_all_system():
                     pass
         
         # Intercept subprocesses in admin_system.py
-        stack.enter_context(patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", return_value=mock_proc))
+        stack.enter_context(patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", return_value=mock_proc))
         
         # Specific service level mocks
-        stack.enter_context(patch("mirrordash_core.display_power.display_power_manager.start", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.display_power.display_power_manager.stop", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.module_loader.module_loader.start_modules", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.module_loader.module_loader.stop_modules", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.api.admin_logs.get_logs", return_value={"logs": "MOCK LOG LINE 1\nMOCK LOG LINE 2"}))
-        stack.enter_context(patch("mirrordash_core.api.backup.list_backups", return_value=MOCK_BACKUPS))
-        stack.enter_context(patch("mirrordash_core.api.backup.create_backup", return_value={"filename": "backup_2026-06-29.mirror", "status": "success"}))
+        stack.enter_context(patch("mirrordash_core.features.power.display_power.display_power_manager.start", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.power.display_power.display_power_manager.stop", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.modules.loader.module_loader.start_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.modules.loader.module_loader.stop_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.logs.routes.get_logs", return_value={"logs": "MOCK LOG LINE 1\nMOCK LOG LINE 2"}))
+        stack.enter_context(patch("mirrordash_core.features.backup.service.list_backups", return_value=MOCK_BACKUPS))
+        stack.enter_context(patch("mirrordash_core.features.backup.service.create_backup", return_value={"filename": "backup_2026-06-29.mirror", "status": "success"}))
         
         yield
 
@@ -348,10 +352,10 @@ def test_module_upgrade_shows_progress(page, server_url):
     dist.read_text.return_value = json.dumps({"url": "https://github.com/Menturan/mirrordash-clock.git",
                                               "vcs_info": {"vcs": "git", "commit_id": "abc", "requested_revision": "v1.0.0"}})
     ep = MagicMock(dist=dist)
-    with patch("mirrordash_core.api.admin_modules_panels.find_entry_point", return_value=ep), \
-         patch("mirrordash_core.api.admin_modules_panels.fetch_json_cached", new_callable=AsyncMock,
+    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=ep), \
+         patch("mirrordash_core.features.modules.routes.fetch_json_cached", new_callable=AsyncMock,
                return_value={"tag_name": "v1.0.1", "body": "Fixes"}), \
-         patch("mirrordash_core.api.admin_modules_panels.update_module", new_callable=AsyncMock):
+         patch("mirrordash_core.features.modules.routes.update_module", new_callable=AsyncMock):
         navigate_authenticated(page, server_url)
         page.wait_for_selector("h1")
         # The card's placeholders, filled by the update check exactly as on the Modules tab

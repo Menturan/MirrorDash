@@ -16,8 +16,8 @@ os.environ.setdefault("MIRRORDASH_CONFIG_PATH", str(_test_config))
 @pytest.fixture(autouse=True)
 def _clear_remote_json_cache():
     """Update checks are cached per URL; start every test without earlier answers."""
-    from mirrordash_core.system import network
-    network._remote_json_cache.clear()
+    from mirrordash_core import fetch
+    fetch._remote_json_cache.clear()
 
 
 @pytest.fixture(autouse=True)

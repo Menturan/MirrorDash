@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from mirrordash_core import hardware
+from mirrordash_core.features.hardware import devices as hardware
 from mirrordash_core.app import app
 from mirrordash_core.event_bus import event_bus
-from mirrordash_core.hardware import PressClassifier
+from mirrordash_core.features.hardware.devices import PressClassifier
 
 
 def presses(events, long_press=1.0):
@@ -78,8 +78,8 @@ def test_read_fan_state(tmp_path, monkeypatch):
 
 def test_sync_only_writes_when_devices_change():
     cfg = {"devices": []}
-    with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write, \
-         patch("mirrordash_core.hardware.kernel_boot_id", return_value="boot-1"):
+    with patch("mirrordash_core.features.hardware.devices.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write, \
+         patch("mirrordash_core.features.hardware.devices.kernel_boot_id", return_value="boot-1"):
         assert asyncio.run(hardware.sync_gpio_overlays(cfg)) == (False, None)  # nothing, nothing written
         cfg["devices"] = [{"type": "mmwave", "pin": 22}, {"type": "light", "address": "0x5c"}]
         assert asyncio.run(hardware.sync_gpio_overlays(cfg)) == (True, None)
@@ -154,8 +154,8 @@ def test_sensor_readings_are_published():
         readings = {"dht11": {"temperature_c": 21.5, "humidity": 40}, "light": {"lux": 120.0}}
         cfg = {"system": {"devices": [{"type": "dht11", "pin": 4}, {"type": "light", "address": "0x23"}]}}
         try:
-            with patch("mirrordash_core.hardware.load_config", return_value=cfg), \
-                 patch("mirrordash_core.hardware.read_sensor", new_callable=AsyncMock, side_effect=lambda t: readings[t]):
+            with patch("mirrordash_core.features.hardware.devices.load_config", return_value=cfg), \
+                 patch("mirrordash_core.features.hardware.devices.read_sensor", new_callable=AsyncMock, side_effect=lambda t: readings[t]):
                 task = asyncio.create_task(inputs._publish_sensors())
                 await asyncio.sleep(0.02)
                 task.cancel()
@@ -170,7 +170,7 @@ def test_sensor_readings_are_published():
 
 @pytest.fixture
 def client():
-    from mirrordash_core.api.admin_shared import require_api_key
+    from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     yield TestClient(app)
     app.dependency_overrides.clear()
@@ -180,12 +180,12 @@ def _message(response) -> str:
     return json.loads(response.headers["HX-Trigger-After-Swap"])["md-notify"]["message"]
 
 
-@patch("mirrordash_core.api.admin_system_panels.save_config")
-@patch("mirrordash_core.api.admin_system_panels.load_config")
+@patch("mirrordash_core.features.hardware.routes.save_config")
+@patch("mirrordash_core.features.hardware.routes.load_config")
 def test_add_and_remove_devices(mock_load, mock_save, client):
     mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 3, "actions": {}}], "gpio_overlays": ["button:3"]}}
 
-    with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
+    with patch("mirrordash_core.features.hardware.devices.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
         r = client.post("/admin/panels/system/devices/add", data={"type": "light", "address": "0x23"})
         assert "needed for I²C" in _message(r) and 'id="devices-card"' in r.text  # card stays on errors
         write.assert_not_called()
@@ -199,14 +199,14 @@ def test_add_and_remove_devices(mock_load, mock_save, client):
         assert "Push button 2" in r.text and "Push button 3" not in r.text  # one more button at a time
 
     mock_load.return_value = mock_save.call_args[0][0]
-    with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
+    with patch("mirrordash_core.features.hardware.devices.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
         r = client.post("/admin/panels/system/devices/remove", data={"type": "button"})
     assert "removed" in _message(r)
     write.assert_awaited_once_with(["mmwave:22"])
 
 
-@patch("mirrordash_core.api.admin_system_panels.save_config")
-@patch("mirrordash_core.api.admin_system_panels.load_config")
+@patch("mirrordash_core.features.hardware.routes.save_config")
+@patch("mirrordash_core.features.hardware.routes.load_config")
 def test_button_actions(mock_load, mock_save, client):
     mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 17, "actions": {}},
                                                      {"type": "button_2", "pin": 22, "actions": {}}]}}
@@ -226,12 +226,12 @@ def test_button_actions(mock_load, mock_save, client):
 
 def test_device_problem_does_not_block_other_settings():
     """An old OS image (no helper) must never stop the display settings from saving."""
-    from mirrordash_core.api.admin_system import update_system_settings
+    from mirrordash_core.system_settings import update_system_settings
     cfg = {"system": {"devices": [{"type": "button", "pin": 23}], "display_control": {"mode": "wake"}}}
-    with patch("mirrordash_core.api.admin_system.load_config", return_value=cfg), \
-         patch("mirrordash_core.api.admin_system.save_config") as save, \
-         patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock), \
-         patch("mirrordash_core.hardware.os.path.exists", return_value=False):
+    with patch("mirrordash_core.features.updates.service.load_config", return_value=cfg), \
+         patch("mirrordash_core.system_settings.save_config") as save, \
+         patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock), \
+         patch("mirrordash_core.features.hardware.devices.os.path.exists", return_value=False):
         asyncio.run(update_system_settings(settings={"brightness": 40}))
         asyncio.run(update_system_settings(settings={"display_control": {"mode": "wake"}}))
     assert save.call_count == 2
@@ -250,8 +250,8 @@ def test_each_button_has_its_own_presses_and_actions():
         event_bus.subscribe("hardware.button", handler)
         inputs, r, w = _pipe_inputs()
         try:
-            with patch("mirrordash_core.hardware.load_config", return_value=cfg), \
-                 patch("mirrordash_core.hardware.run_button_action", new_callable=AsyncMock):
+            with patch("mirrordash_core.features.hardware.devices.load_config", return_value=cfg), \
+                 patch("mirrordash_core.features.hardware.devices.run_button_action", new_callable=AsyncMock):
                 os.write(w, key("button", 1) + key("button_2", 1))  # both held at once
                 inputs._on_readable("dev")
                 await asyncio.sleep(0.05)

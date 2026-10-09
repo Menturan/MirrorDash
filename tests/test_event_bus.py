@@ -113,7 +113,7 @@ async def test_event_bus_async_callback_crashes():
 def test_module_reload_does_not_duplicate_subscriptions():
     import asyncio
     from mirrordash_core.event_bus import event_bus
-    from mirrordash_core.module_loader import ModuleLoader
+    from mirrordash_core.features.modules.loader import ModuleLoader
 
     calls = []
     event_bus.subscribe("x:test", lambda data: calls.append(data))

@@ -3,11 +3,11 @@ import asyncio
 from unittest.mock import MagicMock, patch, AsyncMock
 from jinja2 import Environment, DictLoader
 
-import mirrordash_core.module_loader
-from mirrordash_core.module_loader import ModuleLoader, load_translations
+import mirrordash_core.features.modules.loader
+from mirrordash_core.features.modules.loader import ModuleLoader, load_translations
 
 # Set recovery delay to 0.01s for fast tests
-mirrordash_core.module_loader.MODULE_RESTART_DELAY = 0.01
+mirrordash_core.features.modules.loader.MODULE_RESTART_DELAY = 0.01
 
 class DummyPlugin:
     def __init__(self, config):
@@ -183,7 +183,7 @@ async def test_module_loader_cancel_handling():
 @pytest.mark.asyncio
 async def test_module_loader_backoff():
     # Set recovery delay to 0.01s for fast tests
-    mirrordash_core.module_loader.MODULE_RESTART_DELAY = 0.01
+    mirrordash_core.features.modules.loader.MODULE_RESTART_DELAY = 0.01
 
     class CrashingPlugin:
         def __init__(self):
@@ -198,7 +198,7 @@ async def test_module_loader_backoff():
     broadcast_mock = AsyncMock()
 
     # Re-import MODULE_RESTART_DELAY to make sure patch matches
-    with patch("mirrordash_core.module_loader.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+    with patch("mirrordash_core.features.modules.loader.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         call_count = 0
         async def side_effect(delay):
             nonlocal call_count
@@ -229,7 +229,7 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
     """fetch_json against a real local server: data, a rejected key, not-JSON, then the server gone."""
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
-    from mirrordash_core.module_loader import _inject_module_helpers
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
 
     seen_headers = []
     class Handler(BaseHTTPRequestHandler):

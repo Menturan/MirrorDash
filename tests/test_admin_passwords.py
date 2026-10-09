@@ -11,7 +11,7 @@ CORE = Path(__file__).parent.parent / "mirrordash_core"
 
 
 def test_every_password_field_can_be_shown():
-    for path in [*CORE.glob("templates/*.html"), *CORE.glob("api/*.py")]:
+    for path in [*CORE.glob("templates/*.html"), *CORE.glob("features/*/templates/*.html"), *CORE.rglob("*.py")]:
         text = path.read_text()
         for field in re.finditer(r'<input type="password"[^>]*>', text):
             field_id = re.search(r'id="([^"]+)"', field.group(0))
@@ -20,18 +20,18 @@ def test_every_password_field_can_be_shown():
 
 
 def _post_ssh(form, ssh_active=False):
-    from mirrordash_core.api.admin import require_api_key
+    from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     proc = MagicMock(returncode=0)
     proc.communicate = AsyncMock(return_value=(b"$6$hash\n", b""))
     try:
-        with patch("mirrordash_core.api.admin_system.load_config", return_value={}), \
-             patch("mirrordash_core.api.admin_system.save_config") as save, \
-             patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
-             patch("mirrordash_core.api.admin_system.open", create=True), \
-             patch("mirrordash_core.api.admin_system.os.chmod"), \
-             patch("mirrordash_core.system.get_ssh_status", AsyncMock(return_value=ssh_active)), \
-             patch("mirrordash_core.system.set_ssh_status", AsyncMock(return_value=True)):
+        with patch("mirrordash_core.features.updates.service.load_config", return_value={}), \
+             patch("mirrordash_core.system_settings.save_config") as save, \
+             patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
+             patch("mirrordash_core.system_settings.open", create=True), \
+             patch("mirrordash_core.system_settings.os.chmod"), \
+             patch("mirrordash_core.features.settings.ssh.get_ssh_status", AsyncMock(return_value=ssh_active)), \
+             patch("mirrordash_core.features.settings.ssh.set_ssh_status", AsyncMock(return_value=True)):
             return TestClient(app).post("/admin/panels/system/save", data=form), save
     finally:
         app.dependency_overrides.clear()

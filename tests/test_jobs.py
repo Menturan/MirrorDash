@@ -3,8 +3,8 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
-from mirrordash_core.api import admin_shared
-from mirrordash_core.api.admin_shared import job_response, job_status, start_job
+from mirrordash_core import admin as admin_shared
+from mirrordash_core.admin import job_response, job_status, start_job
 
 
 @pytest.fixture(autouse=True)

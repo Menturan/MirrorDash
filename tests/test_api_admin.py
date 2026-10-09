@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
 import json
 
 from mirrordash_core.app import app
-from mirrordash_core.api.admin import hash_password
+from mirrordash_core.admin import hash_password
 
 # Setup config fixtures for test cases
 mock_salt = "0123456789abcdef"
@@ -38,7 +38,7 @@ def client():
 
 @pytest.fixture(autouse=True)
 def mock_admin_shared_load_config():
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG):
+    with patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG):
         yield
 
 
@@ -51,9 +51,9 @@ def clear_config_cache():
     invalidate_config_cache()
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
-@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
+@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_auth_status_setup_required(mock_hotspot, mock_save, mock_load, client):
     # Setup not complete: "admin_auth" not in config
     mock_load.return_value = {}
@@ -67,8 +67,8 @@ def test_auth_status_setup_required(mock_hotspot, mock_save, mock_load, client):
     assert data["wifi_hotspot_active"] is True
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_auth_status_corrupt_entry(mock_hotspot, mock_load, client):
     """Corrupt admin_auth must surface as auth_corrupt=True, NOT setup_required."""
     mock_hotspot.return_value = False
@@ -88,8 +88,8 @@ def test_auth_status_corrupt_entry(mock_hotspot, mock_load, client):
         assert data["auth_corrupt"] is True, f"auth_corrupt must be True for: {corrupt}"
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
 def test_auth_setup_success(mock_save, mock_load, client):
     mock_load.return_value = {}
 
@@ -104,8 +104,8 @@ def test_auth_setup_success(mock_save, mock_load, client):
     assert "salt" in saved_config["admin_auth"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
 def test_auth_setup_failures(mock_save, mock_load, client):
     # Password too short
     response = client.post("/admin/auth/setup", json={"password": "123"})
@@ -125,7 +125,7 @@ def test_auth_setup_failures(mock_save, mock_load, client):
     assert "is already set" in response.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_shared.load_config")
+@patch("mirrordash_core.admin.load_config")
 def test_require_api_key_returns_403_on_corrupt_auth(mock_load, client):
     """require_api_key must return 403 (not 500) when auth config is corrupt."""
     for corrupt in [
@@ -138,8 +138,8 @@ def test_require_api_key_returns_403_on_corrupt_auth(mock_load, client):
         assert response.status_code == 403, f"Expected 403 for corrupt: {corrupt}"
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
 def test_change_password_success(mock_save, mock_auth_load, client):
     """change-password requires the current valid password and updates it.
     The autouse fixture already patches admin_shared.load_config with MOCK_CONFIG.
@@ -161,7 +161,7 @@ def test_change_password_success(mock_save, mock_auth_load, client):
     assert "salt" in saved["admin_auth"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
 def test_change_password_requires_auth(mock_auth_load, client):
     """change-password must be rejected without a valid current password.
     Use side_effect to return a fresh copy so MOCK_CONFIG cannot be mutated.
@@ -182,7 +182,7 @@ def test_change_password_requires_auth(mock_auth_load, client):
     assert response.status_code == 401
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
 def test_recover_auth_invalid_state(mock_load, client):
     """Recovery must be rejected if the auth state is valid or not set."""
     # Scenario A: Auth is valid
@@ -198,8 +198,8 @@ def test_recover_auth_invalid_state(mock_load, client):
     assert "Recovery not available" in response.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_recover_auth_invalid_pin(mock_hotspot, mock_load, client):
     """Recovery must be rejected with 411/401 when the PIN is incorrect."""
     mock_hotspot.return_value = False
@@ -215,15 +215,15 @@ def test_recover_auth_invalid_pin(mock_hotspot, mock_load, client):
     assert "Invalid Recovery PIN" in response.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
-@patch("mirrordash_core.api.admin_auth.is_wifi_hotspot_active", new_callable=AsyncMock)
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
+@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_recover_auth_success(mock_hotspot, mock_save, mock_load, client):
     """Recovery must succeed when a correct PIN is provided and update the configuration."""
     mock_hotspot.return_value = False
     mock_load.return_value = {"admin_auth": {}} # Corrupt
 
-    from mirrordash_core.api.admin_auth import get_recovery_pin, clear_recovery_pin
+    from mirrordash_core.features.auth.routes import get_recovery_pin, clear_recovery_pin
     clear_recovery_pin()
     correct_pin = get_recovery_pin()
 
@@ -238,7 +238,7 @@ def test_recover_auth_success(mock_hotspot, mock_save, mock_load, client):
     assert "salt" in saved["admin_auth"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
+@patch("mirrordash_core.features.auth.routes.load_config")
 def test_forgot_password_no_auth(mock_load, client):
     """Forgot password must be rejected if no auth has been configured yet."""
     mock_load.return_value = {} # Setup not completed
@@ -247,14 +247,14 @@ def test_forgot_password_no_auth(mock_load, client):
     assert "Password has not been set yet" in response.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_auth.load_config")
-@patch("mirrordash_core.api.admin_auth.save_config")
-@patch("mirrordash_core.app.manager.broadcast", new_callable=AsyncMock)
+@patch("mirrordash_core.features.auth.routes.load_config")
+@patch("mirrordash_core.features.auth.routes.save_config")
+@patch("mirrordash_core.features.kiosk.ws.manager.broadcast", new_callable=AsyncMock)
 def test_forgot_password_success(mock_broadcast, mock_save, mock_load, client):
     """Forgot password must corrupt the current auth config and broadcast a reload."""
     mock_load.return_value = {"admin_auth": {"hash": "somehash", "salt": "somesalt"}}
     
-    from mirrordash_core.api.admin_auth import clear_recovery_pin
+    from mirrordash_core.features.auth.routes import clear_recovery_pin
     clear_recovery_pin()
 
     response = client.post("/admin/auth/forgot-password")
@@ -272,8 +272,8 @@ def test_forgot_password_success(mock_broadcast, mock_save, mock_load, client):
 
 
 
-@patch("mirrordash_core.api.admin_shared.load_config")
-@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.admin.load_config")
+@patch("mirrordash_core.features.updates.service.load_config")
 def test_auth_headers_required(mock_sys_load, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     
@@ -286,15 +286,15 @@ def test_auth_headers_required(mock_sys_load, mock_load, client):
     assert response.status_code == 401
     
     # Correct password -> 200
-    with patch("mirrordash_core.api.admin_system.get_available_resolutions", new_callable=AsyncMock) as mock_res:
+    with patch("mirrordash_core.system_settings.get_available_resolutions", new_callable=AsyncMock) as mock_res:
         mock_res.return_value = ["1920x1080"]
         response = client.get("/admin/system", headers={"X-API-Key": "secret"})
         assert response.status_code == 200
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, mock_load, client):
     mock_load.return_value = MOCK_CONFIG.copy()
     
@@ -321,7 +321,7 @@ def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, moc
     assert saved_cfg["system"]["rotation"] == "left"
     assert saved_cfg["system"]["brightness"] == 75
 
-@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.features.updates.service.load_config")
 def test_update_system_settings_invalid_inputs(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     
@@ -345,7 +345,7 @@ def test_update_system_settings_invalid_inputs(mock_load, client):
 
 def test_update_screen_state(client):
     # This route is unauthenticated (e.g. for Home Assistant)
-    with patch("mirrordash_core.display_power.display_power_manager") as manager:
+    with patch("mirrordash_core.features.power.display_power.display_power_manager") as manager:
         r = client.post("/admin/screen", json={"state": "on"})
         assert r.status_code == 200 and r.json()["status"] == "success"
         manager.wake.assert_called_once_with(None)  # the configured screen timeout
@@ -362,9 +362,9 @@ def test_update_screen_state(client):
 
 def test_mirror_page_hears_the_version_first(client):
     """The kiosk reloads itself when the version it hears differs from the one it was loaded with."""
-    from mirrordash_core.ws_manager import manager
+    from mirrordash_core.features.kiosk.ws import manager
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
-    with patch("mirrordash_core.ws_manager.get_core_version", return_value="1.2.3"):
+    with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"):
         with client.websocket_connect("/ws") as ws:
             assert ws.receive_json() == {"type": "hello", "version": "1.2.3"}
             assert ws.receive_json()["module"] == "clock"  # then the modules, as before
@@ -372,14 +372,14 @@ def test_mirror_page_hears_the_version_first(client):
 
 
 def test_reload_screen_button(client):
-    with patch("mirrordash_core.ws_manager.manager.broadcast", new_callable=AsyncMock) as broadcast:
+    with patch("mirrordash_core.features.kiosk.ws.manager.broadcast", new_callable=AsyncMock) as broadcast:
         r = client.post("/admin/panels/system/reload-screen", headers={"X-API-Key": "secret"})
     assert r.status_code == 200
     broadcast.assert_awaited_once_with({"action": "reload"})
     assert client.post("/admin/panels/system/reload-screen").status_code == 401
 
 
-@patch("mirrordash_core.app.module_loader")
+@patch("mirrordash_core.features.kiosk.routes.module_loader")
 def test_public_active_modules_endpoint(mock_loader, client):
     # Setup mock active modules
     mock_module_instance = MagicMock()
@@ -397,9 +397,9 @@ def test_public_active_modules_endpoint(mock_loader, client):
     assert data["modules"][0]["position"] == "top_right"
     assert data["modules"][0]["title"] == "Clock Module Title"
 
-@patch("mirrordash_core.api.admin_config.load_config")
-@patch("mirrordash_core.api.admin_config.save_config")
-@patch("mirrordash_core.api.admin_config.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.schema.load_config")
+@patch("mirrordash_core.features.settings.schema.save_config")
+@patch("mirrordash_core.features.settings.schema.module_loader.reload_modules", new_callable=AsyncMock)
 def test_update_config_positions_validation(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = MOCK_CONFIG
@@ -429,9 +429,9 @@ def test_update_config_positions_validation(mock_reload, mock_save, mock_load, c
     r = client.post("/admin/config", json=payload_invalid, headers=headers)
     assert r.status_code == 422
 
-@patch("mirrordash_core.api.admin_modules.load_config")
-@patch("mirrordash_core.api.admin_modules.save_config")
-@patch("mirrordash_core.api.admin_modules.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.modules.service.load_config")
+@patch("mirrordash_core.features.modules.service.save_config")
+@patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
 def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     config = MOCK_CONFIG.copy()
@@ -459,7 +459,7 @@ def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
         stdout=-1, stderr=-1, env=ANY
     )
 
-@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.features.modules.service.load_config")
 def test_uninstall_module_invalid_name(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
@@ -486,11 +486,11 @@ SYSTEM_PAYLOAD_BASE = {
 }
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.set_screen_power", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_without_password_rejected(
     mock_get_ssh, mock_screen, mock_apply, mock_save, mock_load, client
 ):
@@ -505,11 +505,11 @@ def test_enable_ssh_without_password_rejected(
     assert "password" in response.json()["detail"].lower()
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.set_screen_power", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_with_short_password_rejected(
     mock_get_ssh, mock_screen, mock_apply, mock_save, mock_load, client
 ):
@@ -524,13 +524,13 @@ def test_enable_ssh_with_short_password_rejected(
     assert "password" in response.json()["detail"].lower()
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.set_screen_power", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec")
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_with_valid_password_calls_chpasswd(
     mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
     mock_save, mock_load, client
@@ -572,13 +572,13 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     mock_process.communicate.assert_any_call(input=b"SecurePass1!")
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.set_screen_power", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec")
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_disable_ssh_does_not_call_chpasswd(
     mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
     mock_save, mock_load, client
@@ -597,13 +597,13 @@ def test_disable_ssh_does_not_call_chpasswd(
     mock_subproc.assert_not_called()
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.set_screen_power", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec")
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_ssh_already_enabled_does_not_require_password(
     mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
     mock_save, mock_load, client
@@ -622,10 +622,10 @@ def test_ssh_already_enabled_does_not_require_password(
     mock_subproc.assert_not_called()
 
 
-@patch("mirrordash_core.api.admin_modules.scan_community_modules_now", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.features.modules.service.scan_community_modules_now", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.service.load_config")
 def test_list_community_modules(mock_load, mock_scan, client):
-    import mirrordash_core.api.admin_modules as adm_mods
+    import mirrordash_core.features.modules.service as adm_mods
     mock_load.return_value = MOCK_CONFIG
     adm_mods.LAST_SCAN_TIMESTAMP = None
     async def scan():
@@ -641,7 +641,7 @@ def test_list_community_modules(mock_load, mock_scan, client):
     assert any(m["name"] == "mirrordash-clock" for m in modules)
 
 
-@patch("mirrordash_core.api.admin_config.load_config")
+@patch("mirrordash_core.features.settings.schema.load_config")
 def test_get_globals_schema(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
@@ -658,9 +658,9 @@ def test_get_globals_schema(mock_load, client):
 # Core self-update tests
 # ---------------------------------------------------------------------------
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.asyncio.to_thread", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=False when versions match."""
     mock_load.return_value = MOCK_CONFIG
@@ -675,9 +675,9 @@ def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, c
     assert data["update_available"] is False
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.asyncio.to_thread", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_check_update_available(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=True when PyPI has a newer version."""
     mock_load.return_value = MOCK_CONFIG
@@ -692,9 +692,9 @@ def test_core_update_check_update_available(mock_version, mock_to_thread, mock_l
     assert data["update_available"] is True
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.asyncio.to_thread", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.asyncio.to_thread", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns 502 when PyPI is unreachable."""
     mock_load.return_value = MOCK_CONFIG
@@ -706,11 +706,11 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
     assert "PyPI request failed" in response.json()["detail"]
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @pytest.mark.parametrize("prerelease", [False, True])
 def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_restart,
                               mock_load, prerelease, client):
@@ -735,10 +735,10 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     assert install[install.index("--refresh-package") + 1] == "mirrordash"  # a fresh index, not uv's cache
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_create_task, mock_exec,
                                                            mock_load, client):
     """uv also succeeds when PyPI's index doesn't show the new version yet: no restart, a clear message."""
@@ -755,10 +755,10 @@ def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_c
     mock_create_task.assert_not_called()
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_failure(mock_version, mock_create_task, mock_exec,
                               mock_load, client):
     """POST /admin/core-update returns 500 when uv pip install fails."""
@@ -785,7 +785,7 @@ def test_version_key_orders_pre_releases_below_their_release():
 
 
 @pytest.mark.parametrize("prerelease, expected", [(False, "0.4.0"), (True, "0.5.0rc1")])
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="0.4.0")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="0.4.0")
 def test_core_update_check_offers_test_versions_only_when_opted_in(mock_version, prerelease, expected, client):
     """With "Test versions" on, the newest pre-release on PyPI is offered; otherwise only final releases."""
     pypi = {"info": {"version": "0.4.0"},
@@ -793,14 +793,14 @@ def test_core_update_check_offers_test_versions_only_when_opted_in(mock_version,
     response_body = MagicMock()
     response_body.__enter__.return_value.read.return_value = json.dumps(pypi).encode()
     config = {**MOCK_CONFIG, "system": {**MOCK_CONFIG.get("system", {}), "prerelease": prerelease}}
-    with patch("mirrordash_core.api.admin_system.load_config", return_value=config), \
-         patch("mirrordash_core.api.admin_system.urllib.request.urlopen", return_value=response_body):
+    with patch("mirrordash_core.features.updates.service.load_config", return_value=config), \
+         patch("mirrordash_core.features.updates.service.urllib.request.urlopen", return_value=response_body):
         data = client.get("/admin/core-update-check", headers={"X-API-Key": "secret"}).json()
     assert data["latest_version"] == expected
     assert data["update_available"] is prerelease
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.features.updates.service.load_config")
 @patch("shutil.disk_usage")
 def test_disk_usage_auth_required(mock_disk_usage, mock_load, client):
     """GET /admin/disk-usage requires API key."""
@@ -809,7 +809,7 @@ def test_disk_usage_auth_required(mock_disk_usage, mock_load, client):
     assert response.status_code == 401
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
+@patch("mirrordash_core.features.updates.service.load_config")
 @patch("shutil.disk_usage")
 def test_disk_usage_success(mock_disk_usage, mock_load, client):
     """GET /admin/disk-usage returns correct calculated metrics."""
@@ -828,15 +828,15 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
     mock_disk_usage.assert_called_once_with("/")
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.asyncio.create_task")
-@patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.get_venv_paths", return_value=True)
+@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=True)
 def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare, mock_version,
                                mock_create_task, mock_exec, mock_restart,
                                mock_load, client):
@@ -861,8 +861,8 @@ def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare
     mock_create_task.assert_called_once()
 
 
-@patch("mirrordash_core.api.admin_system_panels.load_config")
-@patch("mirrordash_core.api.admin_system.get_available_resolutions", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.routes.load_config")
+@patch("mirrordash_core.system_settings.get_available_resolutions", new_callable=AsyncMock)
 def test_get_panel_system(mock_res, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     mock_res.return_value = ["1920x1080"]
@@ -874,10 +874,10 @@ def test_get_panel_system(mock_res, mock_load, client):
     assert "sys-ssh" not in response.text  # SSH lives in Settings › Developer
 
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mock_save, mock_load, client):
     mock_load.return_value = MOCK_CONFIG.copy()
     headers = {"X-API-Key": "secret"}
@@ -912,8 +912,8 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mo
 # GitHub Module Scanning and Enforcements Tests
 # ---------------------------------------------------------------------------
 
-@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
-@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
+@patch("mirrordash_core.features.modules.service.load_config")
 def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, client):
     """GitHub allows 60 unauthenticated requests an hour per IP, shared by the home network: the
     scan makes one (the search); the release is looked up when a module is installed."""
@@ -955,11 +955,11 @@ def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, cli
     assert {m["name"] for m in client.get("/admin/community-modules", headers=headers).json()} == set(modules)
 
 
-@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
+@patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.modules.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
 def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, mock_prepare, mock_urlopen, client):
     from pathlib import Path
     headers = {"X-API-Key": "secret"}
@@ -997,7 +997,7 @@ def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, m
     assert "Try again in an hour" in r3.json()["detail"]
 
 
-@patch("mirrordash_core.system.network.urllib.request.urlopen")
+@patch("mirrordash_core.fetch.urllib.request.urlopen")
 @patch("importlib.metadata.entry_points")
 def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     mock_dist = MagicMock()
@@ -1043,8 +1043,8 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     assert "Update Available" in r_cached.text
     assert mock_urlopen.call_count == calls
 
-    from mirrordash_core.system import network
-    network._remote_json_cache.clear()
+    from mirrordash_core import fetch
+    fetch._remote_json_cache.clear()
     r2 = client.get("/admin/panels/modules/check-update/mirrordash-widget-ok", headers=headers)
     assert r2.status_code == 200
     assert r2.text == ""
@@ -1058,9 +1058,9 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     assert r3.text == ""
 
 
-@patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
+@patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
 def test_get_panel_and_discover_modules(mock_urlopen, client):
-    import mirrordash_core.api.admin_modules as adm_mods
+    import mirrordash_core.features.modules.service as adm_mods
     adm_mods.LAST_SCAN_TIMESTAMP = None
     adm_mods.DISCOVERED_COMMUNITY_MODULES = []
     
@@ -1122,9 +1122,9 @@ def test_config_migration():
     assert migrate_config(cfg) is False
 
 
-@patch("mirrordash_core.api.admin_modules_panels.load_config")
-@patch("mirrordash_core.api.admin_modules_panels.save_config")
-@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.load_config")
+@patch("mirrordash_core.features.modules.routes.save_config")
+@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
 def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1152,9 +1152,9 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
     assert saved["modules"]["clock-one"]["show_seconds"] is True
 
 
-@patch("mirrordash_core.api.admin_modules_panels.load_config")
-@patch("mirrordash_core.api.admin_modules_panels.save_config")
-@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.load_config")
+@patch("mirrordash_core.features.modules.routes.save_config")
+@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
 def test_remove_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1175,9 +1175,9 @@ def test_remove_module_instance_config(mock_reload, mock_save, mock_load, client
     assert "clock-two" in saved["modules"]
 
 
-@patch("mirrordash_core.api.admin_modules_panels.load_config")
-@patch("mirrordash_core.api.admin_modules_panels.save_config")
-@patch("mirrordash_core.api.admin_modules_panels.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.load_config")
+@patch("mirrordash_core.features.modules.routes.save_config")
+@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
 def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1209,13 +1209,13 @@ def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client
     assert saved_second["modules"]["clock-two"]["enabled"] is True
 
 
-@patch("mirrordash_core.system.telemetry.get_undervoltage_detected", new_callable=AsyncMock)
-@patch("mirrordash_core.system.telemetry.get_wifi_info", new_callable=AsyncMock)
-@patch("mirrordash_core.system.telemetry.get_ntp_status", new_callable=AsyncMock)
-@patch("mirrordash_core.system.telemetry.get_ram_usage")
-@patch("mirrordash_core.system.telemetry.get_uptime_string")
-@patch("mirrordash_core.api.admin_system.get_disk_usage")
-@patch("mirrordash_core.app.module_loader")
+@patch("mirrordash_core.features.dashboard.telemetry.get_undervoltage_detected", new_callable=AsyncMock)
+@patch("mirrordash_core.features.dashboard.telemetry.get_wifi_info", new_callable=AsyncMock)
+@patch("mirrordash_core.features.dashboard.telemetry.get_ntp_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.dashboard.telemetry.get_ram_usage")
+@patch("mirrordash_core.features.dashboard.telemetry.get_uptime_string")
+@patch("mirrordash_core.features.updates.service.get_disk_usage")
+@patch("mirrordash_core.features.dashboard.routes.module_loader")
 def test_get_panel_dashboard(
     mock_loader, mock_disk_usage, mock_uptime, mock_ram, mock_ntp, mock_wifi, mock_under, client
 ):
@@ -1244,7 +1244,7 @@ def test_get_panel_dashboard(
 
     cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
                        "mirrordash_news": {"position": "top_left", "enabled": False}}}
-    with patch("mirrordash_core.api.admin_config.load_config", return_value=cfg):
+    with patch("mirrordash_core.features.dashboard.routes.load_config", return_value=cfg):
         response = client.get("/admin/panels/dashboard", headers=headers)
     assert response.status_code == 200
     assert "On the Screen" in response.text
@@ -1260,7 +1260,7 @@ def test_get_panel_dashboard(
     assert "Power Warning: Under-voltage Detected" in response.text
 
 
-@patch("mirrordash_core.system.telemetry.check_all_updates")
+@patch("mirrordash_core.features.dashboard.telemetry.check_all_updates")
 def test_get_dashboard_updates_available(mock_check, client):
     headers = {"X-API-Key": "secret"}
     mock_check.return_value = {
@@ -1273,7 +1273,7 @@ def test_get_dashboard_updates_available(mock_check, client):
     assert "page-tab-config" in response.text and "Go to Settings" in response.text  # core updates live in Settings
 
 
-@patch("mirrordash_core.system.telemetry.check_all_updates")
+@patch("mirrordash_core.features.dashboard.telemetry.check_all_updates")
 def test_get_dashboard_updates_none(mock_check, client):
     headers = {"X-API-Key": "secret"}
     mock_check.return_value = {
@@ -1292,7 +1292,7 @@ def test_get_dashboard_updates_none(mock_check, client):
 
 def test_logs_viewer_escapes_html(client):
     """Log lines can contain anything (request paths, module output); they must never become markup."""
-    with patch("mirrordash_core.api.admin_logs.get_logs", new_callable=AsyncMock,
+    with patch("mirrordash_core.features.logs.routes.get_logs", new_callable=AsyncMock,
                return_value={"logs": 'GET /<img src=x onerror=alert(1)> 404'}):
         response = client.get("/admin/panels/logs/viewer", headers={"X-API-Key": "secret"})
     assert "<img" not in response.text

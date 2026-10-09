@@ -1,10 +1,5 @@
 import pytest
-from mirrordash_core.api.form_generator import (
-    render_schema_form,
-    render_array_item,
-    parse_flat_form_data,
-    cast_values_by_schema
-)
+from mirrordash_core.forms import render_schema_form, render_array_item, parse_flat_form_data, cast_values_by_schema
 
 def test_parse_flat_form_data():
     flat = {

@@ -1,18 +1,10 @@
 import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
-from mirrordash_core.system import (
-    reboot_system,
-    poweroff_system,
-    apply_system_timezone,
-    get_available_resolutions,
-    apply_system_settings,
-    set_screen_power,
-    scan_wifi_networks,
-    connect_wifi,
-    get_ssh_status,
-    set_ssh_status,
-)
+from mirrordash_core.host import reboot_system, poweroff_system, apply_system_timezone
+from mirrordash_core.features.hardware.display import get_available_resolutions, apply_system_settings, set_screen_power
+from mirrordash_core.features.wifi.network import scan_wifi_networks, connect_wifi
+from mirrordash_core.features.settings.ssh import get_ssh_status, set_ssh_status
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
@@ -133,7 +125,7 @@ async def test_apply_system_password_hash(mock_subproc):
     mock_proc.communicate.return_value = (b"", b"")
     mock_subproc.return_value = mock_proc
 
-    from mirrordash_core.system.os import apply_system_password_hash
+    from mirrordash_core.host import apply_system_password_hash
     res = await apply_system_password_hash("somehash")
     assert res is True
     mock_subproc.assert_called_once_with(
@@ -149,7 +141,8 @@ async def test_apply_system_password_hash(mock_subproc):
 def test_hdmi_brightness_goes_over_ddc(monkeypatch):
     """No backlight device (HDMI): the brightness goes to the screen over DDC/CI, and a screen
     that doesn't answer is reported as unsupported."""
-    from mirrordash_core.system import apply_brightness, display
+    from mirrordash_core.features.hardware import display
+    from mirrordash_core.features.hardware.display import apply_brightness
     monkeypatch.setattr(display, "brightness_supported", None)  # restored for the other tests
 
     def ddc(returncode):
@@ -157,7 +150,7 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
         proc.communicate = AsyncMock(return_value=(b"", b"No monitor detected"))
         return AsyncMock(return_value=proc)
 
-    with patch("mirrordash_core.system.display.glob.glob", return_value=[]):
+    with patch("mirrordash_core.features.hardware.display.glob.glob", return_value=[]):
         with patch("asyncio.create_subprocess_exec", ddc(0)) as run:
             assert asyncio.run(apply_brightness(40)) is True
         run.assert_awaited_once()
@@ -171,7 +164,7 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
 def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
     """The time zone (sent by the phone during Wi-Fi setup) picks the Wi-Fi country; cmdline.txt is
     only rewritten when the country changes."""
-    from mirrordash_core.system import os as system_os
+    from mirrordash_core import host as system_os
     (tmp_path / "zone.tab").write_text("# comment\nSE\t+5920+01803\tEurope/Stockholm\nUS\t+404251-0740023\tAmerica/New_York\tEastern\n")
     cmdline = tmp_path / "cmdline.txt"
     cmdline.write_text("overlayroot=tmpfs:recurse=0 root=PARTUUID=x rootwait cfg80211.ieee80211_regdom=US console=tty3\n")

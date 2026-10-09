@@ -4,7 +4,7 @@ from datetime import time
 from unittest.mock import MagicMock, patch, AsyncMock
 from fastapi.testclient import TestClient
 
-from mirrordash_core.display_power import DisplayPowerManager, display_power_manager
+from mirrordash_core.features.power.display_power import DisplayPowerManager, display_power_manager
 from mirrordash_core.app import app
 
 @pytest.fixture
@@ -39,11 +39,11 @@ def test_time_in_range_invalid():
     # Should default to True on parse error to avoid locking screen permanently
     assert manager._is_time_in_range("invalid", "22:00", time(8, 0)) is True
 
-@patch("mirrordash_core.api.admin_system.load_config")
-@patch("mirrordash_core.api.admin_system.save_config")
-@patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.system.set_ssh_status", new_callable=AsyncMock)
-@patch("mirrordash_core.system.get_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.load_config")
+@patch("mirrordash_core.system_settings.save_config")
+@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_system_settings_display_control_validation(
     mock_get_ssh, mock_set_ssh, mock_apply, mock_save, mock_load, client
 ):
@@ -52,7 +52,7 @@ def test_system_settings_display_control_validation(
     }
     
     # Mock require_api_key dependency to bypass authentication in testing
-    from mirrordash_core.api.admin import require_api_key
+    from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     
     # Valid payload
@@ -109,7 +109,7 @@ def test_system_settings_display_control_validation(
     app.dependency_overrides.clear()
 
 def test_local_time_uses_the_configured_timezone():
-    with patch("mirrordash_core.display_power.datetime") as mock_datetime:
+    with patch("mirrordash_core.features.power.display_power.datetime") as mock_datetime:
         mock_datetime.now.return_value.time.return_value = time(12, 0)
         assert DisplayPowerManager._local_time({"globals": {"timezone": "America/New_York"}}) == time(12, 0)
     assert mock_datetime.now.call_args[0][0].key == "America/New_York"
@@ -121,7 +121,7 @@ NOON = time(12, 0)
 
 def make_manager(display_cfg):
     m = DisplayPowerManager()
-    patcher = patch("mirrordash_core.display_power.load_config", return_value={"system": {"display_control": display_cfg}})
+    patcher = patch("mirrordash_core.features.power.display_power.load_config", return_value={"system": {"display_control": display_cfg}})
     patcher.start()
     return m, patcher
 
@@ -187,10 +187,10 @@ def test_schedule_with_wake_outside_and_manual_off_inside():
 
 def test_power_form_saves_wake_settings():
     from fastapi.testclient import TestClient
-    from mirrordash_core.api.admin_shared import require_api_key
+    from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     try:
-        with patch("mirrordash_core.api.admin_system_panels.update_system_settings", new_callable=AsyncMock) as update:
+        with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as update:
             TestClient(app).post("/admin/panels/power/save", data={
                 "display_control[mode]": "wake",
                 "display_control[wake][timeout_minutes]": "3",

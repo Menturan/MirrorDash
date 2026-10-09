@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from mirrordash_core.app import app
-from mirrordash_core.api.admin import hash_password
+from mirrordash_core.admin import hash_password
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -21,11 +21,11 @@ def client():
 
 @pytest.fixture(autouse=True)
 def mock_admin_shared_load_config():
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG):
+    with patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG):
         yield
 
 
-@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.features.modules.service.load_config")
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
 def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
@@ -59,7 +59,7 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     # Verify all three commands were run
     assert mock_exec.call_count == 3
 
-@patch("mirrordash_core.api.admin_modules.load_config")
+@patch("mirrordash_core.features.modules.service.load_config")
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
 def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):

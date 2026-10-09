@@ -10,7 +10,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 from mirrordash_core.app import app
-from mirrordash_core.api.admin import hash_password
+from mirrordash_core.admin import hash_password
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -25,9 +25,9 @@ MOCK_CONFIG = {
 
 @pytest.fixture(autouse=True)
 def mock_load_save_config():
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.backup.load_config", return_value=MOCK_CONFIG), \
-         patch("mirrordash_core.api.backup.save_config") as mock_save:
+    with patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG), \
+         patch("mirrordash_core.features.backup.service.load_config", return_value=MOCK_CONFIG), \
+         patch("mirrordash_core.features.backup.service.save_config") as mock_save:
         yield mock_save
 
 @pytest.fixture
@@ -37,8 +37,8 @@ def mock_backup_dirs(tmp_path):
     backups_dir.mkdir()
     data_dir.mkdir()
     
-    with patch("mirrordash_core.api.backup.BACKUPS_DIR", str(backups_dir)), \
-         patch("mirrordash_core.api.backup.DATA_DIR", str(data_dir)):
+    with patch("mirrordash_core.features.backup.service.BACKUPS_DIR", str(backups_dir)), \
+         patch("mirrordash_core.features.backup.service.DATA_DIR", str(data_dir)):
         yield backups_dir, data_dir
 
 @pytest.fixture
@@ -70,7 +70,7 @@ def test_backup_list_with_files(mock_backup_dirs, client):
     assert backups[0]["filename"] == "test_backup.mirror"
     assert backups[0]["encrypted"] is False
 
-@patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
     backups_dir, data_dir = mock_backup_dirs
     
@@ -85,7 +85,7 @@ def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
     assert response.json()["status"] == "success"
     assert "mirrordash_backup_" in response.json()["filename"]
 
-@patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_create_backup_zip_failure(mock_subproc, mock_backup_dirs, client):
     # Mock subprocess failure
     mock_process = MagicMock()
@@ -139,7 +139,7 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     assert r.status_code == 400
     assert "Invalid or corrupt backup archive" in r.json()["detail"]
 
-@patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
+@patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
     backups_dir, data_dir = mock_backup_dirs
     
@@ -180,10 +180,10 @@ def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
         def __exit__(self, exc_type, exc_val, exc_tb):
             self.temp_dir.__exit__(exc_type, exc_val, exc_tb)
 
-    with patch("mirrordash_core.api.backup.tempfile.TemporaryDirectory", FakeTempDirectory), \
-         patch("mirrordash_core.api.backup.run_restart", new_callable=AsyncMock) as mock_restart, \
-         patch("mirrordash_core.api.backup.save_config") as mock_save, \
-         patch("mirrordash_core.api.backup.zipfile.ZipFile"):
+    with patch("mirrordash_core.features.backup.service.tempfile.TemporaryDirectory", FakeTempDirectory), \
+         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock) as mock_restart, \
+         patch("mirrordash_core.features.backup.service.save_config") as mock_save, \
+         patch("mirrordash_core.features.backup.service.zipfile.ZipFile"):
          
         # Send raw json=None (since password is str | None = Body(default=None))
         r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})
@@ -197,26 +197,26 @@ def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
         assert restored_cfg["globals"]["language"] == "sv" # from the backup config
 
 def test_get_modules_dir(tmp_path):
-    from mirrordash_core.api.backup import get_modules_dir
+    from mirrordash_core.features.backup.service import get_modules_dir
     
     # 1. Dev mode: if ROOT_DIR/modules exists and is writeable, it should be used
     fake_root = tmp_path / "root"
     fake_dev_modules = fake_root / "modules"
     fake_dev_modules.mkdir(parents=True)
     
-    with patch("mirrordash_core.api.backup.ROOT_DIR", fake_root):
+    with patch("mirrordash_core.features.backup.service.ROOT_DIR", fake_root):
         assert get_modules_dir() == fake_dev_modules
         
     # 2. PyPI mode: if ROOT_DIR/modules does not exist (or is not writeable), use ~/.mirrordash/modules
     fake_home = tmp_path / "home"
     expected_home_modules = fake_home / ".mirrordash" / "modules"
     
-    with patch("mirrordash_core.api.backup.ROOT_DIR", tmp_path / "nonexistent"), \
+    with patch("mirrordash_core.features.backup.service.ROOT_DIR", tmp_path / "nonexistent"), \
          patch("os.path.expanduser", return_value=str(fake_home)):
         assert get_modules_dir() == expected_home_modules
 
 def test_find_local_module_dir(tmp_path):
-    from mirrordash_core.api.backup import find_local_module_dir
+    from mirrordash_core.features.backup.service import find_local_module_dir
     
     fake_root = tmp_path / "root"
     fake_dev_modules = fake_root / "modules"
@@ -234,7 +234,7 @@ def test_find_local_module_dir(tmp_path):
     home_module = fake_home_modules / "mirrordash_calendar"
     home_module.mkdir()
     
-    with patch("mirrordash_core.api.backup.ROOT_DIR", fake_root), \
+    with patch("mirrordash_core.features.backup.service.ROOT_DIR", fake_root), \
          patch("os.path.expanduser", return_value=str(fake_home)):
         
         # Should find dev module
@@ -285,10 +285,10 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
         proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
-    with         patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec", side_effect=fake_exec), \
-         patch("mirrordash_core.api.backup.find_local_module_dir", return_value=None), \
-         patch("mirrordash_core.api.backup.importlib.metadata.entry_points", return_value=[ep]):
-        with patch("mirrordash_core.api.backup.load_config", return_value=old_config):
+    with         patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+         patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
+         patch("mirrordash_core.features.backup.service.importlib.metadata.entry_points", return_value=[ep]):
+        with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config):
             r = client.post("/admin/backup/create", json={}, headers={"X-API-Key": "secret"})
         assert r.status_code == 200, r.text
         archive = backups_dir / r.json()["filename"]
@@ -304,11 +304,11 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
         (data_dir / "config.json").write_text(fresh_config)
         shutil.copy(archive, backups_dir / "tmp_upload.mirror")
 
-        with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock,
+        with patch("mirrordash_core.features.hardware.devices.write_gpio_overlays", new_callable=AsyncMock,
                    return_value=None) as mock_gpio, \
-             patch("mirrordash_core.api.backup.reboot_system", new_callable=AsyncMock) as mock_reboot, \
-             patch("mirrordash_core.api.backup.run_restart", new_callable=AsyncMock) as mock_restart, \
-             patch("mirrordash_core.api.backup.save_config") as mock_save:
+             patch("mirrordash_core.features.backup.service.reboot_system", new_callable=AsyncMock) as mock_reboot, \
+             patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock) as mock_restart, \
+             patch("mirrordash_core.features.backup.service.save_config") as mock_save:
             r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})
             assert r.status_code == 200, r.text
 

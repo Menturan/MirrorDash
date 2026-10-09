@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from mirrordash_core.api.admin_shared import hash_password, require_api_key, token_hash
+from mirrordash_core.admin import hash_password, require_api_key, token_hash
 from mirrordash_core.app import app
 
 TOKEN = "t0ken-for-home-assistant"
@@ -18,8 +18,8 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 @pytest.fixture
 def client():
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value=CONFIG), \
-         patch("mirrordash_core.api.public.load_config", return_value=CONFIG):
+    with patch("mirrordash_core.admin.load_config", return_value=CONFIG), \
+         patch("mirrordash_core.features.homeassistant.api.load_config", return_value=CONFIG):
         yield TestClient(app)
 
 
@@ -34,16 +34,16 @@ def test_only_the_token_opens_the_api(client):
 
 
 def test_no_token_created_means_no_access():
-    with patch("mirrordash_core.api.admin_shared.load_config", return_value={"system": {}}):
+    with patch("mirrordash_core.admin.load_config", return_value={"system": {}}):
         assert TestClient(app).get("/api/v1/status", headers={"Authorization": "Bearer "}).status_code == 401
 
 
 def test_token_runs_the_screen_and_brightness(client):
-    from mirrordash_core.display_power import display_power_manager
+    from mirrordash_core.features.power.display_power import display_power_manager
     with patch.object(display_power_manager, "turn_off") as off:
         assert client.post("/api/v1/screen", json={"state": "off"}, headers=AUTH).status_code == 200
     off.assert_called_once()
-    with patch("mirrordash_core.api.admin_system.update_system_settings", new_callable=AsyncMock) as save:
+    with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as save:
         assert client.post("/api/v1/brightness", json={"value": 40}, headers=AUTH).json()["brightness"] == 40
         assert client.post("/api/v1/brightness", json={"value": True}, headers=AUTH).status_code == 400
     save.assert_awaited_once_with(settings={"brightness": 40})
@@ -57,8 +57,8 @@ def test_admin_creates_and_removes_the_token():
         saved.update(config)
     app.dependency_overrides[require_api_key] = lambda: None
     try:
-        with patch("mirrordash_core.api.admin_system_panels.load_config", side_effect=lambda: dict(saved)), \
-             patch("mirrordash_core.api.admin_system_panels.save_config", side_effect=save):
+        with patch("mirrordash_core.features.homeassistant.routes.load_config", side_effect=lambda: dict(saved)), \
+             patch("mirrordash_core.features.homeassistant.routes.save_config", side_effect=save):
             client = TestClient(app)
             r = client.post("/admin/panels/system/api-token/create")
             token = r.text.split('id="api-token-value"')[1].split('value="')[1].split('"')[0]
