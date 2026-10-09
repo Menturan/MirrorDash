@@ -8,17 +8,17 @@ This document records the core architectural decisions made during the design, d
 - [2. Server-Side Rendering (SSR) via Jinja2 & WebSocket Push](#2-server-side-rendering-ssr-via-jinja2--websocket-push)
 - [3. Dynamic Module Discovery via Python Entry Points](#3-dynamic-module-discovery-via-python-entry-points)
 - [4. Config-Driven Lifespan & Hot Reloading](#4-config-driven-lifespan--hot-reloading)
-- [5. OverlayFS and Hardware Remounting Integration](#5-overlayfs-and-hardware-remounting-integration)
+- [5. Read-Only Root via overlayroot](#5-read-only-root-via-overlayroot)
 - [6. Hybrid Template Loader Resolution](#6-hybrid-template-loader-resolution)
 - [7. Scope Isolation for Dynamic Module Helpers](#7-scope-isolation-for-dynamic-module-helpers)
 - [8. Skeletal Loading UI & Transition Flow](#8-skeletal-loading-ui--transition-flow)
 - [9. WebSocket State Caching for Instant Updates](#9-websocket-state-caching-for-instant-updates)
 - [10. Carousel Groups for Layout Regions](#10-carousel-groups-for-layout-regions)
 - [11. Display Power Automation Strategies](#11-display-power-automation-strategies)
-- [12. Persistent Config and Modules Relocation for PyPI Packages](#12-persistent-config-and-modules-relocation-for-pypi-packages)
-- [13. Primary Persistent Storage Path (Directory Contract)](#13-primary-persistent-storage-path-directory-contract)
+- [12. User Data Outside the Package](#12-user-data-outside-the-package)
+- [13. Directory Contract](#13-directory-contract)
 - [14. WiFi Fallback / Captive Portal State Machine](#14-wifi-fallback--captive-portal-state-machine)
-- [15. Watchdog and Time Synchronization Boot Guard](#15-watchdog-and-time-synchronization-boot-guard)
+- [15. Hardware Watchdog](#15-hardware-watchdog)
 - [16. Failsafe A/B Virtual Environment Updates](#16-failsafe-ab-virtual-environment-updates)
 - [17. Boot Fallback Launcher and Settings Restoration](#17-boot-fallback-launcher-and-settings-restoration)
 - [18. Background Jobs and Restart Detection in the Admin UI](#18-background-jobs-and-restart-detection-in-the-admin-ui)
@@ -26,6 +26,10 @@ This document records the core architectural decisions made during the design, d
 - [20. Screen Wake Timer](#20-screen-wake-timer)
 - [21. Module Scripts Receive Their Shadow Root](#21-module-scripts-receive-their-shadow-root)
 - [22. Releases Are Made From What Was Tested](#22-releases-are-made-from-what-was-tested)
+- [23. Shared Building Blocks for Modules: Layout Classes and fetch_json](#23-shared-building-blocks-for-modules-layout-classes-and-fetch_json)
+- [24. An API Token for Other Systems (Home Assistant)](#24-an-api-token-for-other-systems-home-assistant)
+- [25. The Screen Reloads Only for a New MirrorDash Version](#25-the-screen-reloads-only-for-a-new-mirrordash-version)
+- [26. Discover: One Search Request, the Release Tag Pinned at Install](#26-discover-one-search-request-the-release-tag-pinned-at-install)
 
 ---
 
@@ -45,9 +49,9 @@ This document records the core architectural decisions made during the design, d
 * **Decision**: System configurations stored in `config.json` dictate module coordinates, custom properties, and enabled states. The config has been expanded to support multiple instances of the same module type. Each instance is indexed by a unique `instance_id` and contains a `"module"` property to identify the module type. Changes to the config trigger a soft reload: stopping, cancelling, and garbage-collecting running loops, and then spinning up newly configured instances.
 * **Rationale**: Users can run multiple instances of modules (e.g. clocks in different timezones or positions) and customize their mirror layouts and parameters dynamically without restarting the Uvicorn web server or causing full browser disconnects.
 
-## 5. OverlayFS and Hardware Remounting Integration
-* **Decision**: Admin/system modification commands (such as module installations or configuration updates) execute remounting scripts (`mount -o remount,rw /`) before performing operations, and switch back to read-only (`remount,ro`) immediately after completion.
-* **Rationale**: Protects SD card longevity when deployed on Raspberry Pi systems running OverlayFS (Read-Only OS configuration), while still allowing seamless software administration. Automated images enable OverlayFS on their first boot via a one-shot `mirrordash-lock.service`, because `raspi-config` must build the overlay initramfs for the device's running kernel and cannot do so in the build container.
+## 5. Read-Only Root via overlayroot
+* **Decision**: The root filesystem runs under `overlayroot=tmpfs:recurse=0`: `/` is a RAM overlay over the read-only card, and everything that must survive a reboot (settings, module data, the venvs, Wi-Fi profiles) lives on the separate `/storage` partition, reached through symlinks (`~/.mirrordash`, `~/mirrordash/.venv`) and one bind mount (NetworkManager's `system-connections`). `recurse=0` keeps `/storage` a real mount instead of a second RAM overlay. A one-shot `mirrordash-lock.service` writes the kernel parameter on the first boot, checks that it's there and reboots; it, the repartition and the remount-fs drop-in all carry `ConditionKernelCommandLine=!overlayroot`. The app's `remount_rw`/`remount_ro` only act on a plain read-only root, so on the mirror they do nothing.
+* **Rationale**: The SD card is the part that wears out, and a power cut can't corrupt a filesystem that is never written. Writing the parameter ourselves instead of `raspi-config enable_overlayfs` is what lets us add `recurse=0`; raspi-config's version made `/storage` a RAM overlay that lost everything at reboot. The lock runs on the device because the overlay initramfs must be built for the running kernel.
 
 ## 6. Hybrid Template Loader Resolution
 * **Decision**: Implemented a `ChoiceLoader` combining standard Jinja2 `PackageLoader` with a fallback `FileSystemLoader` that resolves physical package paths on disk using `importlib.util.find_spec`.
@@ -62,7 +66,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Eliminates the flash of a blank screen on startup/page refresh. It provides immediate, responsive feedback ("Loading Swedish Name Day...", "Loading Clock...") while the backend modules fetch remote API data or perform slow initialization loops.
 
 ## 9. WebSocket State Caching for Instant Updates
-* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws_manager.py](file:///home/menturan/repos/mymagicmirror/mirrordash_core/ws_manager.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
+* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws_manager.py](mirrordash_core/ws_manager.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
 * **Rationale**: Resolves the delay on page refresh where modules (especially those with long update intervals like the 60-second name day module or hourly updates) would remain as skeletons until their sleep intervals completed and they triggered a new broadcast. Now, refreshed screens load the last rendered frames instantly.
 
 ## 10. Carousel Groups for Layout Regions
@@ -70,31 +74,31 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Provides users with fine-grained control over which modules cycle and which ones remain static in a region, avoiding rigid full-screen transitions. By using CSS Grid overlaying (`grid-area: 1 / 1 / 2 / 2`), all slides occupy the exact same space, preventing visual layout jumping or shifting during cross-fade transitions, keeping the ambient mirror clean.
 
 ## 11. Display Power Automation Strategies
-* **Decision**: Integrated a central `DisplayPowerManager` daemon executing alongside the module loader lifespan. It supports time schedules, PIR motion sensor triggers, and physical GPIO buttons. The GPIO libraries (`gpiozero` and `RPi.GPIO`) are dynamically imported in a try/except block to allow clean fallbacks on standard non-Pi systems. The Time of Day Schedule mode respects the global timezone configuration (e.g. `Europe/Stockholm`) when fetching the current time, ensuring timezone-aware scheduling.
-* **Rationale**: Smart mirrors require automated power conservation. Supporting time scheduling, PIR sensors, and buttons allows different hardware setups to save energy automatically. Decoupling hardware imports ensures the codebase remains testable and runnable on standard developer machines. Timezone awareness prevents schedule misalignment if the host machine (e.g., Raspberry Pi) is configured to UTC or another local time.
+* **Decision**: Integrated a central `DisplayPowerManager` daemon executing alongside the module loader lifespan. It supports time schedules, presence sensors and push buttons, read from kernel input devices (see #19 and #20). The Time of Day Schedule mode respects the global timezone configuration (e.g. `Europe/Stockholm`) when fetching the current time, ensuring timezone-aware scheduling.
+* **Rationale**: Smart mirrors require automated power conservation. Supporting time scheduling, presence sensors, and buttons allows different hardware setups to save energy automatically. Timezone awareness prevents schedule misalignment if the host machine (e.g., Raspberry Pi) is configured to UTC or another local time.
 
-## 12. Persistent Config and Modules Relocation for PyPI Packages
-* **Decision**: Migrated the primary location of `config.json` and custom local modules out of the package installation directory (which is read-only and wiped on package updates) into the user's home directory (`~/.mirrordash/config.json` and `~/.mirrordash/modules/`).
-* **Rationale**: Allows the core platform to be installed and run cleanly as a standard PyPI package. User configurations and custom module directories are preserved across upgrades, while still allowing developers to run from a local cloned git workspace via fallbacks.
+## 12. User Data Outside the Package
+* **Decision**: `config.json` and custom local modules live in the user's home directory, not in the package installation directory (which is replaced on every update).
+* **Rationale**: Lets the core be installed and updated as a standard PyPI package without losing settings, while developers can still run from a cloned workspace.
 
-## 13. Primary Persistent Storage Path (Directory Contract)
-* **Decision**: Adjusted the primary persistent configuration storage path to `~/.mirrordash/data/config.json` and module persistent data to `~/.mirrordash/data/<instance-id>/`. High-frequency ephemeral cache files are placed in `~/.mirrordash/cache/<instance-id>/`.
-* **Rationale**: Aligns the platform with the locked read-only system blueprint (OverlayFS). Under read-only systems, `~/.mirrordash/cache/` is mapped directly to a RAM-disk tmpfs buffer to eliminate physical SD card wear and ensure crash immunity. `~/.mirrordash/data/` acts as the persistent sector. Isolating directory paths per instance ID prevents separate instances of the same module type from clobbering each other's data.
+## 13. Directory Contract
+* **Decision**: Everything lives under `~/.mirrordash/` (on the mirror a link to `/storage/mirrordash/data`): the config in `data/config.json`, each module instance's data in `data/<instance-id>/` and its cache (such as `fetch_json`'s last good answers) in `cache/<instance-id>/`. Both are on `/storage`, so a cache survives a reboot.
+* **Rationale**: One directory is all a backup or a reflash has to care about, and it is the one place a read-only root leaves writable (#5). Separate paths per instance ID keep two instances of the same module from clobbering each other's data.
 
 ## 14. WiFi Fallback / Captive Portal State Machine
 * **Decision**: Implemented an automated fallback WiFi captive portal setup state machine. If network connectivity is not verified within 30 seconds of system boot, NetworkManager shifts `wlan0` to an autonomous Access Point (AP) setup hotspot. Phones get a real captive portal: the OS image makes the hotspot's dnsmasq (`/etc/NetworkManager/dnsmasq-shared.d/`, used only for shared connections) answer every DNS name with `10.42.0.1`, so the phone's HTTP connectivity check (`captive.apple.com/hotspot-detect.html`, `connectivitycheck.gstatic.com/generate_204`, ...) reaches the app, whose middleware answers anything but the setup page with a redirect to `http://mirrordash.setup/wifi-setup`; the unexpected answer makes the phone show "Sign in to network". A failed connection from the hotspot reboots the mirror, because the hotspot is already torn down by then. Submitting credentials remounts the filesystem read-write, saves the new NetworkManager profiles, remounts read-only, and reboots the OS back into client mode. The check service is `Type=oneshot` and ordered `Before=mirrordash.service`, so the app (and therefore the kiosk's first page) only starts after the client-vs-hotspot decision; the app's hotspot check uses a short TTL cache, never a permanent one, so a state change is picked up within seconds. The hotspot password is unique per mirror: the check script generates it when it creates the `MirrorDash-Setup` profile (with `autoconnect no`), and the profile is only taken down after setup, never deleted, so it lives on `/storage` (the bind-mounted `system-connections`) until the card is reflashed. The app reads the password back with `sudo nmcli -s` and shows it, with a Wi-Fi QR code, only to a loopback client (the mirror's own screen); phones on the hotspot can spoof the Host header but not their address.
 * **Rationale**: Minimizes appliance maintenance and makes the device plug-and-play across different network environments without requiring terminal access or physical disassembly.
 
-## 15. Watchdog and Time Synchronization Boot Guard
-* **Decision**: Kept the kernel hardware watchdog that Raspberry Pi OS enables (`RuntimeWatchdogSec=1m`, its drop-in `40-rpi-enable-watchdog.conf`; our earlier 14 s edit of `system.conf` never applied, the drop-in overrides it) and modified the core systemd service file to require synchronization with network online and time wait-sync targets before startup.
-* **Rationale**: Ensures the system restarts automatically if a deadlock occurs, and prevents module SSL handshake failures at startup due to the Raspberry Pi's lack of a hardware RTC battery.
+## 15. Hardware Watchdog
+* **Decision**: Kept the kernel hardware watchdog that Raspberry Pi OS enables (`RuntimeWatchdogSec=1m`, its drop-in `40-rpi-enable-watchdog.conf`; our earlier 14 s edit of `system.conf` never applied, the drop-in overrides it). `mirrordash.service` starts after `network.target` and the storage hydration, and the Wi-Fi check (#14) runs before it; it doesn't wait for time sync.
+* **Rationale**: The mirror restarts by itself if the kernel or systemd hangs, with the vendor's tested default. The Pi has no clock battery, so the first minute can run on an old time; modules fetch again on their next interval, and `fetch_json` returns the last good answer meanwhile, which beats a screen that waits for NTP.
 
 ## 16. Failsafe A/B Virtual Environment Updates
-* **Decision**: Redirected the virtual environment `.venv` from the read-only root partition to the persistent writeable `/storage` partition via a symlink. When updates or module installations/removals are performed, they are staged in a cloned alternative directory (`venv_a` or `venv_b`). Once successful, the symlink is atomically updated.
+* **Decision**: Redirected the virtual environment `.venv` from the read-only root partition to the persistent writeable `/storage` partition via a symlink. When updates or module installations/removals are performed, they are staged in a cloned alternative directory (`venv_a` or `venv_b`). Once successful, the symlink is atomically updated and the previous environment is kept as `venv_old`. A core update that didn't install a newer version (PyPI's index can lag a few minutes; uv runs with `--refresh-package mirrordash`) is reverted with a 409 instead of switched in, so a no-op never replaces the real fallback in `venv_old`.
 * **Rationale**: Prevents package upgrades from bricking the system in the event of an update failure (network drops, syntax errors, or incompatible package versions). The boot-time hydration script only seeds `venv_a` and the link when the link is missing or dangling; it never resets a valid link, otherwise every reboot would silently revert A/B updates to the factory `base_venv`.
 
 ## 17. Boot Fallback Launcher and Settings Restoration
-* **Decision**: Implemented a boot launcher script (`launch.sh`) that monitors the startup lifespan of the application. If the primary virtual environment fails to boot successfully within 10 seconds, it automatically rolls back to the previous stable state (`venv_old`) or fallback boots the read-only Golden Copy (`base_venv` in Safe Mode), alerting the user via UI status banners. Additionally, user configurations (SSH state, timezone, and shadow-crypt password hash) are programmatically re-applied on boot.
+* **Decision**: Implemented a boot launcher script (`launch.sh`) that monitors the startup lifespan of the application. If the primary virtual environment fails to boot successfully within 10 seconds, it automatically rolls back to the previous stable state (`venv_old`) or fallback boots the Golden Copy (`base_venv`, the version the image shipped with, on the read-only root, so no update or power cut can touch it) in Safe Mode, alerting the user via UI status banners. Additionally, user configurations (SSH state, timezone, and shadow-crypt password hash) are programmatically re-applied on boot.
 * **Rationale**: Maintains a high standard of consumer appliance resilience and security under OverlayFS, ensuring the device remains accessible and self-healing.
 
 ## 18. Background Jobs and Restart Detection in the Admin UI
@@ -124,3 +128,11 @@ This document records the core architectural decisions made during the design, d
 ## 24. An API Token for Other Systems (Home Assistant)
 * **Decision**: `/api/v1` (`api/public.py`) answers only to `Authorization: Bearer <token>`, a 256-bit token from the Hardware tab's *API Access* card. Only its sha256 is stored (`config["api_token"]`), so it is shown once; a new token replaces the old one. It can read `/status` (version, uptime, CPU temperature, screen, brightness, modules, cached sensor readings) and set `/screen` and `/brightness`, which reuse the admin's own `update_screen_state` and `update_system_settings`. The admin password (`X-API-Key`) is not accepted there. Home Assistant uses its `rest`, `rest_command`, template `switch` and template `number`; the user guide has the YAML.
 * **Rationale**: Before, the only key was the admin password, which Home Assistant would have had to keep. A separate token can be removed without changing the password, can't install modules or restore backups, and survives a backup restore (the hash is in `config.json`; `admin_auth` is not). MQTT discovery or an own integration would mean a broker or a second repo for what a few REST calls do. The older open `POST /admin/screen` stays for existing automations.
+
+## 25. The Screen Reloads Only for a New MirrorDash Version
+* **Decision**: On every WebSocket connection the server first sends `{"type": "hello", "version": …}`. The kiosk page remembers the version it was loaded with and reloads itself only when a later hello carries a different one, which means the core was updated and restarted. Anything else (a module installed or changed, a settings change) arrives as rendered HTML over the open socket. The admin's Power tab has a *Reload Screen* button that broadcasts `{"action": "reload"}` for everything else.
+* **Rationale**: Cog keeps one page open for weeks, so after a core update it would run the old `core.js` and CSS against the new server. Reloading on every reconnect would flash the screen at each Wi-Fi blip or module restart; a version check reloads exactly when the page is stale. The button covers the rare case nothing detects, without SSH.
+
+## 26. Discover: One Search Request, the Release Tag Pinned at Install
+* **Decision**: *Discover New Modules* makes one GitHub search request (repositories named `mirrordash-*`, up to 100) and keeps the previous list if it fails. Only at install is the module's latest release looked up; its tag is appended (`…@v1.2.0`), a repository without releases is refused, and a rate-limit or network error asks the user to try again later.
+* **Rationale**: Unauthenticated GitHub allows 60 requests an hour per IP, shared by the whole home network, so one request per repository ran out after a few scans and silently showed only the first module. Pinning the tag installs a published release instead of whatever is on the default branch, and the update check compares that recorded revision with the latest release.
