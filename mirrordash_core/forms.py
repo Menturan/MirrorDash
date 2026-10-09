@@ -10,18 +10,29 @@ from html import escape
 logger = logging.getLogger("mirrordash.core.forms")
 
 
-# Fields owned entirely by the core — injected automatically for every module.
-# Module developers must NOT redeclare these in their config_schema.
-STANDARD_FIELDS = [
-    "enabled",
-    "position",
-    "carousel_group",
-    "carousel_interval",
-    "max_width",
-    "max_height",
-    "z_index",
-    "opacity",
-]
+POSITIONS = ["top_left", "top_center", "top_right",
+             "middle_left", "middle_center", "middle_right",
+             "bottom_left", "bottom_center", "bottom_right"]
+# Settings the core gives every module (module developers must NOT declare these in config_schema)
+STANDARD_SCHEMA = {"properties": {
+    "enabled": {"type": "boolean", "default": True, "title": "Enabled",
+                "description": "Enable or disable this module on the mirror."},
+    "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Screen Position",
+                 "description": "Which anchor region on the mirror this module floats from."},
+    "carousel_group": {"type": "string", "default": "", "title": "Carousel Group",
+                       "description": "Assign a group name to rotate this module with others in the same region."},
+    "carousel_interval": {"type": "integer", "default": 15, "title": "Carousel Interval (s)",
+                          "description": "Seconds between carousel slides."},
+    "max_width": {"type": "string", "default": "", "title": "Max Width",
+                  "description": "CSS length (e.g. 400px, 30vw). Leave blank for no constraint."},
+    "max_height": {"type": "string", "default": "", "title": "Max Height",
+                   "description": "CSS length (e.g. 300px, 50vh). Leave blank for no constraint."},
+    "z_index": {"type": "integer", "default": "", "title": "Z-Index",
+                "description": "Stacking order when modules overlap. Higher = on top."},
+    "opacity": {"type": "number", "default": "", "title": "Opacity",
+                "description": "Module transparency: 1 = fully visible, 0 = invisible."},
+}}
+STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # Fields shown as a password or a text box by their name when the schema doesn't say
 SECRET_KEYS = ("api_key", "password", "token", "secret")
 LONG_TEXT_KEYS = ("description", "text", "message", "preamble")

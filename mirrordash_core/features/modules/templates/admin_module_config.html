@@ -1,0 +1,32 @@
+{# A module instance's settings in the Configure drawer: the core's standard settings, then the module's own #}
+<form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML" class="module-config-form">
+    <h4 class="module-config-title"><i class="fas fa-sliders-h"></i>Standard Settings</h4>
+    <p class="module-config-note">These settings are provided by MirrorDash core for every module.</p>
+    {{ position_form | safe }}
+
+    <details class="standard-settings-accordion">
+        <summary>
+            <span><i class="fas fa-cog"></i> Other Standard Settings</span>
+            <i class="fas fa-chevron-down accordion-arrow"></i>
+        </summary>
+        <div class="standard-settings-content">{{ standard_form | safe }}</div>
+    </details>
+
+    {% if module_form %}
+    <div class="module-config-own">
+        <h5>Module Settings</h5>
+        {{ module_form | safe }}
+    </div>
+    {% endif %}
+
+    <div class="module-config-actions">
+        <button type="button" class="btn danger btn-sm"
+                hx-post="/admin/panels/modules/config/{{ module_name }}/remove?instance_id={{ instance_id }}"
+                hx-target="#global-status"
+                hx-confirm="Are you sure you want to deactivate and remove this module instance from the mirror screen?">
+            <i class="fas fa-times"></i> Remove from Mirror
+        </button>
+        <button type="submit" class="btn primary btn-sm"><i class="fas fa-save"></i> Save Configuration</button>
+    </div>
+</form>
+<script>triggerLucide();</script>

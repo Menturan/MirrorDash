@@ -5,14 +5,11 @@ import importlib.metadata
 import logging
 import os
 
+from mirrordash_core.forms import POSITIONS
 logger = logging.getLogger("mirrordash.core.settings")
 
 
-VALID_POSITIONS = {
-    "top_left", "top_center", "top_right",
-    "middle_left", "middle_center", "middle_right",
-    "bottom_left", "bottom_center", "bottom_right"
-}
+VALID_POSITIONS = set(POSITIONS)
 
 
 def get_module_schema(plugin_class) -> dict | None:

@@ -1,5 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import itertools
 import json
 import logging
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -14,6 +15,7 @@ from mirrordash_core.features.settings.schema import get_module_schema
 
 from mirrordash_core.forms import cast_values_by_schema, read_form
 
+from mirrordash_core.forms import STANDARD_FIELDS, STANDARD_SCHEMA, render_schema_form
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
 
@@ -76,243 +78,37 @@ async def get_discover_modules(request: Request):
 
 
 @router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
-async def get_module_config_form(module_name: str, instance_id: str = None):
-
+async def get_module_config_form(request: Request, module_name: str, instance_id: str = None):
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
-
-    schema = None
     try:
-        plugin_class = ep.load()
-        schema = get_module_schema(plugin_class)
+        schema = get_module_schema(ep.load()) or {}
     except Exception as e:
         logger.warning(f"Could not load schema for '{module_name}': {e}")
+        schema = {}
+    # The core's standard fields are shown separately, even if a module declared them too
+    own = {k: v for k, v in schema.get("properties", {}).items() if k not in STANDARD_FIELDS}
+    modules_config = load_config().get("modules", {})
+    instance_id = instance_id or _new_instance_id(module_name, modules_config)
+    cfg = modules_config.get(instance_id) or {}
+    prefix = f"modules[{instance_id}]"
+    standard = STANDARD_SCHEMA["properties"]
+    return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
+        "module_name": module_name, "instance_id": instance_id,
+        "position_form": render_schema_form({"properties": {"position": standard["position"]}}, cfg, prefix, module_name),
+        "standard_form": render_schema_form({"properties": {k: v for k, v in standard.items() if k != "position"}},
+                                            cfg, prefix, module_name),
+        "module_form": render_schema_form({"properties": own}, cfg, prefix, module_name),
+    })
 
-    if not schema:
-        schema = {
-            "title": module_name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-            "properties": {}
-        }
 
-    if "properties" not in schema:
-        schema["properties"] = {}
-
-    # --- Inject standard fields (core-owned, never declared by module devs) ---
-    std_props = schema["properties"]
-    from mirrordash_core.forms import STANDARD_FIELDS
-    # Remove any accidentally declared standard fields from the module schema
-    # so they don't appear twice after we inject the canonical versions below.
-    for sf in STANDARD_FIELDS:
-        std_props.pop(sf, None)
-
-    # Build the standard schema block
-    standard_schema = {
-        "properties": {
-            "enabled": {
-                "type": "boolean",
-                "default": True,
-                "title": "Enabled",
-                "description": "Enable or disable this module on the mirror.",
-            },
-            "position": {
-                "type": "string",
-                "default": "middle_center",
-                "enum": [
-                    "top_left", "top_center", "top_right",
-                    "middle_left", "middle_center", "middle_right",
-                    "bottom_left", "bottom_center", "bottom_right",
-                ],
-                "title": "Screen Position",
-                "description": "Which anchor region on the mirror this module floats from.",
-            },
-            "carousel_group": {
-                "type": "string",
-                "default": "",
-                "title": "Carousel Group",
-                "description": "Assign a group name to rotate this module with others in the same region.",
-            },
-            "carousel_interval": {
-                "type": "integer",
-                "default": 15,
-                "title": "Carousel Interval (s)",
-                "description": "Seconds between carousel slides.",
-            },
-            "max_width": {
-                "type": "string",
-                "default": "",
-                "title": "Max Width",
-                "description": "CSS length (e.g. 400px, 30vw). Leave blank for no constraint.",
-            },
-            "max_height": {
-                "type": "string",
-                "default": "",
-                "title": "Max Height",
-                "description": "CSS length (e.g. 300px, 50vh). Leave blank for no constraint.",
-            },
-            "z_index": {
-                "type": "integer",
-                "default": "",
-                "title": "Z-Index",
-                "description": "Stacking order when modules overlap. Higher = on top.",
-            },
-            "opacity": {
-                "type": "number",
-                "default": "",
-                "title": "Opacity",
-                "description": "Module transparency: 1 = fully visible, 0 = invisible.",
-            },
-        }
-    }
-
-    config = load_config()
-    modules_config = config.get("modules", {})
-
-    if not instance_id:
-        has_existing = False
-        for k, cfg in modules_config.items():
-            if isinstance(cfg, dict) and cfg.get("module") == module_name:
-                has_existing = True
-                break
-        if not has_existing and module_name not in modules_config:
-            instance_id = module_name
-        else:
-            counter = 2
-            while True:
-                instance_id = f"{module_name}-{counter}"
-                if instance_id not in modules_config:
-                    break
-                counter += 1
-
-    module_cfg = modules_config.get(instance_id)
-    if module_cfg is None:
-        module_cfg = {}
-
-    from mirrordash_core.forms import render_schema_form
-    name_prefix = f"modules[{instance_id}]"
-
-    # Build standard settings schema blocks:
-    # 1. Position field is kept outside the accordion.
-    position_schema = {
-        "properties": {
-            "position": standard_schema["properties"]["position"]
-        }
-    }
-    # 2. Other standard fields are inside the accordion.
-    accordion_schema = {
-        "properties": {
-            k: v for k, v in standard_schema["properties"].items() if k != "position"
-        }
-    }
-
-    position_form_html = render_schema_form(position_schema, module_cfg, name_prefix, module_name)
-    accordion_form_html = render_schema_form(accordion_schema, module_cfg, name_prefix, module_name)
-
-    # Render module-specific settings section (excluding standard fields)
-    module_specific_form_html = render_schema_form(schema, module_cfg, name_prefix, module_name)
-
-    has_module_fields = bool(schema.get("properties"))
-    module_section_html = ""
-    if has_module_fields:
-        module_section_html = f"""
-            <div style="margin: 20px 0 12px 0; border-top: 1px solid #3f3f46; padding-top: 16px;">
-                <h5 style="margin: 0 0 12px 0; color: #a1a1aa; font-size: 0.75rem; font-weight: 600;
-                           text-transform: uppercase; letter-spacing: 0.08em;">
-                    Module Settings
-                </h5>
-                {module_specific_form_html}
-            </div>
-        """
-
-    save_url = f"/admin/panels/modules/config/{module_name}/save?instance_id={instance_id}"
-    remove_url = f"/admin/panels/modules/config/{module_name}/remove?instance_id={instance_id}"
-
-    return HTMLResponse(content=f"""
-        <style>
-            .standard-settings-accordion {{
-                margin-top: 14px; 
-                border: 1px solid #27272a; 
-                border-radius: 6px; 
-                background: rgba(0, 0, 0, 0.1); 
-                overflow: hidden;
-            }}
-            .standard-settings-accordion summary {{
-                padding: 10px 14px; 
-                color: #a1a1aa; 
-                font-size: 0.75rem; 
-                font-weight: 600; 
-                text-transform: uppercase;
-                letter-spacing: 0.05em;
-                cursor: pointer; 
-                user-select: none; 
-                display: flex; 
-                align-items: center; 
-                justify-content: space-between;
-                list-style: none; 
-                outline: none;
-                background: rgba(255, 255, 255, 0.02);
-                transition: background 0.2s ease, color 0.2s ease;
-            }}
-            .standard-settings-accordion summary::-webkit-details-marker {{
-                display: none;
-            }}
-            .standard-settings-accordion summary:hover {{
-                background: rgba(255, 255, 255, 0.05);
-                color: white;
-            }}
-            .standard-settings-accordion[open] summary {{
-                border-bottom: 1px solid #27272a;
-                background: rgba(255, 255, 255, 0.04);
-                color: white;
-            }}
-            .standard-settings-accordion .accordion-arrow {{
-                font-size: 0.75rem; 
-                color: #71717a;
-                transition: transform 0.2s ease;
-            }}
-            .standard-settings-accordion[open] .accordion-arrow {{
-                transform: rotate(180deg);
-            }}
-            .standard-settings-content {{
-                padding: 14px; 
-                background: rgba(0, 0, 0, 0.15);
-            }}
-        </style>
-        <form hx-post="{save_url}" hx-target="#global-status" hx-swap="innerHTML" style="background: rgba(255,255,255,0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a;">
-            <h4 style="margin: 0 0 4px 0; color: white; font-size: 1rem;">
-                <i class="fas fa-sliders-h" style="margin-right: 6px; color: var(--accent-color);"></i>Standard Settings
-            </h4>
-            <p style="margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a;">These settings are provided by MirrorDash core for every module.</p>
-            {position_form_html}
-            
-            <details class="standard-settings-accordion">
-                <summary>
-                    <span style="display: flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-cog" style="color: #71717a;"></i>
-                        Other Standard Settings
-                    </span>
-                    <i class="fas fa-chevron-down accordion-arrow"></i>
-                </summary>
-                <div class="standard-settings-content">
-                    {accordion_form_html}
-                </div>
-            </details>
-            {module_section_html}
-
-            <div style="margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end;">
-                <button type="button" class="btn danger btn-sm"
-                        hx-post="{remove_url}"
-                        hx-target="#global-status"
-                        hx-confirm="Are you sure you want to deactivate and remove this module instance from the mirror screen?">
-                    <i class="fas fa-times"></i> Remove from Mirror
-                </button>
-                <button type="submit" class="btn primary btn-sm">
-                    <i class="fas fa-save"></i> Save Configuration
-                </button>
-            </div>
-        </form>
-        <script>triggerLucide();</script>
-    """)
+def _new_instance_id(module_name: str, modules_config: dict) -> str:
+    """The module's own name for its first instance, then name-2, name-3, …"""
+    taken = any(isinstance(c, dict) and c.get("module") == module_name for c in modules_config.values())
+    if not taken and module_name not in modules_config:
+        return module_name
+    return next(f"{module_name}-{n}" for n in itertools.count(2) if f"{module_name}-{n}" not in modules_config)
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])

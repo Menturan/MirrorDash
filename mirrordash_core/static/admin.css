@@ -1534,3 +1534,22 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .icon-custom { display: flex; align-items: center; gap: 8px; width: 100%; }
 .icon-custom span { font-size: 0.75rem; color: #71717a; }
 .icon-custom .form-control { flex-grow: 1; }
+
+/* A module's settings in the Configure drawer (features/modules/templates/admin_module_config.html) */
+.module-config-form { background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a; }
+.module-config-title { margin: 0 0 4px 0; color: white; font-size: 1rem; }
+.module-config-title i { margin-right: 6px; color: var(--accent-color); }
+.module-config-note { margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a; }
+.module-config-own { margin: 20px 0 12px 0; border-top: 1px solid #3f3f46; padding-top: 16px; }
+.module-config-own h5 { margin: 0 0 12px 0; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
+.module-config-actions { margin-top: 20px; display: flex; gap: 10px; justify-content: flex-end; }
+.standard-settings-accordion { margin-top: 14px; border: 1px solid #27272a; border-radius: 6px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }
+.standard-settings-accordion summary { padding: 10px 14px; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none; outline: none; background: rgba(255, 255, 255, 0.02); transition: background 0.2s ease, color 0.2s ease; }
+.standard-settings-accordion summary > span { display: flex; align-items: center; gap: 6px; }
+.standard-settings-accordion summary .fa-cog { color: #71717a; }
+.standard-settings-accordion summary::-webkit-details-marker { display: none; }
+.standard-settings-accordion summary:hover { background: rgba(255, 255, 255, 0.05); color: white; }
+.standard-settings-accordion[open] summary { border-bottom: 1px solid #27272a; background: rgba(255, 255, 255, 0.04); color: white; }
+.standard-settings-accordion .accordion-arrow { font-size: 0.75rem; color: #71717a; transition: transform 0.2s ease; }
+.standard-settings-accordion[open] .accordion-arrow { transform: rotate(180deg); }
+.standard-settings-content { padding: 14px; background: rgba(0, 0, 0, 0.15); }

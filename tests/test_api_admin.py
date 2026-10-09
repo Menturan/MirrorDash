@@ -1276,3 +1276,20 @@ def test_module_settings_are_checked_against_the_module_schema():
                              ({"unit": "K"}, "must be one of")]:
             with pytest.raises(ValueError, match=message):
                 schema.validate_config({"modules": {"x1": {"module": "mirrordash-x", **bad}}})
+
+
+def test_module_config_drawer_shows_standard_then_own_settings(client):
+    class Clock:
+        config_schema = {"properties": {"format": {"type": "string", "enum": ["24h", "12h"], "title": "Format"},
+                                        "position": {"type": "string"}}}  # a standard field it shouldn't declare
+    ep = MagicMock()
+    ep.load.return_value = Clock
+    cfg = {"modules": {"mirrordash-clock": {"module": "mirrordash-clock", "position": "top_left"}}}
+    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=ep), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value=cfg):
+        html = client.get("/admin/panels/modules/config/mirrordash-clock?instance_id=mirrordash-clock",
+                          headers={"X-API-Key": "secret"}).text
+        new = client.get("/admin/panels/modules/config/mirrordash-clock", headers={"X-API-Key": "secret"}).text
+    assert html.count("Screen Position") == 1 and "Module Settings" in html
+    assert '<option value="top_left" selected>' in html
+    assert "instance_id=mirrordash-clock-2" in new  # a second instance gets its own id
