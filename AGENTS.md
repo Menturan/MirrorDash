@@ -1,10 +1,6 @@
 # AGENTS.md — MirrorDash AI Agent Guide
 
-This file provides AI coding agents with everything they need to work effectively on the MirrorDash codebase. See `.agents/rules/` for detailed rule files.
-
-
-> [!IMPORTANT]
-> **Remember to always follow the design rules.** Adherence to the visual design rules, system constraints, and aesthetic/contrast guidelines is critical. See `DESIGN.md` and `mirrordash_core/static/style.css` for details.
+How to work on the MirrorDash core. The detailed rules are in `.agents/rules/`; the look is in `DESIGN.md` and must be followed.
 
 ## Overview
 
@@ -48,11 +44,12 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 |-------|-----------|
 | Backend | Python 3.14, FastAPI, Uvicorn |
 | Package Management | `uv` (not pip directly) |
-| Frontend | Vanilla HTML5, CSS Grid, Vanilla JS (frameworks require justification) |
+| Mirror screen | Vanilla HTML, CSS and JS, no build step (frameworks require justification) |
+| Admin page | Jinja2 templates + HTMX, Font Awesome icons |
 | Templating | Jinja2 (server-side, rendered per module) |
 | Real-time | WebSockets (one persistent connection per browser client) |
 | Module System | Python `importlib.metadata` entry points (`mirrordash.modules` group) |
-| Deployment | Raspberry Pi OS Trixie (Debian 13), OverlayFS read-only rootfs, Wayland (labwc), Cog kiosk |
+| Deployment | Raspberry Pi OS Trixie (Debian 13), read-only root (overlayroot) with data on `/storage`, Wayland (labwc), Cog kiosk |
 
 ## Rules Directory
 
@@ -62,3 +59,22 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 | `.agents/rules/general_rules.md` | Development environment, IoT simplicity, design standards |
 | `.agents/rules/architecture.md` | Core modification patterns, design system |
 | `.agents/rules/documentation.md` | Documentation file update reference table |
+
+## Run and Test
+
+```bash
+uv sync
+MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main   # mirror at http://localhost:8000, admin at /admin; reloads on save
+uv run pytest -q                                          # the whole suite, a few seconds
+uv run pytest tests/test_visual_admin.py                  # browser tests (once: uv run playwright install chromium webkit)
+```
+
+## Other Documents
+
+| File | What it's for |
+|------|---------------|
+| `ARCHITECTURE.md` | Why things are built the way they are: read before changing a pattern |
+| `DESIGN.md` | The look and its rules (mirror and admin page) |
+| `CONTRIBUTING.md` | The same start for people |
+| `GOLDEN_IMAGE.md`, `RELEASING.md` | The OS image and how releases are made |
+

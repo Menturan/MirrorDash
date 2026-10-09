@@ -82,7 +82,7 @@ def render_password_prompt(filename: str, is_local: bool) -> str:
             <input type="hidden" name="filename" value="{filename}">
             {is_local_input}
             <div class="form-group">
-                <input type="password" name="password" class="form-control" placeholder="Enter password" required>
+                <div class="pw-field"><input type="password" id="backup-restore-password" name="password" class="form-control" placeholder="Enter password" required><button type="button" class="pw-reveal" data-reveal="backup-restore-password" aria-controls="backup-restore-password" aria-pressed="false">Show</button></div>
             </div>
             <div style="margin-top: 1rem; display: flex; gap: 10px;">
                 <button type="submit" class="btn primary">Verify Password</button>

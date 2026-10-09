@@ -122,14 +122,16 @@
             border-color: rgba(255, 255, 255, 0.3);
             box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
         }
-        .auth-field {
+        /* Every password field: Show / Hide sits inside the field, full height so it is easy
+           to hit on a phone (coding rule 8d) */
+        .pw-field {
             position: relative;
         }
-        .auth-field .auth-input {
+        .pw-field input {
+            width: 100%;
             padding-right: 4.5rem;
         }
-        /* Show / Hide sits inside the field, full height so it is easy to hit on a phone */
-        .auth-reveal {
+        .pw-reveal {
             position: absolute;
             top: 0;
             right: 0;
@@ -143,10 +145,10 @@
             font-size: 0.85rem;
             cursor: pointer;
         }
-        .auth-reveal:hover {
+        .pw-reveal:hover {
             color: #ffffff;
         }
-        .auth-reveal:focus-visible {
+        .pw-reveal:focus-visible {
             outline: 2px solid #ffffff;
             outline-offset: -2px;
         }
@@ -196,15 +198,16 @@
             --bg-input: #121217;
             --border-color: rgba(255, 255, 255, 0.08);
             --border-hover: rgba(255, 255, 255, 0.16);
-            --primary: #6366f1;
-            --primary-glow: rgba(99, 102, 241, 0.25);
-            --success: #10b981;
-            --success-glow: rgba(16, 185, 129, 0.2);
+            /* One accent, white, like the mirror; colour only means status */
+            --primary: #ffffff;
+            --primary-glow: rgba(255, 255, 255, 0.12);
+            --success: #a0ffba;
+            --success-glow: rgba(160, 255, 186, 0.2);
             --warning: #f59e0b;
-            --danger: #ef4444;
+            --danger: #f87171;
             --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --text-muted: #8b97a8; /* ≥ 4.5:1 (WCAG AA) on every card colour; #475569 was 2.3:1 */
+            --text-secondary: #a1a1aa;
+            --text-muted: #9a9aa4; /* ≥ 4.5:1 (WCAG AA) on every card colour */
             --sidebar-width: 260px;
         }
 
@@ -216,14 +219,11 @@
             margin: 0;
             padding: 0;
             overflow-x: hidden;
-            background-image: 
-                radial-gradient(circle at 10% 20%, rgba(99, 102, 241, 0.05) 0%, transparent 40%),
-                radial-gradient(circle at 90% 80%, rgba(6, 182, 212, 0.05) 0%, transparent 40%);
         }
 
         /* RECOVERY BANNER */
         .recovery-banner {
-            background: linear-gradient(90deg, #b91c1c 0%, #ef4444 100%);
+            background: linear-gradient(90deg, #b91c1c 0%, #f87171 100%);
             color: white;
             padding: 10px 20px;
             font-size: 0.85rem;
@@ -236,7 +236,7 @@
             left: 0;
             right: 0;
             z-index: 1100;
-            box-shadow: 0 4px 20px rgba(239, 68, 68, 0.3);
+            box-shadow: 0 4px 20px rgba(248, 113, 113, 0.3);
         }
 
         .recovery-banner .btn-action {
@@ -282,11 +282,23 @@
             padding: 0 8px;
         }
 
-        .logo-area i {
-            font-size: 1.5rem;
+        .brand-monogram {
+            width: 28px;
+            height: 28px;
+            flex: none;
             color: var(--primary);
-            filter: drop-shadow(0 0 8px var(--primary-glow));
         }
+
+        .mobile-brand {
+            display: none;
+            align-items: center;
+            gap: 10px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-weight: 700;
+            font-size: 1rem;
+            color: white;
+        }
+        .mobile-brand .brand-monogram { width: 22px; height: 22px; }
 
         .logo-area h2 {
             font-family: 'Space Grotesk', sans-serif;
@@ -333,7 +345,7 @@
 
         .nav-item.active {
             color: var(--text-primary);
-            background-color: rgba(99, 102, 241, 0.12);
+            background-color: rgba(255, 255, 255, 0.08);
             border-left: 3px solid var(--primary);
             border-radius: 0 10px 10px 0;
             padding-left: 11px;
@@ -420,26 +432,15 @@
             border-color: var(--border-hover);
         }
 
-        .btn-primary {
-            background-color: var(--primary) !important;
-            border-color: var(--primary) !important;
-            color: white !important;
-            box-shadow: 0 4px 12px var(--primary-glow) !important;
-        }
-
-        .btn-primary:hover {
-            background-color: #4f46e5 !important;
-            box-shadow: 0 6px 16px var(--primary-glow) !important;
-        }
 
         .btn.danger {
             background-color: transparent !important;
             color: var(--danger) !important;
-            border: 1px solid rgba(239, 68, 68, 0.25) !important;
+            border: 1px solid rgba(248, 113, 113, 0.25) !important;
         }
 
         .btn.danger:hover {
-            background-color: rgba(239, 68, 68, 0.08) !important;
+            background-color: rgba(248, 113, 113, 0.08) !important;
             border-color: var(--danger) !important;
         }
 
@@ -537,7 +538,7 @@
             align-items: center;
             justify-content: center;
             font-size: 1.6rem;
-            box-shadow: 0 8px 24px rgba(99, 102, 241, 0.15);
+            box-shadow: 0 8px 24px rgba(255, 255, 255, 0.15);
         }
 
         .profile-title {
@@ -590,6 +591,10 @@
 
             .logo-area, .sidebar-footer {
                 display: none; /* Hide header logo & system indicator in bottom bar */
+            }
+
+            .mobile-brand {
+                display: flex;
             }
 
             .nav-menu {
@@ -704,8 +709,8 @@
     <!-- SIDEBAR / BOTTOM NAVIGATION BAR -->
     <aside>
         <div class="logo-area">
-            <i class="fas fa-cog"></i>
-            <h2>MirrorDash Admin</h2>
+            <svg class="brand-monogram" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <h2>MirrorDash</h2>
         </div>
 
         <!-- hx-sync on the tabs: a newer tab click aborts a slower earlier one, so a late
@@ -756,6 +761,8 @@
 
     <!-- CONTENT WRAPPER -->
     <div class="content-container">
+        <!-- On a phone the sidebar is a bottom bar, so the monogram moves up here -->
+        <div class="mobile-brand"><svg class="brand-monogram" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="currentColor" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg><span>MirrorDash</span></div>
         <header>
             <div class="header-title-desc">
                 <h1 id="tab-headline">Dashboard</h1>
@@ -785,7 +792,7 @@
         <div class="sheet-body">
             <!-- App Profile Card -->
             <div class="app-profile">
-                <div class="profile-icon" id="profileIcon" style="background: rgba(99, 102, 241, 0.08); color: var(--primary);">
+                <div class="profile-icon" id="profileIcon" style="background: rgba(255, 255, 255, 0.08); color: var(--primary);">
                     <i class="fas fa-puzzle-piece"></i>
                 </div>
                 <div style="flex: 1;">
@@ -845,9 +852,9 @@
             <form id="auth-form" class="auth-form" onsubmit="handleAuthSubmit(event)">
                 <div class="auth-input-group" id="auth-password-group">
                     <label for="auth-password-input" class="auth-input-label">Password</label>
-                    <div class="auth-field">
+                    <div class="pw-field">
                         <input type="password" id="auth-password-input" class="auth-input" placeholder="••••••••" autocapitalize="off" spellcheck="false">
-                        <button type="button" class="auth-reveal" data-reveal="auth-password-input" aria-controls="auth-password-input" aria-pressed="false">Show</button>
+                        <button type="button" class="pw-reveal" data-reveal="auth-password-input" aria-controls="auth-password-input" aria-pressed="false">Show</button>
                     </div>
                 </div>
                 <div class="auth-input-group" id="auth-pin-group" style="display: none;">
@@ -856,9 +863,9 @@
                 </div>
                 <div class="auth-input-group" id="auth-new-password-group" style="display: none;">
                     <label for="auth-new-password-input" class="auth-input-label">New Password</label>
-                    <div class="auth-field">
+                    <div class="pw-field">
                         <input type="password" id="auth-new-password-input" class="auth-input" placeholder="Min. 4 characters" autocomplete="new-password" autocapitalize="off" spellcheck="false">
-                        <button type="button" class="auth-reveal" data-reveal="auth-new-password-input" aria-controls="auth-new-password-input" aria-pressed="false">Show</button>
+                        <button type="button" class="pw-reveal" data-reveal="auth-new-password-input" aria-controls="auth-new-password-input" aria-pressed="false">Show</button>
                     </div>
                 </div>
                 <div id="auth-forgot-link-group" style="text-align: right; margin-top: -8px; margin-bottom: 12px;">
@@ -972,11 +979,14 @@
             btn.setAttribute('aria-pressed', visible);
         }
 
-        document.querySelectorAll('.auth-reveal').forEach(btn => btn.addEventListener('click', () => {
+        // Delegated, so it also works for password fields HTMX loads later
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.pw-reveal');
+            if (!btn) return;
             const input = document.getElementById(btn.dataset.reveal);
             setPasswordVisible(btn, input.type === 'password');
             input.focus();
-        }));
+        });
 
         // The MD monogram from the start screen, shown when you log in or set the first password
         const MONOGRAM_SVG = document.getElementById('auth-icon').innerHTML;
@@ -1001,7 +1011,7 @@
             document.getElementById('auth-new-password-input').value = '';
             document.getElementById('auth-pin-input').value = '';
             // Every time the dialog opens, passwords start hidden again
-            document.querySelectorAll('.auth-reveal').forEach(btn => setPasswordVisible(btn, false));
+            document.querySelectorAll('#auth-overlay .pw-reveal').forEach(btn => setPasswordVisible(btn, false));
             // Lets password managers save a new password at setup and fill it at login
             document.getElementById('auth-password-input').autocomplete = mode === 'setup' ? 'new-password' : 'current-password';
 
@@ -1299,8 +1309,8 @@
             
             const profileIcon = document.getElementById('profileIcon');
             if (profileIcon) {
-                profileIcon.style.background = color || 'rgba(99, 102, 241, 0.08)';
-                profileIcon.style.color = textColor || '#818cf8';
+                profileIcon.style.background = color || 'rgba(255, 255, 255, 0.08)';
+                profileIcon.style.color = textColor || '#ffffff';
                 profileIcon.innerHTML = iconHtml || '<i class="fas fa-puzzle-piece"></i>';
             }
             
@@ -1360,7 +1370,7 @@
                         const isActive = inst.id === activeInstanceId;
                         if (isActive) {
                             row.style.border = '1px solid var(--primary)';
-                            row.style.background = 'rgba(99, 102, 241, 0.06)';
+                            row.style.background = 'rgba(255, 255, 255, 0.06)';
                             addNewBtn.className = 'btn secondary btn-sm';
                         } else {
                             row.style.border = '1px solid rgba(255, 255, 255, 0.05)';
@@ -1396,7 +1406,7 @@
                                 el.style.background = 'rgba(255, 255, 255, 0.01)';
                             });
                             row.style.border = '1px solid var(--primary)';
-                            row.style.background = 'rgba(99, 102, 241, 0.06)';
+                            row.style.background = 'rgba(255, 255, 255, 0.06)';
                             addNewBtn.className = 'btn secondary btn-sm';
                             
                             htmx.ajax('GET', `/admin/panels/modules/config/${name}?instance_id=${inst.id}`, {target: '#config-fields-global', source: row});

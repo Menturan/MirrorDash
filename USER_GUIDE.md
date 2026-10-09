@@ -82,7 +82,7 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 
 Home Assistant can show the mirror's status and sensors, turn its screen on and off (for example when nobody is home) and set its brightness.
 
-1.  **Create a token**: in the admin page, *Hardware* → *API Access* → **Create Token**, and copy it.
+1.  **Create a token**: in the admin page, *Settings* → *Home Assistant & API* → **Create Token**, and copy it.
 2.  **Save it in Home Assistant**: add this line to `secrets.yaml`, with `Bearer`, a space and your token:
     ```yaml
     mirrordash_token: "Bearer paste-your-token-here"

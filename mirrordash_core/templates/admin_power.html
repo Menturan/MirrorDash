@@ -1,7 +1,7 @@
 <!-- Power Tab Panel -->
 <div class="page-panel active" id="page-panel-power" role="tabpanel" aria-labelledby="page-tab-power">
     <section class="card">
-        <h2><i class="fas fa-bolt" aria-hidden="true"></i> Screen Schedule</h2>
+        <h2><i class="fas fa-clock" aria-hidden="true"></i> Screen Schedule</h2>
         <p class="panel-subtitle">Turning the screen off when nobody looks saves energy and screen life. Changes are saved right away.</p>
         
         <!-- Saves on every change; no Apply button -->
@@ -142,7 +142,7 @@
                      style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 8px;"></div>
             </div>
             <div style="display: flex; gap: 12px; width: 100%; flex-wrap: wrap;">
-                <button type="button" id="screen-on-btn" class="btn primary" style="flex: 1; justify-content: center;"
+                <button type="button" id="screen-on-btn" class="btn secondary" style="flex: 1; justify-content: center;"
                         hx-post="/admin/panels/system/screen"
                         hx-vals='{"state": "on"}'
                         hx-target="#global-status"

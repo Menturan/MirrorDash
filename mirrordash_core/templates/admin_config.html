@@ -1,7 +1,7 @@
 <!-- Settings Tab Panel -->
 <div class="page-panel active" id="page-panel-config" role="tabpanel" aria-labelledby="page-tab-config">
     <section class="card">
-        <h2><i class="fas fa-sliders-h" aria-hidden="true"></i> Settings</h2>
+        <h2><i class="fas fa-globe" aria-hidden="true"></i> Language &amp; Location</h2>
         
         <p class="panel-subtitle">Language, units and location shared by all modules. Changes are saved right away.</p>
         <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML"
@@ -14,7 +14,7 @@
 
     <!-- MirrorDash Updates -->
     <section class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> MirrorDash Updates</h2>
+        <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> Updates</h2>
         <p class="panel-subtitle">Check for a newer version of MirrorDash and install it.</p>
 
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
@@ -33,7 +33,7 @@
             </button>
         </div>
 
-        <!-- Opt in to pre-releases; saves on change like the Hardware settings -->
+        <!-- Opt in to pre-releases; saves on change -->
         <form class="form-group" style="margin-bottom: 16px;" hx-post="/admin/panels/system/save"
               hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
             <div class="form-label-desc" style="margin-bottom: 8px;">
@@ -52,4 +52,67 @@
             <!-- populated by check -->
         </div>
     </section>
+
+    <!-- Home Assistant & API: loaded on its own, re-rendered after every change -->
+    <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
+
+    <!-- Developer: SSH. The switch saves right away, except turning SSH on: that waits for the
+         new password and the button (or Enter), so the answer comes from one clear action. -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-terminal" aria-hidden="true"></i> Developer</h2>
+        <p class="panel-subtitle">Command-line access for working on the mirror from a computer. Leave it off otherwise.</p>
+        <form id="ssh-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML"
+              hx-trigger="change[!waitsForSshPassword(event)], submit" hx-disabled-elt="find button[type=submit]">
+            <div class="form-group">
+                <div class="form-label-desc" style="margin-bottom: 8px;">
+                    <label for="sys-ssh" style="font-weight: 500; font-size: 0.9rem; color: white;">SSH</label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Log in as <strong>pi</strong>: <code>ssh pi@mirrordash.local</code></p>
+                </div>
+                <label class="switch">
+                    <input type="hidden" name="ssh" value="false">
+                    <input type="checkbox" id="sys-ssh" name="ssh" value="true" {% if ssh %}checked{% endif %} onchange="toggleSSHPasswordGroup(this.checked)">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+
+            <div id="sys-ssh-password-group" class="ssh-password-group" hidden>
+                <label for="sys-ssh-password">New password for the user pi</label>
+                <div class="ssh-password-row">
+                    <div class="pw-field">
+                        <input type="password" id="sys-ssh-password" name="pi_password" class="form-control" placeholder="At least 8 characters" autocomplete="new-password">
+                        <button type="button" class="pw-reveal" data-reveal="sys-ssh-password" aria-controls="sys-ssh-password" aria-pressed="false">Show</button>
+                    </div>
+                    <button type="submit" id="sys-ssh-save" class="btn primary">
+                        <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Turning on…</span>
+                        <span class="htmx-normal">Turn on SSH</span>
+                    </button>
+                </div>
+            </div>
+        </form>
+    </section>
 </div>
+
+<script>
+    // Turning SSH on needs a new password: the switch and the field don't save on their own, the
+    // button (or Enter) does. Turning it off saves right away.
+    function waitsForSshPassword(event) {
+        const ssh = document.getElementById('sys-ssh');
+        return event.target.id === 'sys-ssh-password' || (event.target === ssh && ssh.checked && !ssh.defaultChecked);
+    }
+
+    function toggleSSHPasswordGroup(checked) {
+        const group = document.getElementById('sys-ssh-password-group');
+        const ssh = document.getElementById('sys-ssh');
+        group.hidden = !(checked && !ssh.defaultChecked);
+        if (group.hidden) document.getElementById('sys-ssh-password').value = '';
+        else document.getElementById('sys-ssh-password').focus();
+    }
+
+    // The server says when SSH has changed: the switch now starts from that state.
+    document.body.addEventListener('md-ssh', (e) => {
+        const ssh = document.getElementById('sys-ssh');
+        if (!ssh) return;
+        ssh.checked = ssh.defaultChecked = e.detail.on;
+        toggleSSHPasswordGroup(e.detail.on);
+    });
+</script>

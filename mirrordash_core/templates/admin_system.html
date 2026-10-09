@@ -1,12 +1,12 @@
 <!-- Hardware Settings Tab Panel -->
 <div class="page-panel active" id="page-panel-system" role="tabpanel" aria-labelledby="page-tab-system">
     <section class="card">
-        <h2><i class="fas fa-desktop" aria-hidden="true"></i> Hardware Settings</h2>
+        <h2><i class="fas fa-desktop" aria-hidden="true"></i> Screen</h2>
         <p class="panel-subtitle">Changes are applied right away.</p>
 
-        <!-- Saves on every change. Turning SSH on waits for the new password instead. -->
+        <!-- Saves on every change -->
         <form id="system-settings-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML"
-              hx-trigger="change[!waitsForSshPassword(event)]">
+              hx-trigger="change">
             <!-- Screen Brightness -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
@@ -18,7 +18,7 @@
                     {% endif %}
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
-                    <input type="range" id="sys-brightness" name="brightness" min="10" max="100" value="{{ settings.brightness }}" class="form-control-range" {% if not settings.brightness_supported %}disabled{% endif %} style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);" oninput="document.getElementById('sys-brightness-val').textContent = this.value + '%'">
+                    <input type="range" id="sys-brightness" name="brightness" min="10" max="100" value="{{ settings.brightness }}" class="form-control-range" {% if not settings.brightness_supported %}disabled{% endif %} style="flex: 1; cursor: pointer; accent-color: var(--primary);" oninput="document.getElementById('sys-brightness-val').textContent = this.value + '%'">
                     <span id="sys-brightness-val" style="font-weight: 600; min-width: 45px; text-align: right;">{{ settings.brightness }}%</span>
                 </div>
             </div>
@@ -30,7 +30,7 @@
                     <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Control system audio output level (0% - 100%).</p>
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px; width: 100%;">
-                    <input type="range" id="sys-volume" name="volume" min="0" max="100" value="{{ settings.volume }}" class="form-control-range" style="flex: 1; cursor: pointer; accent-color: var(--accent-color, #3b82f6);" oninput="document.getElementById('sys-volume-val').textContent = this.value + '%'">
+                    <input type="range" id="sys-volume" name="volume" min="0" max="100" value="{{ settings.volume }}" class="form-control-range" style="flex: 1; cursor: pointer; accent-color: var(--primary);" oninput="document.getElementById('sys-volume-val').textContent = this.value + '%'">
                     <span id="sys-volume-val" style="font-weight: 600; min-width: 45px; text-align: right;">{{ settings.volume }}%</span>
                 </div>
             </div>
@@ -63,66 +63,10 @@
                     {% endfor %}
                 </select>
             </div>
-
-            <!-- SSH Server Control -->
-            <div class="form-group" style="margin-bottom: 20px;">
-                <div class="form-label-desc" style="margin-bottom: 8px;">
-                    <label for="sys-ssh" style="font-weight: 500; font-size: 0.9rem; color: white;">SSH Server <span style="font-size: 0.75rem; color: var(--warning-color); font-weight: normal; margin-left: 5px;">(Developer Setting)</span></label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Enable or disable secure shell command-line access. Note that the default SSH username is <strong>pi</strong>.</p>
-                </div>
-                <div style="display: flex; align-items: center; height: 38px; margin-bottom: 8px;">
-                    <label class="switch">
-                        <input type="hidden" name="ssh" value="false">
-                        <input type="checkbox" id="sys-ssh" name="ssh" value="true" {% if settings.ssh %}checked{% endif %} onchange="toggleSSHPasswordGroup(this.checked)">
-                        <span class="slider round"></span>
-                    </label>
-                </div>
-                
-                <!-- Password input when SSH is enabled -->
-                <div id="sys-ssh-password-group" style="display: none; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); margin-top: 10px;">
-                    <label for="sys-ssh-password" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 6px;">Set New Password for System User 'pi'</label>
-                    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
-                        <input type="password" id="sys-ssh-password" name="pi_password" class="form-control" placeholder="Enter password (min 8 chars)" autocomplete="new-password" style="flex: 1 1 200px; max-width: 300px; background: rgba(0, 0, 0, 0.4); border: 1px solid var(--card-border); border-radius: 8px; color: white; padding: 8px 12px; outline: none;">
-                        <button type="button" id="sys-ssh-save" class="btn primary" onclick="saveSshPassword()">Turn on SSH</button>
-                    </div>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 6px 0 0 0;">Type a password of at least 8 characters, then press Turn on SSH (or Enter).</p>
-                </div>
-            </div>
         </form>
     </section>
 
     <!-- Sensors & Inputs: loaded on its own, re-rendered after every change -->
     <div hx-get="/admin/panels/system/devices" hx-trigger="load" hx-swap="outerHTML"></div>
 
-    <!-- API Access: a token for Home Assistant -->
-    <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
 </div>
-
-<script>
-    let initialSshState = {% if settings.ssh %}true{% else %}false{% endif %};
-
-    // Turning SSH on needs a new password first: don't save until the password field changes.
-    function waitsForSshPassword(event) {
-        return event.target.id === 'sys-ssh' && event.target.checked && !initialSshState;
-    }
-    document.getElementById('sys-ssh-password').addEventListener('change', () => { initialSshState = true; });
-
-    // The button saves like Enter does. Clicking it moves focus out of the field, which usually has
-    // saved already (the field's change event); only send it if that didn't happen.
-    function saveSshPassword() {
-        const field = document.getElementById('sys-ssh-password');
-        if (!field.value) { field.focus(); return; }
-        if (!initialSshState) field.dispatchEvent(new Event('change', { bubbles: true }));
-    }
-
-    function toggleSSHPasswordGroup(checked) {
-        if (checked && !initialSshState) {
-            document.getElementById('sys-ssh-password-group').style.display = 'block';
-        } else {
-            document.getElementById('sys-ssh-password-group').style.display = 'none';
-            document.getElementById('sys-ssh-password').value = '';
-        }
-    }
-</script>
-
-

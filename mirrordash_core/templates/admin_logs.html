@@ -3,7 +3,6 @@
     <section class="card">
         <form id="logs-form" hx-get="/admin/panels/logs/viewer" hx-target="#logs-viewer" hx-trigger="change from:select, refreshLogs">
             <div class="logs-header">
-                <h2><i class="fas fa-file-alt" aria-hidden="true"></i> Logs</h2>
                 <div class="logs-actions">
                     <label for="log-type-select">Source:</label>
                     <select id="log-type-select" name="type" class="form-control log-select" onchange="toggleModuleSelectContainer(this.value)">

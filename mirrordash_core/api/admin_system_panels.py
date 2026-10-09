@@ -214,6 +214,10 @@ async def save_system_settings_route(request: Request):
                 wake[key] = wake[key] in (True, "true")
 
     await update_system_settings(settings=parsed)
+    if "ssh" in parsed:  # only the Developer card sends it
+        on = parsed["ssh"] in (True, "true")
+        return notify("SSH is on. Log in with: ssh pi@mirrordash.local" if on else "SSH is off.",
+                      **{"md-ssh": {"on": on}})
     return notify("Saved.")
 
 
@@ -251,8 +255,8 @@ async def get_system_update_check():
 
     if avail:
         return HTMLResponse(content=f"""
-            <div style="margin-top: 10px; padding: 10px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;">
-                <p style="margin: 0; color: #10b981;"><strong>Update available!</strong> New version v{latest} is available (currently installed: v{current}).</p>
+            <div style="margin-top: 10px; padding: 10px; background: rgba(160, 255, 186, 0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;">
+                <p style="margin: 0; color: #a0ffba;"><strong>Update available!</strong> New version v{latest} is available (currently installed: v{current}).</p>
                 <button type="button" 
                         class="btn primary btn-sm" 
                         style="margin-top: 10px;"
@@ -581,4 +585,4 @@ async def get_screen_status():
         text = f"The screen is on and turns off in {math.ceil(st['wake_seconds_left'] / 60)} min."
     else:
         text = "The screen is on."
-    return HTMLResponse(content=f"<i class='fas fa-circle' style='font-size: 0.5rem; color: {'#34d399' if st['on'] else '#71717a'};'></i> {html.escape(text)}")
+    return HTMLResponse(content=f"<i class='fas fa-circle' style='font-size: 0.5rem; color: {'#a0ffba' if st['on'] else '#71717a'};'></i> {html.escape(text)}")

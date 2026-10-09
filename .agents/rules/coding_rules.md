@@ -45,6 +45,8 @@
 
 8c. **Server feedback via page events, not `<script>` tags.** Admin panel routes report results with `notify()` / `ui_events()` (an `HX-Trigger-After-Swap` header that `admin.html` listens for). Returning `<script>showGlobal(...)</script>` into `#global-status` crashed htmx mid-swap and is also never run with `hx-swap="none"`. Errors raised as `HTTPException` are shown automatically by the global `htmx:responseError` handler.
 
+8d. **Every password field has Show/Hide.** Wrap it as `<div class="pw-field"><input type="password" id="x" …><button type="button" class="pw-reveal" data-reveal="x" aria-controls="x" aria-pressed="false">Show</button></div>`; the handler in `admin.html` is delegated, so fields HTMX loads later work too. Never a bare `type="password"`: `tests/test_admin_passwords.py` fails on one.
+
 9. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
 
 10. **Vector Iconography (Lucide).** Use Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`) instead of colored or multi-color emojis.

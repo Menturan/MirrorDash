@@ -234,7 +234,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                         <label for="{field_id}" style="font-weight:600; color: white;">{title}</label>
                         <p class="field-description" style="font-size:0.75rem; margin: 2px 0 0 0;">{description}</p>
                     </div>
-                    <input type="password" id="{field_id}" name="{name}" value="{val}" class="form-control">
+                    <div class="pw-field"><input type="password" id="{field_id}" name="{name}" value="{val}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{field_id}" aria-controls="{field_id}" aria-pressed="false">Show</button></div>
                 </div>
             """)
         elif prop_type == "string" and (prop.get("format") == "textarea" or key in ("description", "text", "message", "preamble")):

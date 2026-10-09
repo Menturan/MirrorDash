@@ -191,7 +191,7 @@ textarea {
     background: rgba(0, 0, 0, 0.4);
     border: 1px solid var(--card-border);
     border-radius: 10px;
-    color: #a5f3fc;
+    color: #e4e4e7;
     font-family: var(--mono-family);
     font-size: 0.875rem;
     padding: 14px;
@@ -299,8 +299,8 @@ input[type="text"]:focus-visible {
     line-height: 1.4;
 }
 .status-msg.loading { display: block; color: var(--warning-color); }
-.status-msg.success { display: block; color: var(--success-color); background: rgba(16, 185, 129, 0.1); }
-.status-msg.error   { display: block; color: var(--error-color);   background: rgba(239, 68, 68, 0.1); }
+.status-msg.success { display: block; color: var(--success-color); background: rgba(160, 255, 186, 0.1); }
+.status-msg.error   { display: block; color: var(--error-color);   background: rgba(248, 113, 113, 0.1); }
 
 code {
     background: rgba(255, 255, 255, 0.08);
@@ -789,7 +789,7 @@ input:checked + .slider:before {
     border-radius: 4px;
     font-family: var(--mono-family);
     font-size: 0.85em;
-    color: #a5f3fc;
+    color: #e4e4e7;
 }
 
 .modal-body pre {
@@ -854,13 +854,13 @@ input:checked + .slider:before {
     padding: 2px 8px;
     border-radius: 12px;
     margin-left: 4px;
-    box-shadow: 0 2px 6px rgba(239, 68, 68, 0.4);
+    box-shadow: 0 2px 6px rgba(248, 113, 113, 0.4);
     animation: badgePulse 2s infinite ease-in-out;
 }
 
 @keyframes badgePulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-    50% { box-shadow: 0 0 6px 1px rgba(239, 68, 68, 0.25); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248, 113, 113, 0); }
+    50% { box-shadow: 0 0 6px 1px rgba(248, 113, 113, 0.25); }
 }
 
 .updates-list-container {
@@ -943,9 +943,9 @@ input:checked + .slider:before {
 }
 
 .status-badge.up-to-date {
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(160, 255, 186, 0.1);
     color: var(--success-color);
-    border-color: rgba(16, 185, 129, 0.2);
+    border-color: rgba(160, 255, 186, 0.2);
 }
 
 .status-badge.update-avail {
@@ -963,7 +963,7 @@ input:checked + .slider:before {
 /* Logs View styles */
 .logs-header {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     flex-wrap: wrap;
     gap: 15px;
@@ -990,6 +990,7 @@ input:checked + .slider:before {
 }
 
 .log-select {
+    width: auto; /* one row of controls, not a full-width .form-control each */
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid var(--card-border);
     color: var(--text-primary);
@@ -1356,9 +1357,9 @@ input:checked + .slider:before {
     color: #f59e0b;
 }
 .system-alert--error {
-    border-color: rgba(239, 68, 68, 0.3);
-    background: rgba(239, 68, 68, 0.08);
-    box-shadow: 0 4px 20px rgba(239, 68, 68, 0.1);
+    border-color: rgba(248, 113, 113, 0.3);
+    background: rgba(248, 113, 113, 0.08);
+    box-shadow: 0 4px 20px rgba(248, 113, 113, 0.1);
 }
 .system-alert--error .system-alert-title {
     color: var(--error-color);
@@ -1431,7 +1432,7 @@ input:checked + .slider:before {
 .category-pill.active {
     background: var(--primary);
     border-color: transparent;
-    color: white;
+    color: #121214;
 }
 
 /* Tab loading line (see #page-loading in admin.html) */
@@ -1443,7 +1444,7 @@ input:checked + .slider:before {
     height: 3px;
     z-index: 2000;
     overflow: hidden;
-    background: rgba(99, 102, 241, 0.2);
+    background: rgba(255, 255, 255, 0.2);
 }
 
 .page-loading::after {
@@ -1452,7 +1453,7 @@ input:checked + .slider:before {
     top: 0;
     bottom: 0;
     width: 30%;
-    background: var(--primary, #6366f1);
+    background: var(--primary);
     animation: page-loading 1.1s ease-in-out infinite;
 }
 
@@ -1465,3 +1466,27 @@ input:checked + .slider:before {
     .page-loading::after { animation: page-loading-pulse 1.6s ease-in-out infinite; left: 0; width: 100%; }
     @keyframes page-loading-pulse { 50% { opacity: 0.3; } }
 }
+
+/* Developer card: the new SSH password and its button, under the switch */
+.ssh-password-group {
+    margin-top: 12px;
+    padding-left: 15px;
+    border-left: 2px solid var(--card-border);
+}
+.ssh-password-group > label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.8rem;
+    color: white;
+}
+.ssh-password-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.ssh-password-row .pw-field {
+    flex: 1 1 220px;
+    max-width: 320px;
+}
+

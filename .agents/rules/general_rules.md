@@ -17,7 +17,7 @@ trigger: always_on
 
 0b. **Strict DevOps Build Philosophy.** When writing or modifying build and appliance scripts (e.g., `build_image.sh`, `setup_appliance.sh`), you MUST use stable, failsafe, declarative DevOps standards. 
 - **Never** use "hobbyist" hacks: No shell polling loops (`sleep` or `while` checks), no string-scraping HTML for URLs (`grep | cut`), and no arbitrary terminal autologins or `.bash_profile` injections.
-- **Always** use deterministic solutions: Native D-Bus event waiting (e.g., `nm-online`, `nmcli device wait`), native systemd services (`graphical.target`, `PAMName=login`), and canonical API flags (e.g., `curl -w '%{url_effective}'`). 
+- **Always** use deterministic solutions: Native event waiting (e.g., `nm-online`, systemd `After=`/`Wants=` ordering), native systemd services (`graphical.target`, `PAMName=login`), and canonical API flags (e.g., `curl -w '%{url_effective}'`). 
 Build scripts must be deterministic, free of race-conditions, and mathematically proven to execute correctly without relying on timing or visual DOM layouts.
 
 ## Design & Architecture

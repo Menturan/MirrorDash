@@ -1,5 +1,5 @@
 <section class="card" id="discover-modules-section" style="margin-top: 2rem; {% if not discoverable_modules %}display: none;{% endif %}">
-    <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
         <div>
             <h2 style="margin-bottom: 8px;"><i class="fas fa-compass" aria-hidden="true"></i> Discover New Modules</h2>
             <p class="panel-subtitle" style="margin-bottom: 0;">Install community-developed plugins from GitHub and PyPI directly onto your mirror.</p>
@@ -17,7 +17,7 @@
         </div>
     </div>
     
-    <div id="discover-modules-container" class="discover-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
+    <div id="discover-modules-container" class="discover-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
         {% for m in discoverable_modules %}
             <div class="discover-card" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--card-border); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
                 <div>

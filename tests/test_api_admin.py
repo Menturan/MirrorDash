@@ -868,8 +868,8 @@ def test_get_panel_system(mock_res, mock_load, client):
     
     response = client.get("/admin/panels/system", headers=headers)
     assert response.status_code == 200
-    assert "Hardware Settings" in response.text
     assert "sys-rotation" in response.text
+    assert "sys-ssh" not in response.text  # SSH lives in Settings › Developer
 
 
 @patch("mirrordash_core.api.admin_system.load_config")
@@ -886,7 +886,6 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mo
         "volume": "60",
         "rotation": "left",
         "resolution": "auto",
-        "ssh": "false",
         "display_control[mode]": "interval",
         "display_control[interval][start_h]": "8",
         "display_control[interval][start_m]": "15",

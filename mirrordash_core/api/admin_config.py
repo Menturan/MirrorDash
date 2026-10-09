@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from mirrordash_core.api.admin_shared import notify, require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config, get_core_version
 from mirrordash_core.module_loader import module_loader, find_entry_point
+from mirrordash_core.system import get_ssh_status
 
 logger = logging.getLogger("mirrordash.core.api.admin_config")
 
@@ -300,6 +301,7 @@ async def get_panel_config(request: Request):
             "raw_json_str": raw_json_str,
             "current_version": current_version,
             "prerelease": config.get("system", {}).get("prerelease", False),
+            "ssh": await get_ssh_status(),
         }
     )
 

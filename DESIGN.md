@@ -63,9 +63,14 @@ Loading is always visible: anything that waits shows calm motion (the breathing 
 ## Monogram and boot screens
 
 - **Monogram:** the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
+- **The monogram says "you are in MirrorDash"** and is always on our own surfaces: the favicon and app icon, the admin page (sidebar, and the top of the page on a phone), its login, the Wi-Fi setup, the boot, restart and shutdown screens, `loading.html` and the README. It is never on the mirror's screen next to the modules: there the mirror should look like a mirror.
 - **Boot, restart and shutdown:** Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
 
 ## Icons
 
 - **The mirror and modules:** [Lucide](https://lucide.dev/icons) outlines (`<i data-lucide="cloud-rain"></i>`), 1.5px stroke, no fill, in the text colour. No emoji and no coloured icons.
 - **The admin page:** the bundled Font Awesome (`static/fontawesome/`).
+
+## The admin page
+
+A phone page, not the mirror, but the same family: near-black, white type, **white as the only accent** (the active tab, a primary button, focus rings). Colour means status only: `#a0ffba` fine, `#f59e0b` needs a look, `#f87171` wrong or destructive. One filled white button per card is its main action; everything else is outlined. A card's title names what's in it, never the page it's on.

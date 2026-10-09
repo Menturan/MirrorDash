@@ -11,8 +11,15 @@ There are two kinds of releases:
 
 ### Added
 - A Reload Screen button in the Power tab loads the mirror's page again, for example if it looks wrong.
+- Every password field in the admin page has Show/Hide.
+
+### Changed
+- The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).
+- SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 
 ### Fixed
+- Turning on SSH says so: the button shows that it's working, then "SSH is on" with how to log in, or why the password was refused. Before, the click often did nothing visible, and a refused password still left SSH marked as on.
+- The Modules tab no longer becomes wider than a phone's screen.
 - After a MirrorDash update the screen shows the new version right away; before, the mirror's page kept the old version's look and behaviour until the mirror was restarted.
 - Updating MirrorDash right after a new version is published installs that version. Before, it could reinstall the current one, say it had updated and restart for nothing; now it says the new version isn't available yet and stays as it is.
 - Discover New Modules lists every module on GitHub again (weather, calendar, Home Assistant, …), not just the clock. It now asks GitHub once per refresh instead of once per module, which used up GitHub's hourly limit for the home network. When GitHub refuses anyway, the page says the refresh failed instead of quietly showing only the clock.

@@ -466,8 +466,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["ssh"] = ssh_enabled
     system_cfg["prerelease"] = prerelease
 
-    save_config(config)
-
     # Only touch SSH when this request is about it: the Power tab saves just the display
     # schedule, and re-checking SSH there failed whenever the service state differed.
     if "ssh" in settings:
@@ -539,6 +537,9 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
                 logger.error(f"Failed to remove password hash: {io_err}")
 
         await set_ssh_status(ssh_enabled)
+
+    # Saved only now: a refused SSH password must not leave "ssh: on" in the config
+    save_config(config)
 
     # Queue display/audio settings to apply asynchronously (re-applying an unchanged
     # rotation/resolution can make the screen flicker, so only when they were sent)

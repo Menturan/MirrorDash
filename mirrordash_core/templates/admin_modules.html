@@ -2,7 +2,7 @@
 <div class="page-panel active" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules">
     <!-- Filter & Search Row -->
     <div class="filter-row" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-        <div class="category-pills" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px;">
+        <div class="category-pills" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; min-width: 0; max-width: 100%;">
             <button class="category-pill active" aria-pressed="true" onclick="filterModules('all', this)">All</button>
             <button class="category-pill" aria-pressed="false" onclick="filterModules('installed', this)">On the mirror</button>
             <button class="category-pill" aria-pressed="false" onclick="filterModules('info', this)">Information</button>
@@ -32,10 +32,10 @@
     <!-- Installed Modules List -->
     <section class="card" style="background: transparent; border: none; padding: 0; box-shadow: none; margin-bottom: 0;">
         
-        <div id="installed-modules-container" class="installed-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 24px; margin-top: 1.5rem;"
+        <div id="installed-modules-container" class="installed-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 24px; margin-top: 1.5rem;"
              hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body" hx-select="#installed-modules-container" hx-swap="outerHTML">
             {% if not installed_modules %}
-                <div class="no-modules-msg" style="text-align:center; color: var(--text-muted); padding:2rem; grid-column: span 12;">No installed modules match your query.</div>
+                <div class="no-modules-msg" style="text-align:center; color: var(--text-muted); padding:2rem; grid-column: 1 / -1;">No installed modules match your query.</div>
             {% else %}
                 {% for name, meta in installed_modules.items() %}
                     {% set is_configured = meta.configured %}
@@ -70,7 +70,7 @@
                         
                         <div>
                             <div class="module-card-header" style="display: flex; gap: 16px; margin-bottom: 16px;">
-                                <div class="module-card-icon-container" style="width: 50px; height: 50px; border-radius: 12px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--primary);">
+                                <div class="module-card-icon-container" style="width: 50px; height: 50px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--primary);">
                                     {% if icon_class.startswith('<svg') %}
                                         {{ icon_class | safe }}
                                     {% else %}
@@ -92,8 +92,8 @@
                         <div class="module-card-footer" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.04); padding-top: 16px;">
                             <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
                                 {% if is_configured %}
-                                    <span class="badge badge-installed" style="background-color: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Installed</span>
-                                    <span class="badge badge-instances" style="background-color: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">{{ meta.instances|length }} Instance{% if meta.instances|length > 1 %}s{% endif %}</span>
+                                    <span class="badge badge-installed" style="background-color: rgba(160, 255, 186, 0.1); color: #a0ffba; border: 1px solid rgba(160, 255, 186, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Installed</span>
+                                    <span class="badge badge-instances" style="background-color: rgba(255, 255, 255, 0.1); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">{{ meta.instances|length }} Instance{% if meta.instances|length > 1 %}s{% endif %}</span>
                                 {% else %}
                                     <span class="badge" style="background-color: rgba(255, 255, 255, 0.03); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
                                 {% endif %}

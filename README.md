@@ -1,4 +1,11 @@
-# 🪞 MirrorDash
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/monogram-dark.svg">
+    <img src="docs/monogram-light.svg" alt="MirrorDash" width="96">
+  </picture>
+</p>
+
+# MirrorDash
 
 [![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](pyproject.toml)
 [![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](LICENSE.md)
@@ -79,7 +86,8 @@ This creates a module with example data and starts a mirror on your computer tha
 
 * [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, Home Assistant.
 * [Changelog](CHANGELOG.md): what's new in each release.
-* [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): for contributors.
+* [Contributing](CONTRIBUTING.md): run and change the core on your computer.
+* [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.
 * [Golden image](GOLDEN_IMAGE.md) and [Releasing](RELEASING.md): how the OS image is built and released.
 
 ## License

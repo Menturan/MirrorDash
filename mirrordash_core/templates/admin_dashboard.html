@@ -3,8 +3,8 @@
         
         <!-- Storage Warning banner (Golden Rule) -->
         {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
-        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.35); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
-            <i class="fas fa-triangle-exclamation" style="font-size: 1.6rem; color: #ef4444; animation: pulse 2s infinite;"></i>
+        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); box-shadow: 0 10px 30px rgba(248, 113, 113, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-triangle-exclamation" style="font-size: 1.6rem; color: #f87171; animation: pulse 2s infinite;"></i>
             <div>
                 <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Storage Warning: High Disk Space Usage</h4>
                 <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
@@ -18,8 +18,8 @@
 
         <!-- Power Warning banner (Raspberry Pi Throttling Warning) -->
         {% if undervoltage_detected %}
-        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.02) 100%); border: 1px solid rgba(239, 68, 68, 0.35); box-shadow: 0 10px 30px rgba(239, 68, 68, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
-            <i class="fas fa-bolt" style="font-size: 1.6rem; color: #ef4444; animation: pulse 2s infinite;"></i>
+        <div style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); box-shadow: 0 10px 30px rgba(248, 113, 113, 0.08); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-bolt" style="font-size: 1.6rem; color: #f87171; animation: pulse 2s infinite;"></i>
             <div>
                 <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Power Warning: Under-voltage Detected</h4>
                 <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
@@ -57,7 +57,7 @@
                 {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
                     {% set placed = screen_layout.get(pos, []) %}
                     <div class="matrix-cell" title="{{ pos.replace('_', ' ').capitalize() }}"
-                         style="background: {% if placed %}rgba(99, 102, 241, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %};
+                         style="background: {% if placed %}rgba(255, 255, 255, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %};
                                 border: 1px solid {% if placed %}var(--primary){% else %}rgba(255, 255, 255, 0.04){% endif %};
                                 border-radius: 6px; padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; min-width: 0;">
                         {% for m in placed %}

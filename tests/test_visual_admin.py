@@ -227,7 +227,7 @@ def test_admin_configuration_panel(page, server_url):
     assert page.locator("#visual-form-container").is_visible()
 
     # Settings save on change; there is no Save button any more
-    assert page.locator("#page-panel-config button[type=submit]").count() == 0
+    assert page.locator("#visual-form-container button[type=submit]").count() == 0
     page.locator("#visual-form-container select").first.dispatch_event("change")
     page.wait_for_selector("#global-status", state="visible")
     assert "Saved." in page.locator("#global-status").text_content()
@@ -312,8 +312,16 @@ def test_admin_system_panel(page, server_url):
     page.wait_for_selector("#global-status", state="visible")
     assert "Saved." in page.locator("#global-status").text_content()
 
+    assert page.locator("#sys-ssh").count() == 0  # SSH lives in Settings › Developer
+
+
+def test_turning_ssh_on_waits_for_the_password_and_says_so(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.wait_for_selector("h1")
+    page.click("#page-tab-config")
+    page.wait_for_selector("#ssh-form")
+
     # Turning SSH on waits for the password instead of saving immediately
-    page.evaluate("document.getElementById('global-status').hidden = true")
     assert not page.locator("#sys-ssh-password-group").is_visible()
     saves = []
     page.on("request", lambda r: saves.append(r.post_data) if r.url.endswith("/admin/panels/system/save") else None)
@@ -325,9 +333,10 @@ def test_admin_system_panel(page, server_url):
     page.fill("#sys-ssh-password", "pi_password_123")
     page.click("#sys-ssh-save")
     page.wait_for_selector("#global-status", state="visible")
-    assert "Saved." in page.locator("#global-status").text_content()
+    assert "SSH is on" in page.locator("#global-status").text_content()
     page.wait_for_timeout(300)
     assert len(saves) == 1 and "pi_password=pi_password_123" in saves[0]  # saved once, not twice
+    assert not page.locator("#sys-ssh-password-group").is_visible()  # done: the field goes away
 
 
 def test_module_upgrade_shows_progress(page, server_url):
