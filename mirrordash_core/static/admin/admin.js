@@ -88,78 +88,84 @@ document.addEventListener('click', (e) => {
     input.focus();
 });
 
-// The MD monogram from the start screen, shown when you log in or set the first password
-const MONOGRAM_SVG = document.getElementById('auth-icon').innerHTML;
+// What each step of the password dialog shows: its text, its parts (the ids auth-<part>-group)
+// and its button
+const AUTH_MODES = {
+    login: {
+        title: 'Enter Password',
+        desc: 'Enter your MirrorDash admin password to unlock the dashboard.',
+        parts: ['password', 'forgot'],
+        button: 'Unlock',
+    },
+    setup: {
+        title: 'Welcome to MirrorDash',
+        desc: 'Create an admin password to secure your mirror (at least 4 characters).',
+        parts: ['password'],
+        button: 'Create Password',
+    },
+    recover: {
+        title: 'Reset Password',
+        desc: 'Enter the recovery code you saved when you set up the mirror, and choose a new password.',
+        parts: ['code', 'new-password', 'lost'],
+        button: 'Set New Password',
+    },
+    saved: {
+        title: 'Save Your Recovery Code',
+        desc: 'If you forget the password, this code sets a new one. It is shown only now: save it in your password manager or write it down.',
+        parts: ['saved-code'],
+        button: "I've Saved It",
+    },
+};
+const AUTH_PARTS = ['password', 'code', 'new-password', 'saved-code', 'forgot', 'lost'];
 
-function showAuthModal(mode) {
-    const overlay = document.getElementById('auth-overlay');
-    const icon = document.getElementById('auth-icon');
-    const title = document.getElementById('auth-title');
-    const desc = document.getElementById('auth-desc');
-    const passwordGroup = document.getElementById('auth-password-group');
-    const newPasswordGroup = document.getElementById('auth-new-password-group');
-    const pinGroup = document.getElementById('auth-pin-group');
+// Switch the open dialog to another step; the caller still waits for the same answer
+function setAuthMode(mode, desc) {
+    const m = AUTH_MODES[mode];
+    document.getElementById('auth-overlay').setAttribute('data-mode', mode);
+    document.getElementById('auth-title').textContent = m.title;
+    document.getElementById('auth-desc').textContent = desc || m.desc;
+    AUTH_PARTS.forEach(part => {
+        document.getElementById(`auth-${part}-group`).style.display = m.parts.includes(part) ? 'block' : 'none';
+    });
     const submitBtn = document.getElementById('auth-submit-btn');
-
+    submitBtn.disabled = false;
+    submitBtn.textContent = m.button;
     const authError = document.getElementById('auth-error');
-    if (authError) {
-        authError.textContent = '';
-        authError.style.display = 'none';
-    }
-
-    document.getElementById('auth-password-input').value = '';
-    document.getElementById('auth-new-password-input').value = '';
-    document.getElementById('auth-pin-input').value = '';
-    // Every time the dialog opens, passwords start hidden again
+    authError.textContent = '';
+    authError.style.display = 'none';
+    // Every step starts with empty fields and passwords hidden again
+    ['auth-password-input', 'auth-code-input', 'auth-new-password-input'].forEach(id => {
+        document.getElementById(id).value = '';
+    });
     document.querySelectorAll('#auth-overlay .pw-reveal').forEach(btn => setPasswordVisible(btn, false));
     // Lets password managers save a new password at setup and fill it at login
     document.getElementById('auth-password-input').autocomplete = mode === 'setup' ? 'new-password' : 'current-password';
+}
 
-    const forgotGroup = document.getElementById('auth-forgot-link-group');
-    if (forgotGroup) {
-        forgotGroup.style.display = (mode === 'login') ? 'block' : 'none';
-    }
-
-    overlay.setAttribute('data-mode', mode);
-    overlay.classList.add('open');
-
-    if (mode === 'login') {
-        icon.className = 'auth-icon';
-        icon.innerHTML = MONOGRAM_SVG;
-        title.textContent = 'Enter Password';
-        desc.textContent = 'Enter your MirrorDash admin password to unlock the dashboard.';
-        passwordGroup.style.display = 'block';
-        newPasswordGroup.style.display = 'none';
-        pinGroup.style.display = 'none';
-        submitBtn.textContent = 'Unlock';
-        submitBtn.className = 'auth-btn';
-    } else if (mode === 'setup') {
-        icon.className = 'auth-icon';
-        icon.innerHTML = MONOGRAM_SVG;
-        title.textContent = 'Welcome to MirrorDash';
-        desc.textContent = 'Please create an admin password to secure your mirror (at least 4 characters).';
-        passwordGroup.style.display = 'block';
-        newPasswordGroup.style.display = 'none';
-        pinGroup.style.display = 'none';
-        submitBtn.textContent = 'Create Password';
-        submitBtn.className = 'auth-btn';
-    } else if (mode === 'recover') {
-        icon.className = 'auth-icon corrupt';
-        icon.innerHTML = '<i data-lucide="shield-alert"></i>';
-        title.textContent = 'Restore Access';
-        desc.textContent = 'Your configuration is corrupt. Enter the 6-digit Recovery PIN shown on your mirror screen to set a new password.';
-        passwordGroup.style.display = 'none';
-        newPasswordGroup.style.display = 'block';
-        pinGroup.style.display = 'block';
-        submitBtn.textContent = 'Restore Password';
-        submitBtn.className = 'auth-btn corrupt-btn';
-    }
-
-    if (window.lucide) lucide.createIcons({ root: icon });
-
+function showAuthModal(mode, desc) {
+    setAuthMode(mode, desc);
+    document.getElementById('auth-overlay').classList.add('open');
     return new Promise((resolve) => {
         authPromiseResolve = resolve;
     });
+}
+
+// Logged in with a new password: remember it, then show its recovery code once
+function acceptNewPassword(password, recoveryCode) {
+    currentApiKey = password;
+    localStorage.setItem('mirrordash_api_key', currentApiKey);
+    setAuthMode('saved');
+    document.getElementById('auth-saved-code-input').value = recoveryCode;
+}
+
+async function postAuth(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
 }
 
 async function handleAuthSubmit(event) {
@@ -167,141 +173,77 @@ async function handleAuthSubmit(event) {
     const overlay = document.getElementById('auth-overlay');
     const mode = overlay.getAttribute('data-mode');
     const submitBtn = document.getElementById('auth-submit-btn');
-
     const password = document.getElementById('auth-password-input').value;
     const newPassword = document.getElementById('auth-new-password-input').value;
-    const pin = document.getElementById('auth-pin-input').value;
+    const code = document.getElementById('auth-code-input').value;
+
+    if (mode === 'saved') {
+        overlay.classList.remove('open');
+        showGlobal('Password set.', 'success');
+        authPromiseResolve(true);
+        return;
+    }
+    if (mode !== 'login' && (mode === 'setup' ? password : newPassword).length < 4) {
+        showAuthError('Password must be at least 4 characters.');
+        return;
+    }
 
     submitBtn.disabled = true;
     submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing…';
-
-    const authError = document.getElementById('auth-error');
-    if (authError) {
-        authError.textContent = '';
-        authError.style.display = 'none';
-    }
-
     try {
         if (mode === 'login') {
-            const res = await fetch('/admin/system', {
-                headers: { 'X-API-Key': password }
-            });
+            const res = await fetch('/admin/system', { headers: { 'X-API-Key': password } });
             if (res.status === 200 || res.status === 404) {
                 currentApiKey = password;
                 localStorage.setItem('mirrordash_api_key', currentApiKey);
                 overlay.classList.remove('open');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Unlock';
                 authPromiseResolve(true);
             } else {
                 showAuthError('Invalid password. Please try again.');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Unlock';
             }
         } else if (mode === 'setup') {
-            if (password.length < 4) {
-                showAuthError('Password must be at least 4 characters.');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Create Password';
-                return;
-            }
-            const res = await fetch('/admin/auth/setup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password })
-            });
-            if (res.ok) {
-                currentApiKey = password;
-                localStorage.setItem('mirrordash_api_key', currentApiKey);
-                overlay.classList.remove('open');
-                showGlobal('Password set successfully.', 'success');
-                submitBtn.disabled = false;
-                authPromiseResolve(true);
-            } else {
-                const err = await res.json();
-                showAuthError('Failed to set password: ' + (err.detail || 'Unknown error'));
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Create Password';
-            }
+            const { ok, data } = await postAuth('/admin/auth/setup', { password });
+            if (ok) return acceptNewPassword(password, data.recovery_code);
+            showAuthError('Failed to set password: ' + (data.detail || 'Unknown error'));
         } else if (mode === 'recover') {
-            if (newPassword.length < 4) {
-                showAuthError('Password must be at least 4 characters.');
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Restore Password';
-                return;
-            }
-            const res = await fetch('/admin/auth/recover', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pin, new_password: newPassword })
-            });
-            if (res.ok) {
-                currentApiKey = newPassword;
-                localStorage.setItem('mirrordash_api_key', currentApiKey);
-                overlay.classList.remove('open');
-                showGlobal('Password restored successfully.', 'success');
-                submitBtn.disabled = false;
-                authPromiseResolve(true);
-            } else {
-                const err = await res.json();
-                showAuthError('Failed to restore password: ' + (err.detail || 'Unknown error'));
-                submitBtn.disabled = false;
-                submitBtn.textContent = 'Restore Password';
-            }
+            const { ok, data } = await postAuth('/admin/auth/recover', { code, new_password: newPassword });
+            if (ok) return acceptNewPassword(newPassword, data.recovery_code);
+            showAuthError(data.detail || 'Unknown error');
         }
     } catch (e) {
-        showAuthError('An error occurred during authentication: ' + e.message);
-        submitBtn.disabled = false;
-        if (mode === 'login') submitBtn.textContent = 'Unlock';
-        if (mode === 'setup') submitBtn.textContent = 'Create Password';
-        if (mode === 'recover') submitBtn.textContent = 'Restore Password';
+        showAuthError('Could not reach the mirror: ' + e.message);
     }
+    submitBtn.disabled = false;
+    submitBtn.textContent = AUTH_MODES[mode].button;
 }
 
-async function handleForgotPassword(event) {
+// Settings → Admin Password. The current password is asked again, so an unlocked page alone can't change it
+async function changeAdminPassword(event) {
     event.preventDefault();
-    const submitBtn = document.getElementById('auth-submit-btn');
-    const forgotLink = event.target;
-    
-    if (forgotLink.disabled) return;
-    
-    const confirmed = await showConfirm(
-        "Trigger Password Recovery?",
-        "This will trigger password recovery mode. A Recovery PIN will be generated and displayed on your physical mirror screen to allow you to set a new password.",
-        "Initialize Recovery",
-        true
-    );
-    if (!confirmed) return;
-    
-    submitBtn.disabled = true;
-    submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Initializing…';
-    forgotLink.disabled = true;
-    forgotLink.style.opacity = '0.5';
-    
+    const form = event.target;
+    const button = form.querySelector('button[type=submit]');
+    const current = document.getElementById('admin-current-password');
+    const next = document.getElementById('admin-new-password');
+    button.disabled = true;
     try {
-        const res = await fetch('/admin/auth/forgot-password', {
-            method: 'POST'
+        const res = await fetch('/admin/auth/change-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-API-Key': current.value },
+            body: JSON.stringify({ new_password: next.value }),
         });
         if (res.ok) {
-            const data = await res.json();
-            submitBtn.disabled = false;
-            forgotLink.disabled = false;
-            forgotLink.style.opacity = '1';
-            showAuthModal('recover');
-            showAuthError('A 6-digit Recovery PIN has been displayed on your physical mirror screen. Please retrieve the PIN and enter it below along with your new password.');
+            currentApiKey = next.value;
+            localStorage.setItem('mirrordash_api_key', currentApiKey);
+            form.reset();
+            showGlobal('Password changed.', 'success');
         } else {
-            const err = await res.json();
-            showAuthError('Failed to initialize recovery: ' + (err.detail || 'Unknown error'));
-            submitBtn.disabled = false;
-            forgotLink.disabled = false;
-            forgotLink.style.opacity = '1';
+            const data = await res.json().catch(() => ({}));
+            showGlobal(res.status === 401 ? 'The current password is wrong.' : (data.detail || 'Could not change the password.'), 'error');
         }
     } catch (e) {
-        showAuthError('An error occurred during recovery initialization: ' + e.message);
-        submitBtn.disabled = false;
-        forgotLink.disabled = false;
-        forgotLink.style.opacity = '1';
+        showGlobal('Could not reach the mirror: ' + e.message, 'error');
     }
+    button.disabled = false;
 }
 
 async function checkAuthStatus() {
@@ -313,7 +255,7 @@ async function checkAuthStatus() {
         if (data.auth_corrupt) {
             currentApiKey = '';
             localStorage.removeItem('mirrordash_api_key');
-            return await showAuthModal('recover');
+            return await showAuthModal('recover', 'The admin password settings are damaged. Enter your recovery code and choose a new password.');
         }
 
         if (data.setup_required) {
@@ -334,7 +276,7 @@ async function checkAuthStatus() {
 
 const TAB_HEADINGS = {
     dashboard: ['Dashboard', 'How the mirror is doing right now.'],
-    config: ['Settings', 'Language, units, location and updates.'],
+    config: ['Settings', 'Language, units, location, updates and the admin password.'],
     modules: ['Modules', 'Choose what the mirror shows, and where.'],
     logs: ['Logs', 'What the mirror has been doing. Useful when something goes wrong.'],
     backup: ['Backup', 'Save your setup to a file, or restore it.'],

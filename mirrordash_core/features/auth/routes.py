@@ -1,166 +1,103 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The admin password, and the recovery code that resets it.
 
-import secrets
-import string
-from fastapi import APIRouter, Body, Depends, HTTPException
-from mirrordash_core.config import load_config, save_config
-from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
-from mirrordash_core.admin import hash_password, require_api_key
+The recovery code is shown once, when the password is set up (and again after each use, as a new
+one). Lost both? Remove `admin_auth` from config.json over SSH or on the SD card (USER_GUIDE §1)."""
 
 import logging
+import secrets
+
+from fastapi import APIRouter, Body, Depends, HTTPException
+
+from mirrordash_core.admin import hash_password, require_api_key
+from mirrordash_core.config import load_config, save_config
+from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
 
 logger = logging.getLogger("mirrordash.core.auth")
 router = APIRouter(prefix="/admin")
 
-
-RECOVERY_PIN: str | None = None
-
-
-def get_recovery_pin() -> str:
-    global RECOVERY_PIN
-    if RECOVERY_PIN is None:
-        RECOVERY_PIN = "".join(secrets.choice(string.digits) for _ in range(6))
-    return RECOVERY_PIN
+MIN_PASSWORD = 4
+# No 0/O, 1/I/L: the code is read off a screen and typed back
+CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
-def clear_recovery_pin() -> None:
-    global RECOVERY_PIN
-    RECOVERY_PIN = None
+def _hashed(secret: str) -> dict:
+    salt = secrets.token_hex(16)
+    return {"hash": hash_password(secret, salt), "salt": salt}
+
+
+def _normalize_code(code: str) -> str:
+    return "".join(c for c in code.upper() if c.isalnum())
+
+
+def _new_recovery_code(auth: dict) -> str:
+    """Put a new recovery code in `auth` (only its hash) and return it formatted, XXXX-XXXX-XXXX.
+    12 characters of 31 is ~59 bits behind PBKDF2: guessing it over the network isn't feasible."""
+    raw = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
+    auth["recovery"] = _hashed(raw)
+    return "-".join(raw[i:i + 4] for i in range(0, 12, 4))
+
+
+def _check_new_password(password) -> str:
+    if not isinstance(password, str) or len(password) < MIN_PASSWORD:
+        raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD} characters")
+    return password
+
+
+def auth_state(config: dict) -> tuple[bool, bool]:
+    """(setup_required, auth_corrupt): no admin_auth at all, or one without a usable password."""
+    auth = config.get("admin_auth")
+    return auth is None, auth is not None and not (auth.get("hash") and auth.get("salt"))
 
 
 @router.get("/auth/status")
 async def get_auth_status() -> dict:
-    config = load_config()
-    auth = config.get("admin_auth")
-    auth_is_valid = bool(auth and auth.get("hash") and auth.get("salt"))
-
-    # setup_required = True only when there is NO auth entry at all (first-boot).
-    setup_required = auth is None
-    # auth_corrupt = True when an entry exists but is unusable.
-    auth_corrupt = auth is not None and not auth_is_valid
-
-    if auth_corrupt:
-        # Side-effect: generate/retain the recovery PIN in memory
-        get_recovery_pin()
-
-    hotspot_active = await is_wifi_hotspot_active()
+    setup_required, auth_corrupt = auth_state(load_config())
     return {
         "setup_required": setup_required,
         "auth_corrupt": auth_corrupt,
-        "wifi_hotspot_active": hotspot_active,
+        "wifi_hotspot_active": await is_wifi_hotspot_active(),
     }
 
 
 @router.post("/auth/setup")
 async def setup_auth(body: dict = Body(...)) -> dict:
-    """First-boot only. Sets the admin password when NO auth entry exists at all.
-    Rejected if any admin_auth key is present (valid or corrupt) — use
-    /auth/change-password to update an existing password.
-    """
-    password = body.get("password")
-    if not password or len(password) < 4:
-        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
-
+    """First start only: set the password when there is no admin_auth at all. Answers with the
+    recovery code, the only time it is shown."""
+    password = _check_new_password(body.get("password"))
     config = load_config()
     if "admin_auth" in config:
-        # Block unconditionally — even a corrupt entry must be recovered via
-        # change-password (which requires the existing key or manual config fix),
-        # not via this unauthenticated endpoint.
+        # Even a corrupt entry: this endpoint needs no login, so it must never overwrite one
         raise HTTPException(status_code=400, detail="Password is already set")
-
-    salt = secrets.token_hex(16)
-    hashed_pw = hash_password(password, salt)
-
-    config["admin_auth"] = {
-        "hash": hashed_pw,
-        "salt": salt,
-    }
-
+    auth = _hashed(password)
+    code = _new_recovery_code(auth)
+    config["admin_auth"] = auth
     save_config(config)
-    return {"status": "success", "message": "Admin password set successfully"}
+    return {"status": "success", "recovery_code": code}
 
 
 @router.post("/auth/change-password", dependencies=[Depends(require_api_key)])
 async def change_password(body: dict = Body(...)) -> dict:
-    """Change the admin password. Requires the current password via X-API-Key header.
-    This is the only legitimate way to update the password once it has been set.
-    """
-    new_password = body.get("new_password")
-    if not new_password or len(new_password) < 4:
-        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
-
+    """Change the password; the current one comes in X-API-Key. The recovery code stays."""
+    new_password = _check_new_password(body.get("new_password"))
     config = load_config()
-    salt = secrets.token_hex(16)
-    hashed_pw = hash_password(new_password, salt)
-
-    config["admin_auth"] = {
-        "hash": hashed_pw,
-        "salt": salt,
-    }
-
+    config["admin_auth"] = {**config["admin_auth"], **_hashed(new_password)}
     save_config(config)
-    return {"status": "success", "message": "Admin password changed successfully"}
+    return {"status": "success"}
 
 
 @router.post("/auth/recover")
 async def recover_auth(body: dict = Body(...)) -> dict:
-    """Recover from a corrupt admin auth entry using the memory-stored Recovery PIN."""
-    global RECOVERY_PIN
-
+    """Set a new password with the recovery code. The code is used up: the answer has a new one."""
     config = load_config()
-    auth = config.get("admin_auth")
-    auth_is_valid = bool(auth and auth.get("hash") and auth.get("salt"))
-
-    # We only allow recovery if the configuration is actually corrupt
-    if auth is None or auth_is_valid:
-        raise HTTPException(status_code=400, detail="Recovery not available. Password is valid or not set.")
-
-    provided_pin = body.get("pin")
-    new_password = body.get("new_password")
-
-    if not provided_pin or not RECOVERY_PIN or provided_pin.replace(" ", "") != RECOVERY_PIN:
-        raise HTTPException(status_code=401, detail="Invalid Recovery PIN")
-
-    if not new_password or len(new_password) < 4:
-        raise HTTPException(status_code=400, detail="New password must be at least 4 characters")
-
-    salt = secrets.token_hex(16)
-    hashed_pw = hash_password(new_password, salt)
-
-    config["admin_auth"] = {
-        "hash": hashed_pw,
-        "salt": salt,
-    }
-
+    stored = (config.get("admin_auth") or {}).get("recovery") or {}
+    code = _normalize_code(str(body.get("code") or ""))
+    if not (stored.get("hash") and stored.get("salt") and code
+            and secrets.compare_digest(hash_password(code, stored["salt"]), stored["hash"])):
+        raise HTTPException(status_code=401, detail="Wrong recovery code")
+    auth = _hashed(_check_new_password(body.get("new_password")))
+    new_code = _new_recovery_code(auth)
+    config["admin_auth"] = auth
     save_config(config)
-    clear_recovery_pin()
-    return {"status": "success", "message": "Admin password restored successfully"}
-
-
-@router.post("/auth/forgot-password")
-async def forgot_password() -> dict:
-    """Initiate password recovery by corrupting the current auth block,
-    generating a Recovery PIN, and telling the kiosk screen to reload.
-    """
-    config = load_config()
-    auth = config.get("admin_auth")
-    if not auth:
-        raise HTTPException(status_code=400, detail="Password has not been set yet.")
-
-    # Corrupt the admin_auth configuration (delete hash key if exists)
-    config["admin_auth"] = {
-        "salt": "forgotten"
-    }
-
-    save_config(config)
-    # Ensure the recovery PIN is active in memory
-    get_recovery_pin()
-    
-    # Broadcast reload so the physical kiosk immediately loads the PIN screen
-    try:
-        from mirrordash_core.features.kiosk.ws import manager
-        await manager.broadcast({"action": "reload"})
-    except Exception:
-        pass
-        
-    return {"status": "success", "message": "Password recovery mode initialized."}
+    logger.warning("The admin password was reset with the recovery code")
+    return {"status": "success", "recovery_code": new_code}

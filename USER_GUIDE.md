@@ -18,7 +18,25 @@ The admin page explains most settings where you change them. This guide covers w
 
 Open **`http://mirrordash.local/admin`** on a phone or computer on the same Wi-Fi as the mirror. If your device can't find `mirrordash.local`, use the mirror's IP address instead (shown in your router).
 
-The first time, you choose an admin password. Forgot it? Tap **Forgot password?** on the login page: the mirror shows a 6-digit PIN on its screen, and with it you set a new password.
+The first time, you choose an admin password, and the admin page shows a **recovery code** (`XXXX-XXXX-XXXX`) once. Save it in your password manager or write it down. You change the password under *Settings → Admin Password*.
+
+**Forgot the password?** Tap **Forgot password?** on the login page, enter the recovery code and choose a new password. The code then stops working, and you get a new one to save.
+
+#### Lost the recovery code too?
+
+Then you need the mirror itself. Your settings stay; only the admin password is removed, and the admin page asks for a new one. Choose it right away: until then, anyone on your Wi-Fi could choose it.
+
+*   **Over SSH** (if SSH is on in *Settings → Developer*), log in with `ssh pi@mirrordash.local` and run:
+    ```bash
+    sudo systemctl stop mirrordash
+    ~/mirrordash/.venv/bin/python -c "from mirrordash_core.config import load_config, save_config; c = load_config(); c.pop('admin_auth', None); save_config(c)"
+    sudo systemctl start mirrordash
+    ```
+*   **On the SD card:** shut the mirror down (*Power → Shut Down*) and put its SD card in a Linux computer. Windows and macOS can't read the settings partition (ext4) without an extra tool. On the partition named `mirrordash-data`, remove the `"admin_auth"` entry from `mirrordash/data/data/config.json`, for example:
+    ```bash
+    sudo python3 -c "import json, sys; p = sys.argv[1]; c = json.load(open(p)); c.pop('admin_auth', None); json.dump(c, open(p, 'w'), indent=2)" /media/$USER/mirrordash-data/mirrordash/data/data/config.json
+    ```
+    Then put the card back and start the mirror.
 
 > **Tip:** Put the admin page on your phone's home screen, so it opens like an app. iPhone: open it in Safari, tap *Share* → *Add to Home Screen*. Android: open it in Chrome, tap the menu (⋮) → *Add to Home screen*.
 

@@ -199,9 +199,9 @@
                         <button type="button" class="pw-reveal" data-reveal="auth-password-input" aria-controls="auth-password-input" aria-pressed="false">Show</button>
                     </div>
                 </div>
-                <div class="auth-input-group" id="auth-pin-group" style="display: none;">
-                    <label for="auth-pin-input" class="auth-input-label">Recovery PIN</label>
-                    <input type="text" id="auth-pin-input" class="auth-input" placeholder="123 456" pattern="[0-9]{3}\s?[0-9]{3}" inputmode="numeric" autocomplete="one-time-code">
+                <div class="auth-input-group" id="auth-code-group" style="display: none;">
+                    <label for="auth-code-input" class="auth-input-label">Recovery code</label>
+                    <input type="text" id="auth-code-input" class="auth-input auth-code" placeholder="XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" spellcheck="false">
                 </div>
                 <div class="auth-input-group" id="auth-new-password-group" style="display: none;">
                     <label for="auth-new-password-input" class="auth-input-label">New Password</label>
@@ -210,9 +210,15 @@
                         <button type="button" class="pw-reveal" data-reveal="auth-new-password-input" aria-controls="auth-new-password-input" aria-pressed="false">Show</button>
                     </div>
                 </div>
-                <div id="auth-forgot-link-group" style="text-align: right; margin-top: -8px; margin-bottom: 12px;">
-                    <a href="#" onclick="handleForgotPassword(event)" style="font-size: 0.8rem; color: #a1a1aa; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='white'" onmouseout="this.style.color='#a1a1aa'">Forgot password?</a>
+                <div class="auth-input-group" id="auth-saved-code-group" style="display: none;">
+                    <label for="auth-saved-code-input" class="auth-input-label">Recovery code</label>
+                    <input type="text" id="auth-saved-code-input" class="auth-input auth-code" readonly onclick="this.select()">
                 </div>
+                <p id="auth-forgot-group" class="auth-link-row"><a href="#" class="auth-link" onclick="event.preventDefault(); setAuthMode('recover')">Forgot password?</a></p>
+                <p id="auth-lost-group" class="auth-link-row" style="display: none;">
+                    <a class="auth-link" href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md#lost-the-recovery-code-too" target="_blank" rel="noopener">Lost the recovery code too?</a>
+                    · <a href="#" class="auth-link" onclick="event.preventDefault(); setAuthMode('login')">Back</a>
+                </p>
                 <button type="submit" class="auth-btn" id="auth-submit-btn">Unlock</button>
             </form>
         </div>

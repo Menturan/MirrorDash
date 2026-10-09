@@ -9,6 +9,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
+from mirrordash_core.features.auth.routes import auth_state
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import module_loader
 from mirrordash_core.features.wifi.network import HOTSPOT_SSID, get_hotspot_password, is_wifi_hotspot_active
@@ -34,39 +35,10 @@ async def get_index(request: Request):
             "password": await get_hotspot_password() if on_mirror else "",
         })
 
-    config = load_config()
-    auth = config.get("admin_auth")
-    auth_is_valid = bool(auth and auth.get("hash") and auth.get("salt"))
-    auth_corrupt = auth is not None and not auth_is_valid
-    setup_required = auth is None
-
+    setup_required, auth_corrupt = auth_state(load_config())
     if setup_required or auth_corrupt:
-        host = request.headers.get("host", "")
-        # Check loopback connection or Host header to verify if it's the kiosk screen
-        is_kiosk = (
-            request.client.host in ("127.0.0.1", "::1")
-            or "localhost" in host
-            or "127.0.0.1" in host
-        )
-
-        recovery_pin_str = ""
-        if auth_corrupt:
-            from mirrordash_core.features.auth.routes import get_recovery_pin
-            raw_pin = get_recovery_pin()
-            if len(raw_pin) == 6:
-                recovery_pin_str = f"{raw_pin[:3]} {raw_pin[3:]}"
-            else:
-                recovery_pin_str = raw_pin
-
-        return templates.TemplateResponse(
-            request=request,
-            name="admin_prompt.html",
-            context={
-                "auth_corrupt": auth_corrupt,
-                "is_kiosk": is_kiosk,
-                "recovery_pin": recovery_pin_str
-            }
-        )
+        return templates.TemplateResponse(request=request, name="admin_prompt.html",
+                                          context={"auth_corrupt": auth_corrupt})
 
     return FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
 

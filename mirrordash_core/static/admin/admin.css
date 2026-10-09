@@ -483,6 +483,16 @@ select:focus-visible {
     gap: 6px;
 }
 
+/* Fields above each other, the button last at its own width (Settings → Admin Password) */
+.stacked-form {
+    display: grid;
+    gap: 16px;
+    max-width: 420px;
+}
+.stacked-form .btn {
+    justify-self: start;
+}
+
 .form-group.toggle-group {
     flex-direction: row;
     justify-content: space-between;
@@ -1737,6 +1747,25 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 }
 .auth-btn:active {
     transform: scale(0.98);
+}
+.auth-link-row {
+    text-align: right;
+    margin: -8px 0 12px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+.auth-link {
+    color: var(--text-muted);
+    text-decoration: none;
+}
+.auth-link:hover, .auth-link:focus-visible {
+    color: var(--text-primary);
+}
+/* The recovery code: one line, easy to read back */
+.auth-code {
+    font-family: var(--mono-family);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
 }
 .auth-btn.corrupt-btn {
     background: #ffb4ab;

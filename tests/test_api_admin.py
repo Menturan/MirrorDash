@@ -186,93 +186,43 @@ def test_change_password_requires_auth(mock_auth_load, client):
     assert response.status_code == 401
 
 
-@patch("mirrordash_core.features.auth.routes.load_config")
-def test_recover_auth_invalid_state(mock_load, client):
-    """Recovery must be rejected if the auth state is valid or not set."""
-    # Scenario A: Auth is valid
-    mock_load.return_value = MOCK_CONFIG
-    response = client.post("/admin/auth/recover", json={"pin": "123456", "new_password": "newpass"})
-    assert response.status_code == 400
-    assert "Recovery not available" in response.json()["detail"]
+def test_the_recovery_code_resets_the_password_once(client):
+    """Setup shows a recovery code (stored only as a hash); it sets a new password and is then
+    used up, replaced by a new one. A wrong code changes nothing."""
+    store = {}
+    with patch("mirrordash_core.features.auth.routes.load_config", side_effect=lambda: json.loads(json.dumps(store))), \
+         patch("mirrordash_core.features.auth.routes.save_config", side_effect=lambda c: store.update(c)):
+        code = client.post("/admin/auth/setup", json={"password": "first"}).json()["recovery_code"]
+        assert len(code) == 14 and code.count("-") == 2
+        assert code.replace("-", "") not in json.dumps(store)
 
-    # Scenario B: Setup is required (auth not set)
-    mock_load.return_value = {}
-    response = client.post("/admin/auth/recover", json={"pin": "123456", "new_password": "newpass"})
-    assert response.status_code == 400
-    assert "Recovery not available" in response.json()["detail"]
+        r = client.post("/admin/auth/recover", json={"code": "AAAA-AAAA-AAAA", "new_password": "second"})
+        assert r.status_code == 401 and store["admin_auth"]["hash"] == hash_password("first", store["admin_auth"]["salt"])
 
+        # Typed back in lower case without dashes still works
+        r = client.post("/admin/auth/recover", json={"code": code.replace("-", "").lower(), "new_password": "second"})
+        assert r.status_code == 200 and r.json()["recovery_code"] != code
+        assert store["admin_auth"]["hash"] == hash_password("second", store["admin_auth"]["salt"])
 
-@patch("mirrordash_core.features.auth.routes.load_config")
-@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
-def test_recover_auth_invalid_pin(mock_hotspot, mock_load, client):
-    """Recovery must be rejected with 411/401 when the PIN is incorrect."""
-    mock_hotspot.return_value = False
-    mock_load.return_value = {"admin_auth": {}} # Corrupt configuration triggers PIN generation
-
-    # Force status check to generate a PIN in memory
-    status_res = client.get("/admin/auth/status")
-    assert status_res.status_code == 200
-    
-    # Try invalid PIN
-    response = client.post("/admin/auth/recover", json={"pin": "000000", "new_password": "newpass"})
-    assert response.status_code == 401
-    assert "Invalid Recovery PIN" in response.json()["detail"]
+        r = client.post("/admin/auth/recover", json={"code": code, "new_password": "third"})
+        assert r.status_code == 401
 
 
-@patch("mirrordash_core.features.auth.routes.load_config")
+def test_recovery_without_a_code_on_file_is_refused(client):
+    for config in ({}, {"admin_auth": {}}, MOCK_CONFIG):
+        with patch("mirrordash_core.features.auth.routes.load_config", return_value=config):
+            r = client.post("/admin/auth/recover", json={"code": "ABCD-EFGH-JKMN", "new_password": "newpass"})
+        assert r.status_code == 401
+
+
 @patch("mirrordash_core.features.auth.routes.save_config")
-@patch("mirrordash_core.features.auth.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
-def test_recover_auth_success(mock_hotspot, mock_save, mock_load, client):
-    """Recovery must succeed when a correct PIN is provided and update the configuration."""
-    mock_hotspot.return_value = False
-    mock_load.return_value = {"admin_auth": {}} # Corrupt
-
-    from mirrordash_core.features.auth.routes import get_recovery_pin, clear_recovery_pin
-    clear_recovery_pin()
-    correct_pin = get_recovery_pin()
-
-    response = client.post("/admin/auth/recover", json={"pin": correct_pin, "new_password": "my_brand_new_pass"})
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-    mock_save.assert_called_once()
-    saved = mock_save.call_args[0][0]
-    assert "admin_auth" in saved
-    assert "hash" in saved["admin_auth"]
-    assert "salt" in saved["admin_auth"]
-
-
-@patch("mirrordash_core.features.auth.routes.load_config")
-def test_forgot_password_no_auth(mock_load, client):
-    """Forgot password must be rejected if no auth has been configured yet."""
-    mock_load.return_value = {} # Setup not completed
-    response = client.post("/admin/auth/forgot-password")
-    assert response.status_code == 400
-    assert "Password has not been set yet" in response.json()["detail"]
-
-
-@patch("mirrordash_core.features.auth.routes.load_config")
-@patch("mirrordash_core.features.auth.routes.save_config")
-@patch("mirrordash_core.features.kiosk.ws.manager.broadcast", new_callable=AsyncMock)
-def test_forgot_password_success(mock_broadcast, mock_save, mock_load, client):
-    """Forgot password must corrupt the current auth config and broadcast a reload."""
-    mock_load.return_value = {"admin_auth": {"hash": "somehash", "salt": "somesalt"}}
-    
-    from mirrordash_core.features.auth.routes import clear_recovery_pin
-    clear_recovery_pin()
-
-    response = client.post("/admin/auth/forgot-password")
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-
-    # Verify config was corrupted (hash key is removed, but auth exists)
-    mock_save.assert_called_once()
-    saved = mock_save.call_args[0][0]
-    assert "admin_auth" in saved
-    assert "hash" not in saved["admin_auth"]
-    
-    # Verify reload broadcast was triggered
-    mock_broadcast.assert_called_once_with({"action": "reload"})
+def test_change_password_keeps_the_recovery_code(mock_save, client):
+    recovery = {"hash": "h", "salt": "s"}
+    config = {"admin_auth": {"hash": mock_hash, "salt": mock_salt, "recovery": recovery}}
+    with patch("mirrordash_core.features.auth.routes.load_config", return_value=config):
+        r = client.post("/admin/auth/change-password", json={"new_password": "newpass"}, headers={"X-API-Key": "secret"})
+    assert r.status_code == 200
+    assert mock_save.call_args[0][0]["admin_auth"]["recovery"] == recovery
 
 
 

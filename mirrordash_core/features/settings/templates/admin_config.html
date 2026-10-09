@@ -56,6 +56,29 @@
     <!-- Home Assistant & API: loaded on its own, re-rendered after every change -->
     <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
 
+    <!-- Admin password: plain fetch, not HTMX, because the page has to remember the new password -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-key" aria-hidden="true"></i> Admin Password</h2>
+        <p class="panel-subtitle">The password for this page. Your recovery code stays the same.</p>
+        <form id="admin-password-form" class="stacked-form" onsubmit="changeAdminPassword(event)">
+            <div class="form-group">
+                <label for="admin-current-password">Current password</label>
+                <div class="pw-field">
+                    <input type="password" id="admin-current-password" class="form-control" autocomplete="current-password" required>
+                    <button type="button" class="pw-reveal" data-reveal="admin-current-password" aria-controls="admin-current-password" aria-pressed="false">Show</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="admin-new-password">New password</label>
+                <div class="pw-field">
+                    <input type="password" id="admin-new-password" class="form-control" placeholder="At least 4 characters" autocomplete="new-password" minlength="4" required>
+                    <button type="button" class="pw-reveal" data-reveal="admin-new-password" aria-controls="admin-new-password" aria-pressed="false">Show</button>
+                </div>
+            </div>
+            <button type="submit" class="btn primary">Change Password</button>
+        </form>
+    </section>
+
     <!-- Developer: SSH. The switch saves right away, except turning SSH on: that waits for the
          new password and the button (or Enter), so the answer comes from one clear action. -->
     <section class="card" style="margin-top: 24px;">

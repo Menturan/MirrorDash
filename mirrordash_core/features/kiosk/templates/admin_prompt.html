@@ -67,20 +67,6 @@
             letter-spacing: 0.04em;
             line-height: 1.5;
         }
-        .pin-box {
-            background: rgba(255, 180, 171, 0.1);
-            border: 1px dashed #ffb4ab;
-            border-radius: 0.5rem;
-            padding: 1.5rem;
-            margin-bottom: 2rem;
-            font-family: monospace;
-            font-size: 2rem;
-            font-weight: 700;
-            color: #ffb4ab;
-            letter-spacing: 0.2em;
-            text-indent: 0.1em;
-            line-height: 1;
-        }
         .subtext {
             font-size: 0.8125rem;
             color: var(--color-dimmed-charcoal, #666666);
@@ -93,21 +79,12 @@
     <div class="card">
         {% if auth_corrupt %}
             <div class="icon" style="color: #ffb4ab;"><i data-lucide="shield-alert"></i></div>
-            <h1>Configuration Restore Needed</h1>
-            
-            {% if is_kiosk %}
-                <p class="main-text">The admin password configuration is damaged. Enter the Recovery PIN below in the admin dashboard to restore access.</p>
-                <div class="pin-box">
-                    {{ recovery_pin }}
-                </div>
-            {% else %}
-                <p class="main-text">The admin password configuration is damaged. Please look at the physical mirror screen to retrieve the 6-digit Recovery PIN, then enter it in the admin dashboard.</p>
-                <div class="url-box">
-                    mirrordash.local/admin
-                </div>
-            {% endif %}
-            
-            <p class="subtext">This recovery mode requires physical screen verification. Once access is restored, you will be prompted to set a new password.</p>
+            <h1>Admin Password Damaged</h1>
+            <p class="main-text">The admin password settings are damaged. Open the admin page and set a new password with your recovery code.</p>
+            <div class="url-box">
+                mirrordash.local/admin
+            </div>
+            <p class="subtext">No recovery code? The user guide shows how to reset the password over SSH or on the SD card.</p>
         {% else %}
             <div class="icon"><svg class="monogram" viewBox="0 0 100 100" aria-label="MirrorDash"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#FFFFFF" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
             <h1>Welcome to MirrorDash</h1>

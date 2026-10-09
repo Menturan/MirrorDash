@@ -12,12 +12,15 @@ There are two kinds of releases:
 ### Added
 - A Reload Screen button in the Power tab loads the mirror's page again, for example if it looks wrong.
 - Every password field in the admin page has Show/Hide.
+- Change the admin password under *Settings → Admin Password*.
+- A recovery code, shown once when you set the admin password. *Forgot password?* now takes this code instead of a PIN on the mirror's screen, so standing in front of the mirror is no longer enough to take over the admin page. Lost the code too? The user guide shows how to reset the password over SSH or on the SD card.
 
 ### Changed
 - The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).
 - SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 
 ### Fixed
+- *Forgot password?* no longer lets anyone on the home network lock you out: it used to remove the password before a new one was chosen.
 - Turning on SSH says so: the button shows that it's working, then "SSH is on" with how to log in, or why the password was refused. Before, the click often did nothing visible, and a refused password still left SSH marked as on.
 - The Modules tab no longer becomes wider than a phone's screen.
 - A module setting with a quote (") in it no longer breaks the module's settings form.
