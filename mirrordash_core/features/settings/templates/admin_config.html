@@ -56,6 +56,9 @@
     <!-- Home Assistant & API: loaded on its own, re-rendered after every change -->
     <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
 
+    <!-- Wi-Fi: loaded on its own (a scan takes a moment) -->
+    <div hx-get="/admin/panels/wifi" hx-trigger="load" hx-swap="outerHTML"></div>
+
     <!-- Admin password: plain fetch, not HTMX, because the page has to remember the new password -->
     <section class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-key" aria-hidden="true"></i> Admin Password</h2>

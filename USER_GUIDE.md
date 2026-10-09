@@ -53,6 +53,14 @@ A new mirror (or one that can't find its Wi-Fi) starts its own network for the s
 
 The time zone is taken from your phone. It also sets the country for Wi-Fi (which channels may be used) from the next restart; until then, networks on channel 12 or 13 don't show up.
 
+**Changing Wi-Fi later:** *Settings → Wi-Fi* in the admin page. Choose the network, type its password and tap **Connect**; then put your phone on the same network and open `mirrordash.local`. If the mirror can't join, it goes back to the network it was on, and the card says why.
+
+**When the Wi-Fi goes away:**
+
+*   **The internet is down, the router is on:** nothing happens; the modules show their last data until it's back.
+*   **The router is off for a while** (a power cut, a restart): the mirror joins again by itself when it's back. If the mirror started first and put up `MirrorDash-Setup`, it tries your Wi-Fi again every few minutes and goes back to it.
+*   **Your Wi-Fi is gone for good** (a new router or password): within a few minutes the mirror starts `MirrorDash-Setup`; set it up as above.
+
 ---
 
 ## 3. Where things go on the screen

@@ -292,15 +292,17 @@ def test_hotspot_dns_answers_every_name_with_the_mirror():
     assert "echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf" in script
 
 
-def run_wifi_check(tmp_path, saved_password=None):
+def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=False, saved_wifi=False, phone=False):
     """Run the real mirrordash-wifi-check.sh (from setup_appliance.sh) offline, against a fake nmcli
-    that keeps the hotspot profile's password in a file. Returns (password after the run, nmcli calls)."""
+    that keeps the hotspot profile's password in a file. args: "--watch". online: the network (or the
+    saved Wi-Fi, once the hotspot lets go of the radio) answers. Returns (password, nmcli and curl calls)."""
     import os
     import re
     import subprocess
     from pathlib import Path
     setup = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
     body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check\.sh\n(.*?)\nEOF\n", setup, re.S).group(1)
+    tmp_path.mkdir(parents=True, exist_ok=True)
     script = tmp_path / "wifi-check.sh"
     script.write_text(body.replace("/var/lib/mirrordash-wifi-scan.cache", str(tmp_path / "scan.cache")))
     psk, log = tmp_path / "psk", tmp_path / "nmcli.log"
@@ -309,10 +311,15 @@ def run_wifi_check(tmp_path, saved_password=None):
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     fakes = {
-        "nm-online": "exit 1",  # offline, so the hotspot is needed
+        "nm-online": f"exit {0 if online else 1}",
         "logger": "exit 0",
+        "ip": "echo '10.42.0.23 lladdr 3a:00:00:00:00:01 REACHABLE'" if phone else "exit 0",
+        "curl": f'echo "curl $*" >> {log}',
         "nmcli": f"""echo "$*" >> {log}
 case "$*" in
+  "-t -f NAME connection show --active") {"echo MirrorDash-Setup" if hotspot else "true"} ;;
+  "-t -f TYPE,NAME connection show") echo 802-11-wireless:MirrorDash-Setup; {"echo 802-11-wireless:Home" if saved_wifi else "true"} ;;
+  "--wait 45 device connect wlan0") exit {0 if online else 4} ;;
   "-s -g 802-11-wireless-security.psk connection show MirrorDash-Setup") [ -f {psk} ] && cat {psk} || exit 10 ;;
   "connection delete MirrorDash-Setup") rm -f {psk} ;;
   "connection modify MirrorDash-Setup wifi-sec.psk "*) printf %s "$5" > {psk} ;;
@@ -322,7 +329,7 @@ exit 0""",
     for name, text in fakes.items():
         (bin_dir / name).write_text(f"#!/bin/bash\n{text}\n")
         (bin_dir / name).chmod(0o755)
-    subprocess.run(["bash", str(script)], check=True, env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    subprocess.run(["bash", str(script), *args], check=True, env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
     return (psk.read_text() if psk.exists() else None), log.read_text().splitlines()
 
 
@@ -345,3 +352,93 @@ def test_hotspot_from_an_old_image_replaces_the_shared_password(tmp_path):
     password, calls = run_wifi_check(tmp_path, saved_password="mirrordash")
     assert password != "mirrordash" and len(password) == 10
     assert "connection delete MirrorDash-Setup" in calls
+
+
+def test_the_hotspot_goes_back_to_the_saved_wifi_when_it_returns(tmp_path):
+    """After a power cut the router comes up after the mirror: the watch timer tries again."""
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", hotspot=True, saved_wifi=True, online=True)
+    assert "connection down MirrorDash-Setup" in calls and "--wait 45 device connect wlan0" in calls
+    assert "connection up MirrorDash-Setup" not in calls
+    assert calls[-1].startswith("curl") and "/api/wifi/changed" in calls[-1]
+
+
+def test_the_hotspot_comes_back_when_the_saved_wifi_is_still_gone(tmp_path):
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", hotspot=True, saved_wifi=True)
+    assert calls[-2:] == ["connection up MirrorDash-Setup", calls[-1]] and calls[-1].startswith("curl")
+
+
+def test_the_watch_leaves_the_hotspot_alone_during_setup(tmp_path):
+    for case in ({"phone": True, "saved_wifi": True}, {"saved_wifi": False}):
+        _, calls = run_wifi_check(tmp_path / str(len(case)), "k7mxp2qrtw", "--watch", hotspot=True, **case)
+        assert "connection down MirrorDash-Setup" not in calls and not any(c.startswith("curl") for c in calls)
+
+
+def test_the_watch_starts_the_hotspot_when_the_wifi_is_gone_for_good(tmp_path):
+    _, calls = run_wifi_check(tmp_path / "online", "k7mxp2qrtw", "--watch", online=True)
+    assert "connection up MirrorDash-Setup" not in calls
+    _, calls = run_wifi_check(tmp_path / "offline", "k7mxp2qrtw", "--watch")
+    assert calls[-2] == "connection up MirrorDash-Setup" and calls[-1].startswith("curl")
+
+
+def test_only_the_mirror_itself_can_say_the_hotspot_changed(client):
+    with patch("mirrordash_core.features.wifi.routes.manager.broadcast", AsyncMock()) as broadcast:
+        assert client.post("/api/wifi/changed").status_code == 403  # TestClient's address is "testclient"
+        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()):
+            assert client.post("/api/wifi/changed").status_code == 200
+    broadcast.assert_called_once_with({"action": "reload"})
+
+
+def _nmcli_fake(calls, active="Home", saved=("Home",)):
+    async def fake(*args, timeout=15):
+        calls.append(args)
+        if args[:5] == ("-t", "-f", "NAME,TYPE", "connection", "show"):
+            names = [active] if "--active" in args else [*saved, "MirrorDash-Setup"]
+            return 0, "\n".join(f"{n}:802-11-wireless" for n in names)
+        return 0, ""
+    return fake
+
+
+def test_a_failed_wifi_change_goes_back_to_the_old_network():
+    import asyncio
+    from mirrordash_core.features.wifi import network
+    calls = []
+    with patch.object(network, "_nmcli", _nmcli_fake(calls)), \
+         patch.object(network, "connect_wifi", AsyncMock(return_value=(False, "Secrets were required"))):
+        asyncio.run(network.switch_wifi("Guest", "wrong"))
+    assert ("connection", "delete", "id", "Guest") in calls  # the profile this attempt made
+    assert ("connection", "up", "id", "Home") in calls
+    assert network.failed_switch == {"ssid": "Guest", "reason": "Secrets were required", "previous": "Home"}
+
+    # A network saved before keeps its profile; a working change clears the error
+    calls.clear()
+    with patch.object(network, "_nmcli", _nmcli_fake(calls, saved=("Home", "Guest"))), \
+         patch.object(network, "connect_wifi", AsyncMock(return_value=(False, "timeout"))):
+        asyncio.run(network.switch_wifi("Guest", "x"))
+    assert not any(c[:2] == ("connection", "delete") for c in calls)
+    with patch.object(network, "_nmcli", _nmcli_fake(calls)), \
+         patch.object(network, "connect_wifi", AsyncMock(return_value=(True, "ok"))):
+        asyncio.run(network.switch_wifi("Guest", "right"))
+    assert network.failed_switch == {}
+
+
+def test_wifi_card_and_change(client):
+    from mirrordash_core.admin import require_api_key
+    from mirrordash_core.features.wifi import network
+    assert client.post("/admin/panels/wifi/connect", data={"ssid": "Guest"}).status_code in (401, 403)
+    app.dependency_overrides[require_api_key] = lambda: None
+    try:
+        network.failed_switch.update(ssid="Guest", reason="Secrets were required", previous="Home")
+        with patch("mirrordash_core.features.wifi.routes.get_wifi_info",
+                   AsyncMock(return_value={"ssid": "Home", "signal": 70, "type": "wifi"})), \
+             patch("mirrordash_core.features.wifi.routes.scan_wifi_networks", AsyncMock(return_value=["Home", "Guest"])):
+            html = client.get("/admin/panels/wifi").text
+        assert "Connected to <strong>Home</strong>" in html and '<option value="Guest">' in html
+        assert "Couldn't join Guest (Secrets were required)" in html and "still on Home" in html
+
+        assert client.post("/admin/panels/wifi/connect", data={"ssid": ""}).status_code == 400
+        with patch("mirrordash_core.features.wifi.routes.switch_wifi", AsyncMock()):
+            r = client.post("/admin/panels/wifi/connect", data={"ssid": "Guest", "password": "pw"})
+        assert r.status_code == 200 and "switching to Guest" in r.headers["HX-Trigger-After-Swap"]
+    finally:
+        app.dependency_overrides.clear()
+        network.failed_switch.clear()

@@ -158,6 +158,43 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
         return False, str(e)
 
 
+async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
+    """`sudo nmcli <args>`: (returncode, output or error); (1, reason) when it can't run."""
+    try:
+        proc = await asyncio.create_subprocess_exec("sudo", "-n", "nmcli", *args, stdout=asyncio.subprocess.PIPE,
+                                                    stderr=asyncio.subprocess.PIPE)
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except Exception as e:
+        return 1, str(e)
+    return proc.returncode, (out if proc.returncode == 0 else err).decode(errors="replace").strip()
+
+
+async def _wifi_profiles(*flags: str) -> list[str]:
+    """Names of the saved client Wi-Fi profiles (flags: "--active" for the one in use)."""
+    _, out = await _nmcli("-t", "-f", "NAME,TYPE", "connection", "show", *flags)
+    names = [line.rpartition(":") for line in out.splitlines()]
+    return [name.replace("\\:", ":") for name, _, kind in names if kind == "802-11-wireless" and name != HOTSPOT_SSID]
+
+
+# The last change from the admin page that failed, shown on the Wi-Fi card until the next one
+failed_switch: dict = {}
+
+
+async def switch_wifi(ssid: str, password: str | None) -> None:
+    """Move the mirror to another Wi-Fi. If it can't join, it goes back to the one it was on, and a
+    profile this attempt created (with a wrong password) is deleted again."""
+    active, saved = await _wifi_profiles("--active"), await _wifi_profiles()
+    ok, message = await connect_wifi(ssid, password)
+    if ok:
+        failed_switch.clear()
+        return
+    if ssid not in saved:
+        await _nmcli("connection", "delete", "id", ssid)
+    if active:
+        await _nmcli("connection", "up", "id", active[0], timeout=45)
+    failed_switch.update(ssid=ssid, reason=message, previous=active[0] if active else "")
+
+
 _hotspot_active_cached = None
 
 
@@ -168,6 +205,12 @@ _hotspot_checked_at = 0.0
 # It must never be permanent: the hotspot comes up ~40 s after boot, and a cached early
 # "False" kept the kiosk on the admin setup page. Upgrade path: NM D-Bus signal subscription.
 HOTSPOT_CACHE_TTL = 5.0
+
+
+def forget_hotspot_state() -> None:
+    """The hotspot was switched outside the app: the next check asks NetworkManager again."""
+    global _hotspot_active_cached
+    _hotspot_active_cached = None
 
 
 async def is_wifi_hotspot_active() -> bool:

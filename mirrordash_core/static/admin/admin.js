@@ -276,7 +276,7 @@ async function checkAuthStatus() {
 
 const TAB_HEADINGS = {
     dashboard: ['Dashboard', 'How the mirror is doing right now.'],
-    config: ['Settings', 'Language, units, location, updates and the admin password.'],
+    config: ['Settings', 'Language, location, updates, Wi-Fi and the admin password.'],
     modules: ['Modules', 'Choose what the mirror shows, and where.'],
     logs: ['Logs', 'What the mirror has been doing. Useful when something goes wrong.'],
     backup: ['Backup', 'Save your setup to a file, or restore it.'],

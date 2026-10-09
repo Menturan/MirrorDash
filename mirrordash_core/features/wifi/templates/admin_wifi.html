@@ -1,0 +1,43 @@
+<!-- Wi-Fi card (Settings tab): the mirror's network, and changing it. Re-rendered by Refresh. -->
+<section class="card" id="wifi-card" style="margin-top: 24px;">
+    <h2><i class="fas fa-wifi" aria-hidden="true"></i> Wi-Fi</h2>
+    <p class="panel-subtitle">
+        {% if network.type == 'wifi' %}Connected to <strong>{{ network.ssid }}</strong> ({{ network.signal }}%).
+        {% elif network.type == 'ethernet' %}Connected by cable.
+        {% else %}No Wi-Fi information.{% endif %}
+        Without internet the mirror keeps its last data; if its Wi-Fi is gone for good, it starts <strong>MirrorDash-Setup</strong> by itself.
+    </p>
+
+    {% if failed %}
+    <div class="alert alert--error" role="alert" style="margin-bottom: 16px;">
+        Couldn't join {{ failed.ssid }}{% if failed.reason %} ({{ failed.reason }}){% endif %}.
+        {% if failed.previous %}The mirror is still on {{ failed.previous }}.{% endif %}
+    </div>
+    {% endif %}
+
+    <form id="wifi-form" class="stacked-form" hx-post="/admin/panels/wifi/connect" hx-target="#global-status"
+          hx-swap="innerHTML" hx-disabled-elt="find button[type=submit]">
+        <div class="form-group">
+            <label for="wifi-ssid">Network</label>
+            <!-- A list of the networks nearby, and room to type a hidden one -->
+            <input type="text" id="wifi-ssid" name="ssid" class="form-control" list="wifi-networks" required
+                   autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Choose or type a network">
+            <datalist id="wifi-networks">
+                {% for ssid in networks %}<option value="{{ ssid }}">{% endfor %}
+            </datalist>
+        </div>
+        <div class="form-group">
+            <label for="wifi-password">Password</label>
+            <div class="pw-field">
+                <input type="password" id="wifi-password" name="password" class="form-control" autocomplete="off" placeholder="Empty for an open network">
+                <button type="button" class="pw-reveal" data-reveal="wifi-password" aria-controls="wifi-password" aria-pressed="false">Show</button>
+            </div>
+        </div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="submit" class="btn primary">Connect</button>
+            <button type="button" class="btn secondary" hx-get="/admin/panels/wifi" hx-target="#wifi-card" hx-swap="outerHTML">
+                <i class="fas fa-sync-alt" aria-hidden="true"></i> Refresh
+            </button>
+        </div>
+    </form>
+</section>

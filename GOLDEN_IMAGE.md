@@ -881,51 +881,97 @@ Write the fallback connectivity watchdog script, set executable permissions, and
 # 1. Write connectivity watchdog script
 sudo tee /usr/local/bin/mirrordash-wifi-check.sh << 'EOF'
 #!/bin/bash
+# At boot: no network within 30 s -> start the setup hotspot. With --watch (every 3 minutes, from
+# mirrordash-wifi-watch.timer): on the hotspot, try the saved Wi-Fi again (a router that came back
+# after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart.
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 
-logger -t mirrordash-wifi "Starting network connectivity check..."
-# nm-online waits on NetworkManager's own state: startup finished, then a connection (or 30 s)
-if nm-online -q -t 30; then
-    logger -t mirrordash-wifi "Network online. Exiting captive portal check."
+hotspot_active() {
+    nmcli -t -f NAME connection show --active | grep -qxF "$SSID"
+}
+
+# A Wi-Fi the mirror has joined before (a new mirror has none, so its hotspot just stays up)
+has_saved_wifi() {
+    nmcli -t -f TYPE,NAME connection show | grep '^802-11-wireless:' | grep -vqxF "802-11-wireless:$SSID"
+}
+
+# Someone is on the hotspot right now (in the middle of setup): don't pull it away from them.
+# ponytail: neighbour states, since iw isn't in the image; a phone idle for a minute counts as gone.
+phone_on_hotspot() {
+    ip neigh show dev "$INTERFACE" | grep -qE 'REACHABLE|DELAY|PROBE'
+}
+
+# The hotspot came or went while MirrorDash runs: its screen reloads into the setup prompt or the
+# mirror. Nothing to tell at boot (MirrorDash starts after this), so a failure here is harmless.
+tell_mirrordash() {
+    curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+}
+
+start_hotspot() {
+    logger -t mirrordash-wifi "No network. Scanning before entering AP mode..."
+    # Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
+    # --rescan yes returns once the fresh scan has finished.
+    SCAN_RESULT=$(nmcli -t -f SSID dev wifi list --rescan yes | sort -u | grep -v '^$' || true)
+    echo "$SCAN_RESULT" > "$CACHE_FILE"
+    chmod 644 "$CACHE_FILE"
+    logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
+
+    # Each mirror keeps its own hotspot password: the profile lives on /storage (bind-mounted
+    # system-connections), so it survives reboots until the card is reflashed. The app reads the
+    # password back from NetworkManager and shows it, with a QR code, on the mirror only.
+    # Profiles from older images used the shared password "mirrordash"; those get a new one.
+    SAVED_PASSWORD=$(nmcli -s -g 802-11-wireless-security.psk connection show "$SSID" 2>/dev/null || true)
+    if [ -z "$SAVED_PASSWORD" ] || [ "$SAVED_PASSWORD" = "mirrordash" ]; then
+        nmcli connection delete "$SSID" 2>/dev/null || true
+        # 10 characters without look-alikes (no i l o 0 1); nothing that needs escaping in a Wi-Fi QR code.
+        # ponytail: ~50 bits, enough for a hotspot that is only up during setup; add characters if that changes.
+        PASSWORD=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10)
+        nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
+        nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
+        nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
+        nmcli connection modify "$SSID" wifi-sec.pmf 1
+        nmcli connection modify "$SSID" ipv4.method shared
+        # Only this script starts the hotspot; a saved AP profile must never come up on its own
+        nmcli connection modify "$SSID" connection.autoconnect no
+        logger -t mirrordash-wifi "Created hotspot '$SSID' with a new password."
+    fi
+
+    if nmcli connection up "$SSID"; then
+        logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
+    else
+        logger -t mirrordash-wifi "Failed to start hotspot."
+    fi
+}
+
+if [ "${1:-}" = "--watch" ] && hotspot_active; then
+    if ! has_saved_wifi || phone_on_hotspot; then
+        exit 0
+    fi
+    logger -t mirrordash-wifi "On the hotspot: trying the saved Wi-Fi again..."
+    nmcli connection down "$SSID" || true
+    # device connect picks the best saved profile, even one NetworkManager stopped retrying
+    if nmcli --wait 45 device connect "$INTERFACE" && nm-online -q -t 15; then
+        logger -t mirrordash-wifi "Back on the saved Wi-Fi."
+        tell_mirrordash
+        exit 0
+    fi
+    logger -t mirrordash-wifi "The saved Wi-Fi isn't there. Back to the hotspot."
+    nmcli connection up "$SSID" || logger -t mirrordash-wifi "Failed to start hotspot."
+    tell_mirrordash
     exit 0
 fi
 
-logger -t mirrordash-wifi "No network connectivity detected after 30 seconds. Scanning before entering AP mode..."
-
-# Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
-# --rescan yes returns once the fresh scan has finished.
-SCAN_RESULT=$(nmcli -t -f SSID dev wifi list --rescan yes | sort -u | grep -v '^$' || true)
-echo "$SCAN_RESULT" > "$CACHE_FILE"
-chmod 644 "$CACHE_FILE"
-logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
-
-# Each mirror keeps its own hotspot password: the profile lives on /storage (bind-mounted
-# system-connections), so it survives reboots until the card is reflashed. The app reads the
-# password back from NetworkManager and shows it, with a QR code, on the mirror only.
-# Profiles from older images used the shared password "mirrordash"; those get a new one.
-SAVED_PASSWORD=$(nmcli -s -g 802-11-wireless-security.psk connection show "$SSID" 2>/dev/null || true)
-if [ -z "$SAVED_PASSWORD" ] || [ "$SAVED_PASSWORD" = "mirrordash" ]; then
-    nmcli connection delete "$SSID" 2>/dev/null || true
-    # 10 characters without look-alikes (no i l o 0 1); nothing that needs escaping in a Wi-Fi QR code.
-    # ponytail: ~50 bits, enough for a hotspot that is only up during setup; add characters if that changes.
-    PASSWORD=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10)
-    nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
-    nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
-    nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
-    nmcli connection modify "$SSID" wifi-sec.pmf 1
-    nmcli connection modify "$SSID" ipv4.method shared
-    # Only this script starts the hotspot; a saved AP profile must never come up on its own
-    nmcli connection modify "$SSID" connection.autoconnect no
-    logger -t mirrordash-wifi "Created hotspot '$SSID' with a new password."
+# nm-online waits on NetworkManager's own state: startup finished, then a connection (or the
+# timeout). Any connection counts, also one without internet. --watch waits longer, so a Wi-Fi
+# change from the admin page (a few seconds without a connection) never starts the hotspot.
+if nm-online -q -t "$([ "${1:-}" = "--watch" ] && echo 60 || echo 30)"; then
+    exit 0
 fi
-
-if nmcli connection up "$SSID"; then
-    logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
-else
-    logger -t mirrordash-wifi "Failed to start hotspot."
-fi
+start_hotspot
+[ "${1:-}" = "--watch" ] && tell_mirrordash
+exit 0
 EOF
 sudo chmod +x /usr/local/bin/mirrordash-wifi-check.sh
 
@@ -953,6 +999,30 @@ TimeoutStartSec=90
 WantedBy=multi-user.target
 EOF
 sudo systemctl enable mirrordash-wifi-fallback.service
+
+# 3. Every 3 minutes: the hotspot tries the saved Wi-Fi again, and a Wi-Fi gone for good starts it
+sudo tee /etc/systemd/system/mirrordash-wifi-watch.service << 'EOF'
+[Unit]
+Description=MirrorDash WiFi watch (hotspot <-> saved Wi-Fi)
+After=mirrordash-wifi-fallback.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-wifi-check.sh --watch
+TimeoutStartSec=150
+EOF
+sudo tee /etc/systemd/system/mirrordash-wifi-watch.timer << 'EOF'
+[Unit]
+Description=MirrorDash WiFi watch every 3 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=3min
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl enable mirrordash-wifi-watch.timer
 ```
 
 ---
@@ -1071,7 +1141,7 @@ ls -la /home/pi/.mirrordash/data/
 sudo systemctl is-enabled mirrordash-storage-init.service
 sudo systemctl is-enabled labwc-kiosk.service cog-kiosk.path
 sudo systemctl is-enabled mirrordash.service
-sudo systemctl is-enabled mirrordash-wifi-fallback.service
+sudo systemctl is-enabled mirrordash-wifi-fallback.service mirrordash-wifi-watch.timer
 sudo systemctl is-enabled systemd-time-wait-sync.service
 sudo systemctl is-enabled getty@tty1.service # Should output 'masked'
 

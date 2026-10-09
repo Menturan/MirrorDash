@@ -9,11 +9,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
-from mirrordash_core.admin import templates
+from mirrordash_core.admin import notify, require_api_key, templates
 from mirrordash_core.config import load_config
+from mirrordash_core.features.dashboard.telemetry import get_wifi_info
+from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import module_loader
-from mirrordash_core.features.wifi.network import (connect_wifi, is_wifi_hotspot_active, restore_captive_ap,
-                                                   scan_wifi_networks)
+from mirrordash_core.features.wifi.network import (connect_wifi, failed_switch, forget_hotspot_state,
+                                                   is_wifi_hotspot_active, restore_captive_ap, scan_wifi_networks,
+                                                   switch_wifi)
 from mirrordash_core.host import reboot_system
 
 logger = logging.getLogger("mirrordash.core.wifi")
@@ -114,3 +117,45 @@ async def post_wifi_setup(body: dict) -> dict:
         return {"status": "success", "message": "Connected."}
     else:
         return {"status": "error", "message": message}
+
+
+# Settings → Wi-Fi: change the mirror's network from the admin page
+@router.get("/admin/panels/wifi", dependencies=[Depends(require_api_key)])
+async def get_wifi_card(request: Request):
+    return templates.TemplateResponse(request=request, name="admin_wifi.html", context={
+        "network": await get_wifi_info(), "networks": await scan_wifi_networks(), "failed": failed_switch})
+
+
+_switch_task: asyncio.Task | None = None
+
+
+@router.post("/admin/panels/wifi/connect", dependencies=[Depends(require_api_key)])
+async def post_wifi_connect(request: Request):
+    """Answers first, then switches: the phone loses the mirror the moment it changes network."""
+    global _switch_task
+    form = await request.form()
+    ssid = str(form.get("ssid") or "").strip()
+    if not ssid:
+        raise HTTPException(status_code=400, detail="Choose a network")
+    if _switch_task and not _switch_task.done():
+        raise HTTPException(status_code=409, detail="The mirror is already changing network")
+
+    password = str(form.get("password") or "") or None
+
+    async def later():
+        await asyncio.sleep(1)  # lets this answer reach the phone first
+        await switch_wifi(ssid, password)
+    _switch_task = asyncio.create_task(later())
+    return notify(f"The mirror is switching to {ssid}. Put your phone on {ssid} too, then open "
+                  "mirrordash.local. If it can't join, it goes back to the network it was on.")
+
+
+@router.post("/api/wifi/changed")
+async def post_wifi_changed(request: Request) -> dict:
+    """The OS image's Wi-Fi watch calls this after it turned the hotspot on or off, so the mirror's
+    screen reloads into the setup prompt or the mirror. Only from the mirror itself."""
+    if request.client.host not in ("127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="Only from the mirror itself")
+    forget_hotspot_state()
+    await manager.broadcast({"action": "reload"})
+    return {"status": "success"}
