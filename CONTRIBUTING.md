@@ -22,12 +22,11 @@ MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main
 
 | Path | What |
 |---|---|
-| `mirrordash_core/app.py` | The FastAPI app, the WebSocket and the Wi-Fi setup |
-| `mirrordash_core/api/` | The admin page's routes (`admin_*_panels.py` render the tabs) |
-| `mirrordash_core/templates/` | The admin page (Jinja2 + HTMX) and the Wi-Fi setup |
+| `mirrordash_core/features/<feature>/` | One folder per feature (modules, settings, hardware, power, backup, updates, wifi, kiosk, …): its routes, logic and templates |
+| `mirrordash_core/app.py` | Puts the features together |
+| `mirrordash_core/admin.py`, `forms.py`, `venv.py`, `host.py`, `config.py`, … | What several features share: login and page events, forms from a schema, the A/B venvs, OS commands, the config |
+| `mirrordash_core/templates/admin.html` | The admin page's shell; its CSS and JS are in `static/admin/` |
 | `mirrordash_core/static/` | The mirror's screen (`index.html`, `js/kiosk/`, `style.css`), and `modules.css` with `/design`, the component library |
-| `mirrordash_core/module_loader.py` | Finds, starts and restarts modules |
-| `mirrordash_core/system/` | Everything that talks to the OS (screen, network, SSH, timezone) |
 | `scripts/` | The OS image build and `release.py` |
 
 ## Tests

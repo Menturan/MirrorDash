@@ -51,6 +51,10 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 | Module System | Python `importlib.metadata` entry points (`mirrordash.modules` group) |
 | Deployment | Raspberry Pi OS Trixie (Debian 13), read-only root (overlayroot) with data on `/storage`, Wayland (labwc), Cog kiosk |
 
+## Code Layout
+
+Split by feature (vertical slices): `mirrordash_core/features/<feature>/` holds a feature's routes, logic and templates; what several features share sits at the package root. Details in `.agents/rules/architecture.md` and ARCHITECTURE #27.
+
 ## Rules Directory
 
 | File | Contents |

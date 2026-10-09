@@ -1,6 +1,6 @@
 # MirrorDash Design System
 
-The rules behind how the mirror looks, and why. The components themselves, with markup to copy, are in the library at `/design` on any mirror (source: `mirrordash_core/static/modules.css`); the mirror's own UI is in `style.css`, the admin page in `admin.css`.
+The rules behind how the mirror looks, and why. The components themselves, with markup to copy, are in the library at `/design` on any mirror (source: `mirrordash_core/static/modules.css`); the mirror's own UI is in `style.css`, the admin page in `static/admin/admin.css`.
 
 ## Principles
 

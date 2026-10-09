@@ -15,8 +15,11 @@ The design rules and tokens are in `DESIGN.md`, implemented in `mirrordash_core/
 
 ## Core Modifications
 
-When modifying `mirrordash_core/`:
+The core is split by feature (vertical slices, ARCHITECTURE #27):
 
-- **`module_loader.py`:** Any new function defined inside `start_modules()` loop — check for closure bugs. Use factories.
-- **`ws_manager.py`:** Frame cache (`latest_messages`) only stores messages with both `"module"` and `"html"` keys. `clear_cache()` is called on `stop_modules()`.
-- **`app.py`:** Public routes go directly on `app`. Admin routes go in `mirrordash_core/api/` sub-routers (`admin_auth.py`, `admin_system.py`, etc.) and `mirrordash_core/api/backup.py` with the `require_api_key` dependency.
+- **A feature is a folder:** `mirrordash_core/features/<feature>/` holds its routes (`routes.py`), its logic and its `templates/`. A new feature is a new folder plus one line in `app.py`; changing a feature should touch one folder.
+- **Shared code sits at the package root** (`admin.py`, `config.py`, `forms.py`, `venv.py`, `host.py`, `fetch.py`, `system_settings.py`, `event_bus.py`). Only what two or more features use goes there.
+- **No route without a caller.** The admin panels call feature functions directly; add an HTTP route only for something that requests it (a template, the kiosk, Home Assistant). Every admin route has the `require_api_key` dependency.
+- **`features/modules/loader.py`:** Any new function defined inside the `start_modules()` loop — check for closure bugs. Use factories.
+- **`features/kiosk/ws.py`:** Frame cache (`latest_messages`) only stores messages with both `"module"` and `"html"` keys. `clear_cache()` is called on `stop_modules()`.
+- **Package changes** (install, update, uninstall, rebuild) go through `venv.venv_swap()`, never straight into the active venv.

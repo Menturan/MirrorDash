@@ -30,6 +30,7 @@ This document records the core architectural decisions made during the design, d
 - [24. An API Token for Other Systems (Home Assistant)](#24-an-api-token-for-other-systems-home-assistant)
 - [25. The Screen Reloads Only for a New MirrorDash Version](#25-the-screen-reloads-only-for-a-new-mirrordash-version)
 - [26. Discover: One Search Request, the Release Tag Pinned at Install](#26-discover-one-search-request-the-release-tag-pinned-at-install)
+- [27. The Core in Vertical Slices](#27-the-core-in-vertical-slices)
 
 ---
 
@@ -58,7 +59,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Resolves `TemplateNotFound` errors on PEP 660 editable installations (common in local dev/testing environments like Hatch/uv) where zipped virtual package paths can hide standard template subdirectories.
 
 ## 7. Scope Isolation for Dynamic Module Helpers
-* **Decision**: Auto-injected helpers (such as `render_template` and `translate`) are bound to their module instance by `_inject_module_helpers` in `module_loader.py`, called once per instance after the constructor, so they are not available inside `__init__`.
+* **Decision**: Auto-injected helpers (such as `render_template` and `translate`) are bound to their module instance by `_inject_module_helpers` in `features/modules/loader.py`, called once per instance after the constructor, so they are not available inside `__init__`.
 * **Rationale**: Solves Python's loop lexical closure late-binding behavior. Defined inside the loader loop instead, nested helper definitions reference the loop variable by name, resulting in all module instances executing translations and templates using the scope of whichever module loaded last.
 
 ## 8. Skeletal Loading UI & Transition Flow
@@ -66,7 +67,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Eliminates the flash of a blank screen on startup/page refresh. It provides immediate, responsive feedback ("Loading Swedish Name Day...", "Loading Clock...") while the backend modules fetch remote API data or perform slow initialization loops.
 
 ## 9. WebSocket State Caching for Instant Updates
-* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws_manager.py](mirrordash_core/ws_manager.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
+* **Decision**: Implemented an in-memory frame cache (`latest_messages`) inside the WebSocket `ConnectionManager` ([ws.py](mirrordash_core/features/kiosk/ws.py)). Every time a module broadcasts an HTML payload, it is cached. Upon a new connection, the manager immediately pushes all cached HTML frames to the newly connected client. The cache is automatically cleared when modules reload or stop.
 * **Rationale**: Resolves the delay on page refresh where modules (especially those with long update intervals like the 60-second name day module or hourly updates) would remain as skeletons until their sleep intervals completed and they triggered a new broadcast. Now, refreshed screens load the last rendered frames instantly.
 
 ## 10. Carousel Groups for Layout Regions
@@ -102,7 +103,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: Maintains a high standard of consumer appliance resilience and security under OverlayFS, ensuring the device remains accessible and self-healing.
 
 ## 18. Background Jobs and Restart Detection in the Admin UI
-* **Decision**: Long package operations (module install/upgrade/uninstall, core update, venv rebuild, backup restore) run as a single in-memory background job (`start_job` in `api/admin_shared.py`). The HTMX request returns immediately with a script that opens the progress overlay; the UI then polls the authenticated `/admin/jobs/current`. Every process start gets a random `BOOT_ID`, reported by `/health` and the job endpoint, and a restart counts as finished only when that id changes. All `hx-confirm` prompts go through the app's own `showConfirm()` dialog via one `htmx:confirm` handler, and button spinners use HTMX's `.htmx-request` state (`.htmx-indicator` / `.htmx-normal`, `hx-disabled-elt`) instead of being set in `onclick`.
+* **Decision**: Long package operations (module install/upgrade/uninstall, core update, venv rebuild, backup restore) run as a single in-memory background job (`start_job` in `admin.py`). The HTMX request returns immediately with a script that opens the progress overlay; the UI then polls the authenticated `/admin/jobs/current`. Every process start gets a random `BOOT_ID`, reported by `/health` and the job endpoint, and a restart counts as finished only when that id changes. All `hx-confirm` prompts go through the app's own `showConfirm()` dialog via one `htmx:confirm` handler, and button spinners use HTMX's `.htmx-request` state (`.htmx-indicator` / `.htmx-normal`, `hx-disabled-elt`) instead of being set in `onclick`.
 * **Rationale**: On a Pi 3 these operations take minutes, longer than nginx's 60 s proxy timeout, so a synchronous request could fail while the work continued silently. Inferring a restart from timings ("down after 5 s, then up") broke on flaky Wi-Fi and left the overlay spinning. Spinners set in `onclick` started before the confirm dialog and were never reset, even when the user cancelled. One job at a time matches the A/B venv swap, which cannot run concurrently, and a restart ends every job, so no persistence is needed.
 
 ## 19. Sensors and Inputs via Kernel Device-Tree Overlays
@@ -126,7 +127,7 @@ This document records the core architectural decisions made during the design, d
 * **Rationale**: The module guide recommended classes that only existed in the global stylesheet, which a shadow root never sees, so every module wrote its own CSS. Five modules each had their own fetch, JSON, timeout and error code, with different bugs (an error branch that could never run, a network error read as "nothing today", an API key in the log). One helper in the core fixes that once, needs no dependency (urllib in a thread), and keeps modules free of imports from the core.
 
 ## 24. An API Token for Other Systems (Home Assistant)
-* **Decision**: `/api/v1` (`api/public.py`) answers only to `Authorization: Bearer <token>`, a 256-bit token from the Settings tab's *Home Assistant & API* card. Only its sha256 is stored (`config["api_token"]`), so it is shown once; a new token replaces the old one. It can read `/status` (version, uptime, CPU temperature, screen, brightness, modules, cached sensor readings) and set `/screen` and `/brightness`, which reuse the admin's own `update_screen_state` and `update_system_settings`. The admin password (`X-API-Key`) is not accepted there. Home Assistant uses its `rest`, `rest_command`, template `switch` and template `number`; the user guide has the YAML.
+* **Decision**: `/api/v1` (`features/homeassistant/api.py`) answers only to `Authorization: Bearer <token>`, a 256-bit token from the Settings tab's *Home Assistant & API* card. Only its sha256 is stored (`config["api_token"]`), so it is shown once; a new token replaces the old one. It can read `/status` (version, uptime, CPU temperature, screen, brightness, modules, cached sensor readings) and set `/screen` and `/brightness`, which reuse the admin's own `update_screen_state` and `update_system_settings`. The admin password (`X-API-Key`) is not accepted there. Home Assistant uses its `rest`, `rest_command`, template `switch` and template `number`; the user guide has the YAML.
 * **Rationale**: Before, the only key was the admin password, which Home Assistant would have had to keep. A separate token can be removed without changing the password, can't install modules or restore backups, and survives a backup restore (the hash is in `config.json`; `admin_auth` is not). MQTT discovery or an own integration would mean a broker or a second repo for what a few REST calls do. The older open `POST /admin/screen` stays for existing automations.
 
 ## 25. The Screen Reloads Only for a New MirrorDash Version
@@ -136,3 +137,8 @@ This document records the core architectural decisions made during the design, d
 ## 26. Discover: One Search Request, the Release Tag Pinned at Install
 * **Decision**: *Discover New Modules* makes one GitHub search request (repositories named `mirrordash-*`, up to 100) and keeps the previous list if it fails. Only at install is the module's latest release looked up; its tag is appended (`…@v1.2.0`), a repository without releases is refused, and a rate-limit or network error asks the user to try again later.
 * **Rationale**: Unauthenticated GitHub allows 60 requests an hour per IP, shared by the whole home network, so one request per repository ran out after a few scans and silently showed only the first module. Pinning the tag installs a published release instead of whatever is on the default branch, and the update check compares that recorded revision with the latest release.
+
+## 27. The Core in Vertical Slices
+* **Decision**: The core is organised by feature, not by layer. `mirrordash_core/features/<feature>/` (auth, backup, dashboard, hardware, homeassistant, kiosk, logs, modules, power, settings, updates, wifi) holds a feature's routes, logic and templates; one Jinja environment reads every `features/*/templates`. Code two or more features use stays at the package root: `admin.py` (page shell, login, jobs, page events), `config.py`, `forms.py` (forms from a JSON schema), `venv.py` (the A/B swap and uv), `host.py` (OS commands), `fetch.py`, `system_settings.py` and `event_bus.py`. `app.py` only composes. The admin panels call feature functions directly, so a feature only has HTTP routes something requests; the JSON routes nothing called were removed, and so were FastAPI's `/docs` and `/openapi.json`.
+* **Rationale**: A feature was spread over a JSON file, a panels file, `system/`, `templates/` and a root module, so a change touched five places and copies drifted apart (the A/B swap five times, backup validation twice, the form flattening three times). Measured before and after: no function above grade C (from one F, three E and five D), average complexity A (4.3, from B 5.6), the largest Python file 513 lines (from 592), `admin.html` 245 lines (from 1763), routes 96 → 74.
+
