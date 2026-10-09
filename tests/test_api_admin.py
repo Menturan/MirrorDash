@@ -6,6 +6,10 @@ from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
 import json
 
 from mirrordash_core.app import app
+from conftest import call
+from mirrordash_core.features.modules.service import install_module, uninstall_module
+from mirrordash_core.features.settings.schema import get_globals_schema
+from mirrordash_core.features.updates.service import check_core_update, get_disk_usage, rebuild_venv, update_core
 from mirrordash_core.admin import hash_password
 
 # Setup config fixtures for test cases
@@ -397,37 +401,12 @@ def test_public_active_modules_endpoint(mock_loader, client):
     assert data["modules"][0]["position"] == "top_right"
     assert data["modules"][0]["title"] == "Clock Module Title"
 
-@patch("mirrordash_core.features.settings.schema.load_config")
-@patch("mirrordash_core.features.settings.schema.save_config")
-@patch("mirrordash_core.features.settings.schema.module_loader.reload_modules", new_callable=AsyncMock)
-def test_update_config_positions_validation(mock_reload, mock_save, mock_load, client):
-    headers = {"X-API-Key": "secret"}
-    mock_load.return_value = MOCK_CONFIG
-    
-    # 1. Valid new positions should pass
+def test_config_positions_validation():
+    from mirrordash_core.features.settings.schema import validate_config
     for pos in ["top_center", "middle_left", "middle_right", "bottom_center"]:
-        payload = {
-            "modules": {
-                "mirrordash-clock": {
-                    "enabled": True,
-                    "position": pos
-                }
-            }
-        }
-        r = client.post("/admin/config", json=payload, headers=headers)
-        assert r.status_code == 200
-        
-    # 2. Invalid position should fail with 422
-    payload_invalid = {
-        "modules": {
-            "mirrordash-clock": {
-                "enabled": True,
-                "position": "middle_top"
-            }
-        }
-    }
-    r = client.post("/admin/config", json=payload_invalid, headers=headers)
-    assert r.status_code == 422
+        validate_config({"modules": {"mirrordash-clock": {"enabled": True, "position": pos}}})
+    with pytest.raises(ValueError, match="invalid position"):
+        validate_config({"modules": {"mirrordash-clock": {"enabled": True, "position": "middle_top"}}})
 
 @patch("mirrordash_core.features.modules.service.load_config")
 @patch("mirrordash_core.features.modules.service.save_config")
@@ -444,7 +423,7 @@ def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
     mock_process.communicate.return_value = (b"output", b"")
     mock_subproc.return_value = mock_process
     
-    response = client.post("/admin/uninstall", json={"package_name": "mirrordash-clock"}, headers=headers)
+    response = call(uninstall_module, "mirrordash-clock")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     
@@ -463,7 +442,7 @@ def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
 def test_uninstall_module_invalid_name(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
-    response = client.post("/admin/uninstall", json={"package_name": "invalid; rm -rf /"}, headers=headers)
+    response = call(uninstall_module, "invalid; rm -rf /")
     assert response.status_code == 400
     assert "Invalid package name" in response.json()["detail"]
 
@@ -641,11 +620,8 @@ def test_list_community_modules(mock_load, mock_scan, client):
     assert any(m["name"] == "mirrordash-clock" for m in modules)
 
 
-@patch("mirrordash_core.features.settings.schema.load_config")
-def test_get_globals_schema(mock_load, client):
-    mock_load.return_value = MOCK_CONFIG
-    headers = {"X-API-Key": "secret"}
-    response = client.get("/admin/globals-schema", headers=headers)
+def test_get_globals_schema():
+    response = call(get_globals_schema)
     assert response.status_code == 200
     schema = response.json()
     assert isinstance(schema, dict)
@@ -667,7 +643,7 @@ def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, c
     mock_to_thread.return_value = "1.0.0"  # PyPI returns same version
 
     headers = {"X-API-Key": "secret"}
-    response = client.get("/admin/core-update-check", headers=headers)
+    response = call(check_core_update)
     assert response.status_code == 200
     data = response.json()
     assert data["current_version"] == "1.0.0"
@@ -684,7 +660,7 @@ def test_core_update_check_update_available(mock_version, mock_to_thread, mock_l
     mock_to_thread.return_value = "1.2.0"  # PyPI has a newer version
 
     headers = {"X-API-Key": "secret"}
-    response = client.get("/admin/core-update-check", headers=headers)
+    response = call(check_core_update)
     assert response.status_code == 200
     data = response.json()
     assert data["current_version"] == "1.0.0"
@@ -701,7 +677,7 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
     mock_to_thread.side_effect = RuntimeError("PyPI request failed: connection timeout")
 
     headers = {"X-API-Key": "secret"}
-    response = client.get("/admin/core-update-check", headers=headers)
+    response = call(check_core_update)
     assert response.status_code == 502
     assert "PyPI request failed" in response.json()["detail"]
 
@@ -724,7 +700,7 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     mock_exec.side_effect = [proc(b""), proc(b"1.1.0rc1\n")]  # uv install, then the installed version
 
     headers = {"X-API-Key": "secret"}
-    response = client.post("/admin/core-update", headers=headers)
+    response = call(update_core)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -749,7 +725,7 @@ def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_c
         return p
     mock_exec.side_effect = [proc(b""), proc(b"1.0.0\n")]
 
-    response = client.post("/admin/core-update", headers={"X-API-Key": "secret"})
+    response = call(update_core)
     assert response.status_code == 409
     assert "isn't available yet" in response.json()["detail"]
     mock_create_task.assert_not_called()
@@ -770,7 +746,7 @@ def test_core_update_failure(mock_version, mock_create_task, mock_exec,
     mock_exec.return_value = mock_proc
 
     headers = {"X-API-Key": "secret"}
-    response = client.post("/admin/core-update", headers=headers)
+    response = call(update_core)
     assert response.status_code == 500
     assert "Upgrade failed" in response.json()["detail"]
     mock_create_task.assert_not_called()
@@ -795,18 +771,9 @@ def test_core_update_check_offers_test_versions_only_when_opted_in(mock_version,
     config = {**MOCK_CONFIG, "system": {**MOCK_CONFIG.get("system", {}), "prerelease": prerelease}}
     with patch("mirrordash_core.features.updates.service.load_config", return_value=config), \
          patch("mirrordash_core.features.updates.service.urllib.request.urlopen", return_value=response_body):
-        data = client.get("/admin/core-update-check", headers={"X-API-Key": "secret"}).json()
+        data = call(check_core_update).json()
     assert data["latest_version"] == expected
     assert data["update_available"] is prerelease
-
-
-@patch("mirrordash_core.features.updates.service.load_config")
-@patch("shutil.disk_usage")
-def test_disk_usage_auth_required(mock_disk_usage, mock_load, client):
-    """GET /admin/disk-usage requires API key."""
-    mock_load.return_value = MOCK_CONFIG
-    response = client.get("/admin/disk-usage")
-    assert response.status_code == 401
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
@@ -817,7 +784,7 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
     mock_disk_usage.return_value = (10000000000, 3000000000, 7000000000)
 
     headers = {"X-API-Key": "secret"}
-    response = client.get("/admin/disk-usage", headers=headers)
+    response = call(get_disk_usage)
     assert response.status_code == 200
 
     data = response.json()
@@ -851,7 +818,7 @@ def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare
     mock_exec.return_value = mock_proc
 
     headers = {"X-API-Key": "secret"}
-    response = client.post("/admin/rebuild-venv", headers=headers)
+    response = call(rebuild_venv)
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "success"
@@ -979,7 +946,7 @@ def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, m
     
     # A module from Discover comes without a tag: it is pinned to the latest release
     payload_ok = {"package_name": "git+https://github.com/user1/mirrordash-widget-ok.git"}
-    r1 = client.post("/admin/install", json=payload_ok, headers=headers)
+    r1 = call(install_module, **payload_ok)
     assert r1.status_code == 200
     assert any(c.args[-1] == "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0" for c in mock_exec.call_args_list)
 
@@ -987,12 +954,12 @@ def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, m
     payload_fail = {"package_name": "git+https://github.com/user2/mirrordash-widget-norelease.git"}
     # No release at all
     mock_urlopen.side_effect = HTTPError("url", 404, "Not Found", {}, None)
-    r2 = client.post("/admin/install", json=payload_fail, headers=headers)
+    r2 = call(install_module, **payload_fail)
     assert r2.status_code == 400
     assert "does not have any official releases" in r2.json()["detail"]
     # GitHub's hourly limit is not reported as "no releases"
     mock_urlopen.side_effect = HTTPError("url", 403, "rate limit exceeded", {}, None)
-    r3 = client.post("/admin/install", json=payload_fail, headers=headers)
+    r3 = call(install_module, **payload_fail)
     assert r3.status_code == 503
     assert "Try again in an hour" in r3.json()["detail"]
 

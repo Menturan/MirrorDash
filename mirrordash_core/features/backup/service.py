@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import json
 import logging
 import os
 import shutil
@@ -9,15 +10,12 @@ import zipfile
 import importlib.metadata
 from datetime import datetime
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import HTTPException
 from mirrordash_core.config import load_config, save_config, get_base_dir, get_core_version
 from mirrordash_core.host import reboot_system, run_restart
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
-from mirrordash_core.admin import require_api_key
 
 logger = logging.getLogger("mirrordash.core.backup")
-router = APIRouter(prefix="/admin/backup")
 
 
 # Paths
@@ -55,46 +53,53 @@ def find_local_module_dir(package_name: str) -> Path | None:
     return None
 
 
-@router.get("/list", dependencies=[Depends(require_api_key)])
+def temp_upload() -> str:
+    """Where the backup being restored waits (uploaded, or copied from the saved ones)."""
+    return os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+
+
+def backup_file(filename: str) -> str:
+    """The path of a saved backup. Trust boundary: a bare file name, never a path."""
+    if ".." in filename or "/" in filename or "\\" in filename:
+        raise HTTPException(status_code=400, detail="Invalid backup filename")
+    path = os.path.join(BACKUPS_DIR, filename)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Backup file not found")
+    return path
+
+
+def read_manifest(path: str, password: str | None = None) -> dict | None:
+    """A backup's manifest, or None when it's encrypted and the password is missing or wrong.
+    Raises zipfile.BadZipFile, KeyError or ValueError for a file that isn't a backup."""
+    with zipfile.ZipFile(path) as zf:
+        if password:
+            zf.setpassword(password.encode("utf-8"))
+        try:
+            return json.loads(zf.read("backup_manifest.json").decode("utf-8"))
+        except RuntimeError as e:  # "is encrypted, password required" / "Bad password"
+            if "password" in str(e).lower() or "encrypted" in str(e).lower():
+                return None
+            raise
+
+
 async def list_backups() -> dict:
-    """List all available backup .mirror files."""
+    """The saved .mirror files, newest first."""
     backups = []
-    try:
-        for entry in os.scandir(BACKUPS_DIR):
-            if entry.is_file() and entry.name.endswith(".mirror"):
-                stat = entry.stat()
-                # Check encryption status
-                is_encrypted = False
-                try:
-                    with zipfile.ZipFile(entry.path) as zf:
-                        # Try to read manifest without password. If it raises a RuntimeError
-                        # due to encryption, we catch it.
-                        zf.read("backup_manifest.json")
-                except RuntimeError as e:
-                    if "encrypted" in str(e).lower():
-                        is_encrypted = True
-                except Exception:
-                    pass
-
-                backups.append({
-                    "filename": entry.name,
-                    "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                    "size_bytes": stat.st_size,
-                    "encrypted": is_encrypted
-                })
-        # Sort by mtime descending
-        backups.sort(key=lambda x: x["created_at"], reverse=True)
-    except Exception as e:
-        logger.error(f"Error listing backups: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to list backups: {e}")
-
+    for entry in os.scandir(BACKUPS_DIR) if os.path.isdir(BACKUPS_DIR) else []:
+        if entry.is_file() and entry.name.endswith(".mirror"):
+            try:
+                encrypted = read_manifest(entry.path) is None
+            except Exception:
+                encrypted = False
+            stat = entry.stat()
+            backups.append({"filename": entry.name, "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "size_bytes": stat.st_size, "encrypted": encrypted})
+    backups.sort(key=lambda b: b["created_at"], reverse=True)
     return {"backups": backups}
 
 
-@router.post("/create", dependencies=[Depends(require_api_key)])
-async def create_backup(payload: dict = Body(default={})) -> dict:
-    """Generate a backup .mirror archive (ZIP format), optionally password protected."""
-    password = payload.get("password")
+async def create_backup(password: str | None = None) -> dict:
+    """Write a backup .mirror archive (ZIP format), optionally password protected."""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_filename = f"mirrordash_backup_{timestamp}.mirror"
@@ -223,159 +228,14 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
     return {"status": "success", "filename": backup_filename}
 
 
-@router.get("/download/{filename}", dependencies=[Depends(require_api_key)])
-async def download_backup(filename: str):
-    """Download a backup file."""
-    # Prevent path traversal
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid backup filename")
-
-    file_path = os.path.join(BACKUPS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Backup file not found")
-
-    return FileResponse(file_path, filename=filename, media_type="application/octet-stream")
+async def delete_backup(filename: str) -> None:
+    os.remove(backup_file(filename))
+    logger.info(f"Backup deleted: {filename}")
 
 
-@router.delete("/delete/{filename}", dependencies=[Depends(require_api_key)])
-async def delete_backup(filename: str):
-    """Delete a backup file."""
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid backup filename")
-
-    file_path = os.path.join(BACKUPS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Backup file not found")
-
-    try:
-        os.remove(file_path)
-        logger.info(f"Backup deleted: {filename}")
-        return {"status": "success", "message": f"Deleted {filename}"}
-    except Exception as e:
-        logger.error(f"Failed to delete backup: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to delete backup: {e}")
-
-
-@router.post("/upload", dependencies=[Depends(require_api_key)])
-async def upload_backup(file: UploadFile = File(...)) -> dict:
-    """Upload a backup file and inspect its manifest. Return password requirement info."""
-    if not file.filename.endswith(".mirror"):
-        raise HTTPException(status_code=400, detail="Invalid file type. File must have .mirror extension.")
-
-    # Write to a temp upload file
-    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    with open(temp_upload_path, "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
-
-    # Verify if encrypted
-    is_encrypted = False
-    try:
-        with zipfile.ZipFile(temp_upload_path) as zf:
-            # Try to read manifest. If encrypted, raises RuntimeError
-            zf.read("backup_manifest.json")
-    except RuntimeError as e:
-        if "encrypted" in str(e).lower():
-            is_encrypted = True
-        else:
-            raise
-    except Exception as e:
-        logger.error(f"Failed to read uploaded file: {e}")
-        raise HTTPException(status_code=400, detail="Invalid or corrupt backup archive.")
-
-    if is_encrypted:
-        return {"status": "needs_password", "filename": file.filename}
-
-    # If not encrypted, return manifest info
-    with zipfile.ZipFile(temp_upload_path) as zf:
-        manifest_bytes = zf.read("backup_manifest.json")
-        import json
-        manifest = json.loads(manifest_bytes.decode('utf-8'))
-
-    return {
-        "status": "ready",
-        "filename": file.filename,
-        "manifest": manifest
-    }
-
-
-@router.post("/validate-password", dependencies=[Depends(require_api_key)])
-async def validate_password(filename: str = Body(...), password: str = Body(...)) -> dict:
-    """Validate password for the uploaded backup file."""
-    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    if not os.path.exists(temp_upload_path):
-        raise HTTPException(status_code=400, detail="No uploaded backup found to validate.")
-
-    try:
-        with zipfile.ZipFile(temp_upload_path) as zf:
-            zf.setpassword(password.encode('utf-8'))
-            manifest_bytes = zf.read("backup_manifest.json")
-            import json
-            manifest = json.loads(manifest_bytes.decode('utf-8'))
-
-        return {
-            "status": "ready",
-            "filename": filename,
-            "manifest": manifest
-        }
-    except RuntimeError:
-        raise HTTPException(status_code=401, detail="Invalid backup password.")
-    except Exception as e:
-        logger.error(f"Error validating password: {e}")
-        raise HTTPException(status_code=400, detail="Corrupt backup file.")
-
-
-@router.post("/validate-local", dependencies=[Depends(require_api_key)])
-async def validate_local(filename: str = Body(..., embed=True), password: str | None = Body(default=None)) -> dict:
-    """Validate a local backup file's password and parse its manifest."""
-    if ".." in filename or "/" in filename or "\\" in filename:
-        raise HTTPException(status_code=400, detail="Invalid backup filename")
-
-    file_path = os.path.join(BACKUPS_DIR, filename)
-    if not os.path.exists(file_path):
-        raise HTTPException(status_code=404, detail="Backup file not found")
-
-    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    shutil.copy(file_path, temp_upload_path)
-
-    is_encrypted = False
-    try:
-        with zipfile.ZipFile(temp_upload_path) as zf:
-            if password:
-                zf.setpassword(password.encode('utf-8'))
-            zf.read("backup_manifest.json")
-    except RuntimeError as e:
-        if "encrypted" in str(e).lower():
-            is_encrypted = True
-        else:
-            raise
-
-    if is_encrypted and not password:
-        return {"status": "needs_password", "filename": filename}
-
-    try:
-        with zipfile.ZipFile(temp_upload_path) as zf:
-            if password:
-                zf.setpassword(password.encode('utf-8'))
-            manifest_bytes = zf.read("backup_manifest.json")
-            import json
-            manifest = json.loads(manifest_bytes.decode('utf-8'))
-
-        return {
-            "status": "ready",
-            "filename": filename,
-            "manifest": manifest
-        }
-    except RuntimeError:
-        raise HTTPException(status_code=401, detail="Invalid backup password.")
-    except Exception as e:
-        logger.error(f"Error validating local file: {e}")
-        raise HTTPException(status_code=400, detail="Corrupt backup file.")
-
-
-@router.post("/restore", dependencies=[Depends(require_api_key)])
-async def restore_backup(password: str | None = Body(default=None)) -> dict:
+async def restore_backup(password: str | None = None) -> dict:
     """Execute the restore process using the pre-uploaded backup."""
-    temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+    temp_upload_path = temp_upload()
     if not os.path.exists(temp_upload_path):
         raise HTTPException(status_code=400, detail="No uploaded backup file found. Please upload a file first.")
 

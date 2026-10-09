@@ -13,7 +13,6 @@ logger = logging.getLogger("mirrordash.core.logs")
 router = APIRouter(prefix="/admin")
 
 
-@router.get("/logs", dependencies=[Depends(require_api_key)])
 async def get_logs(type: str = "system", lines: int = 100, module: str | None = None) -> dict:
     logger.info(f"Admin requested logs: type={type}, lines={lines}, module={module}")
     if type not in ("system", "modules", "raspberry"):

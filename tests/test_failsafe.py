@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock
 
 from mirrordash_core.app import app
+from conftest import call
+from mirrordash_core.features.modules.service import update_module
 from mirrordash_core.admin import hash_password
 
 mock_salt = "0123456789abcdef"
@@ -51,7 +53,7 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     
     headers = {"X-API-Key": "secret"}
     # Call the endpoint
-    response = client.post("/admin/update", json={"package_name": "mirrordash"}, headers=headers)
+    response = call(update_module, "mirrordash")
     
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -80,7 +82,7 @@ def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
     
     headers = {"X-API-Key": "secret"}
     # Call the endpoint
-    response = client.post("/admin/update", json={"package_name": "mirrordash"}, headers=headers)
+    response = call(update_module, "mirrordash")
     
     assert response.status_code == 500
     assert "Verification failed. Rolled back successfully. Error: ImportError: Broken module" in response.json()["detail"]

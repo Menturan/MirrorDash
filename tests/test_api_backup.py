@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.app import app
 from mirrordash_core.admin import hash_password
+from mirrordash_core.features.backup.service import create_backup, list_backups, restore_backup
+from conftest import call
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -47,11 +49,11 @@ def client():
 
 def test_backup_list_unauthorized(client):
     # Disable X-API-Key header to trigger unauthorized
-    response = client.get("/admin/backup/list")
+    response = client.get("/admin/panels/backup/list")
     assert response.status_code == 401
 
 def test_backup_list_authorized_empty(mock_backup_dirs, client):
-    response = client.get("/admin/backup/list", headers={"X-API-Key": "secret"})
+    response = call(list_backups)
     assert response.status_code == 200
     assert response.json() == {"backups": []}
 
@@ -63,7 +65,7 @@ def test_backup_list_with_files(mock_backup_dirs, client):
     with zipfile.ZipFile(backup_file, "w") as zf:
         zf.writestr("backup_manifest.json", json.dumps({"encrypted": False}))
         
-    response = client.get("/admin/backup/list", headers={"X-API-Key": "secret"})
+    response = call(list_backups)
     assert response.status_code == 200
     backups = response.json()["backups"]
     assert len(backups) == 1
@@ -80,7 +82,7 @@ def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
     mock_process.communicate = AsyncMock(return_value=(b"", b""))
     mock_subproc.return_value = mock_process
     
-    response = client.post("/admin/backup/create", json={}, headers={"X-API-Key": "secret"})
+    response = call(create_backup)
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     assert "mirrordash_backup_" in response.json()["filename"]
@@ -93,7 +95,7 @@ def test_create_backup_zip_failure(mock_subproc, mock_backup_dirs, client):
     mock_process.communicate = AsyncMock(return_value=(b"", b"zip error"))
     mock_subproc.return_value = mock_process
     
-    response = client.post("/admin/backup/create", json={}, headers={"X-API-Key": "secret"})
+    response = call(create_backup)
     assert response.status_code == 500
     assert "Failed to write backup archive" in response.json()["detail"]
 
@@ -118,26 +120,23 @@ def test_delete_backup_success(mock_backup_dirs, client):
     backup_file.touch()
     
     headers = {"X-API-Key": "secret"}
-    r = client.delete("/admin/backup/delete/test_backup.mirror", headers=headers)
+    r = client.post("/admin/panels/backup/delete/test_backup.mirror", headers=headers)
     assert r.status_code == 200
-    assert r.json()["status"] == "success"
     assert not backup_file.exists()
 
 def test_upload_backup_invalid_extension(mock_backup_dirs, client):
     headers = {"X-API-Key": "secret"}
     
     files = {"file": ("test.txt", b"hello", "text/plain")}
-    r = client.post("/admin/backup/upload", files=files, headers=headers)
-    assert r.status_code == 400
-    assert "extension" in r.json()["detail"]
+    r = client.post("/admin/panels/backup/upload", files=files, headers=headers)
+    assert "extension" in r.text
 
 def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     headers = {"X-API-Key": "secret"}
     
     files = {"file": ("test.mirror", b"corrupt data", "application/octet-stream")}
-    r = client.post("/admin/backup/upload", files=files, headers=headers)
-    assert r.status_code == 400
-    assert "Invalid or corrupt backup archive" in r.json()["detail"]
+    r = client.post("/admin/panels/backup/upload", files=files, headers=headers)
+    assert "Invalid or corrupt backup archive" in r.text
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
@@ -186,7 +185,7 @@ def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
          patch("mirrordash_core.features.backup.service.zipfile.ZipFile"):
          
         # Send raw json=None (since password is str | None = Body(default=None))
-        r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})
+        r = call(restore_backup)
         assert r.status_code == 200
         assert r.json()["status"] == "success"
         
@@ -289,8 +288,8 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
          patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
          patch("mirrordash_core.features.backup.service.importlib.metadata.entry_points", return_value=[ep]):
         with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config):
-            r = client.post("/admin/backup/create", json={}, headers={"X-API-Key": "secret"})
-        assert r.status_code == 200, r.text
+            r = call(create_backup)
+        assert r.status_code == 200, r.json()
         archive = backups_dir / r.json()["filename"]
 
         with zipfile.ZipFile(archive) as zf:
@@ -309,8 +308,8 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
              patch("mirrordash_core.features.backup.service.reboot_system", new_callable=AsyncMock) as mock_reboot, \
              patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock) as mock_restart, \
              patch("mirrordash_core.features.backup.service.save_config") as mock_save:
-            r = client.post("/admin/backup/restore", json=None, headers={"X-API-Key": "secret"})
-            assert r.status_code == 200, r.text
+            r = call(restore_backup)
+            assert r.status_code == 200, r.json()
 
     restored = mock_save.call_args[0][0]
     assert restored["admin_auth"] == MOCK_CONFIG["admin_auth"]
@@ -324,3 +323,17 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     mock_gpio.assert_awaited_once_with(["button:17"])
     mock_reboot.assert_called_once()
     mock_restart.assert_not_called()
+
+
+@pytest.mark.skipif(shutil.which("zip") is None, reason="needs the zip tool, like the mirror")
+def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
+    import subprocess
+    from mirrordash_core.features.backup.service import read_manifest
+    (tmp_path / "backup_manifest.json").write_text('{"backup_version": "1.0"}')
+    subprocess.run(["zip", "-q", "-P", "secret", "locked.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
+    locked = str(tmp_path / "locked.mirror")
+    assert read_manifest(locked) is None
+    assert read_manifest(locked, "wrong") is None
+    assert read_manifest(locked, "secret") == {"backup_version": "1.0"}
+    with pytest.raises(zipfile.BadZipFile):
+        read_manifest(str(tmp_path / "backup_manifest.json"))

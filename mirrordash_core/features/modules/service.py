@@ -8,7 +8,7 @@ import re
 import urllib.error
 import urllib.request
 from pathlib import Path
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.host import run_restart
@@ -89,8 +89,7 @@ async def _change_packages(what: str, uv_args: list[str], verify=None) -> None:
     asyncio.create_task(run_restart())
 
 
-@router.post("/install", dependencies=[Depends(require_api_key)])
-async def install_module(package_name: str = Body(..., embed=True)) -> dict:
+async def install_module(package_name: str) -> dict:
     check_package_name(package_name)
     if package_name.startswith("git+https://github.com/"):
         package_name = await _pinned_to_latest_release(package_name)
@@ -99,8 +98,7 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
     return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
-@router.post("/update", dependencies=[Depends(require_api_key)])
-async def update_module(package_name: str = Body(..., embed=True)) -> dict:
+async def update_module(package_name: str) -> dict:
     check_package_name(package_name)
     # A git URL's package is named after the repository (mirrordash-calendar)
     name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
@@ -120,8 +118,7 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
     return {"status": "success", "message": f"Upgraded {package_name}. Restarting..."}
 
 
-@router.post("/uninstall", dependencies=[Depends(require_api_key)])
-async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
+async def uninstall_module(package_name: str) -> dict:
     check_package_name(package_name, allow_git=False)
     # Its instances go too; a reinstall starts from defaults
     config = load_config()

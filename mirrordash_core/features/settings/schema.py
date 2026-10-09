@@ -1,16 +1,10 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import asyncio
 import json
 import logging
 import os
-from fastapi import APIRouter, Body, Depends, HTTPException
-from mirrordash_core.admin import require_api_key
-from mirrordash_core.config import load_config, save_config
-from mirrordash_core.features.modules.loader import module_loader
 
 logger = logging.getLogger("mirrordash.core.settings")
-router = APIRouter(prefix="/admin")
 
 
 VALID_POSITIONS = {
@@ -144,35 +138,6 @@ def validate_config(config: dict) -> None:
                             raise ValueError(f"Module '{name}' setting '{title}' must be one of: {enum_list}")
 
 
-@router.get("/config", dependencies=[Depends(require_api_key)])
-async def get_config() -> dict:
-    return load_config()
-
-
-@router.post("/config", dependencies=[Depends(require_api_key)])
-async def update_config(config: dict = Body(...)) -> dict:
-    logger.info("Admin requested configuration update.")
-    try:
-        validate_config(config)
-    except ValueError as e:
-        logger.warning(f"Configuration validation failed: {e}")
-        raise HTTPException(status_code=422, detail=str(e))
-
-    save_config(config)
-    logger.info("Configuration saved successfully. Reloading modules.")
-
-    # Apply system timezone if configured
-    globals_cfg = config.get("globals", {})
-    timezone = globals_cfg.get("timezone")
-    if timezone:
-        from mirrordash_core.host import apply_system_timezone
-        asyncio.create_task(apply_system_timezone(timezone))
-
-    asyncio.create_task(module_loader.reload_modules())
-    return {"status": "success", "message": "Configuration updated"}
-
-
-@router.get("/globals-schema", dependencies=[Depends(require_api_key)])
 async def get_globals_schema() -> dict:
     """Return the JSON schema defining global configuration settings."""
     try:

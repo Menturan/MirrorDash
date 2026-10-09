@@ -29,7 +29,6 @@ def prerelease_enabled() -> bool:
     return load_config().get("system", {}).get("prerelease", False) is True
 
 
-@router.get("/core-update-check", dependencies=[Depends(require_api_key)])
 async def check_core_update() -> dict:
     """Check PyPI for a newer release of mirrordash-core.
 
@@ -68,7 +67,6 @@ async def check_core_update() -> dict:
     }
 
 
-@router.post("/core-update", dependencies=[Depends(require_api_key)])
 async def update_core() -> dict:
     """Install the latest MirrorDash into the next A/B venv, then restart into it."""
     current_version = get_core_version()
@@ -99,7 +97,6 @@ async def update_core() -> dict:
     return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
 
 
-@router.post("/rebuild-venv", dependencies=[Depends(require_api_key)])
 async def rebuild_venv() -> dict:
     """Build a fresh venv with this MirrorDash version, the local modules and the configured ones."""
     if not get_venv_paths():
@@ -131,7 +128,6 @@ async def rebuild_venv() -> dict:
     return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
 
 
-@router.get("/disk-usage", dependencies=[Depends(require_api_key)])
 async def get_disk_usage() -> dict:
     """Get persistent storage partition disk space usage."""
     import shutil
