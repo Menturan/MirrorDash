@@ -20,6 +20,8 @@ There are two kinds of releases:
 ### Fixed
 - Turning on SSH says so: the button shows that it's working, then "SSH is on" with how to log in, or why the password was refused. Before, the click often did nothing visible, and a refused password still left SSH marked as on.
 - The Modules tab no longer becomes wider than a phone's screen.
+- A module setting with a quote (") in it no longer breaks the module's settings form.
+- After an update the admin page loads its new look and script right away, instead of what the phone had cached.
 - After a MirrorDash update the screen shows the new version right away; before, the mirror's page kept the old version's look and behaviour until the mirror was restarted.
 - Updating MirrorDash right after a new version is published installs that version. Before, it could reinstall the current one, say it had updated and restart for nothing; now it says the new version isn't available yet and stays as it is.
 - Discover New Modules lists every module on GitHub again (weather, calendar, Home Assistant, …), not just the clock. It now asks GitHub once per refresh instead of once per module, which used up GitHub's hourly limit for the home network. When GitHub refuses anyway, the page says the refresh failed instead of quietly showing only the clock.
