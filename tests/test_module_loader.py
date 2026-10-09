@@ -301,3 +301,43 @@ async def test_fetch_json_sleeps_while_the_screen_is_off(tmp_path):
     finally:
         display_power_manager.awake.set()
     assert await asyncio.wait_for(waiting, 1) == ({"n": 1}, None)
+
+
+@pytest.mark.asyncio
+async def test_fetch_max_age_uses_the_saved_answer_until_it_is_old(tmp_path):
+    """max_age: a young saved answer comes back as fresh without a call; an old one is fetched again."""
+    import os
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+
+    source = tmp_path / "data.json"
+    source.write_text('{"n": 1}')
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    plugin = DummyPlugin({})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(cache)})
+
+    assert await plugin.fetch_json(source.as_uri(), max_age=60) == ({"n": 1}, None)
+    source.write_text('{"n": 2}')
+    assert await plugin.fetch_json(source.as_uri(), max_age=60) == ({"n": 1}, None)  # saved, no call
+    assert await plugin.fetch_json(source.as_uri()) == ({"n": 2}, None)              # no max_age: a call
+    for saved in cache.iterdir():
+        os.utime(saved, (0, 0))
+    source.write_text('{"n": 3}')
+    assert await plugin.fetch_json(source.as_uri(), max_age=60) == ({"n": 3}, None)  # too old: a call
+
+
+@pytest.mark.asyncio
+async def test_the_same_module_message_is_sent_once():
+    from mirrordash_core.features.kiosk.ws import ConnectionManager
+
+    manager = ConnectionManager()
+    client = AsyncMock()
+    manager.active_connections.append(client)
+    message = {"module": "weather", "html": "<p>21°</p>", "position": "top_left"}
+    await manager.broadcast(message)
+    await manager.broadcast(dict(message))
+    assert client.send_json.await_count == 1
+    await manager.broadcast({**message, "position": "top_right"})  # a changed setting is sent
+    manager.clear_cache()                                          # a reload sends everything again
+    await manager.broadcast({**message, "position": "top_right"})
+    assert client.send_json.await_count == 3

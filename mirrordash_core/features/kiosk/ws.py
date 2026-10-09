@@ -40,8 +40,11 @@ class ConnectionManager:
         """Broadcast a message to all connected clients.
         Dead connections are removed after iteration to prevent accumulation.
         """
-        # Cache module HTML update messages
+        # Cache module HTML update messages; the same one again is not sent, so the screen doesn't redraw
+        # (restart its icons, scripts and scrolling) when nothing changed. A reload clears the cache.
         if "module" in message and "html" in message:
+            if self.latest_messages.get(message["module"]) == message:
+                return
             self.latest_messages[message["module"]] = message
 
         dead: list[WebSocket] = []

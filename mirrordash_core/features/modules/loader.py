@@ -7,6 +7,7 @@ import logging
 import importlib.metadata
 import importlib.util
 import os
+import time
 import json
 import urllib.error
 import urllib.parse
@@ -66,18 +67,20 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
     "invalid" (fetch_json: not JSON). On an error, answer is the last good one for the same method, URL
     and body (kept in the module's cache_dir), or None.
     ponytail: no retry or backoff; the module's own interval is the retry. Upgrade path: backoff here.
+
+    max_age=seconds: a saved answer younger than that comes back as fresh (error None) without a call, so
+    saving a setting or a restart doesn't fetch everything again. ponytail: after a restart the next call
+    can come up to two intervals after the last one, once; the cache file's mtime is the clock, so a Pi
+    booting on an old time may make one extra call. Upgrade path: return the answer's age.
     """
     user_agent = f"MirrorDash/{get_core_version()}"
 
     async def fetch(url: str, *, parse=None, method: str = "GET", headers: dict | None = None,
                     params: dict | None = None, json: object = None, data: dict | bytes | None = None,
-                    timeout: float = 10) -> tuple[object, str | None]:
-        from json import dumps, loads  # the json= argument hides the module
+                    timeout: float = 10, max_age: float | None = None) -> tuple[object, str | None]:
+        from json import dumps  # the json= argument hides the module
         if json is not None and data is not None:
             raise ValueError("fetch: pass json= or data=, not both")
-        if not keep_running:
-            from mirrordash_core.features.power.display_power import display_power_manager
-            await display_power_manager.awake.wait()
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
         body = (dumps(json).encode() if json is not None
@@ -88,6 +91,17 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
         where = f"{method} {parts.netloc}{parts.path}"  # never the query, headers or body: they can hold keys
         key = hashlib.sha256(f"{method} {url}\n".encode() + (body or b"")).hexdigest()[:16]
         cache_file = os.path.join(cache_dir, f"fetch-{key}") if cache_dir else None
+
+        if max_age and cache_file:
+            try:
+                if time.time() - os.path.getmtime(cache_file) < max_age:
+                    with open(cache_file, "rb") as f:
+                        return parse(f.read()), None
+            except (OSError, ValueError):  # nothing saved yet, or a broken file: fetch
+                pass
+        if not keep_running:
+            from mirrordash_core.features.power.display_power import display_power_manager
+            await display_power_manager.awake.wait()
 
         def get() -> bytes:
             request = urllib.request.Request(url, data=body, method=method, headers={
