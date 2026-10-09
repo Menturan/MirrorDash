@@ -16,6 +16,7 @@ There are two kinds of releases:
 - Change the mirror's Wi-Fi under *Settings → Wi-Fi*. If it can't join the new network, it goes back to the old one and says why.
 - When its Wi-Fi is gone for good (a new router or password), the mirror starts `MirrorDash-Setup` within a few minutes, without a restart. *Needs the new OS image.*
 - A recovery code, shown once when you set the admin password. *Forgot password?* now takes this code instead of a PIN on the mirror's screen, so standing in front of the mirror is no longer enough to take over the admin page. Lost the code too? The user guide shows how to reset the password over SSH or on the SD card.
+- While the screen is off, the modules stop fetching data, which saves calls to paid or rate-limited services. When the screen comes back on, a module whose update was due fetches it right away; the others keep to their own schedule.
 
 ### Changed
 - The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).

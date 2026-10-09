@@ -261,3 +261,27 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
     # The server is gone: the last good answer for the same URL comes back, marked offline
     assert await plugin.fetch_json(f"{base}/ok", headers=key, params={"q": "Oslo"}, timeout=2) == ({"temp": 21}, "offline")
     assert "secret-key-123" not in caplog.text and "Oslo" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_fetch_json_sleeps_while_the_screen_is_off(tmp_path):
+    """Screen off: a fetch waits and goes out once on waking; a keep_running module is never held."""
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+    from mirrordash_core.features.power.display_power import display_power_manager
+
+    url = (tmp_path / "data.json").as_uri()
+    (tmp_path / "data.json").write_text('{"n": 1}')
+    sleeper, logger_ = DummyPlugin({}), DummyPlugin({})
+    logger_.keep_running = True
+    _inject_module_helpers(sleeper, "dummy", {}, "dummy", {})
+    _inject_module_helpers(logger_, "dummy", {}, "logger", {})
+
+    display_power_manager.awake.clear()
+    try:
+        waiting = asyncio.create_task(sleeper.fetch_json(url))
+        assert await logger_.fetch_json(url) == ({"n": 1}, None)
+        await asyncio.sleep(0.05)
+        assert not waiting.done()
+    finally:
+        display_power_manager.awake.set()
+    assert await asyncio.wait_for(waiting, 1) == ({"n": 1}, None)

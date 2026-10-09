@@ -80,6 +80,7 @@ The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside
 *   What wakes it: someone in front of the mirror (with a motion or presence sensor, if *Wake when someone is in front of the mirror* is on), a button press set to *Wake the screen*, **Turn Screen ON**, or Home Assistant (see [7](#7-home-assistant)).
 *   *From the last activity* keeps it on while someone is still there; *A fixed time* turns it off after exactly that time, for example for a doorbell.
 *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
+*   While the screen is off, the modules don't fetch new data (saving API calls). When it comes back on, those whose update was due fetch it right away.
 
 Always use **Shut Down** (Power tab) before unplugging the mirror. To start it again, unplug the power and plug it back in, or use a button on GPIO 3 (below).
 

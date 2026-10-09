@@ -31,6 +31,8 @@ This document records the core architectural decisions made during the design, d
 - [25. The Screen Reloads Only for a New MirrorDash Version](#25-the-screen-reloads-only-for-a-new-mirrordash-version)
 - [26. Discover: One Search Request, the Release Tag Pinned at Install](#26-discover-one-search-request-the-release-tag-pinned-at-install)
 - [27. The Core in Vertical Slices](#27-the-core-in-vertical-slices)
+- [28. A Forgotten Admin Password: a Recovery Code From Setup](#28-a-forgotten-admin-password-a-recovery-code-from-setup)
+- [29. Modules Sleep While the Screen Is Off](#29-modules-sleep-while-the-screen-is-off)
 
 ---
 
@@ -148,3 +150,7 @@ This document records the core architectural decisions made during the design, d
 ## 28. A Forgotten Admin Password: a Recovery Code From Setup
 * **Decision**: Setting up the admin password also creates a recovery code (12 characters, `XXXX-XXXX-XXXX`), shown once and stored only as a PBKDF2 hash next to the password. With it, *Forgot password?* sets a new password; the code is then used up and a new one is shown. Changing the password keeps the code. Without the code, the password is reset by removing `admin_auth` from `config.json` over SSH or on the SD card (USER_GUIDE §1), after which the admin page asks for a new password.
 * **Rationale**: The earlier recovery (a PIN on the mirror's screen) needed no login to start and wiped the password at once, so anyone on the network could lock the owner out, and the 6-digit PIN had no attempt limit; anyone in front of the mirror could take over. A reset e-mail would need an SMTP account on every mirror or a MirrorDash mail service, against a mirror that works on its own at home. A code the owner saves works offline and can't be guessed (~59 bits behind PBKDF2), and whoever can reach the SD card owns the mirror anyway.
+
+## 29. Modules Sleep While the Screen Is Off
+* **Decision**: While the screen is off, a module's `fetch_json` waits until it is on again (`DisplayPowerManager.awake`). The module's loop stands still at the fetch, so a fetch that fell due in the dark goes out once on waking, and one that didn't waits for its own interval. A module that must run in the dark (a data logger) sets `keep_running = True` on its class. Modules that use their own HTTP client are not held.
+* **Rationale**: A dark mirror shouldn't spend paid API calls or rate limits. Cancelling and restarting the modules' tasks would fetch on every wake, so a mirror woken by presence could call an hourly API many times an hour; holding the one shared fetch keeps each module's own schedule without the core knowing it, and needs no setting. Home Assistant already turns the screen off when nobody is home, so that sleeps the modules too.

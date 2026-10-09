@@ -14,6 +14,10 @@ the open API (POST /admin/screen {"state": "on", "timeout_minutes": optional}).
   extend=False - the screen goes off `timeout_minutes` after it was woken, whatever happens.
 An explicit "off" turns the screen off and keeps it off until something wakes it again or the
 base mode changes (e.g. the schedule starts).
+
+While the screen is off the modules sleep: their fetch_json waits on `awake` (see
+modules/loader.py), so a due fetch happens once when the screen comes back on and the module's
+own schedule is kept. A module with `keep_running = True` is never held.
 """
 
 import asyncio
@@ -45,6 +49,8 @@ class DisplayPowerManager:
         self.last_base: bool | None = None
         self.was_present = False
         self.changed = asyncio.Event()
+        self.awake = asyncio.Event()  # set while the screen is on; modules' fetch_json waits on it
+        self.awake.set()
 
     async def start(self) -> None:
         if self.task is None:
@@ -149,6 +155,7 @@ class DisplayPowerManager:
         success = await set_screen_power(on)
         if success:
             self.is_on = on
+            self.awake.set() if on else self.awake.clear()
         return bool(success)
 
     def _is_time_in_range(self, start_str: str, end_str: str, current_time: time) -> bool:

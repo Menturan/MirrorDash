@@ -50,8 +50,12 @@ def load_translations(package_name: str, lang: str) -> dict:
     return translations
 
 
-def _make_fetch_json(cache_dir: str | None, module_name: str):
+def _make_fetch_json(cache_dir: str | None, module_name: str, keep_running: bool = False):
     """A module's `await self.fetch_json(url, headers=..., params=...)` -> (data, error).
+
+    While the screen is off it waits until the screen is back on (unless keep_running), so a sleeping
+    mirror calls no APIs and a fetch that fell due in the dark happens once, on waking.
+    ponytail: only fetches through here sleep; a module with its own HTTP client keeps polling.
 
     error is None, "rejected" (401/403: usually the API key), "offline" (no answer), "http <code>" or
     "invalid" (not JSON). On an error, data is the last good answer (kept in the module's cache_dir), or None.
@@ -61,6 +65,9 @@ def _make_fetch_json(cache_dir: str | None, module_name: str):
 
     async def fetch_json(url: str, *, headers: dict | None = None, params: dict | None = None,
                          timeout: float = 10) -> tuple[object, str | None]:
+        if not keep_running:
+            from mirrordash_core.features.power.display_power import display_power_manager
+            await display_power_manager.awake.wait()
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
         parts = urllib.parse.urlsplit(url)
@@ -115,7 +122,8 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         plugin_instance.translate = translate
 
     if not hasattr(plugin_instance, "fetch_json"):
-        plugin_instance.fetch_json = _make_fetch_json(config.get("cache_dir"), module_name)
+        plugin_instance.fetch_json = _make_fetch_json(config.get("cache_dir"), module_name,
+                                                     getattr(plugin_instance, "keep_running", False))
 
     if not hasattr(plugin_instance, "render_template"):
         try:
