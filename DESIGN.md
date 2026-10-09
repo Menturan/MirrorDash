@@ -1,213 +1,71 @@
----
-name: Ethereal Mirror
-colors:
-  surface: '#131313'
-  surface-dim: '#131313'
-  surface-bright: '#393939'
-  surface-container-lowest: '#0e0e0e'
-  surface-container-low: '#1b1b1b'
-  surface-container: '#1f1f1f'
-  surface-container-high: '#2a2a2a'
-  surface-container-highest: '#353535'
-  on-surface: '#e2e2e2'
-  on-surface-variant: '#c4c7c8'
-  inverse-surface: '#e2e2e2'
-  inverse-on-surface: '#303030'
-  outline: '#8e9192'
-  outline-variant: '#444748'
-  surface-tint: '#c6c6c7'
-  primary: '#ffffff'
-  on-primary: '#2f3131'
-  primary-container: '#e2e2e2'
-  on-primary-container: '#636565'
-  inverse-primary: '#5d5f5f'
-  secondary: '#c7c6c6'
-  on-secondary: '#2f3131'
-  secondary-container: '#464747'
-  on-secondary-container: '#b5b5b5'
-  tertiary: '#ffffff'
-  on-tertiary: '#303031'
-  tertiary-container: '#e4e2e2'
-  on-tertiary-container: '#646464'
-  error: '#ffb4ab'
-  on-error: '#690005'
-  error-container: '#93000a'
-  on-error-container: '#ffdad6'
-  primary-fixed: '#e2e2e2'
-  primary-fixed-dim: '#c6c6c7'
-  on-primary-fixed: '#1a1c1c'
-  on-primary-fixed-variant: '#454747'
-  secondary-fixed: '#e3e2e2'
-  secondary-fixed-dim: '#c7c6c6'
-  on-secondary-fixed: '#1a1c1c'
-  on-secondary-fixed-variant: '#464747'
-  tertiary-fixed: '#e4e2e2'
-  tertiary-fixed-dim: '#c7c6c6'
-  on-tertiary-fixed: '#1b1c1c'
-  on-tertiary-fixed-variant: '#464747'
-  background: '#131313'
-  on-background: '#e2e2e2'
-  surface-variant: '#353535'
-typography:
-  display-xl:
-    fontFamily: Inter
-    fontSize: 75px
-    fontWeight: '100'
-    lineHeight: '1.0'
-    letterSpacing: -0.04em
-  display-lg:
-    fontFamily: Inter
-    fontSize: 64px
-    fontWeight: '300'
-    lineHeight: '1.1'
-    letterSpacing: -0.02em
-  headline-md:
-    fontFamily: Inter
-    fontSize: 32px
-    fontWeight: '500'
-    lineHeight: '1.2'
-    letterSpacing: '0'
-  body-base:
-    fontFamily: Inter
-    fontSize: 20px
-    fontWeight: '400'
-    lineHeight: '1.5'
-    letterSpacing: '0'
-  body-sm:
-    fontFamily: Inter
-    fontSize: 16px
-    fontWeight: '400'
-    lineHeight: '1.4'
-    letterSpacing: '0'
-  label-caps:
-    fontFamily: Inter
-    fontSize: 14px
-    fontWeight: '600'
-    lineHeight: '1.0'
-    letterSpacing: 0.1em
-rounded:
-  sm: 0.125rem
-  DEFAULT: 0.25rem
-  md: 0.375rem
-  lg: 0.5rem
-  xl: 0.75rem
-  full: 9999px
-spacing:
-  safe-margin: 60px
-  widget-gap: 30px
-  internal-padding: 16px
-  label-gap: 8px
+# MirrorDash Design System
 
-## Table of Contents
+The rules behind how the mirror looks, and why. The components themselves, with markup to copy, are in the library at `/design` on any mirror (source: `mirrordash_core/static/modules.css`); the mirror's own UI is in `style.css`, the admin page in `admin.css`.
 
-- [Brand & Style](#brand--style)
-- [Colors](#colors)
-- [Typography](#typography)
-- [Layout & Spacing](#layout--spacing)
-- [Elevation & Depth](#elevation--depth)
-- [Shapes](#shapes)
-- [Components](#components)
-- [Iconography](#iconography)
+## Principles
 
-## Brand & Style
+- **Black is the glass.** A black pixel is an unlit pixel, invisible behind a two-way mirror. The background is always pure black, and only what should be seen gives off light.
+- **The centre stays empty.** Information sits at the edges so the mirror is still a mirror. Only a temporary alert may use the centre.
+- **Passive, not interactive.** Nobody touches the mirror: no cursor (`cursor: none`), no buttons, no hover states. Everything is changed from the admin page on a phone.
+- **Calm.** Glanceable from across the room, nothing that blinks or competes for attention.
 
-The design system is engineered for ambient, glanceable interfaces viewed through semi-reflective glass. The brand personality is **Futuristic, Sophisticated, and Unobtrusive**. It adopts a **Minimalist-Holographic** style, where the interface exists as floating light rather than physical digital surfaces. 
+## Colours
 
-The primary goal is to maintain the utility of a physical mirror while overlaying high-value information. By leveraging a "Zero-Light" philosophy, every design decision prioritizes high-contrast legibility against a deep black void, creating a heads-up display (HUD) that feels integrated into the user's environment.
+| Token | Value | Use |
+|---|---|---|
+| `--color-void` | `#000000` | The background, always |
+| `--color-high-contrast` | `#ffffff` | Primary values: the time, temperatures, headings. The only colour that cuts through room light |
+| `--color-standard-gray` | `#999999` | Body text and secondary information |
+| `--color-dimmed-charcoal` | `#666666` | Non-critical information, dividers, borders |
+| `--color-ice-blue` | `#cceeff` | Cold or inactive, sparingly |
+| `--color-rose-pink` | `#ffccd5` | Warm or urgent, sparingly |
+| `--color-status-online` | `#a0ffba` | Online, active |
+| `--color-status-warning` | `#f87171` | Warnings, a lost connection |
+| `--color-error` | `#ffb4ab` | Error text |
 
-**Key Stylistic Pillars:**
-- **Zero-Light Background:** Pure black surfaces ensure pixels are off, allowing the mirror's reflectivity to remain functional.
-- **Atmospheric Clarity:** Pushing information to the periphery preserves the center for physical reflection.
-- **Technical Precision:** Sharp lines, refined typography, and purposeful spacing evoke a sense of high-end aerospace or medical instrumentation.
-- **Passive Presentation:** The mirror display is a passive HUD, not an interactive interface. The mouse cursor is globally hidden (`cursor: none !important;`) to maintain a clean visual look.
-
-## Colors
-
-The palette is strictly functional, optimized for light transmission through two-way glass. 
-
-- **The Void (#000000):** The mandatory background color. It must be absolute black to ensure the screen remains invisible behind the mirror.
-- **High-Contrast White (#ffffff):** Used for primary data points like the current time, active temperatures, and headers. This is the only color that "breaks" through ambient room light effectively.
-- **Standard Gray (#999999):** The baseline for secondary information and body text.
-- **Dimmed Charcoal (#666666):** Used for non-critical information, dividers, and subtle borders.
-- **Functional Accents:** Low-saturation tints are used sparingly for data visualization. **Soft Ice Blue** signifies cold or inactive states, while **Soft Rose Pink** signifies warmth or urgent alerts.
+Accents are low-saturation and rare: through glass, colour reads as noise long before white does.
 
 ## Typography
 
-Typography is the primary vehicle for the UI. We use **Inter** for its exceptional legibility and modern, neutral character. 
+**Inter**, bundled with the mirror (`static/fonts/`), so no network is needed. Large text is thin so it doesn't glare; small text is heavier so the glass doesn't wash its strokes out.
 
-**Hierarchical Strategy:**
-- **Thin for Large:** To prevent excessive light glare, display sizes use thin weights (`100`–`300`). This maintains an "etched in glass" look.
-- **Medium for Small:** As font size decreases, weights increase slightly to ensure the physical glass doesn't wash out thin strokes.
-- **Uppercase Labels:** Section headers use tracked-out uppercase styles with a `1px` bottom border to create structural anchors in a grid-less environment.
+| Class | Size / weight |
+|---|---|
+| `.display-xl` | 75px / 100 |
+| `.display-lg` | 64px / 300 |
+| `.headline-md` | 32px / 500 |
+| `.body-base` | 20px / 400 |
+| `.body-sm` | 16px / 400 |
+| `.label-caps` | 14px / 600, uppercase, tracked, with a 1px `#666666` line below |
 
-## Layout & Spacing
+A module starts with a `label-caps` heading; separators are horizontal 1px lines, never vertical (use space instead).
 
-The layout follows a **Peripheral Modular Grid**. Content is strictly prohibited from the center of the screen to maintain the mirror's primary function.
+## Layout
 
-- **Hardware Safety Boundary:** A mandatory `60px` margin is applied to all four edges of the viewport to account for physical monitor bezels and frame overlap.
-- **Regional Anchoring (Floating Anchors):** Modules are placed in one of nine absolutely-positioned regions: `top_left`, `top_center`, `top_right`, `middle_left`, `middle_center`, `middle_right`, `bottom_left`, `bottom_center`, and `bottom_right`. Each region is an anchor point pinned to its respective corner, edge, or screen centre. Modules grow **away from the anchor edge** toward the screen centre. There is no clipping, no overflow-hidden, and no inter-region pushing — regions are fully independent and modules may freely overlap in extreme configurations.
-  - Top regions: pinned to top edge, modules grow downward.
-  - Middle regions: pinned to vertical centre (`transform: translateY(-50%)`), modules grow downward from the midpoint.
-  - Bottom regions: pinned to bottom edge, modules stack upward (`flex-direction: column-reverse`); the first module in config always hugs the edge.
-- **Standard Fields (Core-Owned):** Every module automatically receives 8 standard config fields managed entirely by MirrorDash core. Module developers must **not** redeclare these in their `config_schema`. They are always surfaced in the admin UI as a "Standard Settings" section above any module-specific fields:
+- **Safe margin:** 60px from every edge (`--safe-margin-*`, adjustable per mirror in the admin page), for the bezel and the frame.
+- **Nine anchors:** `top_left` … `bottom_right`, each pinned to its corner, edge or centre. Modules grow away from their edge: top and middle regions downward, bottom regions upward (the first module hugs the edge). Regions are independent; nothing clips or pushes.
+- **Rhythm:** 30px between stacked modules (`--widget-gap`), 16px inside (`--internal-padding`), 8px between a label and its value (`--label-gap`).
+- **Flexible widths:** no fixed-width columns. Swedish or German strings are much longer than English, so use flex or grid with `min-width`/`flex: 1` and ellipsis.
 
-  | Field | Type | Description |
-  |---|---|---|
-  | `enabled` | bool | Enable/disable the module |
-  | `position` | string (enum) | Which of the 9 anchor regions to place the module in |
-  | `carousel_group` | string | Group name for rotating modules in the same region |
-  | `carousel_interval` | int | Seconds between carousel slide transitions |
-  | `max_width` | CSS length | Inline `max-width` on the module wrapper (e.g. `400px`, `30vw`) |
-  | `max_height` | CSS length | Inline `max-height` on the module wrapper |
-  | `z_index` | int | Stacking order when modules overlap — higher = on top |
-  | `opacity` | float 0–1 | Per-module transparency |
-- **Modular Rhythm:** A `30px` vertical gap is maintained between stacked widgets. 
-- **Center Void:** The horizontal and vertical center of the screen should remain unoccupied unless a temporary modal alert is triggered.
-- **Responsive Fluidity:** All module layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
-- **Flexbox Layout Utilities**: To make module styling easy and uniform without requiring custom CSS, the core design system defines four standard helper classes:
-  - `.flex-row`: Horizontally aligns items, centers them vertically, and applies a standard `8px` gap.
-  - `.flex-row-between`: Horizontal row stretching to `100%` width with space-between distribution.
-  - `.flex-column`: Stacks items vertically with a standard `8px` gap.
-  - `.flex-center`: Centers elements vertically and horizontally.
+## Depth and shape
 
-## Elevation & Depth
+Shadows are invisible in a mirror; depth comes from opacity and light.
 
-In a mirror environment, traditional shadows are invisible. Depth is instead communicated through **Tonal Opacity and Glow**.
+- **Cards and alerts:** 93% black (`rgba(0, 0, 0, 0.93)`), hiding just enough of the reflection to make the text readable.
+- **Glow** (`.glow`, a 4px white drop shadow) only for critical alerts; ambient data stays flat.
+- **Behind a modal,** the modules are blurred 2px and dimmed to half brightness.
+- **Corners:** 4px for ambient containers (`--radius-default`), 16px for alerts and system messages (`--radius-alert`), full for dots and dials.
 
-- **Surface Layers:** Containers (like notification cards) use a `93%` opaque black fill. This creates a "cut-out" effect that obscures the mirror reflection just enough to prioritize the text.
+## Motion, loading and errors
 
-- **Atmospheric Glow:** Important elements (like active alerts) may use a very subtle, tight white outer glow (`blur: 4px`) to simulate light bleeding through the glass.
-- **Backdrop Blur:** During critical system alerts, the background modules are softened with a `2px` blur and `50%` brightness reduction to pull focus to the foreground modal.
+Loading is always visible: anything that waits shows calm motion (the breathing monogram during boot, the gliding line in `loading.html`, the pulsing connection dot, the admin's loading line, the Wi-Fi page's three dots). Anything that fails stops moving and says what happened and what to do; a wait that never ends turns into an error (`loading.html` after 4 minutes, the mirror's connection status after 2). Motion respects `prefers-reduced-motion` by slowing down, never by disappearing.
 
-## Shapes
+## Monogram and boot screens
 
-The shape language is **Precision Geometric**. 
+- **Monogram:** the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
+- **Boot, restart and shutdown:** Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
 
-- **Containers:** Most widgets and modules are sharp-edged or use a very subtle `0.25rem` (4px) radius to maintain a technical, HUD-like feel.
-- **Alerts & Modals:** Temporary, high-priority notifications use a more pronounced `1rem` (16px) radius to distinguish "system" messages from "ambient" data.
-- **Analog Elements:** Elements like clock faces or status pips use a `full` (pill) radius for perfect circularity.
+## Icons
 
-## Components
-
-Components are designed for **Passive Observation** rather than active interaction.
-
-- **Widgets:** Every widget starts with a `label-caps` header followed by a `1px` border in `#666666`. Content below follows a list or grid format.
-- **Notification Cards:** Use a `rgba(0, 0, 0, 0.93)` background and `16px` of internal padding.
-- **Data Lists:** Use a simple table or flex-row layout. Labels are left-aligned in `#999999`, while primary values (temperatures, times) are right-aligned in `#ffffff`.
-- **Clock Module:** The centerpiece. Digital hours and minutes are grouped tightly with `display-xl` sizing. Seconds are rendered in `headline-md` using `#666666` to reduce visual noise.
-- **Status Indicators:** Small 8px circles. Green (`#a0ffba`) for "online/active", and the primary `accent_warm` for "error/warning".
-- **Separators**: Use horizontal lines `1px` thick in `#666666`. Never use vertical separators; use whitespace instead.
-- **Carousel Containers**: Use a `.carousel-group-container` wrapper with individual widgets marked as `.carousel-slide`. The slides are layered atop each other in a single grid cell (`grid-area: 1 / 1 / 2 / 2`) and cross-fade smoothly using `opacity` and `visibility` over a `0.8s` ease-in-out curve to prevent vertical layout shifting.
-- **Monogram**: The MirrorDash mark is the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
-- **Boot, Restart and Shutdown Screens**: Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
-
-- **Loading and Errors**: Loading is always visible: anything that waits shows calm motion (the breathing monogram during boot, the gliding line in `loading.html`, the pulsing connection dot, the admin's loading line, the Wi-Fi page's three dots). Anything that fails stops moving and says what happened and what to do; a wait that never ends turns into an error (`loading.html` after 4 minutes, the mirror's connection status after 2). Motion respects `prefers-reduced-motion` by slowing down, never by disappearing.
-
-## Iconography
-
-Icons are used as minimalist glyphs to represent data contexts (e.g. weather, connection states).
-
-- **Format:** SVG or modern font-free vector outline icon systems—specifically **Lucide Icons** (searchable at [lucide.dev/icons](https://lucide.dev/icons))—to ensure pixel-perfect rendering behind semi-reflective glass without high-contrast glares.
-- **Color:** Monochromatic, inheriting from text colors (`--color-high-contrast`, `--color-standard-gray`, or `--color-dimmed-charcoal`). Colored or multi-color emojis are strictly prohibited.
-- **Stroke/Weight:** Thin outlines (default `1.5px` stroke weight) to align with display typography weights (`100`–`300`). Solid fills are avoided to maintain floating light aesthetics.
-- **Atmospheric Glow:** Critical system alert icons should receive a subtle `.glow` filter, while ambient data icons should remain flat.
+- **The mirror and modules:** [Lucide](https://lucide.dev/icons) outlines (`<i data-lucide="cloud-rain"></i>`), 1.5px stroke, no fill, in the text colour. No emoji and no coloured icons.
+- **The admin page:** the bundled Font Awesome (`static/fontawesome/`).

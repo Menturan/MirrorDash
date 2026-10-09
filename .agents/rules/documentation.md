@@ -8,7 +8,7 @@ trigger: always_on
 |------|---------------|
 | `README.md` | Any high-level project goals, setup instructions, or repository layout changes |
 | `ARCHITECTURE.md` | A new architectural decision is made or an existing one changes |
-| `DESIGN.md` | Any CSS component is added, removed, or renamed in `style.css` |
+| `DESIGN.md` | A design rule or token (colour, type size, spacing, radius) changes. Components are documented in `/design` (`static/design.html`) |
 | `MODULE_GUIDE.md` (in `mirrordash-sdk` repo) | The **module developer API** changes — new injected helpers, lifecycle hooks, config schema format, or storage conventions. **Not** for documenting specific modules. |
 | `MODULE_AGENTS.md` (in `mirrordash-sdk` repo) | Any new module-specific coding rules, constraints, or scaffolding conventions are established |
 | `modules/<name>/README.md` | A specific module's config keys, providers, API key instructions, or features change |

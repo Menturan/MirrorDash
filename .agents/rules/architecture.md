@@ -2,7 +2,7 @@
 
 ## Design System
 
-The visual system is documented in `DESIGN.md` and implemented in `mirrordash_core/static/style.css`. These two files must always be kept in sync.
+The design rules and tokens are in `DESIGN.md`, implemented in `mirrordash_core/static/style.css` (the mirror's own UI) and `modules.css` (what modules may use). The components themselves are documented in the `/design` library (`static/design.html`), not in DESIGN.md.
 
 - **Never put module-specific CSS in `mirrordash_core/static/style.css`.** Module styles belong inside a `<style>` block in the module's own Jinja2 template.
 - **Keep DESIGN.md design-system-only.** Do not add documentation, parameters, or configurations for specific modules to `DESIGN.md`. It must contain only the overall core design principles, layout grids, colors, typography, and shapes. Specific module documentation belongs in the module's own `README.md` or in `MODULE_GUIDE.md`.
