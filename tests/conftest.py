@@ -18,3 +18,10 @@ def _clear_remote_json_cache():
     """Update checks are cached per URL; start every test without earlier answers."""
     from mirrordash_core.system import network
     network._remote_json_cache.clear()
+
+
+@pytest.fixture(autouse=True)
+def _never_restart_the_test_run(monkeypatch):
+    """run_restart() SIGTERMs its own process; a test that reaches it must not end the run."""
+    real_kill = os.kill
+    monkeypatch.setattr(os, "kill", lambda pid, sig: None if pid == os.getpid() else real_kill(pid, sig))

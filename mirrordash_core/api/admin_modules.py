@@ -4,7 +4,6 @@ import asyncio
 import importlib.metadata
 import json
 import logging
-import os
 import re
 import urllib.error
 import urllib.request
@@ -16,13 +15,8 @@ from mirrordash_core.api.admin_shared import require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config
 from mirrordash_core.module_loader import module_loader
 
-# Import helper functions from system router to avoid duplication
-from mirrordash_core.api.admin_system import (
-    commit_venv_next,
-    prepare_venv_next,
-    revert_venv_next,
-    get_disk_usage,
-)
+from mirrordash_core.system import run_restart
+from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
 from mirrordash_core.api.admin_config import get_module_schema, validate_config
 
 logger = logging.getLogger("mirrordash.core.api.admin_modules")
@@ -36,321 +30,117 @@ DISCOVERED_COMMUNITY_MODULES = []  # filled by scan_community_modules_now
 # REST Endpoints
 # ---------------------------------------------------------------------------
 
+GIT_URL = re.compile(r"^git\+https://github\.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+(?:\.git)?(?:@[a-zA-Z0-9_\-./]+)?$")
+SAFE_NAME = re.compile(r"^[a-zA-Z0-9\-_.@/]+$")  # PyPI names and local paths
+LOCAL_MODULE_DIRS = ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules")
+
+
+def check_package_name(package_name: str, allow_git: bool = True) -> None:
+    """Trust boundary: a PyPI-safe name, a local path or a GitHub git+https URL, never `..`."""
+    ok = SAFE_NAME.match(package_name) or (allow_git and GIT_URL.match(package_name))
+    if not ok or ".." in package_name:
+        raise HTTPException(status_code=400, detail="Invalid package name or URL" if allow_git else "Invalid package name")
+
+
+def _local_target(package_name: str) -> str:
+    """A module bundled on the device installs from its folder."""
+    return next((str(Path(base, package_name)) for base in LOCAL_MODULE_DIRS if Path(base, package_name).is_dir()), package_name)
+
+
+async def _pinned_to_latest_release(package_name: str) -> str:
+    """A GitHub module installs its latest release, pinned (`@tag`): updates compare that tag."""
+    owner_repo = package_name.split("github.com/")[-1].split("@")[0].rstrip("/").split("/")
+    if len(owner_repo) < 2:
+        return package_name
+    owner, repo = owner_repo[0], owner_repo[1].replace(".git", "")
+
+    def latest_release_tag():
+        req = urllib.request.Request(
+            f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
+            headers={"User-Agent": "MirrorDash/1.0", "Accept": "application/vnd.github.v3+json"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read().decode("utf-8")).get("tag_name")
+
+    try:
+        tag = await asyncio.to_thread(latest_release_tag)
+    except urllib.error.HTTPError as e:
+        if e.code != 404:  # 403/429: the hourly limit of unauthenticated requests
+            raise HTTPException(status_code=503, detail="GitHub isn't answering right now (too many requests). Try again in an hour.")
+        tag = None
+    except OSError:
+        raise HTTPException(status_code=503, detail="Cannot reach GitHub. Check the mirror's internet connection.")
+    if not tag:
+        raise HTTPException(status_code=400, detail="Cannot install module: The GitHub repository does not have any official releases.")
+    return package_name if "@" in package_name else f"{package_name}@{tag}"
+
+
+async def _change_packages(what: str, uv_args: list[str], verify=None) -> None:
+    """Run one uv pip change in the next A/B venv; keep it only if uv (and `verify`) succeed."""
+    try:
+        async with venv_swap() as python:
+            code, _, err = await uv_pip(python, *uv_args)
+            if code != 0:
+                logger.error(f"{what} failed: {err}")
+                raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
+            if verify:
+                await verify(python)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{what} failed: {e}")
+    await clean_uv_cache()
+    asyncio.create_task(run_restart())
+
+
 @router.post("/install", dependencies=[Depends(require_api_key)])
 async def install_module(package_name: str = Body(..., embed=True)) -> dict:
-    # Security validation: strict package naming check (PyPI-safe names or GitHub git+https URLs)
-    is_git_url = package_name.startswith("git+https://github.com/") and re.match(r"^git\+https://github\.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+(?:\.git)?(?:@[a-zA-Z0-9_\-./]+)?$", package_name)
-    is_pypi_or_path = re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name)
-    if not (is_pypi_or_path or is_git_url):
-        raise HTTPException(status_code=400, detail="Invalid package name or URL")
-    # Disallow local path traversal
-    if ".." in package_name:
-        raise HTTPException(status_code=400, detail="Invalid package name or URL")
-
-    # Enforce that GitHub modules must have an official release
+    check_package_name(package_name)
     if package_name.startswith("git+https://github.com/"):
-        url_part = package_name.split("github.com/")[-1].split("@")[0]
-        parts = url_part.rstrip("/").split("/")
-        if len(parts) >= 2:
-            owner = parts[0]
-            repo = parts[1].replace(".git", "")
-            
-            def _latest_release_tag():
-                req = urllib.request.Request(
-                    f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
-                    headers={"User-Agent": "MirrorDash/1.0", "Accept": "application/vnd.github.v3+json"},
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    return json.loads(resp.read().decode("utf-8")).get("tag_name")
-
-            try:
-                tag = await asyncio.to_thread(_latest_release_tag)
-            except urllib.error.HTTPError as e:
-                if e.code == 404:
-                    tag = None
-                else:  # 403/429: the hourly limit of unauthenticated requests
-                    raise HTTPException(status_code=503, detail="GitHub isn't answering right now (too many requests). Try again in an hour.")
-            except OSError:
-                raise HTTPException(status_code=503, detail="Cannot reach GitHub. Check the mirror's internet connection.")
-            if not tag:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Cannot install module: The GitHub repository does not have any official releases."
-                )
-            # Pin the release: updates compare the installed tag with the latest one
-            if "@" not in package_name:
-                package_name = f"{package_name}@{tag}"
-
-    swap_info = await prepare_venv_next()
-    try:
-        logger.info(f"Installing package: {package_name}")
-        
-        # Auto-resolve locally bundled modules
-        local_target = package_name
-        for base in ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules"):
-            if Path(base, package_name).is_dir():
-                local_target = str(Path(base, package_name))
-                break
-
-        # Strip full environment to avoid leaking server secrets to subprocess
-        safe_env = {k: v for k, v in os.environ.items() if k in (
-            "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
-        )}
-        cmd = ["uv", "pip", "install"]
-        if swap_info:
-            active_path, next_path = swap_info
-            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append(local_target)
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode == 0:
-            logger.info(f"Successfully installed {package_name}")
-            
-            # Clean uv cache
-            try:
-                clean_proc = await asyncio.create_subprocess_exec(
-                    "uv", "cache", "clean",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    env=safe_env
-                )
-                await clean_proc.wait()
-            except Exception as ce:
-                logger.warning(f"Failed to clean uv cache after install: {ce}")
-
-            if swap_info:
-                await commit_venv_next(*swap_info)
-            from mirrordash_core.system import run_restart
-            asyncio.create_task(run_restart())
-            return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
-        else:
-            err_msg = stderr.decode(errors="replace")
-            logger.error(f"Failed to install {package_name}: {err_msg}")
-            if swap_info:
-                await revert_venv_next(*swap_info)
-            raise HTTPException(status_code=500, detail=f"Installation failed: {err_msg}")
-    except Exception as e:
-        if swap_info:
-            await revert_venv_next(*swap_info)
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Installation failed: {e}")
+        package_name = await _pinned_to_latest_release(package_name)
+    logger.info(f"Installing package: {package_name}")
+    await _change_packages("Installation", ["install", _local_target(package_name)])
+    return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
 @router.post("/update", dependencies=[Depends(require_api_key)])
 async def update_module(package_name: str = Body(..., embed=True)) -> dict:
-    import sys
+    check_package_name(package_name)
+    # A git URL's package is named after the repository (mirrordash-calendar)
+    name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
+    variants = (name, name.replace("-", "_"), name.replace("_", "-"))
 
-    # Security validation: strict package naming check (PyPI-safe names or GitHub git+https URLs)
-    is_git_url = package_name.startswith("git+https://github.com/") and re.match(r"^git\+https://github\.com/[a-zA-Z0-9_\-]+/[a-zA-Z0-9_\-]+(?:\.git)?(?:@[a-zA-Z0-9_\-./]+)?$", package_name)
-    is_pypi_or_path = re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name)
-    if not (is_pypi_or_path or is_git_url):
-        raise HTTPException(status_code=400, detail="Invalid package name or URL")
-    # Disallow local path traversal
-    if ".." in package_name:
-        raise HTTPException(status_code=400, detail="Invalid package name or URL")
+    async def loads_in_new_venv(python):
+        """The upgraded module must still import, or the swap is undone."""
+        code, _, err = await run(python, "-c",
+            "from importlib.metadata import entry_points; import mirrordash_core.app; "
+            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in {variants!r}]")
+        if code != 0:
+            logger.warning(f"Upgrade check failed for {package_name}: {err}. Initiating rollback...")
+            raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
 
-    # Try resolving current version for rollback reference
-    old_version = None
-    # For git installs, the metadata check might be by repo name (e.g. mirrordash-calendar)
-    # We resolve the package name from git url if it's a git url:
-    clean_package_name = package_name
-    if package_name.startswith("git+https://github.com/"):
-        clean_package_name = package_name.split("/")[-1].split(".git")[0].split("@")[0]
-        
-    for name_variant in (clean_package_name, clean_package_name.replace("-", "_"), clean_package_name.replace("_", "-")):
-        try:
-            old_version = importlib.metadata.version(name_variant)
-            break
-        except importlib.metadata.PackageNotFoundError:
-            continue
-
-    swap_info = await prepare_venv_next()
-    try:
-        logger.info(f"Upgrading package: {package_name} (current version: {old_version or 'unknown'})")
-        
-        # Auto-resolve locally bundled modules
-        local_target = package_name
-        for base in ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules"):
-            if Path(base, package_name).is_dir():
-                local_target = str(Path(base, package_name))
-                break
-
-        safe_env = {k: v for k, v in os.environ.items() if k in (
-            "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
-        )}
-        cmd = ["uv", "pip", "install", "--upgrade"]
-        if swap_info:
-            active_path, next_path = swap_info
-            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append(local_target)
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode != 0:
-            err_msg = stderr.decode(errors="replace")
-            logger.error(f"Failed to upgrade {package_name}: {err_msg}")
-            if swap_info:
-                await revert_venv_next(*swap_info)
-            raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
-
-        logger.info(f"Successfully upgraded {package_name}. Verifying installation compatibility...")
-
-        # Build check command targeting the upgraded virtual environment
-        if swap_info:
-            active_path, next_path = swap_info
-            candidate_bin = Path(next_path) / "bin" / "python"
-            python_bin = str(candidate_bin) if candidate_bin.exists() else sys.executable
-        else:
-            python_bin = sys.executable
-
-        check_cmd = [
-            python_bin, "-c",
-            f"from importlib.metadata import entry_points; "
-            f"import mirrordash_core.app; "
-            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in "
-            f"('{clean_package_name}', '{clean_package_name.replace('-', '_')}', '{clean_package_name.replace('_', '-')}')]"
-        ]
-
-        check_proc = await asyncio.create_subprocess_exec(
-            *check_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env
-        )
-        check_stdout, check_stderr = await check_proc.communicate()
-
-        if check_proc.returncode == 0:
-            logger.info(f"Upgrade check passed for {package_name}. Restarting server...")
-            
-            # Clean uv cache
-            try:
-                clean_proc = await asyncio.create_subprocess_exec(
-                    "uv", "cache", "clean",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    env=safe_env
-                )
-                await clean_proc.wait()
-            except Exception as ce:
-                logger.warning(f"Failed to clean uv cache after update: {ce}")
-
-            if swap_info:
-                await commit_venv_next(*swap_info)
-            from mirrordash_core.system import run_restart
-            asyncio.create_task(run_restart())
-            return {"status": "success", "message": f"Upgraded {package_name}. Restarting..."}
-        else:
-            # Verification failed! Roll back.
-            check_err = check_stderr.decode(errors="replace")
-            logger.warning(f"Upgrade check failed for {package_name}: {check_err}. Initiating rollback...")
-            if swap_info:
-                await revert_venv_next(*swap_info)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Verification failed. Rolled back successfully. Error: {check_err}"
-            )
-    except Exception as e:
-        if swap_info:
-            await revert_venv_next(*swap_info)
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Upgrade failed: {e}")
+    logger.info(f"Upgrading package: {package_name}")
+    await _change_packages("Upgrade", ["install", "--upgrade", _local_target(package_name)], verify=loads_in_new_venv)
+    return {"status": "success", "message": f"Upgraded {package_name}. Restarting..."}
 
 
 @router.post("/uninstall", dependencies=[Depends(require_api_key)])
 async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
-    # Security validation: strict package naming check (PyPI-safe names only)
-    if not re.match(r"^[a-zA-Z0-9\-_.@/]+$", package_name):
-        raise HTTPException(status_code=400, detail="Invalid package name")
-    # Disallow local path traversal
-    if ".." in package_name:
-        raise HTTPException(status_code=400, detail="Invalid package name")
-
-    swap_info = await prepare_venv_next()
-    try:
-        # Load and remove module config from config.json if configured
-        config = load_config()
-        modules_config = config.get("modules", {})
-        norm_pkg = package_name.replace('-', '_')
-        keys_to_delete = []
-        for key, cfg in list(modules_config.items()):
-            if not isinstance(cfg, dict):
-                continue
-            mod_type = cfg.get("module", key)
-            if mod_type == package_name or mod_type.replace('-', '_') == norm_pkg:
-                keys_to_delete.append(key)
-
-        for key in keys_to_delete:
-            del modules_config[key]
-            logger.info(f"Removing configuration for module instance '{key}' on uninstall")
-
-        if keys_to_delete:
-            save_config(config)
-
-        logger.info(f"Uninstalling package: {package_name}")
-        safe_env = {k: v for k, v in os.environ.items() if k in (
-            "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
-        )}
-        cmd = ["uv", "pip", "uninstall", "-y"]
-        if swap_info:
-            active_path, next_path = swap_info
-            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append(package_name)
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode == 0:
-            logger.info(f"Successfully uninstalled {package_name}")
-            
-            # Clean uv cache
-            try:
-                clean_proc = await asyncio.create_subprocess_exec(
-                    "uv", "cache", "clean",
-                    stdout=asyncio.subprocess.DEVNULL,
-                    stderr=asyncio.subprocess.DEVNULL,
-                    env=safe_env
-                )
-                await clean_proc.wait()
-            except Exception as ce:
-                logger.warning(f"Failed to clean uv cache after uninstall: {ce}")
-
-            if swap_info:
-                await commit_venv_next(*swap_info)
-            from mirrordash_core.system import run_restart
-            asyncio.create_task(run_restart())
-            return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
-        else:
-            err_msg = stderr.decode()
-            logger.error(f"Failed to uninstall {package_name}: {err_msg}")
-            if swap_info:
-                await revert_venv_next(*swap_info)
-            raise HTTPException(status_code=500, detail=f"Uninstall failed: {err_msg}")
-    except Exception as e:
-        if swap_info:
-            await revert_venv_next(*swap_info)
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Uninstall failed: {e}")
+    check_package_name(package_name, allow_git=False)
+    # Its instances go too; a reinstall starts from defaults
+    config = load_config()
+    modules_config = config.get("modules", {})
+    norm = package_name.replace("-", "_")
+    instances = [k for k, cfg in modules_config.items()
+                 if isinstance(cfg, dict) and cfg.get("module", k).replace("-", "_") == norm]
+    for key in instances:
+        logger.info(f"Removing configuration for module instance '{key}' on uninstall")
+        del modules_config[key]
+    if instances:
+        save_config(config)
+    logger.info(f"Uninstalling package: {package_name}")
+    await _change_packages("Uninstall", ["uninstall", "-y", package_name])
+    return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
 
 
 async def list_modules() -> dict:

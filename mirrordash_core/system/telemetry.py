@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import importlib.metadata
+from mirrordash_core.config import get_core_version
 
 logger = logging.getLogger("mirrordash.core.telemetry")
 
@@ -150,12 +150,6 @@ async def get_undervoltage_detected() -> bool:
     except Exception:
         pass
     return False
-
-def get_core_version() -> str:
-    try:
-        return importlib.metadata.version("mirrordash")
-    except Exception:
-        return "unknown"
 
 async def check_all_updates() -> dict:
     """Core update for the dashboard banner. Module updates are checked per module card in the

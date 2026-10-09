@@ -13,7 +13,8 @@ from fastapi import APIRouter, Body, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import require_api_key, templates
-from mirrordash_core.config import load_config, save_config, get_core_version, version_key
+from mirrordash_core.config import get_base_dir, load_config, save_config, get_core_version, version_key
+from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
 from mirrordash_core.system import display
 from mirrordash_core.system import (
     apply_brightness,
@@ -26,109 +27,6 @@ from mirrordash_core.system import (
 logger = logging.getLogger("mirrordash.core.api.admin_system")
 
 router = APIRouter()
-
-
-# ---------------------------------------------------------------------------
-# Virtual Environment A/B Swapping Helpers
-# ---------------------------------------------------------------------------
-
-def get_venv_paths():
-    """Get venv paths: (venv_link, active_path, next_path).
-    Returns None if not running on a system with /storage/mirrordash.
-    """
-    storage_dir = Path("/storage/mirrordash")
-    if not storage_dir.exists():
-        return None
-    venv_link = storage_dir / "venv"
-    venv_a = storage_dir / "venv_a"
-    venv_b = storage_dir / "venv_b"
-    active_path = venv_a
-    next_path = venv_b
-    if venv_link.exists() and venv_link.is_symlink():
-        try:
-            target = os.readlink(str(venv_link))
-            if "venv_b" in target:
-                active_path = venv_b
-                next_path = venv_a
-        except Exception:
-            pass
-    return venv_link, active_path, next_path
-
-
-async def prepare_venv_next(force_clean: bool = False):
-    """Clone active venv to next venv and point symlink to next.
-    If force_clean is True, starts with a completely clean virtual environment.
-    Returns (active_path, next_path) or None.
-    """
-    import shutil
-    paths = get_venv_paths()
-    if not paths:
-        return None
-    venv_link, active_path, next_path = paths
-    logger.info(f"Preparing A/B swap: Active={active_path.name}, Next={next_path.name}, Clean={force_clean}")
-    try:
-        if next_path.exists():
-            shutil.rmtree(next_path)
-        if active_path.exists() and not force_clean:
-            shutil.copytree(active_path, next_path, symlinks=True)
-        else:
-            next_path.parent.mkdir(parents=True, exist_ok=True)
-            proc = await asyncio.create_subprocess_exec(
-                "uv", "venv", "--python", "3.14", str(next_path),
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            await proc.communicate()
-    except Exception as e:
-        logger.error(f"Failed to clone/create virtual environment: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
-
-    # Point symlink to next_path
-    tmp_link = venv_link.parent / "venv_tmp"
-    if tmp_link.exists() or tmp_link.is_symlink():
-        tmp_link.unlink()
-    try:
-        os.symlink(next_path.name, tmp_link)
-        os.replace(tmp_link, venv_link)
-    except Exception as e:
-        logger.error(f"Failed to swap symlink: {e}")
-        if next_path.exists():
-            shutil.rmtree(next_path)
-        raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
-    return active_path, next_path
-
-
-async def commit_venv_next(active_path, next_path):
-    """Confirm the swap, moving the old active path to venv_old."""
-    import shutil
-    venv_old = active_path.parent / "venv_old"
-    logger.info(f"Committing A/B swap: {next_path.name} is now active.")
-    try:
-        if venv_old.exists():
-            shutil.rmtree(venv_old)
-        if active_path.exists():
-            os.rename(active_path, venv_old)
-    except Exception as e:
-        logger.warning(f"Failed to move active venv to venv_old: {e}")
-
-
-async def revert_venv_next(active_path, next_path):
-    """Cancel the swap, reverting the symlink and wiping next_path."""
-    import shutil
-    paths = get_venv_paths()
-    if not paths:
-        return
-    venv_link = paths[0]
-    logger.warning(f"Reverting A/B swap to: {active_path.name}")
-    tmp_link = venv_link.parent / "venv_tmp"
-    try:
-        if tmp_link.exists() or tmp_link.is_symlink():
-            tmp_link.unlink()
-        os.symlink(active_path.name, tmp_link)
-        os.replace(tmp_link, venv_link)
-        if next_path.exists():
-            shutil.rmtree(next_path)
-    except Exception as e:
-        logger.error(f"Failed to revert symlink: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -189,171 +87,65 @@ async def check_core_update() -> dict:
 
 @router.post("/core-update", dependencies=[Depends(require_api_key)])
 async def update_core() -> dict:
-    """Upgrade mirrordash-core to the latest version from PyPI.
-
-    Installs into the next A/B venv, then triggers a server restart on success.
-    """
-    # Capture current version for logging / potential rollback reference
+    """Install the latest MirrorDash into the next A/B venv, then restart into it."""
     current_version = get_core_version()
-
-    swap_info = await prepare_venv_next()
-    safe_env = {k: v for k, v in os.environ.items() if k in (
-        "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
-    )}
-
+    logger.info(f"Upgrading mirrordash (current version: {current_version})")
     try:
-        logger.info(f"Upgrading mirrordash (current version: {current_version})")
-        # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
-        # cached for up to 10 minutes), or a version published moments ago isn't seen yet.
-        cmd = ["uv", "pip", "install", "--upgrade", "--refresh-package", "mirrordash"]
-        if prerelease_enabled():
-            cmd.append("--prerelease=allow")
-        if swap_info:
-            active_path, next_path = swap_info
-            cmd.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd.append("mirrordash")
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env,
-        )
-        stdout, stderr = await proc.communicate()
-
-        if proc.returncode != 0:
-            err_msg = stderr.decode(errors="replace")
-            logger.error(f"mirrordash upgrade failed: {err_msg}")
-            if swap_info:
-                await revert_venv_next(*swap_info)
-            raise HTTPException(status_code=500, detail=f"Upgrade failed: {err_msg}")
-
-        # uv succeeds when there is nothing newer to install, too: only restart for a new version
-        python = str(Path(swap_info[1]) / "bin" / "python") if swap_info else sys.executable
-        version_proc = await asyncio.create_subprocess_exec(
-            python, "-c", "import importlib.metadata as m; print(m.version('mirrordash'))",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        installed = (await version_proc.communicate())[0].decode().strip()
-        if version_key(installed) <= version_key(current_version):
-            logger.warning(f"mirrordash upgrade installed {installed or 'nothing'}, not newer than {current_version}")
-            # The except below reverts the swap
-            raise HTTPException(status_code=409, detail="The new version isn't available yet. Try again in a few minutes.")
-
-        logger.info(f"mirrordash upgraded to {installed}. Restarting server...")
-        if swap_info:
-            await commit_venv_next(*swap_info)
-        asyncio.create_task(run_restart())
-        return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
+        async with venv_swap() as python:
+            # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
+            # cached for up to 10 minutes), or a version published moments ago isn't seen yet.
+            args = ["--upgrade", "--refresh-package", "mirrordash"]
+            if prerelease_enabled():
+                args.append("--prerelease=allow")
+            code, _, err = await uv_pip(python, "install", *args, "mirrordash")
+            if code != 0:
+                logger.error(f"mirrordash upgrade failed: {err}")
+                raise HTTPException(status_code=500, detail=f"Upgrade failed: {err}")
+            # uv succeeds when there is nothing newer to install, too: only restart for a new version
+            _, installed, _ = await run(python, "-c", "import importlib.metadata as m; print(m.version('mirrordash'))")
+            installed = installed.strip()
+            if version_key(installed) <= version_key(current_version):
+                logger.warning(f"mirrordash upgrade installed {installed or 'nothing'}, not newer than {current_version}")
+                raise HTTPException(status_code=409, detail="The new version isn't available yet. Try again in a few minutes.")
+    except HTTPException:
+        raise
     except Exception as e:
-        if swap_info:
-            await revert_venv_next(*swap_info)
-        if isinstance(e, HTTPException):
-            raise
         raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
+    logger.info(f"mirrordash upgraded to {installed}. Restarting server...")
+    asyncio.create_task(run_restart())
+    return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
 
 
 @router.post("/rebuild-venv", dependencies=[Depends(require_api_key)])
 async def rebuild_venv() -> dict:
-    """Wipe the current A/B virtual environment and rebuild it from scratch.
-
-    Installs the core package and all local/configured modules, then restarts.
-    """
-    logger.info("Starting fresh rebuild of the virtual environment...")
-
-    swap_info = await prepare_venv_next(force_clean=True)
-    if not swap_info:
-        raise HTTPException(
-            status_code=500,
-            detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash)."
-        )
-
-    active_path, next_path = swap_info
-
-    safe_env = {k: v for k, v in os.environ.items() if k in (
-        "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
-    )}
-
+    """Build a fresh venv with this MirrorDash version, the local modules and the configured ones."""
+    if not get_venv_paths():
+        raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")
+    current_version = get_core_version()
+    logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
     try:
-        # 1. Install mirrordash
-        current_version = get_core_version()
-
-        logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
-
-        install_target = "mirrordash"
-        if current_version != "unknown":
-            install_target = f"mirrordash=={current_version}"
-
-        cmd_core = ["uv", "pip", "install"]
-        if swap_info:
-            active_path, next_path = swap_info
-            cmd_core.extend(["--python", str(Path(next_path) / "bin" / "python")])
-        cmd_core.append(install_target)
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd_core,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            env=safe_env,
-        )
-        stdout, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            err_msg = stderr.decode(errors="replace")
-            logger.error(f"Failed to install mirrordash: {err_msg}")
-            await revert_venv_next(*swap_info)
-            raise HTTPException(status_code=500, detail=f"Failed to install core: {err_msg}")
-
-        # 2. Find and install local modules
-        from mirrordash_core.config import get_base_dir
-        base_dir = get_base_dir()
-        modules_dir = Path(base_dir) / "modules"
-        local_module_names = []
-        if modules_dir.exists() and modules_dir.is_dir():
-            for folder in modules_dir.iterdir():
-                if folder.is_dir() and (folder / "pyproject.toml").exists():
-                    logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
-                    cmd_local = ["uv", "pip", "install"]
-                    if swap_info:
-                        cmd_local.extend(["--python", str(Path(next_path) / "bin" / "python")])
-                    cmd_local.extend(["-e", str(folder)])
-
-                    proc_local = await asyncio.create_subprocess_exec(
-                        *cmd_local,
-                        stdout=asyncio.subprocess.PIPE,
-                        stderr=asyncio.subprocess.PIPE,
-                        env=safe_env,
-                    )
-                    await proc_local.communicate()
-                    local_module_names.append(folder.name)
-
-        # 3. Find and install configured PyPI modules
-        config = load_config()
-        configured_modules = config.get("modules", {})
-        for mod_name in configured_modules.keys():
-            if mod_name not in local_module_names and mod_name != "mirrordash-clock":
-                logger.info(f"Rebuilding venv: installing configured PyPI module {mod_name}")
-                cmd_pypi = ["uv", "pip", "install"]
-                if swap_info:
-                    cmd_pypi.extend(["--python", str(Path(next_path) / "bin" / "python")])
-                cmd_pypi.append(mod_name)
-
-                proc_pypi = await asyncio.create_subprocess_exec(
-                    *cmd_pypi,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                    env=safe_env,
-                )
-                await proc_pypi.communicate()
-
-        logger.info("Fresh venv rebuild completed successfully. Committing swap and restarting...")
-        await commit_venv_next(*swap_info)
-        asyncio.create_task(run_restart())
-        return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
+        async with venv_swap(force_clean=True) as python:
+            code, _, err = await uv_pip(python, "install", "mirrordash" if current_version == "unknown" else f"mirrordash=={current_version}")
+            if code != 0:
+                logger.error(f"Failed to install mirrordash: {err}")
+                raise HTTPException(status_code=500, detail=f"Failed to install core: {err}")
+            modules_dir = Path(get_base_dir()) / "modules"
+            local = [d for d in (modules_dir.iterdir() if modules_dir.is_dir() else []) if (d / "pyproject.toml").exists()]
+            for folder in local:
+                logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
+                await uv_pip(python, "install", "-e", str(folder))
+            local_names = {d.name for d in local}
+            for name in load_config().get("modules", {}):
+                if name not in local_names and name != "mirrordash-clock":
+                    logger.info(f"Rebuilding venv: installing configured PyPI module {name}")
+                    await uv_pip(python, "install", name)
+    except HTTPException:
+        raise
     except Exception as e:
-        await revert_venv_next(*swap_info)
-        if isinstance(e, HTTPException):
-            raise
         raise HTTPException(status_code=500, detail=f"Rebuild failed: {e}")
+    logger.info("Fresh venv rebuild completed successfully. Restarting...")
+    asyncio.create_task(run_restart())
+    return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
 
 
 @router.get("/disk-usage", dependencies=[Depends(require_api_key)])

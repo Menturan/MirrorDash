@@ -455,7 +455,7 @@ def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
     
     # Assert subprocess executed uninstall
     mock_subproc.assert_any_call(
-        "uv", "pip", "uninstall", "-y", "mirrordash-clock",
+        "uv", "pip", "uninstall", "--python", ANY, "-y", "mirrordash-clock",
         stdout=-1, stderr=-1, env=ANY
     )
 
@@ -833,15 +833,17 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
 @patch("mirrordash_core.api.admin_system.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system.asyncio.create_task")
 @patch("mirrordash_core.api.admin_system.get_core_version", return_value="1.0.0")
-@patch("mirrordash_core.api.admin_system.prepare_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.commit_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system.revert_venv_next", new_callable=AsyncMock)
-def test_rebuild_venv_success(mock_revert, mock_commit, mock_prepare, mock_version,
+@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_system.get_venv_paths", return_value=True)
+def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare, mock_version,
                                mock_create_task, mock_exec, mock_restart,
                                mock_load, client):
     """POST /admin/rebuild-venv succeeds, rebuilds venv, and triggers restart."""
     mock_load.return_value = MOCK_CONFIG
-    mock_prepare.return_value = ("/storage/mirrordash/venv_a", "/storage/mirrordash/venv_b")
+    from pathlib import Path
+    mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
 
     mock_proc = MagicMock()
     mock_proc.returncode = 0
@@ -855,7 +857,7 @@ def test_rebuild_venv_success(mock_revert, mock_commit, mock_prepare, mock_versi
     assert data["status"] == "success"
     assert "rebuilt successfully" in data["message"]
     mock_prepare.assert_awaited_once_with(force_clean=True)
-    mock_commit.assert_awaited_once_with("/storage/mirrordash/venv_a", "/storage/mirrordash/venv_b")
+    mock_commit.assert_awaited_once_with(Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
     mock_create_task.assert_called_once()
 
 
@@ -954,9 +956,9 @@ def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, cli
 
 
 @patch("mirrordash_core.api.admin_modules.urllib.request.urlopen")
-@patch("mirrordash_core.api.admin_modules.prepare_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.commit_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.system.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.api.admin_modules.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_modules.asyncio.create_subprocess_exec")
 def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, mock_prepare, mock_urlopen, client):
     from pathlib import Path
