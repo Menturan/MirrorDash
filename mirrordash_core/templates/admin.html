@@ -1649,9 +1649,6 @@
             swatches.forEach(sw => {
                 const isSelected = sw === btn;
                 sw.classList.toggle('active', isSelected);
-                sw.style.border = isSelected ? '2px solid white' : '1px solid #52525b';
-                sw.style.transform = isSelected ? 'scale(1.15)' : 'none';
-                sw.style.boxShadow = isSelected ? '0 0 8px white' : 'none';
             });
         }
 
@@ -1665,9 +1662,6 @@
             btns.forEach(b => {
                 const isSelected = b === btn;
                 b.classList.toggle('active', isSelected);
-                b.style.background = isSelected ? '#3f3f46' : '#09090b';
-                b.style.border = isSelected ? '1px solid white' : '1px solid #27272a';
-                b.style.color = isSelected ? 'white' : '#a1a1aa';
             });
         }
 
@@ -1677,9 +1671,6 @@
             swatches.forEach(sw => {
                 const isSelected = sw.title.toLowerCase() === input.value.toLowerCase() || sw.getAttribute('onclick').includes(input.value);
                 sw.classList.toggle('active', isSelected);
-                sw.style.border = isSelected ? '2px solid white' : '1px solid #52525b';
-                sw.style.transform = isSelected ? 'scale(1.15)' : 'none';
-                sw.style.boxShadow = isSelected ? '0 0 8px white' : 'none';
             });
         }
 
@@ -1689,9 +1680,6 @@
             btns.forEach(b => {
                 const isSelected = b.title.toLowerCase() === input.value.toLowerCase();
                 b.classList.toggle('active', isSelected);
-                b.style.background = isSelected ? '#3f3f46' : '#09090b';
-                b.style.border = isSelected ? '1px solid white' : '1px solid #27272a';
-                b.style.color = isSelected ? 'white' : '#a1a1aa';
             });
         }
 

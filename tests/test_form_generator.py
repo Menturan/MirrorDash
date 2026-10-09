@@ -198,3 +198,12 @@ def test_render_array_item_enum_select():
     assert "option value=\"compact\" selected" in html or "option value='compact' selected" in html
 
 
+
+
+def test_values_are_escaped_and_lists_nest():
+    """A saved value can't break the form (a quote used to end the value attribute)."""
+    from mirrordash_core.forms import render_schema_form, parse_flat_form_data
+    html = render_schema_form({"properties": {"name": {"type": "string"}}}, {"name": 'say "hi" <b>'})
+    assert 'value="say &quot;hi&quot; &lt;b&gt;"' in html
+    parsed = parse_flat_form_data({"m[cal][0][url]": "a", "m[cal][1][url]": "b", "m[on]": ["false", "true"]})
+    assert parsed == {"m": {"cal": [{"url": "a"}, {"url": "b"}], "on": True}}
