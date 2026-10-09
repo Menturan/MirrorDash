@@ -227,6 +227,7 @@ async def test_module_loader_backoff():
 @pytest.mark.asyncio
 async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_path, caplog):
     """fetch_json against a real local server: data, a rejected key, not-JSON, then the server gone."""
+    import json
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
     from mirrordash_core.features.modules.loader import _inject_module_helpers
@@ -236,10 +237,15 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
         def do_GET(self):
             seen_headers.append(self.headers.get("X-Api-Key"))
             status, body = {"/ok": (200, b'{"temp": 21}'), "/denied": (401, b"{}"),
-                            "/html": (200, b"<html>")}[self.path.split("?")[0]]
+                            "/html": (200, b"<html>"), "/feed": (200, b"<rss/>")}[self.path.split("?")[0]]
             self.send_response(status)
             self.end_headers()
             self.wfile.write(body)
+        def do_POST(self):  # echoes what it got
+            body = self.rfile.read(int(self.headers["Content-Length"]))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(json.dumps({"type": self.headers["Content-Type"], "body": body.decode()}).encode())
         def log_message(self, *args):
             pass
 
@@ -255,12 +261,22 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
     assert seen_headers[-1] == "secret-key-123"
     assert await plugin.fetch_json(f"{base}/denied", headers=key) == (None, "rejected")
     assert await plugin.fetch_json(f"{base}/html") == (None, "invalid")
+    assert await plugin.fetch(f"{base}/feed") == (b"<rss/>", None)
+    query = {"query": "{ departures }", "token": "secret-in-body"}
+    assert await plugin.fetch_json(f"{base}/graphql", method="POST", json=query) == (
+        {"type": "application/json", "body": json.dumps(query)}, None)
+    assert (await plugin.fetch_json(f"{base}/graphql", method="POST", data={"a": "1"}))[0] == {
+        "type": "application/x-www-form-urlencoded", "body": "a=1"}
 
     server.shutdown()
     server.server_close()
     # The server is gone: the last good answer for the same URL comes back, marked offline
     assert await plugin.fetch_json(f"{base}/ok", headers=key, params={"q": "Oslo"}, timeout=2) == ({"temp": 21}, "offline")
-    assert "secret-key-123" not in caplog.text and "Oslo" not in caplog.text
+    assert await plugin.fetch(f"{base}/feed", timeout=2) == (b"<rss/>", "offline")
+    # Each POST body has its own last answer
+    assert (await plugin.fetch_json(f"{base}/graphql", method="POST", json=query, timeout=2))[0]["body"] == json.dumps(query)
+    assert (await plugin.fetch_json(f"{base}/graphql", method="POST", data={"a": "1"}, timeout=2))[0]["body"] == "a=1"
+    assert "secret-key-123" not in caplog.text and "Oslo" not in caplog.text and "secret-in-body" not in caplog.text
 
 
 @pytest.mark.asyncio

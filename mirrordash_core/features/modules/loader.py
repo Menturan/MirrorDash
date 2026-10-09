@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import functools
 import hashlib
 import logging
 import importlib.metadata
@@ -50,63 +51,81 @@ def load_translations(package_name: str, lang: str) -> dict:
     return translations
 
 
-def _make_fetch_json(cache_dir: str | None, module_name: str, keep_running: bool = False):
-    """A module's `await self.fetch_json(url, headers=..., params=...)` -> (data, error).
+def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = False):
+    """A module's `self.fetch` and `self.fetch_json` -> (answer, error).
+
+    `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
+    raw bytes (RSS, ICS, XML); `self.fetch_json(...)` takes the same arguments and gives the parsed JSON.
+    params go in the query; json= is sent as a JSON body, data= as a form (dict) or as is (bytes).
 
     While the screen is off it waits until the screen is back on (unless keep_running), so a sleeping
     mirror calls no APIs and a fetch that fell due in the dark happens once, on waking.
     ponytail: only fetches through here sleep; a module with its own HTTP client keeps polling.
 
     error is None, "rejected" (401/403: usually the API key), "offline" (no answer), "http <code>" or
-    "invalid" (not JSON). On an error, data is the last good answer (kept in the module's cache_dir), or None.
+    "invalid" (fetch_json: not JSON). On an error, answer is the last good one for the same method, URL
+    and body (kept in the module's cache_dir), or None.
     ponytail: no retry or backoff; the module's own interval is the retry. Upgrade path: backoff here.
     """
     user_agent = f"MirrorDash/{get_core_version()}"
 
-    async def fetch_json(url: str, *, headers: dict | None = None, params: dict | None = None,
-                         timeout: float = 10) -> tuple[object, str | None]:
+    async def fetch(url: str, *, parse=None, method: str = "GET", headers: dict | None = None,
+                    params: dict | None = None, json: object = None, data: dict | bytes | None = None,
+                    timeout: float = 10) -> tuple[object, str | None]:
+        from json import dumps, loads  # the json= argument hides the module
+        if json is not None and data is not None:
+            raise ValueError("fetch: pass json= or data=, not both")
         if not keep_running:
             from mirrordash_core.features.power.display_power import display_power_manager
             await display_power_manager.awake.wait()
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
+        body = (dumps(json).encode() if json is not None
+                else urllib.parse.urlencode(data).encode() if isinstance(data, dict) else data)
+        accept = {"Accept": "application/json"} if parse else {}
+        parse = parse or (lambda raw: raw)
         parts = urllib.parse.urlsplit(url)
-        where = parts.netloc + parts.path  # never the query or headers: they can hold API keys
-        cache_file = (os.path.join(cache_dir, f"fetch-{hashlib.sha256(url.encode()).hexdigest()[:16]}.json")
-                      if cache_dir else None)
+        where = f"{method} {parts.netloc}{parts.path}"  # never the query, headers or body: they can hold keys
+        key = hashlib.sha256(f"{method} {url}\n".encode() + (body or b"")).hexdigest()[:16]
+        cache_file = os.path.join(cache_dir, f"fetch-{key}") if cache_dir else None
 
-        def get():
-            request = urllib.request.Request(url, headers={"User-Agent": user_agent, "Accept": "application/json",
-                                                           **(headers or {})})
+        def get() -> bytes:
+            request = urllib.request.Request(url, data=body, method=method, headers={
+                "User-Agent": user_agent,
+                **accept,
+                **({"Content-Type": "application/json"} if json is not None else {}),
+                **(headers or {})})
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                return json.loads(response.read().decode("utf-8"))
+                return response.read()
 
         try:
-            data = await asyncio.to_thread(get)
+            raw = await asyncio.to_thread(get)
+            answer = parse(raw)
         except urllib.error.HTTPError as e:
             error = "rejected" if e.code in (401, 403) else f"http {e.code}"
         except (urllib.error.URLError, OSError):  # includes timeouts
             error = "offline"
-        except ValueError:  # not JSON, or not UTF-8
+        except ValueError:  # fetch_json: not JSON, or not UTF-8
             error = "invalid"
         else:
             if cache_file:
                 try:
-                    with open(cache_file + ".tmp", "w", encoding="utf-8") as f:
-                        json.dump(data, f)
+                    with open(cache_file + ".tmp", "wb") as f:
+                        f.write(raw)
                     os.replace(cache_file + ".tmp", cache_file)
                 except OSError as e:
                     logger.debug(f"{module_name}: could not cache {where}: {e}")
-            return data, None
+            return answer, None
 
         logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
         try:
-            with open(cache_file, encoding="utf-8") as f:
-                return json.load(f), error
+            with open(cache_file, "rb") as f:
+                return parse(f.read()), error
         except (TypeError, OSError, ValueError):  # no cache_dir, nothing cached yet, or a broken file
             return None, error
 
-    return fetch_json
+    return (functools.partial(fetch, parse=None),
+            functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
 
 
 def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict) -> None:
@@ -121,9 +140,11 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
             return default if default is not None else key
         plugin_instance.translate = translate
 
+    fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, getattr(plugin_instance, "keep_running", False))
+    if not hasattr(plugin_instance, "fetch"):
+        plugin_instance.fetch = fetch
     if not hasattr(plugin_instance, "fetch_json"):
-        plugin_instance.fetch_json = _make_fetch_json(config.get("cache_dir"), module_name,
-                                                     getattr(plugin_instance, "keep_running", False))
+        plugin_instance.fetch_json = fetch_json
 
     if not hasattr(plugin_instance, "render_template"):
         try:
