@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from mirrordash_core.config import load_config
+from mirrordash_core.config import get_core_version, load_config
 
 PACKAGE_DIR = Path(__file__).parent.resolve()
 # Each feature keeps its templates next to its code; the page shells live in templates/
@@ -155,5 +155,6 @@ async def get_admin(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="admin.html",
-        context={"boot_status": boot_status}
+        # The version in the CSS/JS links: after an update the phone loads the new files, not its cached ones
+        context={"boot_status": boot_status, "version": get_core_version()}
     )
