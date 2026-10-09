@@ -25,11 +25,11 @@ def _post_ssh(form, ssh_active=False):
     proc = MagicMock(returncode=0)
     proc.communicate = AsyncMock(return_value=(b"$6$hash\n", b""))
     try:
-        with patch("mirrordash_core.features.updates.service.load_config", return_value={}), \
+        with patch("mirrordash_core.system_settings.load_config", return_value={}), \
              patch("mirrordash_core.system_settings.save_config") as save, \
-             patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
-             patch("mirrordash_core.system_settings.open", create=True), \
-             patch("mirrordash_core.system_settings.os.chmod"), \
+             patch("mirrordash_core.features.settings.ssh.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
+             patch("mirrordash_core.features.settings.ssh.open", create=True), \
+             patch("mirrordash_core.features.settings.ssh.os.chmod"), \
              patch("mirrordash_core.features.settings.ssh.get_ssh_status", AsyncMock(return_value=ssh_active)), \
              patch("mirrordash_core.features.settings.ssh.set_ssh_status", AsyncMock(return_value=True)):
             return TestClient(app).post("/admin/panels/system/save", data=form), save

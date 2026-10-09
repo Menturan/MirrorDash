@@ -12,6 +12,8 @@ from mirrordash_core.features.modules.service import list_community_modules, lis
 from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.features.settings.schema import get_module_schema
 
+from mirrordash_core.forms import cast_values_by_schema, read_form
+
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
 
@@ -315,19 +317,7 @@ async def get_module_config_form(module_name: str, instance_id: str = None):
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
 async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
-    form_data = await request.form()
-    flat_data = {}
-    for k, v in form_data.multi_items():
-        if k in flat_data:
-            if isinstance(flat_data[k], list):
-                flat_data[k].append(v)
-            else:
-                flat_data[k] = [flat_data[k], v]
-        else:
-            flat_data[k] = v
-
-    from mirrordash_core.forms import parse_flat_form_data, cast_values_by_schema
-    parsed = parse_flat_form_data(flat_data)
+    parsed = await read_form(request)
 
     modules_dict = parsed.get("modules", {})
     if not modules_dict:

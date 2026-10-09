@@ -402,6 +402,19 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
     """
 
 
+async def read_form(request) -> dict:
+    """The posted form as nested data: `a[b][c]` keys become dicts, repeated keys lists."""
+    flat = {}
+    for key, value in (await request.form()).multi_items():
+        if key not in flat:
+            flat[key] = value
+        elif isinstance(flat[key], list):
+            flat[key].append(value)
+        else:
+            flat[key] = [flat[key], value]
+    return parse_flat_form_data(flat)
+
+
 def parse_flat_form_data(form_data: dict) -> dict:
     """Parses flat dictionary from form fields into a nested dict structure.
     Handles keys like:

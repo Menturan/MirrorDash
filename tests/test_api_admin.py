@@ -1264,3 +1264,15 @@ def test_logs_viewer_escapes_html(client):
         response = client.get("/admin/panels/logs/viewer", headers={"X-API-Key": "secret"})
     assert "<img" not in response.text
     assert "&lt;img src=x onerror=alert(1)&gt;" in response.text
+
+
+def test_module_settings_are_checked_against_the_module_schema():
+    from mirrordash_core.features.settings import schema
+    props = {"properties": {"count": {"type": "integer", "title": "Count"}, "on": {"type": "boolean"},
+                            "unit": {"type": "string", "enum": ["C", "F"]}}}
+    with patch.object(schema, "_installed_module_schemas", return_value={"mirrordash_x": props}):
+        schema.validate_config({"modules": {"x1": {"module": "mirrordash-x", "count": 3, "on": True, "unit": "C"}}})
+        for bad, message in [({"count": True}, "'Count' must be an integer"), ({"on": "yes"}, "must be a boolean"),
+                             ({"unit": "K"}, "must be one of")]:
+            with pytest.raises(ValueError, match=message):
+                schema.validate_config({"modules": {"x1": {"module": "mirrordash-x", **bad}}})

@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import json
+import importlib.metadata
 import logging
 import os
 
@@ -65,77 +66,61 @@ def get_module_schema(plugin_class) -> dict | None:
     return schema
 
 
+# A module setting's JSON-schema type and the Python check for it (bool is an int in Python)
+TYPE_CHECKS = {
+    "boolean": lambda v: isinstance(v, bool),
+    "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
+    "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
+    "string": lambda v: isinstance(v, str),
+}
+
+
+def _installed_module_schemas() -> dict:
+    """config_schema of every installed module, keyed by its name with '-' as '_'."""
+    schemas = {}
+    for ep in importlib.metadata.entry_points(group="mirrordash.modules"):
+        try:
+            schema = get_module_schema(ep.load())
+        except Exception:
+            continue
+        if schema and "properties" in schema:
+            schemas[ep.name.replace("-", "_")] = schema
+    return schemas
+
+
+def _check_module_settings(name: str, cfg: dict, properties: dict) -> None:
+    for key, value in cfg.items():
+        prop = properties.get(key)
+        if key == "position" or not prop:
+            continue
+        title = prop.get("title", key)
+        expected = prop.get("type")
+        if expected in TYPE_CHECKS and not TYPE_CHECKS[expected](value):
+            raise ValueError(f"Module '{name}' setting '{title}' must be {'an' if expected == 'integer' else 'a'} {expected}.")
+        if prop.get("enum") is not None and value not in prop["enum"]:
+            raise ValueError(f"Module '{name}' setting '{title}' must be one of: {prop['enum']}")
+
+
 def validate_config(config: dict) -> None:
-    """Basic structural validation of the config dict. Raises ValueError on bad data."""
+    """Trust boundary for a saved config: its shape, the module positions and each module's settings
+    against that module's config_schema. Raises ValueError on bad data."""
     if not isinstance(config, dict):
         raise ValueError("Config must be a JSON object.")
     modules = config.get("modules")
-    if modules is not None and not isinstance(modules, dict):
+    if modules is None:
+        return
+    if not isinstance(modules, dict):
         raise ValueError("'modules' must be a JSON object.")
-
-    if isinstance(modules, dict):
-        # Discover entry point classes to validate against their config_schema
-        import importlib.metadata
-        eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
-
-        schemas = {}
-        for ep in eps:
-            try:
-                plugin_class = ep.load()
-                schema = get_module_schema(plugin_class)
-                if schema and "properties" in schema:
-                    schemas[ep.name] = schema
-            except Exception:
-                pass
-
-        for name, cfg in modules.items():
-            if not isinstance(cfg, dict):
-                raise ValueError(f"Module '{name}' config must be a JSON object.")
-
-            pos = cfg.get("position")
-            if pos is not None and pos not in VALID_POSITIONS:
-                raise ValueError(
-                    f"Module '{name}' has invalid position '{pos}'. "
-                    f"Valid positions: {sorted(VALID_POSITIONS)}"
-                )
-
-            # Perform schema-based property type and enum validation with normalized matching
-            schema = None
-            module_type = cfg.get("module", name)
-            norm_name = module_type.replace('-', '_')
-            for s_name, s_val in schemas.items():
-                if s_name.replace('-', '_') == norm_name:
-                    schema = s_val
-                    break
-            if schema and "properties" in schema:
-                properties = schema["properties"]
-                for key, val in cfg.items():
-                    if key == "position":
-                        continue
-                    prop_schema = properties.get(key)
-                    if not prop_schema:
-                        continue
-
-                    expected_type = prop_schema.get("type")
-                    title = prop_schema.get("title", key)
-
-                    if expected_type == "boolean":
-                        if not isinstance(val, bool):
-                            raise ValueError(f"Module '{name}' setting '{title}' must be a boolean.")
-                    elif expected_type == "integer":
-                        if isinstance(val, bool) or not isinstance(val, int):
-                            raise ValueError(f"Module '{name}' setting '{title}' must be an integer.")
-                    elif expected_type == "number":
-                        if isinstance(val, bool) or not isinstance(val, (int, float)):
-                            raise ValueError(f"Module '{name}' setting '{title}' must be a number.")
-                    elif expected_type == "string":
-                        if not isinstance(val, str):
-                            raise ValueError(f"Module '{name}' setting '{title}' must be a string.")
-
-                    enum_list = prop_schema.get("enum")
-                    if enum_list is not None:
-                        if val not in enum_list:
-                            raise ValueError(f"Module '{name}' setting '{title}' must be one of: {enum_list}")
+    schemas = _installed_module_schemas()
+    for name, cfg in modules.items():
+        if not isinstance(cfg, dict):
+            raise ValueError(f"Module '{name}' config must be a JSON object.")
+        pos = cfg.get("position")
+        if pos is not None and pos not in VALID_POSITIONS:
+            raise ValueError(f"Module '{name}' has invalid position '{pos}'. Valid positions: {sorted(VALID_POSITIONS)}")
+        schema = schemas.get(cfg.get("module", name).replace("-", "_"))
+        if schema:
+            _check_module_settings(name, cfg, schema["properties"])
 
 
 async def get_globals_schema() -> dict:

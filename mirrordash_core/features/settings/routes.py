@@ -12,6 +12,8 @@ from mirrordash_core.features.settings.ssh import get_ssh_status
 
 from mirrordash_core.features.settings.schema import get_globals_schema, get_module_schema, validate_config
 
+from mirrordash_core.forms import cast_values_by_schema, read_form
+
 logger = logging.getLogger("mirrordash.core.settings")
 router = APIRouter(prefix="/admin")
 
@@ -43,19 +45,7 @@ async def get_panel_config(request: Request):
 
 @router.post("/panels/config/save-visual", dependencies=[Depends(require_api_key)])
 async def save_panel_config_visual(request: Request):
-    form_data = await request.form()
-    flat_data = {}
-    for k, v in form_data.multi_items():
-        if k in flat_data:
-            if isinstance(flat_data[k], list):
-                flat_data[k].append(v)
-            else:
-                flat_data[k] = [flat_data[k], v]
-        else:
-            flat_data[k] = v
-
-    from mirrordash_core.forms import parse_flat_form_data, cast_values_by_schema
-    parsed = parse_flat_form_data(flat_data)
+    parsed = await read_form(request)
 
     globals_data = parsed.get("globals", {})
     globals_schema = await get_globals_schema()
