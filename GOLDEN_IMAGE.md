@@ -641,15 +641,13 @@ To ensure the persistent storage partition is properly initialized with a functi
 ### 3.2 Passwordless Sudo for Application Commands
 
 > [!IMPORTANT]
-> As of April 2026, Raspberry Pi OS Trixie **disables passwordless sudo by default**. The MirrorDash backend runs as the `pi` user and invokes `sudo` for system administration tasks (filesystem remounting, SSH control, timezone changes, network management, display backlight control). Without passwordless sudo for these specific commands, the application will **deadlock** waiting for a password prompt that never comes.
+> As of April 2026, Raspberry Pi OS Trixie **disables passwordless sudo by default**. The MirrorDash backend runs as the `pi` user and invokes `sudo` for system administration tasks (SSH control, timezone changes, network management, display backlight control). Without passwordless sudo for these specific commands, the application will **deadlock** waiting for a password prompt that never comes.
 
 Create the sudoers drop-in configuration file, set standard permissions (`0440`), and validate its syntax in one block:
 
 ```bash
 sudo tee /etc/sudoers.d/mirrordash << 'EOF'
 # MirrorDash application — scoped passwordless sudo
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,ro /
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
@@ -1082,8 +1080,7 @@ sudo systemctl start mirrordash.service
 curl -s http://localhost:8000/health
 
 # Verify sudoers configuration (should not prompt for a password)
-sudo -n mount -o remount,rw /   # Should succeed without password prompt
-sudo -n mount -o remount,ro /   # May fail with "mount point is busy" on a live system, but must not prompt for a password
+sudo -n timedatectl set-timezone UTC   # Should succeed without a password prompt
 ```
 
 ### 7.3 Lock Root & Finalize (Manual)

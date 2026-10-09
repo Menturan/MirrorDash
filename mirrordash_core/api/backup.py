@@ -18,7 +18,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, File, UploadFile
 from fastapi.responses import FileResponse
 
 from mirrordash_core.config import load_config, save_config, get_base_dir, get_core_version
-from mirrordash_core.system import reboot_system, remount_ro, remount_rw, run_restart
+from mirrordash_core.system import reboot_system, run_restart
 from mirrordash_core.hardware import sync_gpio_overlays
 from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import require_api_key
@@ -196,7 +196,6 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
 
         # 5. Compress using system zip tool to support optional encryption
         try:
-            await remount_rw()
             cmd = ["zip", "-r", backup_path, "."]
             env = os.environ.copy()
             if password:
@@ -219,8 +218,6 @@ async def create_backup(payload: dict = Body(default={})) -> dict:
         except Exception as e:
             logger.error(f"Failed to compress backup: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Failed to write backup archive: {e}")
-        finally:
-            await remount_ro()
 
     return {"status": "success", "filename": backup_filename}
 
@@ -247,7 +244,6 @@ async def delete_backup(filename: str):
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="Backup file not found")
 
-    await remount_rw()
     try:
         os.remove(file_path)
         logger.info(f"Backup deleted: {filename}")
@@ -255,8 +251,6 @@ async def delete_backup(filename: str):
     except Exception as e:
         logger.error(f"Failed to delete backup: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete backup: {e}")
-    finally:
-        await remount_ro()
 
 @router.post("/upload", dependencies=[Depends(require_api_key)])
 async def upload_backup(file: UploadFile = File(...)) -> dict:
@@ -266,42 +260,38 @@ async def upload_backup(file: UploadFile = File(...)) -> dict:
 
     # Write to a temp upload file
     temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    await remount_rw()
+    with open(temp_upload_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Verify if encrypted
+    is_encrypted = False
     try:
-        with open(temp_upload_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Verify if encrypted
-        is_encrypted = False
-        try:
-            with zipfile.ZipFile(temp_upload_path) as zf:
-                # Try to read manifest. If encrypted, raises RuntimeError
-                zf.read("backup_manifest.json")
-        except RuntimeError as e:
-            if "encrypted" in str(e).lower():
-                is_encrypted = True
-            else:
-                raise
-        except Exception as e:
-            logger.error(f"Failed to read uploaded file: {e}")
-            raise HTTPException(status_code=400, detail="Invalid or corrupt backup archive.")
-
-        if is_encrypted:
-            return {"status": "needs_password", "filename": file.filename}
-
-        # If not encrypted, return manifest info
         with zipfile.ZipFile(temp_upload_path) as zf:
-            manifest_bytes = zf.read("backup_manifest.json")
-            import json
-            manifest = json.loads(manifest_bytes.decode('utf-8'))
+            # Try to read manifest. If encrypted, raises RuntimeError
+            zf.read("backup_manifest.json")
+    except RuntimeError as e:
+        if "encrypted" in str(e).lower():
+            is_encrypted = True
+        else:
+            raise
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        raise HTTPException(status_code=400, detail="Invalid or corrupt backup archive.")
 
-        return {
-            "status": "ready",
-            "filename": file.filename,
-            "manifest": manifest
-        }
-    finally:
-        await remount_ro()
+    if is_encrypted:
+        return {"status": "needs_password", "filename": file.filename}
+
+    # If not encrypted, return manifest info
+    with zipfile.ZipFile(temp_upload_path) as zf:
+        manifest_bytes = zf.read("backup_manifest.json")
+        import json
+        manifest = json.loads(manifest_bytes.decode('utf-8'))
+
+    return {
+        "status": "ready",
+        "filename": file.filename,
+        "manifest": manifest
+    }
 
 @router.post("/validate-password", dependencies=[Depends(require_api_key)])
 async def validate_password(filename: str = Body(...), password: str = Body(...)) -> dict:
@@ -339,11 +329,7 @@ async def validate_local(filename: str = Body(..., embed=True), password: str | 
         raise HTTPException(status_code=404, detail="Backup file not found")
 
     temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    await remount_rw()
-    try:
-        shutil.copy(file_path, temp_upload_path)
-    finally:
-        await remount_ro()
+    shutil.copy(file_path, temp_upload_path)
 
     is_encrypted = False
     try:
@@ -395,7 +381,6 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
         raise HTTPException(status_code=500, detail="Current system admin password is not configured.")
 
     # We will extract inside a temporary folder
-    await remount_rw()
     try:
         with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as extract_dir_path:
             # 2. Extract ZIP using standard zipfile
@@ -528,5 +513,3 @@ async def restore_backup(password: str | None = Body(default=None)) -> dict:
     except Exception as e:
         logger.error(f"Error during restoration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Restoration failed: {e}")
-    finally:
-        await remount_ro()

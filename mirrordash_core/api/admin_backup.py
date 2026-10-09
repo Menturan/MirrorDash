@@ -132,45 +132,41 @@ async def delete_panel_backup_route(filename: str):
 
 @router.post("/panels/backup/upload", dependencies=[Depends(require_api_key)])
 async def upload_panel_backup(request: Request, file: UploadFile = File(...)):
-    from mirrordash_core.api.backup import BACKUPS_DIR, remount_rw, remount_ro
+    from mirrordash_core.api.backup import BACKUPS_DIR
 
     if not file.filename.endswith(".mirror"):
         return HTMLResponse(content='<div class="alert alert--error">Invalid file type. File must have .mirror extension.</div>')
 
     temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    await remount_rw()
+    with open(temp_upload_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    is_encrypted = False
     try:
-        with open(temp_upload_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        is_encrypted = False
-        try:
-            with zipfile.ZipFile(temp_upload_path) as zf:
-                zf.read("backup_manifest.json")
-        except RuntimeError as e:
-            if "encrypted" in str(e).lower():
-                is_encrypted = True
-            else:
-                raise
-        except Exception as e:
-            logger.error(f"Failed to read uploaded file: {e}")
-            return HTMLResponse(content='<div class="alert alert--error">Invalid or corrupt backup archive.</div>')
-
-        if is_encrypted:
-            return HTMLResponse(content=render_password_prompt(file.filename, is_local=False))
-
         with zipfile.ZipFile(temp_upload_path) as zf:
-            manifest_bytes = zf.read("backup_manifest.json")
-            manifest = json.loads(manifest_bytes.decode('utf-8'))
+            zf.read("backup_manifest.json")
+    except RuntimeError as e:
+        if "encrypted" in str(e).lower():
+            is_encrypted = True
+        else:
+            raise
+    except Exception as e:
+        logger.error(f"Failed to read uploaded file: {e}")
+        return HTMLResponse(content='<div class="alert alert--error">Invalid or corrupt backup archive.</div>')
 
-        return HTMLResponse(content=render_validation_summary(file.filename, manifest, is_local=False))
-    finally:
-        await remount_ro()
+    if is_encrypted:
+        return HTMLResponse(content=render_password_prompt(file.filename, is_local=False))
+
+    with zipfile.ZipFile(temp_upload_path) as zf:
+        manifest_bytes = zf.read("backup_manifest.json")
+        manifest = json.loads(manifest_bytes.decode('utf-8'))
+
+    return HTMLResponse(content=render_validation_summary(file.filename, manifest, is_local=False))
 
 
 @router.post("/panels/backup/validate-local", dependencies=[Depends(require_api_key)])
 async def validate_panel_backup_local(filename: str = Form(...)):
-    from mirrordash_core.api.backup import BACKUPS_DIR, remount_rw, remount_ro
+    from mirrordash_core.api.backup import BACKUPS_DIR
 
     if ".." in filename or "/" in filename or "\\" in filename:
         return HTMLResponse(content='<div class="alert alert--error">Invalid filename.</div>')
@@ -180,11 +176,7 @@ async def validate_panel_backup_local(filename: str = Form(...)):
         return HTMLResponse(content='<div class="alert alert--error">Backup file not found.</div>')
 
     temp_upload_path = os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
-    await remount_rw()
-    try:
-        shutil.copy(file_path, temp_upload_path)
-    finally:
-        await remount_ro()
+    shutil.copy(file_path, temp_upload_path)
 
     is_encrypted = False
     try:

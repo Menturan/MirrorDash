@@ -26,11 +26,9 @@ def mock_admin_shared_load_config():
 
 
 @patch("mirrordash_core.api.admin_modules.load_config")
-@patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.remount_ro", new_callable=AsyncMock)
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
-def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):
+def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     mock_version.return_value = "0.2.1"
     
@@ -62,11 +60,9 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_ro, mock_rw, mock
     assert mock_exec.call_count == 3
 
 @patch("mirrordash_core.api.admin_modules.load_config")
-@patch("mirrordash_core.api.admin_modules.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_modules.remount_ro", new_callable=AsyncMock)
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
-def test_failsafe_update_rollback(mock_version, mock_exec, mock_ro, mock_rw, mock_load, client):
+def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     mock_version.return_value = "0.2.1"
     

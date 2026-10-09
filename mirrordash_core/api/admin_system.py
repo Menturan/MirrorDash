@@ -19,8 +19,6 @@ from mirrordash_core.system import (
     apply_brightness,
     apply_system_settings,
     get_available_resolutions,
-    remount_ro,
-    remount_rw,
     run_restart,
     set_screen_power,
 )
@@ -193,8 +191,7 @@ async def check_core_update() -> dict:
 async def update_core() -> dict:
     """Upgrade mirrordash-core to the latest version from PyPI.
 
-    Uses the same remount-rw / remount-ro guard as the module upgrade endpoint,
-    then triggers a server restart on success.
+    Installs into the next A/B venv, then triggers a server restart on success.
     """
     # Capture current version for logging / potential rollback reference
     current_version = get_core_version()
@@ -204,7 +201,6 @@ async def update_core() -> dict:
         "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
     )}
 
-    await remount_rw()
     try:
         logger.info(f"Upgrading mirrordash (current version: {current_version})")
         # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
@@ -255,8 +251,6 @@ async def update_core() -> dict:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
-    finally:
-        await remount_ro()
 
 
 @router.post("/rebuild-venv", dependencies=[Depends(require_api_key)])
@@ -280,7 +274,6 @@ async def rebuild_venv() -> dict:
         "PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV"
     )}
 
-    await remount_rw()
     try:
         # 1. Install mirrordash
         current_version = get_core_version()
@@ -361,8 +354,6 @@ async def rebuild_venv() -> dict:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=f"Rebuild failed: {e}")
-    finally:
-        await remount_ro()
 
 
 @router.get("/disk-usage", dependencies=[Depends(require_api_key)])
@@ -475,11 +466,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg["ssh"] = ssh_enabled
     system_cfg["prerelease"] = prerelease
 
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
 
     # Only touch SSH when this request is about it: the Power tab saves just the display
     # schedule, and re-checking SSH there failed whenever the service state differed.
@@ -529,7 +516,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
                     pwd_hash = stdout_hash.decode().strip()
 
                     # Save password hash persistently
-                    await remount_rw()
                     try:
                         hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
                         with open(hash_path, "w", encoding="utf-8") as f:
@@ -537,8 +523,6 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
                         os.chmod(hash_path, 0o600)
                     except Exception as io_err:
                         logger.error(f"Failed to write password hash to disk: {io_err}")
-                    finally:
-                        await remount_ro()
 
                 except HTTPException:
                     raise
@@ -547,15 +531,12 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
                     raise HTTPException(status_code=500, detail="Unexpected error updating system password.")
         else:
             # Delete persistent password hash if SSH is disabled
-            await remount_rw()
             try:
                 hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
                 if os.path.exists(hash_path):
                     os.remove(hash_path)
             except Exception as io_err:
                 logger.error(f"Failed to remove password hash: {io_err}")
-            finally:
-                await remount_ro()
 
         await set_ssh_status(ssh_enabled)
 

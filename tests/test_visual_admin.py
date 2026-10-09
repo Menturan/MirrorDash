@@ -60,8 +60,6 @@ MOCK_BACKUPS = {
 # Dynamic patching helper to mock functions in all namespaces where they are imported
 @contextlib.contextmanager
 def patch_all_system():
-    mock_rw = AsyncMock(return_value=True)
-    mock_ro = AsyncMock(return_value=True)
     async def fake_restart():
         # A real restart starts a new process with a new boot id; the admin UI waits for that.
         import uuid
@@ -96,8 +94,6 @@ def patch_all_system():
         for m in modules:
             for func_name, mock_obj in [
                 ("load_config", MOCK_CONFIG),
-                ("remount_rw", mock_rw),
-                ("remount_ro", mock_ro),
                 ("run_restart", mock_restart),
                 ("get_ssh_status", mock_get_ssh_val),
                 ("set_ssh_status", mock_set_ssh_val),

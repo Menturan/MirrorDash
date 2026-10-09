@@ -2,9 +2,6 @@ import pytest
 import asyncio
 from unittest.mock import AsyncMock, patch, MagicMock
 from mirrordash_core.system import (
-    is_root_read_only,
-    remount_rw,
-    remount_ro,
     reboot_system,
     poweroff_system,
     apply_system_timezone,
@@ -16,55 +13,6 @@ from mirrordash_core.system import (
     get_ssh_status,
     set_ssh_status,
 )
-
-def test_is_root_read_only_proc_mounts():
-    mock_data = "sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0\n/dev/mmcblk0p2 / ext4 ro,noatime,commit=60 0 1\n"
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", return_value=MagicMock(__enter__=lambda s: MagicMock(read=lambda: mock_data, __iter__=lambda s: iter(mock_data.splitlines())))):
-        assert is_root_read_only() is True
-
-def test_is_root_read_only_proc_mounts_rw():
-    mock_data = "sysfs /sys sysfs rw,nosuid,nodev,noexec,relatime 0 0\n/dev/mmcblk0p2 / ext4 rw,noatime,commit=60 0 1\n"
-    with patch("os.path.exists", return_value=True), \
-         patch("builtins.open", return_value=MagicMock(__enter__=lambda s: MagicMock(read=lambda: mock_data, __iter__=lambda s: iter(mock_data.splitlines())))):
-        assert is_root_read_only() is False
-
-@pytest.mark.asyncio
-@patch("asyncio.create_subprocess_exec")
-async def test_remount_rw_success(mock_subproc):
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate.return_value = (b"", b"")
-    mock_subproc.return_value = mock_proc
-    
-    with patch("mirrordash_core.system.os.is_root_read_only", return_value=True):
-        from mirrordash_core.system.os import _originally_read_only
-        with patch("mirrordash_core.system.os._originally_read_only", None):
-            res = await remount_rw()
-            assert res is True
-            mock_subproc.assert_called_once_with(
-                "sudo", "-n", "mount", "-o", "remount,rw", "/",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-
-@pytest.mark.asyncio
-@patch("asyncio.create_subprocess_exec")
-async def test_remount_ro_success(mock_subproc):
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate.return_value = (b"", b"")
-    mock_subproc.return_value = mock_proc
-    
-    with patch("mirrordash_core.system.os.is_root_read_only", return_value=True):
-        with patch("mirrordash_core.system.os._originally_read_only", True):
-            res = await remount_ro()
-            assert res is True
-            mock_subproc.assert_called_once_with(
-                "sudo", "-n", "mount", "-o", "remount,ro", "/",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
@@ -140,9 +88,7 @@ async def test_scan_wifi_networks(mock_subproc):
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
-@patch("mirrordash_core.system.network.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.system.network.remount_ro", new_callable=AsyncMock)
-async def test_connect_wifi_success(mock_ro, mock_rw, mock_subproc):
+async def test_connect_wifi_success(mock_subproc):
     mock_proc = AsyncMock()
     mock_proc.returncode = 0
     mock_proc.communicate.return_value = (b"Connection successfully activated", b"")
@@ -151,8 +97,6 @@ async def test_connect_wifi_success(mock_ro, mock_rw, mock_subproc):
     success, msg = await connect_wifi("MySSID", "MyPassword")
     assert success is True
     assert "successfully activated" in msg
-    mock_rw.assert_called_once()
-    mock_ro.assert_called_once()
     # verify password was passed in the command line (headless nmcli support)
     assert mock_subproc.call_count >= 1
     # The last call should be the actual connection command containing the password
@@ -172,16 +116,12 @@ async def test_get_ssh_status(mock_subproc):
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
-@patch("mirrordash_core.system.network.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.system.network.remount_ro", new_callable=AsyncMock)
-async def test_set_ssh_status(mock_ro, mock_rw, mock_subproc):
+async def test_set_ssh_status(mock_subproc):
     mock_proc = AsyncMock()
     mock_subproc.return_value = mock_proc
     
     res = await set_ssh_status(True)
     assert res is True
-    mock_rw.assert_called_once()
-    mock_ro.assert_called_once()
     assert mock_subproc.call_count == 2
 
 

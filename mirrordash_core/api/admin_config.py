@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse
 from mirrordash_core.api.admin_shared import notify, require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config, get_core_version
 from mirrordash_core.module_loader import module_loader, find_entry_point
-from mirrordash_core.system import remount_ro, remount_rw
 
 logger = logging.getLogger("mirrordash.core.api.admin_config")
 
@@ -162,22 +161,18 @@ async def update_config(config: dict = Body(...)) -> dict:
         logger.warning(f"Configuration validation failed: {e}")
         raise HTTPException(status_code=422, detail=str(e))
 
-    await remount_rw()
-    try:
-        save_config(config)
-        logger.info("Configuration saved successfully. Reloading modules.")
+    save_config(config)
+    logger.info("Configuration saved successfully. Reloading modules.")
 
-        # Apply system timezone if configured
-        globals_cfg = config.get("globals", {})
-        timezone = globals_cfg.get("timezone")
-        if timezone:
-            from mirrordash_core.system import apply_system_timezone
-            asyncio.create_task(apply_system_timezone(timezone))
+    # Apply system timezone if configured
+    globals_cfg = config.get("globals", {})
+    timezone = globals_cfg.get("timezone")
+    if timezone:
+        from mirrordash_core.system import apply_system_timezone
+        asyncio.create_task(apply_system_timezone(timezone))
 
-        asyncio.create_task(module_loader.reload_modules())
-        return {"status": "success", "message": "Configuration updated"}
-    finally:
-        await remount_ro()
+    asyncio.create_task(module_loader.reload_modules())
+    return {"status": "success", "message": "Configuration updated"}
 
 
 @router.get("/globals-schema", dependencies=[Depends(require_api_key)])
@@ -337,11 +332,7 @@ async def save_panel_config_visual(request: Request):
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
 
     await module_loader.reload_modules()
 

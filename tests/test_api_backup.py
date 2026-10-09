@@ -70,10 +70,8 @@ def test_backup_list_with_files(mock_backup_dirs, client):
     assert backups[0]["filename"] == "test_backup.mirror"
     assert backups[0]["encrypted"] is False
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
 @patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
-def test_create_backup_success(mock_subproc, mock_ro, mock_rw, mock_backup_dirs, client):
+def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
     backups_dir, data_dir = mock_backup_dirs
     
     # Mock subprocess success
@@ -87,10 +85,8 @@ def test_create_backup_success(mock_subproc, mock_ro, mock_rw, mock_backup_dirs,
     assert response.json()["status"] == "success"
     assert "mirrordash_backup_" in response.json()["filename"]
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
 @patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
-def test_create_backup_zip_failure(mock_subproc, mock_ro, mock_rw, mock_backup_dirs, client):
+def test_create_backup_zip_failure(mock_subproc, mock_backup_dirs, client):
     # Mock subprocess failure
     mock_process = MagicMock()
     mock_process.returncode = 1
@@ -114,9 +110,7 @@ def test_download_backup_not_found(mock_backup_dirs, client):
     assert r.status_code == 404
     assert "Backup file not found" in r.json()["detail"]
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
-def test_delete_backup_success(mock_ro, mock_rw, mock_backup_dirs, client):
+def test_delete_backup_success(mock_backup_dirs, client):
     backups_dir, _ = mock_backup_dirs
     
     # Create file
@@ -129,9 +123,7 @@ def test_delete_backup_success(mock_ro, mock_rw, mock_backup_dirs, client):
     assert r.json()["status"] == "success"
     assert not backup_file.exists()
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
-def test_upload_backup_invalid_extension(mock_ro, mock_rw, mock_backup_dirs, client):
+def test_upload_backup_invalid_extension(mock_backup_dirs, client):
     headers = {"X-API-Key": "secret"}
     
     files = {"file": ("test.txt", b"hello", "text/plain")}
@@ -139,9 +131,7 @@ def test_upload_backup_invalid_extension(mock_ro, mock_rw, mock_backup_dirs, cli
     assert r.status_code == 400
     assert "extension" in r.json()["detail"]
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
-def test_upload_backup_corrupt_zip(mock_ro, mock_rw, mock_backup_dirs, client):
+def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     headers = {"X-API-Key": "secret"}
     
     files = {"file": ("test.mirror", b"corrupt data", "application/octet-stream")}
@@ -149,10 +139,8 @@ def test_upload_backup_corrupt_zip(mock_ro, mock_rw, mock_backup_dirs, client):
     assert r.status_code == 400
     assert "Invalid or corrupt backup archive" in r.json()["detail"]
 
-@patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock)
-@patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock)
 @patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec")
-def test_restore_backup_success(mock_subproc, mock_ro, mock_rw, mock_backup_dirs, client):
+def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
     backups_dir, data_dir = mock_backup_dirs
     
     # Create the tmp_upload.mirror file that restore expects to find
@@ -297,9 +285,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
         proc.communicate = AsyncMock(return_value=(b"", b""))
         return proc
 
-    with patch("mirrordash_core.api.backup.remount_rw", new_callable=AsyncMock), \
-         patch("mirrordash_core.api.backup.remount_ro", new_callable=AsyncMock), \
-         patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec", side_effect=fake_exec), \
+    with         patch("mirrordash_core.api.backup.asyncio.create_subprocess_exec", side_effect=fake_exec), \
          patch("mirrordash_core.api.backup.find_local_module_dir", return_value=None), \
          patch("mirrordash_core.api.backup.importlib.metadata.entry_points", return_value=[ep]):
         with patch("mirrordash_core.api.backup.load_config", return_value=old_config):

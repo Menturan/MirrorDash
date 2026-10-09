@@ -15,7 +15,6 @@ from fastapi.responses import HTMLResponse
 from mirrordash_core.api.admin_shared import require_api_key, templates
 from mirrordash_core.config import find_module_config, load_config, save_config
 from mirrordash_core.module_loader import module_loader
-from mirrordash_core.system import remount_ro, remount_rw
 
 # Import helper functions from system router to avoid duplication
 from mirrordash_core.api.admin_system import (
@@ -83,7 +82,6 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
                 package_name = f"{package_name}@{tag}"
 
     swap_info = await prepare_venv_next()
-    await remount_rw()
     try:
         logger.info(f"Installing package: {package_name}")
         
@@ -144,8 +142,6 @@ async def install_module(package_name: str = Body(..., embed=True)) -> dict:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=f"Installation failed: {e}")
-    finally:
-        await remount_ro()
 
 
 @router.post("/update", dependencies=[Depends(require_api_key)])
@@ -177,7 +173,6 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
             continue
 
     swap_info = await prepare_venv_next()
-    await remount_rw()
     try:
         logger.info(f"Upgrading package: {package_name} (current version: {old_version or 'unknown'})")
         
@@ -274,8 +269,6 @@ async def update_module(package_name: str = Body(..., embed=True)) -> dict:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=f"Upgrade failed: {e}")
-    finally:
-        await remount_ro()
 
 
 @router.post("/uninstall", dependencies=[Depends(require_api_key)])
@@ -288,7 +281,6 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
         raise HTTPException(status_code=400, detail="Invalid package name")
 
     swap_info = await prepare_venv_next()
-    await remount_rw()
     try:
         # Load and remove module config from config.json if configured
         config = load_config()
@@ -359,8 +351,6 @@ async def uninstall_module(package_name: str = Body(..., embed=True)) -> dict:
         if isinstance(e, HTTPException):
             raise
         raise HTTPException(status_code=500, detail=f"Uninstall failed: {e}")
-    finally:
-        await remount_ro()
 
 
 async def list_modules() -> dict:

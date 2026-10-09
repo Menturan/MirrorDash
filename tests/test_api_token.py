@@ -58,9 +58,7 @@ def test_admin_creates_and_removes_the_token():
     app.dependency_overrides[require_api_key] = lambda: None
     try:
         with patch("mirrordash_core.api.admin_system_panels.load_config", side_effect=lambda: dict(saved)), \
-             patch("mirrordash_core.api.admin_system_panels.save_config", side_effect=save), \
-             patch("mirrordash_core.api.admin_system_panels.remount_rw", new_callable=AsyncMock), \
-             patch("mirrordash_core.api.admin_system_panels.remount_ro", new_callable=AsyncMock):
+             patch("mirrordash_core.api.admin_system_panels.save_config", side_effect=save):
             client = TestClient(app)
             r = client.post("/admin/panels/system/api-token/create")
             token = r.text.split('id="api-token-value"')[1].split('value="')[1].split('"')[0]

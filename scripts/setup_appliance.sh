@@ -387,8 +387,6 @@ EOF
 step_passwordless_sudo() {
   cat << 'EOF' > /etc/sudoers.d/mirrordash
 # MirrorDash application — scoped passwordless sudo
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,rw /
-pi ALL=(ALL) NOPASSWD: /usr/bin/mount -o remount\,ro /
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh

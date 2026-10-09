@@ -5,7 +5,7 @@ import string
 from fastapi import APIRouter, Body, Depends, HTTPException
 
 from mirrordash_core.config import load_config, save_config
-from mirrordash_core.system import is_wifi_hotspot_active, remount_ro, remount_rw
+from mirrordash_core.system import is_wifi_hotspot_active
 from mirrordash_core.api.admin_shared import hash_password, require_api_key
 
 router = APIRouter()
@@ -73,12 +73,8 @@ async def setup_auth(body: dict = Body(...)) -> dict:
         "salt": salt,
     }
 
-    await remount_rw()
-    try:
-        save_config(config)
-        return {"status": "success", "message": "Admin password set successfully"}
-    finally:
-        await remount_ro()
+    save_config(config)
+    return {"status": "success", "message": "Admin password set successfully"}
 
 
 @router.post("/auth/change-password", dependencies=[Depends(require_api_key)])
@@ -99,12 +95,8 @@ async def change_password(body: dict = Body(...)) -> dict:
         "salt": salt,
     }
 
-    await remount_rw()
-    try:
-        save_config(config)
-        return {"status": "success", "message": "Admin password changed successfully"}
-    finally:
-        await remount_ro()
+    save_config(config)
+    return {"status": "success", "message": "Admin password changed successfully"}
 
 
 @router.post("/auth/recover")
@@ -137,13 +129,9 @@ async def recover_auth(body: dict = Body(...)) -> dict:
         "salt": salt,
     }
 
-    await remount_rw()
-    try:
-        save_config(config)
-        clear_recovery_pin()
-        return {"status": "success", "message": "Admin password restored successfully"}
-    finally:
-        await remount_ro()
+    save_config(config)
+    clear_recovery_pin()
+    return {"status": "success", "message": "Admin password restored successfully"}
 
 
 @router.post("/auth/forgot-password")
@@ -161,20 +149,16 @@ async def forgot_password() -> dict:
         "salt": "forgotten"
     }
 
-    await remount_rw()
+    save_config(config)
+    # Ensure the recovery PIN is active in memory
+    get_recovery_pin()
+    
+    # Broadcast reload so the physical kiosk immediately loads the PIN screen
     try:
-        save_config(config)
-        # Ensure the recovery PIN is active in memory
-        get_recovery_pin()
+        from mirrordash_core.app import manager
+        await manager.broadcast({"action": "reload"})
+    except Exception:
+        pass
         
-        # Broadcast reload so the physical kiosk immediately loads the PIN screen
-        try:
-            from mirrordash_core.app import manager
-            await manager.broadcast({"action": "reload"})
-        except Exception:
-            pass
-            
-        return {"status": "success", "message": "Password recovery mode initialized."}
-    finally:
-        await remount_ro()
+    return {"status": "success", "message": "Password recovery mode initialized."}
 

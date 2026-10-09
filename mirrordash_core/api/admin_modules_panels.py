@@ -8,7 +8,6 @@ from fastapi.responses import HTMLResponse
 from mirrordash_core.api.admin_shared import job_response, notify, require_api_key, start_job, templates
 from mirrordash_core.config import find_module_config, load_config, save_config, version_key
 from mirrordash_core.module_loader import module_loader, find_entry_point
-from mirrordash_core.system import remount_ro, remount_rw
 from mirrordash_core.system.network import fetch_json_cached
 
 # Import endpoints and helper functions from admin_modules and admin_system
@@ -375,11 +374,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
 
     await module_loader.reload_modules()
 
@@ -397,11 +392,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     if cfg_key in modules_config:
         del modules_config[cfg_key]
 
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
 
     await module_loader.reload_modules()
 
@@ -421,11 +412,7 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
         new_state = not current_state
         modules_config[cfg_key]["enabled"] = new_state
 
-        await remount_rw()
-        try:
-            save_config(config)
-        finally:
-            await remount_ro()
+        save_config(config)
 
         await module_loader.reload_modules()
 

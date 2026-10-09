@@ -1,7 +1,4 @@
 from mirrordash_core.system.os import (
-    is_root_read_only,
-    remount_rw,
-    remount_ro,
     run_restart,
     reboot_system,
     poweroff_system,
@@ -26,9 +23,6 @@ from mirrordash_core.system.network import (
 )
 
 __all__ = [
-    "is_root_read_only",
-    "remount_rw",
-    "remount_ro",
     "run_restart",
     "reboot_system",
     "poweroff_system",

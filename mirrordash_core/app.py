@@ -16,7 +16,7 @@ from mirrordash_core.module_loader import module_loader
 from mirrordash_core.api.admin import router as admin_router
 from mirrordash_core.api.backup import router as backup_router
 from mirrordash_core.api.public import router as public_router
-from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, remount_rw, remount_ro, is_wifi_hotspot_active, get_hotspot_password, restore_captive_ap
+from mirrordash_core.system import scan_wifi_networks, connect_wifi, reboot_system, is_wifi_hotspot_active, get_hotspot_password, restore_captive_ap
 from mirrordash_core.system.network import HOTSPOT_SSID
 
 from mirrordash_core.display_power import display_power_manager
@@ -190,11 +190,7 @@ async def post_wifi_setup(body: dict) -> dict:
             config = load_config()
             config.setdefault("globals", {})["timezone"] = timezone
 
-            await remount_rw()
-            try:
-                save_config(config)
-            finally:
-                await remount_ro()
+            save_config(config)
 
             # Apply system timezone
             await apply_system_timezone(timezone)

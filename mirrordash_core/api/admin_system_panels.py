@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from mirrordash_core.api.admin_shared import BOOT_ID, events_header, job_response, notify, require_api_key, start_job, templates, ui_events
 from mirrordash_core.config import load_config, get_core_version, save_config
-from mirrordash_core.system import poweroff_system, reboot_system, remount_ro, remount_rw, sudo_allowed
+from mirrordash_core.system import poweroff_system, reboot_system, sudo_allowed
 from mirrordash_core.api.admin_system import (
     get_system_settings,
     update_system_settings,
@@ -368,11 +368,7 @@ async def _save_devices(request: Request, config: dict, devices: list[dict], don
     if error:
         system_cfg["devices"] = previous
         return _devices_card(request, system_cfg, error, "error")
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
     if restart_needed:
         done_message += " Restart the mirror to start using it."
     return _devices_card(request, system_cfg, done_message, restart_needed=restart_needed)
@@ -444,11 +440,7 @@ async def save_button_actions(request: Request):
         return notify("That push button isn't connected.", "error")
     button["actions"] = actions  # takes effect on the next press, no restart needed
     button["long_press"] = long_press
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
     return notify("Saved.")
 
 
@@ -476,11 +468,7 @@ async def create_api_token(request: Request):
     token = secrets.token_urlsafe(32)
     config = load_config()
     config["api_token"] = {"hash": token_hash(token), "created": datetime.date.today().isoformat()}
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
     return _api_access_card(request, new_token=token, message="Token created.")
 
 
@@ -488,11 +476,7 @@ async def create_api_token(request: Request):
 async def remove_api_token(request: Request):
     config = load_config()
     config.pop("api_token", None)
-    await remount_rw()
-    try:
-        save_config(config)
-    finally:
-        await remount_ro()
+    save_config(config)
     return _api_access_card(request, message="Token removed.")
 
 

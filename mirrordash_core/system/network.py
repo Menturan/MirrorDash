@@ -6,7 +6,6 @@ import logging
 import os
 import time
 import urllib.request
-from mirrordash_core.system.os import remount_rw, remount_ro
 
 logger = logging.getLogger("mirrordash.core.system.network")
 
@@ -122,8 +121,6 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
     """
     logger.info(f"Attempting to connect to WiFi SSID: {ssid}")
 
-    await remount_rw()
-
     try:
         await _teardown_captive_ap()
     except Exception as e:
@@ -141,9 +138,6 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
         )
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
 
-        # Lock FS
-        await remount_ro()
-
         if proc.returncode == 0:
             msg = stdout.decode().strip()
             logger.info(f"WiFi connection successful: {msg}")
@@ -154,11 +148,9 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
             return False, msg
 
     except asyncio.TimeoutError:
-        await remount_ro()
         logger.error("WiFi connection timed out.")
         return False, "Connection timed out after 30 seconds."
     except Exception as e:
-        await remount_ro()
         logger.error(f"WiFi connection error: {e}")
         return False, str(e)
 
@@ -177,7 +169,6 @@ async def get_ssh_status() -> bool:
 
 async def set_ssh_status(enabled: bool) -> bool:
     """Enable/start or disable/stop the SSH service."""
-    await remount_rw()
     try:
         action = "enable" if enabled else "disable"
         proc1 = await asyncio.create_subprocess_exec(
@@ -193,11 +184,9 @@ async def set_ssh_status(enabled: bool) -> bool:
         )
         await proc2.wait()
 
-        await remount_ro()
         return True
     except Exception as e:
         logger.error(f"Failed to change SSH status: {e}")
-        await remount_ro()
         return False
 
 # ponytail: in-memory, unbounded cache keyed by URL (one entry per installed module and the

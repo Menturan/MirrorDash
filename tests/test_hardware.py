@@ -180,11 +180,9 @@ def _message(response) -> str:
     return json.loads(response.headers["HX-Trigger-After-Swap"])["md-notify"]["message"]
 
 
-@patch("mirrordash_core.api.admin_system_panels.remount_ro", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system_panels.remount_rw", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system_panels.save_config")
 @patch("mirrordash_core.api.admin_system_panels.load_config")
-def test_add_and_remove_devices(mock_load, mock_save, _rw, _ro, client):
+def test_add_and_remove_devices(mock_load, mock_save, client):
     mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 3, "actions": {}}], "gpio_overlays": ["button:3"]}}
 
     with patch("mirrordash_core.hardware.write_gpio_overlays", new_callable=AsyncMock, return_value=None) as write:
@@ -207,11 +205,9 @@ def test_add_and_remove_devices(mock_load, mock_save, _rw, _ro, client):
     write.assert_awaited_once_with(["mmwave:22"])
 
 
-@patch("mirrordash_core.api.admin_system_panels.remount_ro", new_callable=AsyncMock)
-@patch("mirrordash_core.api.admin_system_panels.remount_rw", new_callable=AsyncMock)
 @patch("mirrordash_core.api.admin_system_panels.save_config")
 @patch("mirrordash_core.api.admin_system_panels.load_config")
-def test_button_actions(mock_load, mock_save, _rw, _ro, client):
+def test_button_actions(mock_load, mock_save, client):
     mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 17, "actions": {}},
                                                      {"type": "button_2", "pin": 22, "actions": {}}]}}
     url = "/admin/panels/system/devices/button-actions"
@@ -234,8 +230,6 @@ def test_device_problem_does_not_block_other_settings():
     cfg = {"system": {"devices": [{"type": "button", "pin": 23}], "display_control": {"mode": "wake"}}}
     with patch("mirrordash_core.api.admin_system.load_config", return_value=cfg), \
          patch("mirrordash_core.api.admin_system.save_config") as save, \
-         patch("mirrordash_core.api.admin_system.remount_rw", new_callable=AsyncMock), \
-         patch("mirrordash_core.api.admin_system.remount_ro", new_callable=AsyncMock), \
          patch("mirrordash_core.api.admin_system.apply_system_settings", new_callable=AsyncMock), \
          patch("mirrordash_core.hardware.os.path.exists", return_value=False):
         asyncio.run(update_system_settings(settings={"brightness": 40}))
