@@ -8,9 +8,11 @@ You need [uv](https://docs.astral.sh/uv/). It installs the right Python (3.14) b
 
 ```bash
 git clone https://github.com/Menturan/MirrorDash.git && cd MirrorDash
-uv sync
+uv sync --extra dev --inexact
 MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main
 ```
+
+- **Modules to try it with** install into the same venv: `uv pip install -e ../mirrordash-modules/mirrordash-clock` (one `-e` per module folder). `--inexact` keeps them: a plain `uv sync` removes everything that isn't in `uv.lock`, modules and the test tools included.
 
 - **The mirror's screen** is at <http://localhost:8000>, and **the admin page** is at <http://localhost:8000/admin>. The first visit asks you to set an admin password.
 - **Dev mode reloads** the server whenever you save a `.py`, `.html`, `.json` or `.css` file.

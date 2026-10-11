@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from mirrordash_core.config import get_core_version
 
 logger = logging.getLogger("mirrordash.core.dashboard")
@@ -20,6 +21,16 @@ def get_cpu_temperature() -> float | None:
         with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
             return round(int(f.read().strip()) / 1000.0, 1)
     except Exception:
+        return None
+
+
+def get_cpu_load() -> float | None:
+    """CPU load in percent of all cores, None where the OS has no load average."""
+    # ponytail: the 1-minute load average, not an instantaneous %; it also counts processes waiting
+    # on I/O. Upgrade path: the /proc/stat busy/idle delta between two dashboard polls.
+    try:
+        return round(min(os.getloadavg()[0] / (os.cpu_count() or 1) * 100, 100.0), 1)
+    except OSError:
         return None
 
 

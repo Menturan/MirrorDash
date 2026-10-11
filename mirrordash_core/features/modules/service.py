@@ -31,6 +31,9 @@ SAFE_NAME = re.compile(r"^[a-zA-Z0-9\-_.@/]+$")  # PyPI names and local paths
 LOCAL_MODULE_DIRS = ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules")
 
 
+NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-* packages the community scan skips
+
+
 def check_package_name(package_name: str, allow_git: bool = True) -> None:
     """Trust boundary: a PyPI-safe name, a local path or a GitHub git+https URL, never `..`."""
     ok = SAFE_NAME.match(package_name) or (allow_git and GIT_URL.match(package_name))
@@ -217,9 +220,8 @@ async def scan_community_modules_now():
     html = await loop.run_in_executor(None, _fetch_simple_index)
     if html:
         # Find all package names starting with mirrordash-
-        # Exclude mirrordash-core and mirrordash itself
         names = re.findall(r'<a href=\"/simple/(mirrordash-[^\"]+)/\">', html)
-        names = sorted(list(set(n for n in names if n != "mirrordash" and n != "mirrordash-core")))
+        names = sorted(set(names) - NOT_MODULES)
 
         # Fetch metadata for each discovered package
         for name in names:
@@ -272,7 +274,7 @@ async def scan_community_modules_now():
         raise
     for item in github_data.get("items", []):
         repo_name = item.get("name", "")
-        if not repo_name.startswith("mirrordash-") or repo_name in scanned_names or repo_name in ("mirrordash-core", "mirrordash-sdk"):
+        if not repo_name.startswith("mirrordash-") or repo_name in scanned_names or repo_name in NOT_MODULES:
             continue
         scanned_modules.append({
             "name": repo_name,

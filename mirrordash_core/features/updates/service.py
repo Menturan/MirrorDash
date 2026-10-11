@@ -5,10 +5,9 @@ import json
 import logging
 import os
 import urllib.request
-from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
-from mirrordash_core.config import get_base_dir, load_config, get_core_version, version_key
+from mirrordash_core.config import load_config, get_core_version, version_key
 from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
 from mirrordash_core.host import run_restart
 
@@ -98,9 +97,12 @@ async def update_core() -> dict:
 
 
 async def rebuild_venv() -> dict:
-    """Build a fresh venv with this MirrorDash version, the local modules and the configured ones."""
+    """Build a fresh venv with this MirrorDash version and the modules installed now, each from
+    where it came (local folder, GitHub commit, PyPI version). A module that fails undoes the swap."""
+    from mirrordash_core.features.backup.service import find_local_module_dir, installed_modules
     if not get_venv_paths():
         raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")
+    modules = installed_modules()  # read from the active venv, before it is replaced
     current_version = get_core_version()
     logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
     try:
@@ -109,16 +111,13 @@ async def rebuild_venv() -> dict:
             if code != 0:
                 logger.error(f"Failed to install mirrordash: {err}")
                 raise HTTPException(status_code=500, detail=f"Failed to install core: {err}")
-            modules_dir = Path(get_base_dir()) / "modules"
-            local = [d for d in (modules_dir.iterdir() if modules_dir.is_dir() else []) if (d / "pyproject.toml").exists()]
-            for folder in local:
-                logger.info(f"Rebuilding venv: installing local module {folder.name} in editable mode")
-                await uv_pip(python, "install", "-e", str(folder))
-            local_names = {d.name for d in local}
-            for name in load_config().get("modules", {}):
-                if name not in local_names and name != "mirrordash-clock":
-                    logger.info(f"Rebuilding venv: installing configured PyPI module {name}")
-                    await uv_pip(python, "install", name)
+            for mod in modules:
+                local_dir = find_local_module_dir(mod["package_name"]) if mod["type"] == "local" else None
+                target = ["-e", str(local_dir)] if local_dir else [mod.get("source") or f"{mod['package_name']}=={mod['version']}"]
+                logger.info(f"Rebuilding venv: installing module {' '.join(target)}")
+                code, _, err = await uv_pip(python, "install", *target)
+                if code != 0:
+                    raise HTTPException(status_code=500, detail=f"Could not reinstall {mod['package_name']}: {err}")
     except HTTPException:
         raise
     except Exception as e:

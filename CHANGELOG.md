@@ -19,12 +19,15 @@ There are two kinds of releases:
 - While the screen is off, the modules stop fetching data, which saves calls to paid or rate-limited services. When the screen comes back on, a module whose update was due fetches it right away; the others keep to their own schedule.
 - Modules can fetch any kind of data through the mirror (RSS, calendars, POST APIs), not only JSON, so all of them get the sleep above and keep showing their last answer when the internet is gone. The calendar and news modules now use it.
 - Saving a setting no longer makes every module fetch its data again, and a module on the screen no longer redraws (flickers) when nothing in it changed.
+- The dashboard shows the CPU's load next to its temperature, and marks a module on the screen that is set up but no longer installed.
 
 ### Changed
 - The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).
 - SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 
 ### Fixed
+- *Rebuild environment* no longer loses modules installed from GitHub or added more than once: it reinstalls exactly what was installed, and if one of them can't be installed it keeps the old environment.
+- The SDK for writing modules (`mirrordash-sdk`) no longer shows up as a module to install.
 - After a power cut, the mirror no longer stays on `MirrorDash-Setup` when it started before the router: it tries your Wi-Fi again every few minutes. *Needs the new OS image.*
 - *Forgot password?* no longer lets anyone on the home network lock you out: it used to remove the password before a new one was chosen.
 - Turning on SSH says so: the button shows that it's working, then "SSH is on" with how to log in, or why the password was refused. Before, the click often did nothing visible, and a refused password still left SSH marked as on.

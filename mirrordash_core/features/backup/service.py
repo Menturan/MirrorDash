@@ -55,6 +55,26 @@ def find_local_module_dir(package_name: str) -> Path | None:
     return None
 
 
+def installed_modules() -> list[dict]:
+    """Every installed module and where it reinstalls from: its local folder, its GitHub commit
+    (PEP 610 records it) or its PyPI version. The backup manifest and the venv rebuild use it."""
+    modules = []
+    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+        package_name = ep.dist.name if ep.dist else ep.name
+        entry = {"name": ep.name, "package_name": package_name,
+                 "version": ep.dist.version if ep.dist else "0.0.0", "type": "pypi"}
+        local_dir = find_local_module_dir(package_name)
+        if local_dir:
+            entry.update(type="local", folder_name=local_dir.name)
+        else:
+            direct_url = json.loads((ep.dist.read_text("direct_url.json") if ep.dist else None) or "{}")
+            vcs = direct_url.get("vcs_info")
+            if vcs and direct_url.get("url"):
+                entry["source"] = f"git+{direct_url['url']}@{vcs['commit_id']}"
+        modules.append(entry)
+    return modules
+
+
 def temp_upload() -> str:
     """Where the backup being restored waits (uploaded, or copied from the saved ones)."""
     return os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
@@ -141,46 +161,16 @@ async def create_backup(password: str | None = None) -> dict:
         else:
             temp_data_dir.mkdir(parents=True, exist_ok=True)
 
-        # 3. Discover and process modules
-        modules_list = []
+        # 3. Discover and process modules; a local module's source code goes in the archive
         try:
-            eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
-
-            for ep in eps:
-                name = ep.name
-                package_name = ep.dist.name if ep.dist else name
-                version = ep.dist.version if ep.dist else "0.0.0"
-
-                local_dir = find_local_module_dir(package_name)
-                if local_dir:
-                    # Module is local
-                    modules_list.append({
-                        "name": name,
-                        "package_name": package_name,
-                        "version": version,
-                        "type": "local",
-                        "folder_name": local_dir.name
-                    })
-                    # Copy module source code to the temp archive dir
-                    temp_local_modules_dir = temp_dir / "local_modules" / local_dir.name
+            modules_list = installed_modules()
+            for mod in modules_list:
+                if mod["type"] == "local":
                     shutil.copytree(
-                        local_dir,
-                        temp_local_modules_dir,
+                        find_local_module_dir(mod["package_name"]),
+                        temp_dir / "local_modules" / mod["folder_name"],
                         ignore=shutil.ignore_patterns('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
                     )
-                else:
-                    # Module is PyPI, or installed from GitHub: PEP 610 records where it came from
-                    entry = {
-                        "name": name,
-                        "package_name": package_name,
-                        "version": version,
-                        "type": "pypi"
-                    }
-                    direct_url = json.loads((ep.dist.read_text("direct_url.json") if ep.dist else None) or "{}")
-                    vcs = direct_url.get("vcs_info")
-                    if vcs and direct_url.get("url"):
-                        entry["source"] = f"git+{direct_url['url']}@{vcs['commit_id']}"
-                    modules_list.append(entry)
         except Exception as e:
             logger.error(f"Failed to package modules metadata: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")

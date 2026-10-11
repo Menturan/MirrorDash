@@ -778,6 +778,47 @@ def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare
     mock_create_task.assert_called_once()
 
 
+REBUILD_MODULES = [
+    {"name": "mirrordash_news", "package_name": "mirrordash-news", "version": "1.2.0", "type": "pypi"},
+    {"name": "mirrordash_calendar", "package_name": "mirrordash-calendar", "version": "0.3.0", "type": "pypi",
+     "source": "git+https://github.com/someone/mirrordash-calendar@abc123"},
+]
+
+
+@pytest.mark.parametrize("failing", [None, "mirrordash-news==1.2.0"])
+@patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
+@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=True)
+def test_rebuild_venv_reinstalls_installed_modules(mock_paths, mock_revert, mock_commit, mock_prepare, mock_version,
+                                                   mock_create_task, mock_restart, mock_modules, failing):
+    """Rebuild reinstalls what is installed (PyPI at its version, GitHub at its commit), not what
+    config names; one module failing undoes the swap instead of losing the module."""
+    from pathlib import Path
+    mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
+    installed = []
+
+    async def fake_uv_pip(python, command, *args):
+        installed.append(args[-1])
+        return (1, "", "boom") if args[-1] == failing else (0, "", "")
+
+    with patch("mirrordash_core.features.updates.service.uv_pip", side_effect=fake_uv_pip):
+        response = call(rebuild_venv)
+    assert installed[:3] == ["mirrordash==1.0.0", "mirrordash-news==1.2.0",
+                             "git+https://github.com/someone/mirrordash-calendar@abc123"][:len(installed)]
+    if failing:
+        assert response.status_code == 500 and "mirrordash-news" in response.json()["detail"]
+        mock_revert.assert_awaited_once()
+        mock_commit.assert_not_awaited()
+    else:
+        assert response.status_code == 200 and len(installed) == 3
+        mock_commit.assert_awaited_once()
+
+
 @patch("mirrordash_core.features.hardware.routes.load_config")
 @patch("mirrordash_core.system_settings.get_available_resolutions", new_callable=AsyncMock)
 def test_get_panel_system(mock_res, mock_load, client):
@@ -1161,20 +1202,36 @@ def test_get_panel_dashboard(
 
     cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
                        "mirrordash_news": {"position": "top_left", "enabled": False}}}
-    with patch("mirrordash_core.features.dashboard.routes.load_config", return_value=cfg):
+    with patch("mirrordash_core.features.dashboard.routes.load_config", return_value=cfg), \
+         patch("mirrordash_core.features.dashboard.routes.find_entry_point",
+               side_effect=lambda name, eps: object() if "clock" in name else None), \
+         patch("mirrordash_core.features.dashboard.telemetry.get_cpu_load", return_value=42.5):
         response = client.get("/admin/panels/dashboard", headers=headers)
     assert response.status_code == 200
     assert "On the Screen" in response.text
     assert "System Analytics" in response.text
-    # Configured modules are named in their screen position, the disabled one dimmed
+    # Configured modules are named in their screen position, the disabled one dimmed;
+    # one in config whose module is not installed says so
     assert "var(--text-primary);\">Clock</span>" in response.text
     assert "var(--text-muted);\">News</span>" in response.text
+    assert response.text.count("Not installed") == 1
+    assert "42.5% Load" in response.text
     assert "Memory (RAM)" in response.text
     assert "50.0% Used" in response.text
     assert "Home-WiFi" in response.text
     assert "5d 12h 30m" in response.text
     assert "In sync" in response.text
     assert "Power Warning: Under-voltage Detected" in response.text
+
+
+def test_cpu_load_is_a_percentage_of_all_cores():
+    from mirrordash_core.features.dashboard.telemetry import get_cpu_load
+    with patch("os.getloadavg", return_value=(2.0, 0, 0)), patch("os.cpu_count", return_value=4):
+        assert get_cpu_load() == 50.0
+    with patch("os.getloadavg", return_value=(9.0, 0, 0)), patch("os.cpu_count", return_value=4):
+        assert get_cpu_load() == 100.0
+    with patch("os.getloadavg", side_effect=OSError):
+        assert get_cpu_load() is None
 
 
 @patch("mirrordash_core.features.dashboard.telemetry.check_all_updates")

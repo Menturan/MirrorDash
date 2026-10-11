@@ -1,12 +1,13 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import importlib.metadata
 import logging
 import re
 from fastapi import APIRouter, Depends, Request
 from mirrordash_core.admin import require_api_key, templates
 from mirrordash_core.config import load_config
-from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.loader import find_entry_point, module_loader
 
 logger = logging.getLogger("mirrordash.core.dashboard")
 router = APIRouter(prefix="/admin")
@@ -15,7 +16,7 @@ router = APIRouter(prefix="/admin")
 @router.get("/panels/dashboard", dependencies=[Depends(require_api_key)])
 async def get_panel_dashboard(request: Request):
     from mirrordash_core.features.updates.service import get_disk_usage
-    from mirrordash_core.features.dashboard.telemetry import get_cpu_temperature, get_uptime_string, get_ram_usage, get_ntp_status, get_wifi_info, get_undervoltage_detected
+    from mirrordash_core.features.dashboard.telemetry import get_cpu_load, get_cpu_temperature, get_uptime_string, get_ram_usage, get_ntp_status, get_wifi_info, get_undervoltage_detected
     import socket
 
     # Each of these spawns a system command (df, timedatectl, nmcli, vcgencmd); run them
@@ -24,13 +25,16 @@ async def get_panel_dashboard(request: Request):
         get_disk_usage(), get_ntp_status(), get_wifi_info(), get_undervoltage_detected()
     )
     
-    # What is placed where on the screen (from the config, so stopped or disabled modules show too)
+    # What is placed where on the screen (from the config, so stopped or disabled modules show too,
+    # and so does an instance whose module is no longer installed)
     screen_layout = {}
+    eps = list(importlib.metadata.entry_points(group="mirrordash.modules"))
     for inst_id, inst_cfg in load_config().get("modules", {}).items():
         if isinstance(inst_cfg, dict):
             name = re.sub(r"^mirrordash[-_]", "", inst_id).replace("_", " ").replace("-", " ").title()
             screen_layout.setdefault(inst_cfg.get("position", "middle_center"), []).append(
-                {"name": name, "enabled": inst_cfg.get("enabled", True)})
+                {"name": name, "enabled": inst_cfg.get("enabled", True),
+                 "installed": find_entry_point(inst_cfg.get("module", inst_id), eps) is not None})
         
     cpu_temp = get_cpu_temperature()
 
@@ -54,6 +58,7 @@ async def get_panel_dashboard(request: Request):
             "screen_layout": screen_layout,
             "disk_usage": disk_usage,
             "cpu_temp": cpu_temp,
+            "cpu_load": get_cpu_load(),
             "local_ip": local_ip,
             "active_count": len(module_loader.tasks),
             "uptime_str": uptime_str,
