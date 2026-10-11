@@ -22,6 +22,7 @@ There are two kinds of releases:
 - The dashboard shows the CPU's load next to its temperature, and marks a module on the screen that is set up but no longer installed.
 
 ### Changed
+- The Modules tab starts with a map of the mirror: every module where it sits, the turned-off ones dimmed. Tap one to change it. Below it, the installed modules are a short list that says where each one is and whether an update is waiting, and *Add modules* shows each community module's screenshot, author, stars and last update before you install it.
 - The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).
 - SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 

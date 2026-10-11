@@ -370,6 +370,18 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
 
     // Render instances list
     const card = document.getElementById('module-card-' + name);
+
+    const shot = document.getElementById('profileShot');
+    if (shot) {
+        const src = card ? card.dataset.screenshot : '';
+        shot.hidden = !src;
+        if (src) {
+            const img = shot.querySelector('img');
+            img.alt = `Screenshot of ${title}`;
+            img.src = src;
+            shot.querySelector('a').href = card.dataset.repo + '#readme';
+        }
+    }
     const instancesSection = document.getElementById('instancesSection');
     const instancesList = document.getElementById('instances-list-global');
     const addNewBtn = document.getElementById('add-new-instance-btn');
@@ -480,11 +492,8 @@ window.openConfigureModule = function(name, packageName, activeInstanceId) {
     const card = document.getElementById('module-card-' + name);
     if (!card) return;
     
-    const titleEl = card.querySelector('h3');
-    const title = titleEl ? titleEl.innerText : name;
-    
-    const descEl = card.querySelector('p');
-    const description = descEl ? descEl.innerText : '';
+    const title = card.dataset.title || name;
+    const description = card.dataset.description || '';
     
     const iconContainer = card.querySelector('.module-card-icon-container');
     let iconHtml = '<i class="fas fa-puzzle-piece"></i>';

@@ -74,3 +74,5 @@ Loading is always visible: anything that waits shows calm motion (the breathing 
 ## The admin page
 
 A phone page, not the mirror, but the same family: near-black, white type, **white as the only accent** (the active tab, a primary button, focus rings). Colour means status only: `#a0ffba` fine, `#f59e0b` needs a look, `#f87171` wrong or destructive. One filled white button per card is its main action; everything else is outlined. A card's title names what's in it, never the page it's on.
+
+The mirror's layout is always drawn the same way, as `screen_map.html`: nine cells in the screen's shape (tall when it's rotated), each module a chip in its cell. A dimmed chip is turned off; a chip saying *Not installed* in the warning colour is set up but missing.

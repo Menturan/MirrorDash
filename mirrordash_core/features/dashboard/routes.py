@@ -1,13 +1,12 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
-import importlib.metadata
 import logging
-import re
 from fastapi import APIRouter, Depends, Request
 from mirrordash_core.admin import require_api_key, templates
 from mirrordash_core.config import load_config
-from mirrordash_core.features.modules.loader import find_entry_point, module_loader
+from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.service import is_portrait, screen_layout
 
 logger = logging.getLogger("mirrordash.core.dashboard")
 router = APIRouter(prefix="/admin")
@@ -25,17 +24,6 @@ async def get_panel_dashboard(request: Request):
         get_disk_usage(), get_ntp_status(), get_wifi_info(), get_undervoltage_detected()
     )
     
-    # What is placed where on the screen (from the config, so stopped or disabled modules show too,
-    # and so does an instance whose module is no longer installed)
-    screen_layout = {}
-    eps = list(importlib.metadata.entry_points(group="mirrordash.modules"))
-    for inst_id, inst_cfg in load_config().get("modules", {}).items():
-        if isinstance(inst_cfg, dict):
-            name = re.sub(r"^mirrordash[-_]", "", inst_id).replace("_", " ").replace("-", " ").title()
-            screen_layout.setdefault(inst_cfg.get("position", "middle_center"), []).append(
-                {"name": name, "enabled": inst_cfg.get("enabled", True),
-                 "installed": find_entry_point(inst_cfg.get("module", inst_id), eps) is not None})
-        
     cpu_temp = get_cpu_temperature()
 
     # Get local routing IP address
@@ -55,7 +43,8 @@ async def get_panel_dashboard(request: Request):
         request=request,
         name="admin_dashboard.html",
         context={
-            "screen_layout": screen_layout,
+            "screen_layout": screen_layout(),
+            "portrait": is_portrait(),
             "disk_usage": disk_usage,
             "cpu_temp": cpu_temp,
             "cpu_load": get_cpu_load(),

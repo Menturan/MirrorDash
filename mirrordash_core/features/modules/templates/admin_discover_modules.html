@@ -1,42 +1,53 @@
-<section class="card" id="discover-modules-section" style="margin-top: 2rem; {% if not discoverable_modules %}display: none;{% endif %}">
-    <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between; align-items: flex-end; margin-bottom: 1rem; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
-        <div>
-            <h2 style="margin-bottom: 8px;"><i class="fas fa-compass" aria-hidden="true"></i> Discover New Modules</h2>
-            <p class="panel-subtitle" style="margin-bottom: 0;">Install community-developed plugins from GitHub and PyPI directly onto your mirror.</p>
-        </div>
-        <div style="text-align: right;">
-            <span style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 6px;">Last scanned: {{ last_scan }}</span>
-            <button class="btn secondary btn-sm"
-                    hx-post="/admin/community-modules/scan"
-                    hx-swap="none"
-                    hx-disabled-elt="this"
-                    hx-on::after-request="if (event.detail.successful) htmx.ajax('GET', '/admin/panels/modules/discover', {target: '#discover-modules-section', swap: 'outerHTML'}); else showGlobal('Could not refresh the module list.', 'error');">
-                <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Scanning...</span>
-                <span class="htmx-normal"><i class="fas fa-sync-alt"></i> Refresh Module List</span>
-            </button>
-        </div>
+<div id="discover-modules-section">
+    <div class="discover-head">
+        <span>Community modules from GitHub and PyPI. Last checked {{ last_scan }}.</span>
+        <button class="btn secondary btn-sm"
+                hx-post="/admin/community-modules/scan"
+                hx-swap="none"
+                hx-disabled-elt="this"
+                hx-on::after-request="if (event.detail.successful) htmx.ajax('GET', '/admin/panels/modules/discover', {target: '#discover-modules-section', swap: 'outerHTML'}); else showGlobal('Could not refresh the module list.', 'error');">
+            <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Checking...</span>
+            <span class="htmx-normal"><i class="fas fa-sync-alt" aria-hidden="true"></i> Check again</span>
+        </button>
     </div>
-    
-    <div id="discover-modules-container" class="discover-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 1.25rem; margin-top: 1.5rem;">
+
+    <div id="discover-modules-container" class="module-list">
         {% for m in discoverable_modules %}
-            <div class="discover-card" style="background: rgba(255, 255, 255, 0.01); border: 1px solid var(--card-border); border-radius: 8px; padding: 1.25rem; display: flex; flex-direction: column; justify-content: space-between;">
-                <div>
-                    <h3 style="margin: 0; font-size: 1.1rem; color: white;">{{ m.title }}</h3>
-                    <span style="font-family: monospace; font-size: 0.75rem; color: var(--text-muted); display: block; margin-top: 2px;">{{ m.name }}</span>
-                    <p style="margin: 10px 0 0 0; font-size: 0.85rem; color: #a1a1aa; line-height: 1.4;">{{ m.description }}</p>
+            <details class="discover-row" data-search="{{ (m.title ~ ' ' ~ m.name ~ ' ' ~ m.description)|lower }}">
+                <summary class="module-row">
+                    <span class="module-row-icon" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
+                    <span class="module-row-main">
+                        <span class="module-row-title">{{ m.title }}</span>
+                        <span class="module-row-status">{{ m.description }}</span>
+                    </span>
+                    <span class="module-row-actions">
+                        <button class="btn secondary btn-sm"
+                                hx-post="/admin/panels/modules/install"
+                                hx-vals='{"package_name": "{{ m.install_name }}"}'
+                                hx-target="#global-status"
+                                hx-confirm="Install {{ m.title }}? The mirror restarts afterwards."
+                                hx-disabled-elt="this">
+                            <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
+                            <span class="htmx-normal">Install</span>
+                        </button>
+                    </span>
+                </summary>
+                <div class="discover-details">
+                    {% if m.screenshot %}
+                        <img class="module-shot" src="{{ m.screenshot }}" alt="Screenshot of {{ m.title }}" loading="lazy" onerror="this.remove()">
+                    {% endif %}
+                    <dl class="module-facts">
+                        {% if m.author %}<div><dt>Author</dt><dd>{{ m.author }}</dd></div>{% endif %}
+                        {% if m.stars is number %}<div><dt>Stars</dt><dd>{{ m.stars }}</dd></div>{% endif %}
+                        {% if m.updated %}<div><dt>Updated</dt><dd>{{ m.updated }}</dd></div>{% endif %}
+                        {% if m.license %}<div><dt>Licence</dt><dd>{{ m.license }}</dd></div>{% endif %}
+                        <div><dt>From</dt><dd>{{ 'GitHub' if m.source == 'github' else 'PyPI' }}</dd></div>
+                    </dl>
+                    {% if m.repo %}<a href="{{ m.repo }}#readme" target="_blank" rel="noopener">Read the README on GitHub</a>{% endif %}
                 </div>
-                <div style="margin-top: 15px; text-align: right;">
-                    <button class="btn primary btn-sm"
-                            hx-post="/admin/panels/modules/install"
-                            hx-vals='{"package_name": "{{ m.install_name }}"}'
-                            hx-target="#global-status"
-                            hx-confirm="Are you sure you want to install {{ m.title }}? The system will restart after installation."
-                            hx-disabled-elt="this">
-                        <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
-                        <span class="htmx-normal"><i class="fas fa-download"></i> Install</span>
-                    </button>
-                </div>
-            </div>
+            </details>
+        {% else %}
+            <p class="module-list-empty">No new modules found. Check again later, or install one from its Git URL below.</p>
         {% endfor %}
     </div>
-</section>
+</div>

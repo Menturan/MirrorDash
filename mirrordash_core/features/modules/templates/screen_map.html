@@ -1,0 +1,22 @@
+{# The mirror as its nine positions, in the screen's shape. Needs screen_layout and portrait;
+   with interactive set, each instance is a button that opens its settings. #}
+<div class="screen-map{% if portrait %} portrait{% endif %}">
+    {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
+        {% set where = pos.replace('_', ' ')|capitalize %}
+        <div class="screen-cell" title="{{ where }}">
+            {% for m in screen_layout.get(pos, []) %}
+                {% if interactive and m.module %}
+                    <button type="button" class="screen-chip{% if not m.enabled %} off{% endif %}" title="{{ m.name }}"
+                            aria-label="{{ m.name }}, {{ where|lower }}{% if not m.enabled %}, off{% endif %}"
+                            hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
+                            hx-target="#config-fields-global"
+                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')">{{ m.name }}</button>
+                {% else %}
+                    <span class="screen-chip{% if not m.enabled or not m.module %} off{% endif %}" title="{{ m.name }}">
+                        {{ m.name }}{% if not m.module %}<small>Not installed</small>{% endif %}
+                    </span>
+                {% endif %}
+            {% endfor %}
+        </div>
+    {% endfor %}
+</div>

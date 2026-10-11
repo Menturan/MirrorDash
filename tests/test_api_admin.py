@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
 import json
+from types import SimpleNamespace
 
 from mirrordash_core.app import app
 from conftest import call
@@ -1044,7 +1045,8 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
                         "name": "mirrordash-test-widget",
                         "owner": {"login": "testowner"},
                         "html_url": "https://github.com/testowner/mirrordash-test-widget",
-                        "description": "Test community widget description"
+                        "description": "Test community widget description",
+                        "stargazers_count": 7
                     }
                 ]
             }).encode("utf-8")
@@ -1058,9 +1060,20 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
     
     r2 = client.get("/admin/panels/modules/discover", headers=headers)
     assert r2.status_code == 200
-    assert "Discover New Modules" in r2.text
     assert "mirrordash-test-widget" in r2.text
+    # The details come from the search response itself: no request per module
+    assert "https://raw.githubusercontent.com/testowner/mirrordash-test-widget/HEAD/screenshot.png" in r2.text
+    assert "<dd>testowner</dd>" in r2.text and "<dd>7</dd>" in r2.text
+    assert 'href="https://github.com/testowner/mirrordash-test-widget#readme"' in r2.text
     assert "Test community widget description" in r2.text
+
+
+def test_github_repo_from_install_urls():
+    from mirrordash_core.features.modules.service import github_repo, github_screenshot
+    assert github_repo("https://github.com/o/mirrordash-x.git") == "https://github.com/o/mirrordash-x"
+    assert github_repo("https://github.com/o/mirrordash-x/") == "https://github.com/o/mirrordash-x"
+    assert github_repo("file:///home/me/mirrordash-x") is None  # a local install has no screenshot
+    assert github_screenshot(None) is None
 
 
 def test_config_migration():
@@ -1201,19 +1214,23 @@ def test_get_panel_dashboard(
     mock_loader.tasks = {"clock-one": MagicMock()}
 
     cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
-                       "mirrordash_news": {"position": "top_left", "enabled": False}}}
+                       "mirrordash-clock-2": {"module": "mirrordash-clock", "position": "bottom_right", "enabled": False},
+                       "mirrordash_news": {"position": "top_left"}}}
+    clock = SimpleNamespace(name="mirrordash_clock", dist=None)
     with patch("mirrordash_core.features.dashboard.routes.load_config", return_value=cfg), \
-         patch("mirrordash_core.features.dashboard.routes.find_entry_point",
-               side_effect=lambda name, eps: object() if "clock" in name else None), \
+         patch("mirrordash_core.features.modules.service.load_config", return_value=cfg), \
+         patch("mirrordash_core.features.modules.service.find_entry_point",
+               side_effect=lambda name, eps: clock if "clock" in name else None), \
          patch("mirrordash_core.features.dashboard.telemetry.get_cpu_load", return_value=42.5):
         response = client.get("/admin/panels/dashboard", headers=headers)
     assert response.status_code == 200
     assert "On the Screen" in response.text
     assert "System Analytics" in response.text
-    # Configured modules are named in their screen position, the disabled one dimmed;
-    # one in config whose module is not installed says so
-    assert "var(--text-primary);\">Clock</span>" in response.text
-    assert "var(--text-muted);\">News</span>" in response.text
+    # Each instance is named in its screen position (the -2 instance of the clock too); the turned-off
+    # one is dimmed, and one in config whose module is not installed is dimmed and says so
+    assert response.text.count('class="screen-chip"') == 1
+    assert response.text.count('class="screen-chip off"') == 2
+    assert "Clock 2" in response.text
     assert response.text.count("Not installed") == 1
     assert "42.5% Load" in response.text
     assert "Memory (RAM)" in response.text

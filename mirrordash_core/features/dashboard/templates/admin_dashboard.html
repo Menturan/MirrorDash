@@ -35,7 +35,7 @@
         {% if sensors_configured %}
         <!-- Room sensors (refreshes every 30 s; the readings themselves are cached server-side) -->
         <section class="card" style="grid-column: span 12;">
-            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+            <h2 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
                 <i class="fas fa-thermometer-half" style="color: var(--primary);"></i> Sensors
             </h2>
             <div hx-get="/admin/panels/dashboard/sensor" hx-trigger="load, every 30s">
@@ -46,27 +46,14 @@
 
         <!-- Screen Layout Matrix -->
         <section class="card" style="grid-column: span 5; display: flex; flex-direction: column;">
-            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+            <h2 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                 <i class="fas fa-th-large" style="color: var(--primary);"></i> On the Screen
             </h2>
             <p style="font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 20px; line-height: 1.4;">
                 Where each module sits on the mirror. Dimmed ones are turned off.
             </p>
 
-            <a class="matrix-grid" href="#modules" aria-label="Open Modules" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-rows: minmax(75px, auto); gap: 6px; background: rgba(0, 0, 0, 0.3); padding: 8px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.03); text-decoration: none;">
-                {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
-                    {% set placed = screen_layout.get(pos, []) %}
-                    <div class="matrix-cell" title="{{ pos.replace('_', ' ').capitalize() }}"
-                         style="background: {% if placed %}rgba(255, 255, 255, 0.1){% else %}rgba(255, 255, 255, 0.015){% endif %};
-                                border: 1px solid {% if placed %}var(--primary){% else %}rgba(255, 255, 255, 0.04){% endif %};
-                                border-radius: 6px; padding: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; min-width: 0;">
-                        {% for m in placed %}
-                            <span style="font-size: 0.72rem; font-weight: 600; line-height: 1.25; overflow-wrap: anywhere; color: {% if m.enabled and m.installed %}var(--text-primary){% else %}var(--text-muted){% endif %};">{{ m.name }}</span>
-                            {% if not m.installed %}<span style="font-size: 0.62rem; color: var(--warning);">Not installed</span>{% endif %}
-                        {% endfor %}
-                    </div>
-                {% endfor %}
-            </a>
+            <a class="screen-map-link" href="#modules" aria-label="Open Modules">{% include "screen_map.html" %}</a>
         </section>
 
         <!-- System Analytics: re-fetched every 10 s while the dashboard tab is open (switching tab
@@ -74,7 +61,7 @@
         <section class="card" id="system-analytics" style="grid-column: span 7; display: flex; flex-direction: column;"
                  hx-get="/admin/panels/dashboard" hx-select="#system-analytics" hx-target="this" hx-swap="outerHTML"
                  hx-trigger="every 10s [document.visibilityState === 'visible']">
-            <h2 style="font-family: 'Space Grotesk', sans-serif; font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
+            <h2 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
                 <i class="fas fa-chart-line" style="color: var(--primary);"></i> System Analytics
             </h2>
             
@@ -82,7 +69,7 @@
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">CPU</span>
                     {% if cpu_load is not none %}
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if cpu_load > 85 %}var(--warning){% else %}var(--text-primary){% endif %};">
+                    <span style="font-size: 1.4rem; font-weight: 600; color: {% if cpu_load > 85 %}var(--warning){% else %}var(--text-primary){% endif %};">
                         {{ cpu_load }}% Load
                     </span>
                     <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; margin-top: 4px;">
@@ -96,7 +83,7 @@
                 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Persistent Storage</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if disk_usage.percent_used > 90 %}var(--danger){% else %}var(--text-primary){% endif %};">
+                    <span style="font-size: 1.4rem; font-weight: 600; color: {% if disk_usage.percent_used > 90 %}var(--danger){% else %}var(--text-primary){% endif %};">
                         {{ disk_usage.percent_used }}% Used
                     </span>
                     <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; margin-top: 4px;">
@@ -106,7 +93,7 @@
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Memory (RAM)</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600; color: {% if ram_usage.percent_used > 85 %}var(--warning){% else %}var(--text-primary){% endif %};">
+                    <span style="font-size: 1.4rem; font-weight: 600; color: {% if ram_usage.percent_used > 85 %}var(--warning){% else %}var(--text-primary){% endif %};">
                         {{ ram_usage.percent_used }}% Used
                     </span>
                     <div style="width: 100%; height: 6px; background: rgba(255, 255, 255, 0.06); border-radius: 3px; overflow: hidden; margin-top: 4px;">
@@ -117,21 +104,21 @@
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Active Modules</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600;">
+                    <span style="font-size: 1.4rem; font-weight: 600;">
                         {{ active_count }} Running
                     </span>
                 </div>
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Local IP Address</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px;">
+                    <span style="font-size: 1.15rem; font-weight: 600; padding-top: 4px;">
                         {{ local_ip }}
                     </span>
                 </div>
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Network Connection</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
                         {% if network_info.type == 'wifi' %}
                             <i class="fas fa-wifi" style="color: var(--success); font-size: 0.9rem;"></i> {{ network_info.ssid }} ({{ network_info.signal }}%)
                         {% elif network_info.type == 'ethernet' %}
@@ -146,14 +133,14 @@
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">System Uptime</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.4rem; font-weight: 600;">
+                    <span style="font-size: 1.4rem; font-weight: 600;">
                         {{ uptime_str }}
                     </span>
                 </div>
 
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">Time Sync (NTP)</span>
-                    <span style="font-family: 'Space Grotesk', sans-serif; font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
+                    <span style="font-size: 1.15rem; font-weight: 600; padding-top: 4px; display: flex; align-items: center; gap: 6px;">
                         {% if ntp_synchronized %}
                             <i class="fas fa-check-circle" style="color: var(--success); font-size: 0.9rem;"></i> In sync
                         {% else %}
@@ -174,7 +161,7 @@
         .page-panel section.card {
             grid-column: span 12 !important;
         }
-        .page-panel section.card > div:not(.matrix-grid):not(.analytics-grid) { /* the matrix mirrors the 3×3 screen */
+        .page-panel section.card > div:not(.analytics-grid) {
             grid-template-columns: 1fr !important;
         }
         /* Two short values per row instead of one long column on phones */

@@ -9,7 +9,7 @@ from mirrordash_core.admin import job_response, notify, require_api_key, start_j
 from mirrordash_core.config import find_module_config, load_config, save_config, version_key
 from mirrordash_core.features.modules.loader import module_loader, find_entry_point
 from mirrordash_core.fetch import fetch_json_cached
-from mirrordash_core.features.modules.service import list_community_modules, list_modules, install_module, uninstall_module, update_module
+from mirrordash_core.features.modules.service import is_portrait, list_community_modules, list_modules, screen_layout, install_module, uninstall_module, update_module
 from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.features.settings.schema import get_module_schema
 
@@ -22,57 +22,29 @@ router = APIRouter(prefix="/admin")
 
 @router.get("/panels/modules", dependencies=[Depends(require_api_key)])
 async def get_panel_modules(request: Request):
-    installed = await list_modules()
-    installed_modules = installed.get("modules", {})
-
-    query = request.query_params.get("query", "").strip().lower()
-    if query:
-        filtered_installed = {}
-        for name, meta in installed_modules.items():
-            title = meta.get("schema", {}).get("title", name).lower()
-            if query in name.lower() or query in title:
-                filtered_installed[name] = meta
-        installed_modules = filtered_installed
-
-    disk_usage = await get_disk_usage()
-
+    modules = (await list_modules()).get("modules", {})
     return templates.TemplateResponse(
         request=request,
         name="admin_modules.html",
         context={
-            "installed_modules": installed_modules,
-            "disk_usage": disk_usage,
-            "query": query
+            "installed_modules": dict(sorted(modules.items(), key=lambda kv: (kv[1]["schema"].get("title") or kv[0]).lower())),
+            "screen_layout": screen_layout(),
+            "portrait": is_portrait(),
+            "disk_usage": await get_disk_usage(),
         }
     )
 
 
 @router.get("/panels/modules/discover", dependencies=[Depends(require_api_key)])
 async def get_discover_modules(request: Request):
-    installed = await list_modules()
-    installed_modules = installed.get("modules", {})
-
-    query = request.query_params.get("query", "").strip().lower()
-    community = await list_community_modules()
-
-    discoverable = []
-    for m in community:
-        name = m.get("name")
-        if name not in installed_modules:
-            title = m.get("title", "")
-            description = m.get("description", "")
-            if not query or (query in name.lower() or query in title.lower() or query in description.lower()):
-                discoverable.append(m)
-
+    installed = (await list_modules()).get("modules", {})
     import mirrordash_core.features.modules.service as adm_mods
-    last_scan = adm_mods.LAST_SCAN_TIMESTAMP
-
     return templates.TemplateResponse(
         request=request,
         name="admin_discover_modules.html",
         context={
-            "discoverable_modules": discoverable,
-            "last_scan": last_scan or "Never"
+            "discoverable_modules": [m for m in await list_community_modules() if m.get("name") not in installed],
+            "last_scan": adm_mods.LAST_SCAN_TIMESTAMP or "Never"
         }
     )
 
@@ -244,10 +216,10 @@ async def check_module_update_route(module_name: str):
                         git_install_url = f"git+{url}@{tag_name}"
                         return HTMLResponse(content=f"""
                             <div id="update-badge-{module_name}" hx-swap-oob="true">
-                                <span class="status-badge update-avail" style="margin-left: 8px;">Update Available (v{latest_version})</span>
+                                <span class="status-badge update-avail">Update Available (v{latest_version})</span>
                             </div>
                             <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
-                                <button class="btn primary btn-sm"
+                                <button class="btn secondary btn-sm"
                                         hx-post="/admin/panels/modules/upgrade"
                                         hx-vals='{{"package_name": "{git_install_url}"}}'
                                         hx-target="#global-status"
@@ -268,7 +240,7 @@ async def check_module_update_route(module_name: str):
     if is_newer:
         return HTMLResponse(content=f"""
             <div id="update-badge-{module_name}" hx-swap-oob="true">
-                <span class="status-badge update-avail" style="margin-left: 8px;">Update Available (v{latest_version})</span>
+                <span class="status-badge update-avail">Update Available (v{latest_version})</span>
             </div>
             <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
                 <button class="btn secondary btn-sm"
@@ -277,7 +249,7 @@ async def check_module_update_route(module_name: str):
                         onclick="document.getElementById('notes-modal').style.display='flex'; document.getElementById('notes-modal').classList.add('open');">
                     <i class="fas fa-file-alt"></i> Notes
                 </button>
-                <button class="btn primary btn-sm"
+                <button class="btn secondary btn-sm"
                         hx-post="/admin/panels/modules/upgrade"
                         hx-vals='{{"package_name": "{package_name}"}}'
                         hx-target="#global-status"

@@ -13,6 +13,7 @@ from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.host import run_restart
 from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
+from mirrordash_core.features.modules.loader import find_entry_point
 from mirrordash_core.features.settings.schema import get_module_schema
 
 logger = logging.getLogger("mirrordash.core.modules")
@@ -32,6 +33,72 @@ LOCAL_MODULE_DIRS = ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules")
 
 
 NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-* packages the community scan skips
+
+
+GITHUB_REPO = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+
+
+def github_repo(url: str | None) -> str | None:
+    """https://github.com/owner/repo for a git, html or Project-URL pointing at a repository, else None."""
+    m = GITHUB_REPO.search(url or "")
+    return f"https://github.com/{m[1]}/{m[2]}" if m else None
+
+
+def github_screenshot(repo: str | None) -> str | None:
+    """The screenshot.png every module keeps at its repository root (the SDK's validator asks for it).
+    Built, not fetched: raw.githubusercontent.com isn't the rate-limited API, and the admin's browser loads it."""
+    return repo and repo.replace("https://github.com/", "https://raw.githubusercontent.com/", 1) + "/HEAD/screenshot.png"
+
+
+def _installed_repo(dist) -> str | None:
+    """The GitHub repository an installed module came from: its git URL (PEP 610) or a Project-URL."""
+    try:
+        urls = [json.loads(dist.read_text("direct_url.json") or "{}").get("url", "")]
+    except (OSError, ValueError):
+        urls = []
+    urls += [u.split(",", 1)[-1].strip() for u in dist.metadata.get_all("Project-URL") or []]
+    return next(filter(None, map(github_repo, urls)), None)
+
+
+def github_module(item: dict) -> dict:
+    """A discoverable module from one GitHub search result; everything comes from that one response."""
+    repo = github_repo(item["html_url"])
+    return {
+        "name": item["name"],
+        "install_name": f"git+{item['html_url']}.git",
+        "title": item["name"].replace("mirrordash-", "").replace("-", " ").title(),
+        "description": item.get("description") or "No description available.",
+        "source": "github",
+        "author": (item.get("owner") or {}).get("login"),
+        "stars": item.get("stargazers_count", 0),
+        "license": spdx if (spdx := (item.get("license") or {}).get("spdx_id")) != "NOASSERTION" else None,
+        "updated": (item.get("pushed_at") or "")[:10] or None,
+        "repo": repo,
+        "screenshot": github_screenshot(repo),
+    }
+
+
+def is_portrait() -> bool:
+    """The screen is turned on its side (Settings → Display → Rotation), so the mirror is tall."""
+    return load_config().get("system", {}).get("rotation") in ("left", "right")
+
+
+def screen_layout() -> dict[str, list[dict]]:
+    """Which instances sit at each screen position. Read from the config, so turned-off instances show
+    too, and so does an instance whose module is no longer installed (module is None)."""
+    eps = list(importlib.metadata.entry_points(group="mirrordash.modules"))
+    layout = {}
+    for inst_id, cfg in load_config().get("modules", {}).items():
+        if isinstance(cfg, dict):
+            ep = find_entry_point(cfg.get("module", inst_id), eps)
+            layout.setdefault(cfg.get("position", "middle_center"), []).append({
+                "id": inst_id,
+                "name": re.sub(r"^mirrordash[-_]", "", inst_id).replace("_", " ").replace("-", " ").title(),
+                "enabled": cfg.get("enabled", True),
+                "module": ep.name if ep else None,
+                "package": ep.dist.name if ep and ep.dist else None,
+            })
+    return layout
 
 
 def check_package_name(package_name: str, allow_git: bool = True) -> None:
@@ -181,6 +248,8 @@ async def list_modules() -> dict:
             "package_name": ep.dist.name if ep.dist else name,
             "version": ep.dist.version if ep.dist else "0.0.0",
             "summary": ep.dist.metadata["Summary"] if ep.dist else None,  # fallback when the schema has no description
+            "repo": (repo := _installed_repo(ep.dist) if ep.dist else None),
+            "screenshot": github_screenshot(repo),
             "schema": schema,
             "instances": instances
         }
@@ -234,24 +303,21 @@ async def scan_community_modules_now():
                 except Exception:
                     return None
 
-            meta = await loop.run_in_executor(None, _fetch_meta)
-            if meta:
-                info = meta.get("info", {})
-                scanned_modules.append({
-                    "name": name,
-                    "install_name": name,
-                    "title": info.get("name", name).replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                    "description": info.get("summary") or "No description available.",
-                    "source": "pypi"
-                })
-            else:
-                scanned_modules.append({
-                    "name": name,
-                    "install_name": name,
-                    "title": name.replace("mirrordash-", "").replace("mirrordash_", "").title(),
-                    "description": "No description available.",
-                    "source": "pypi"
-                })
+            meta = await loop.run_in_executor(None, _fetch_meta) or {}
+            info = meta.get("info") or {}
+            repo = next(filter(None, map(github_repo, (info.get("project_urls") or {}).values())), None)
+            scanned_modules.append({
+                "name": name,
+                "install_name": name,
+                "title": name.replace("mirrordash-", "").replace("mirrordash_", "").replace("-", " ").title(),
+                "description": info.get("summary") or "No description available.",
+                "source": "pypi",
+                "author": info.get("author") or None,
+                "license": info.get("license_expression") or None,  # `license` is often the whole licence text
+                "updated": ((meta.get("urls") or [{}])[0].get("upload_time") or "")[:10] or None,
+                "repo": repo,
+                "screenshot": github_screenshot(repo),
+            })
             scanned_names.add(name)
 
     # GitHub: one search request. Unauthenticated, GitHub allows 60 requests an hour per IP address,
@@ -276,13 +342,7 @@ async def scan_community_modules_now():
         repo_name = item.get("name", "")
         if not repo_name.startswith("mirrordash-") or repo_name in scanned_names or repo_name in NOT_MODULES:
             continue
-        scanned_modules.append({
-            "name": repo_name,
-            "install_name": f"git+{item['html_url']}.git",
-            "title": repo_name.replace("mirrordash-", "").replace("-", " ").title(),
-            "description": item.get("description") or f"Community module from GitHub ({item.get('owner', {}).get('login')}).",
-            "source": "github"
-        })
+        scanned_modules.append(github_module(item))
         scanned_names.add(repo_name)
 
     if scanned_modules:

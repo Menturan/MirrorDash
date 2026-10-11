@@ -1,48 +1,36 @@
-<!-- Modules Tab Panel -->
+<!-- Modules tab: where things are on the mirror, what is installed, what can be added -->
 <div class="page-panel active" id="page-panel-modules" role="tabpanel" aria-labelledby="page-tab-modules">
-    <!-- Filter & Search Row -->
-    <div class="filter-row" style="display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 24px; flex-wrap: wrap;">
-        <div class="category-pills" style="display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; min-width: 0; max-width: 100%;">
-            <button class="category-pill active" aria-pressed="true" onclick="filterModules('all', this)">All</button>
-            <button class="category-pill" aria-pressed="false" onclick="filterModules('installed', this)">On the mirror</button>
-            <button class="category-pill" aria-pressed="false" onclick="filterModules('info', this)">Information</button>
-            <button class="category-pill" aria-pressed="false" onclick="filterModules('iot', this)">Smart Home</button>
-            <button class="category-pill" aria-pressed="false" onclick="filterModules('utility', this)">Utility</button>
-        </div>
-        <div class="search-bar-container" style="position: relative; flex: 1; min-width: 250px; margin-bottom: 0 !important;">
-            <i class="fas fa-search" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 1.1rem;"></i>
-            <input type="text" id="module-search-input" name="query" placeholder="Search modules..." class="form-control" style="padding-left: 2.8rem; font-size: 0.95rem; height: 2.6rem; background: #0c0c0e; border: 1px solid #27272a; border-radius: 8px; color: white; width: 100%;"
-                   hx-get="/admin/panels/modules"
-                   hx-trigger="keyup changed delay:300ms"
-                   hx-target="#tab-content"
-                   value="{{ query or '' }}"
-                   onfocus="this.setSelectionRange(this.value.length, this.value.length);"
-                   autofocus>
-        </div>
-    </div>
-
     {% if disk_usage.free_bytes < 500 * 1024 * 1024 %}
     <!-- Only shown when space runs low; the Dashboard always shows storage -->
-    <div id="disk-usage-warning" class="alert error" style="display: flex; align-items: center; gap: 8px; margin-bottom: 24px;">
+    <div id="disk-usage-warning" class="alert error module-disk-warning">
         <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
         <span>Only {{ (disk_usage.free_bytes / 1024 / 1024)|round|int }} MB of storage left. Installing or updating modules may fail; remove modules you don't use.</span>
     </div>
     {% endif %}
 
-    <!-- Installed Modules List -->
-    <section class="card" style="background: transparent; border: none; padding: 0; box-shadow: none; margin-bottom: 0;">
-        
-        <div id="installed-modules-container" class="installed-modules-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 24px; margin-top: 1.5rem;"
-             hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body" hx-select="#installed-modules-container" hx-swap="outerHTML">
-            {% if not installed_modules %}
-                <div class="no-modules-msg" style="text-align:center; color: var(--text-muted); padding:2rem; grid-column: 1 / -1;">No installed modules match your query.</div>
-            {% else %}
+    <!-- The map and the list change together after a save, so one request refreshes both -->
+    <div id="modules-live" hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body"
+         hx-select="#modules-live" hx-swap="outerHTML" hx-disinherit="*">
+        <section class="card">
+            <h2><i class="fas fa-th-large" aria-hidden="true"></i> Your mirror</h2>
+            <p>Where each module sits. Dimmed ones are turned off. Tap one to change it.</p>
+            {% set interactive = true %}
+            {% include "screen_map.html" %}
+        </section>
+
+        <section class="card">
+            <div class="module-card-head">
+                <h2><i class="fas fa-puzzle-piece" aria-hidden="true"></i> Installed</h2>
+                <input type="search" id="module-search-input" class="form-control module-search"
+                       placeholder="Search modules" aria-label="Search modules" autocomplete="off"
+                       oninput="filterModules(this.value)">
+            </div>
+            <div id="installed-modules-container" class="module-list">
                 {% for name, meta in installed_modules.items() %}
-                    {% set is_configured = meta.configured %}
-                    {% set is_enabled = meta.enabled %}
                     {% set title = meta.schema.title or name %}
                     {% set icon_class = meta.schema.icon or "" %}
                     {% if not icon_class %}
+                        {# ponytail: guesses for the bundled modules, which declare no icon; others get the puzzle piece #}
                         {% set icon_class = "fa-puzzle-piece" %}
                         {% if "clock" in name %}{% set icon_class = "fa-clock" %}
                         {% elif "calendar" in name %}{% set icon_class = "fa-calendar-days" %}
@@ -53,131 +41,76 @@
                         {% elif "krisinformation" in name %}{% set icon_class = "fa-triangle-exclamation" %}
                         {% endif %}
                     {% endif %}
-                    {% set categories = ["utility"] %}
-                    {% if "homeassistant" in name or "iot" in name %}
-                        {% set categories = ["iot"] %}
-                    {% elif "weather" in name or "namnsdag" in name or "news" in name %}
-                        {% set categories = ["info"] %}
-                    {% endif %}
-                    
-                    <div class="module-card {% if is_configured and not is_enabled %}disabled-module{% endif %}" 
-                         id="module-card-{{ name }}" 
-                         hx-disinherit="*"
-                         data-installed="{% if is_configured %}true{% else %}false{% endif %}"
-                         data-categories="{{ ' '.join(categories) }}"
-                          data-instances="{{ meta.instances | tojson | forceescape }}"
-                         style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 18px; padding: 24px; display: flex; flex-direction: column; justify-content: space-between; transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); backdrop-filter: blur(10px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2); position: relative;">
-                        
-                        <div>
-                            <div class="module-card-header" style="display: flex; gap: 16px; margin-bottom: 16px;">
-                                <div class="module-card-icon-container" style="width: 50px; height: 50px; border-radius: 12px; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; justify-content: center; font-size: 1.4rem; color: var(--primary);">
-                                    {% if icon_class.startswith('<svg') %}
-                                        {{ icon_class | safe }}
-                                    {% else %}
-                                        <i class="fas {{ icon_class }}"></i>
-                                    {% endif %}
-                                </div>
-                                <div style="flex: 1;">
-                                    <h3 style="margin: 0; font-size: 1.05rem; color: white; font-weight: 600;">{{ title }}</h3>
-                                    <span class="module-identifier" style="font-size: 0.75rem; color: var(--text-secondary);" title="{{ meta.package_name }}">Version {{ meta.version }}</span>
-                                </div>
-                            </div>
-                            
-                            <p style="margin: 12px 0 0 0; font-size: 0.85rem; color: #a1a1aa; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; height: 3.7em;">
-                                {{ meta.schema.description or meta.summary or 'No description available for this module.' }}
-                            </p>
-
-                        </div>
-                        
-                        <div class="module-card-footer" style="margin-top: 20px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid rgba(255, 255, 255, 0.04); padding-top: 16px;">
-                            <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap;">
-                                {% if is_configured %}
-                                    <span class="badge badge-installed" style="background-color: rgba(160, 255, 186, 0.1); color: #a0ffba; border: 1px solid rgba(160, 255, 186, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Installed</span>
-                                    <span class="badge badge-instances" style="background-color: rgba(255, 255, 255, 0.1); color: #ffffff; border: 1px solid rgba(255, 255, 255, 0.15); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">{{ meta.instances|length }} Instance{% if meta.instances|length > 1 %}s{% endif %}</span>
-                                {% else %}
-                                    <span class="badge" style="background-color: rgba(255, 255, 255, 0.03); color: var(--text-muted); border: 1px solid var(--border-color); font-size: 0.7rem; font-weight: 600; padding: 3px 8px; border-radius: 4px;">Not Configured</span>
-                                {% endif %}
-                            </div>
-                            
-                            <div style="display: flex; gap: 8px; align-items: center;">
-                                <div id="update-actions-{{ name }}" style="display: inline-block;"></div>
-                                {% if is_configured %}
-                                    {% set default_inst_id = meta.instances[0].id if meta.instances else '' %}
-                                    <button class="btn primary btn-sm"
-                                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 30px;"
-                                            hx-get="/admin/panels/modules/config/{{ name }}?instance_id={{ default_inst_id }}"
-                                            hx-target="#config-fields-global"
-                                            onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '{{ default_inst_id }}')"
-                                            id="config-btn-{{ name }}">
-                                        Configure
-                                    </button>
-                                {% else %}
-                                    <button class="btn primary btn-sm"
-                                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 30px;"
-                                            hx-get="/admin/panels/modules/config/{{ name }}"
-                                            hx-target="#config-fields-global"
-                                            onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '')"
-                                            id="config-btn-{{ name }}">
-                                        Add to Mirror
-                                    </button>
-                                {% endif %}
+                    {% set on = meta.instances | selectattr("enabled") | list %}
+                    <div class="module-row{% if meta.instances and not on %} off{% endif %}" id="module-card-{{ name }}"
+                         data-search="{{ (title ~ ' ' ~ name)|lower }}"
+                         data-title="{{ title }}"
+                         data-description="{{ meta.schema.description or meta.summary or '' }}"
+                         data-screenshot="{{ meta.screenshot or '' }}"
+                         data-repo="{{ meta.repo or '' }}"
+                         data-instances="{{ meta.instances | tojson | forceescape }}">
+                        <span class="module-card-icon-container module-row-icon" aria-hidden="true">
+                            {% if icon_class.startswith('<svg') %}{{ icon_class | safe }}{% else %}<i class="fas {{ icon_class }}"></i>{% endif %}
+                        </span>
+                        <div class="module-row-main">
+                            <h3 class="module-row-title">{{ title }} <span class="module-row-version">{{ meta.version }}</span></h3>
+                            <div class="module-row-status">
+                                <span>
+                                    {%- if not meta.instances %}Not on the mirror
+                                    {%- elif not on %}Off
+                                    {%- else %}{{ on | map(attribute="position") | unique | map("replace", "_", " ") | map("capitalize") | join(", ") }}
+                                        {%- if meta.instances|length > on|length %}, {{ meta.instances|length - on|length }} off{% endif %}
+                                    {%- endif -%}
+                                </span>
+                                <span id="update-badge-{{ name }}"></span>
                             </div>
                         </div>
-
-                        <!-- Async update check trigger -->
-                        <div hx-get="/admin/panels/modules/check-update/{{ name }}" hx-trigger="load" style="display: none;"></div>
+                        <div class="module-row-actions">
+                            <span id="update-actions-{{ name }}"></span>
+                            {% set first_id = meta.instances[0].id if meta.instances else '' %}
+                            <button class="btn secondary btn-sm" id="config-btn-{{ name }}"
+                                    hx-get="/admin/panels/modules/config/{{ name }}{% if first_id %}?instance_id={{ first_id }}{% endif %}"
+                                    hx-target="#config-fields-global"
+                                    onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '{{ first_id }}')">
+                                {% if meta.instances %}Settings{% else %}Add to Mirror{% endif %}
+                            </button>
+                        </div>
+                        <div hidden hx-get="/admin/panels/modules/check-update/{{ name }}" hx-trigger="load"></div>
                     </div>
+                {% else %}
+                    <p class="module-list-empty">No modules installed yet. Add one below.</p>
                 {% endfor %}
-            {% endif %}
-    </section>
-
-    <!-- Discover / Popular Modules -->
-    <div hx-get="/admin/panels/modules/discover{% if query %}?query={{ query }}{% endif %}" hx-trigger="load" hx-swap="outerHTML">
-        <section class="card" id="discover-modules-section" style="margin-top: 2rem;">
-            <div style="display: flex; align-items: center; justify-content: center; padding: 2.5rem; color: var(--text-muted); font-size: 0.9rem;">
-                <i class="fas fa-spinner fa-spin" style="margin-right: 10px; font-size: 1.1rem;"></i> Loading discoverable community modules...
             </div>
         </section>
     </div>
 
-    <!-- Install Custom Module -->
-    <section class="card" style="margin-top: 2rem;">
-        <h2><i class="fas fa-download" aria-hidden="true"></i> Install a Module from GitHub</h2>
-        <p>Paste the module's Git URL. The repository needs a GitHub Release. A local folder path works too, for development.</p>
-        <form hx-post="/admin/panels/modules/install" hx-target="#global-status" hx-swap="innerHTML">
-            <div class="input-group" style="display: flex; gap: 12px; margin-top: 1rem;">
-                <input type="text" id="custom-package-name" name="package_name"
-                       placeholder="e.g. git+https://github.com/you/mirrordash-my-widget.git"
-                       aria-label="Git URL or local path of the module"
-                       style="flex: 1; background: #0c0c0e; border: 1px solid #27272a; color: white; border-radius: 6px; padding: 10px 14px;"
-                       autocomplete="off" required>
-                <button type="submit" id="custom-install-btn" class="btn secondary" aria-label="Install custom module"
-                        hx-disabled-elt="this">
+    <section class="card" id="add-modules-card">
+        <h2><i class="fas fa-plus" aria-hidden="true"></i> Add modules</h2>
+        <div hx-get="/admin/panels/modules/discover" hx-trigger="load" hx-swap="outerHTML">
+            <p class="module-list-empty"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Loading discoverable community modules...</p>
+        </div>
+        <details class="install-url">
+            <summary>Install from a Git URL or folder</summary>
+            <p>Paste the module's Git URL. The repository needs a GitHub Release. A local folder path works too, for development.</p>
+            <form class="install-url-form" hx-post="/admin/panels/modules/install" hx-target="#global-status" hx-swap="innerHTML">
+                <input type="text" id="custom-package-name" name="package_name" class="form-control"
+                       placeholder="git+https://github.com/you/mirrordash-my-widget.git"
+                       aria-label="Git URL or local path of the module" autocomplete="off" required>
+                <button type="submit" id="custom-install-btn" class="btn secondary" hx-disabled-elt="this">
                     <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
-                    <span class="htmx-normal"><i class="fas fa-plus" aria-hidden="true" style="margin-right: 5px;"></i> Install</span>
+                    <span class="htmx-normal">Install</span>
                 </button>
-            </div>
-        </form>
+            </form>
+        </details>
     </section>
 </div>
 
 <script>
-    window.filterModules = function(cat, btn) {
-        document.querySelectorAll('.category-pill').forEach(b => {
-            b.classList.toggle('active', b === btn);
-            b.setAttribute('aria-pressed', b === btn);
-        });
-
-        document.querySelectorAll('.module-card').forEach(card => {
-            const isInstalled = card.getAttribute('data-installed') === 'true';
-            const categories = card.getAttribute('data-categories').split(' ');
-            if (cat === 'all' || (cat === 'installed' && isInstalled) || categories.includes(cat)) {
-                card.style.display = 'flex';
-            } else {
-                card.style.display = 'none';
-            }
+    // Search filters both lists in the page; there are only a handful of modules
+    window.filterModules = function(query) {
+        const q = query.trim().toLowerCase();
+        document.querySelectorAll('#page-panel-modules [data-search]').forEach(row => {
+            row.hidden = !row.dataset.search.includes(q);
         });
     };
 </script>
-
-

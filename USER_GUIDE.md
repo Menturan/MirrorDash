@@ -65,7 +65,7 @@ The time zone is taken from your phone. It also sets the country for Wi-Fi (whic
 
 ## 3. Where things go on the screen
 
-The screen has nine areas: top, middle and bottom, each left, center and right. Each module has a position in its settings (Modules tab → **Configure**).
+The screen has nine areas: top, middle and bottom, each left, center and right. Each module has a position in its settings: in the Modules tab, tap it on the map or choose **Settings**.
 
 *   Several modules in the same area are stacked.
 *   A module can be added more than once, for example two clocks in different time zones, each with its own settings.

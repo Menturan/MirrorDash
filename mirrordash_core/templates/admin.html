@@ -128,7 +128,7 @@
     <div class="config-overlay" id="configOverlay" onclick="window.closeConfigSheet()"></div>
     <div class="config-sheet" id="configSheet">
         <div class="sheet-header">
-            <h2 id="sheetTitle" style="margin: 0; font-family: 'Space Grotesk', sans-serif; font-size: 1.25rem;">Configure Module</h2>
+            <h2 id="sheetTitle" style="margin: 0; font-size: 1.25rem;">Configure Module</h2>
             <button class="sheet-close" onclick="window.closeConfigSheet()"><i class="fas fa-times"></i></button>
         </div>
         <div class="sheet-body">
@@ -150,6 +150,12 @@
                     </button>
                 </div>
             </div>
+
+            <!-- The module's screenshot.png from its GitHub repository (hidden for local installs or when missing) -->
+            <figure class="profile-shot" id="profileShot" hidden>
+                <img alt="" onerror="this.closest('figure').hidden = true">
+                <figcaption><a target="_blank" rel="noopener">Read the README on GitHub</a></figcaption>
+            </figure>
 
             <!-- Instances Switcher Section -->
             <div class="instances-section" id="instancesSection" style="display: none; margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px;">
