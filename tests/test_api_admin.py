@@ -1047,6 +1047,11 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
                         "html_url": "https://github.com/testowner/mirrordash-test-widget",
                         "description": "Test community widget description",
                         "stargazers_count": 7
+                    },
+                    {   # installed already (its entry point is mirrordash_clock): not offered again
+                        "name": "mirrordash-clock",
+                        "owner": {"login": "testowner"},
+                        "html_url": "https://github.com/testowner/mirrordash-clock",
                     }
                 ]
             }).encode("utf-8")
@@ -1058,8 +1063,11 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
 
     mock_urlopen.side_effect = urlopen_mock
     
-    r2 = client.get("/admin/panels/modules/discover", headers=headers)
+    installed = {"modules": {"mirrordash_clock": {"package_name": "mirrordash-clock"}}}
+    with patch("mirrordash_core.features.modules.routes.list_modules", AsyncMock(return_value=installed)):
+        r2 = client.get("/admin/panels/modules/discover", headers=headers)
     assert r2.status_code == 200
+    assert "mirrordash-clock" not in r2.text
     assert "mirrordash-test-widget" in r2.text
     # The details come from the search response itself: no request per module
     assert "https://raw.githubusercontent.com/testowner/mirrordash-test-widget/HEAD/screenshot.png" in r2.text
@@ -1228,8 +1236,8 @@ def test_get_panel_dashboard(
     assert "System Analytics" in response.text
     # Each instance is named in its screen position (the -2 instance of the clock too); the turned-off
     # one is dimmed, and one in config whose module is not installed is dimmed and says so
-    assert response.text.count('class="screen-chip"') == 1
-    assert response.text.count('class="screen-chip off"') == 2
+    assert response.text.count('class="mirror-mark"') == 1
+    assert response.text.count('class="mirror-mark off"') == 2
     assert "Clock 2" in response.text
     assert response.text.count("Not installed") == 1
     assert "42.5% Load" in response.text

@@ -3,6 +3,7 @@
 import itertools
 import json
 import logging
+import re
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from mirrordash_core.admin import job_response, notify, require_api_key, start_job, templates
@@ -37,13 +38,16 @@ async def get_panel_modules(request: Request):
 
 @router.get("/panels/modules/discover", dependencies=[Depends(require_api_key)])
 async def get_discover_modules(request: Request):
-    installed = (await list_modules()).get("modules", {})
+    # Entry points are named mirrordash_clock, the community list mirrordash-clock: compare package names
+    # normalized as pip does (PEP 503)
+    norm = lambda n: re.sub(r"[-_.]+", "-", n).lower()
+    installed = {norm(meta["package_name"]) for meta in (await list_modules()).get("modules", {}).values()}
     import mirrordash_core.features.modules.service as adm_mods
     return templates.TemplateResponse(
         request=request,
         name="admin_discover_modules.html",
         context={
-            "discoverable_modules": [m for m in await list_community_modules() if m.get("name") not in installed],
+            "discoverable_modules": [m for m in await list_community_modules() if norm(m.get("name", "")) not in installed],
             "last_scan": adm_mods.LAST_SCAN_TIMESTAMP or "Never"
         }
     )
