@@ -52,9 +52,3 @@ def test_no_hobbyist_patterns_in_the_build():
     assert "plymouth/themes/mirrordash/mirrordash.script" in build
     assert "cfg80211.ieee80211_regdom=" in build
 
-
-def test_golden_image_shows_the_scripts_the_build_installs():
-    golden = (ROOT / "GOLDEN_IMAGE.md").read_text()
-    assert unit("/usr/local/bin/mirrordash-wifi-check.sh") in golden
-    repart = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh\n(.*?)\nEOF\n", SETUP, re.S).group(1)
-    assert "\n".join(("   " + l) if l else "" for l in repart.split("\n")) in golden

@@ -88,7 +88,7 @@ This creates a module with example data and starts a mirror on your computer tha
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
 * [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.
-* [Golden image](GOLDEN_IMAGE.md) and [Releasing](RELEASING.md): how the OS image is built and released.
+* [Releasing](RELEASING.md): how the OS image is built and released.
 
 ## License
 

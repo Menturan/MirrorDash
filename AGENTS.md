@@ -80,5 +80,5 @@ uv run pytest tests/test_visual_admin.py                  # browser tests (once:
 | `ARCHITECTURE.md` | Why things are built the way they are: read before changing a pattern |
 | `DESIGN.md` | The look and its rules (mirror and admin page) |
 | `CONTRIBUTING.md` | The same start for people |
-| `GOLDEN_IMAGE.md`, `RELEASING.md` | The OS image and how releases are made |
+| `RELEASING.md` | The OS image and how releases are made |
 
