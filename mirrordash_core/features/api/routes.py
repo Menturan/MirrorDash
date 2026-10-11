@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Request
 from mirrordash_core.admin import events_header, require_api_key, templates
 from mirrordash_core.config import load_config, save_config
 
-logger = logging.getLogger("mirrordash.core.homeassistant")
+logger = logging.getLogger("mirrordash.core.api")
 router = APIRouter(prefix="/admin")
 
 

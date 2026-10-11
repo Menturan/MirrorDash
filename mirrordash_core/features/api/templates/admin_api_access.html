@@ -1,7 +1,7 @@
-<!-- Home Assistant & API card (Settings tab): one token for Home Assistant and other systems. Re-rendered after every change. -->
+<!-- API card (Settings tab): one token for scripts, Home Assistant and other systems. Re-rendered after every change. -->
 <section class="card" id="api-access-card" style="margin-top: 24px;">
-    <h2><i class="fas fa-key" aria-hidden="true"></i> Home Assistant &amp; API</h2>
-    <p class="panel-subtitle">A token lets Home Assistant or another system read the mirror's status and sensors, turn the screen on and off and set the brightness. It can't change anything else, and it isn't your admin password.</p>
+    <h2><i class="fas fa-key" aria-hidden="true"></i> API</h2>
+    <p class="panel-subtitle">A token lets a script, Home Assistant or another system read the mirror's status and sensors, turn the screen on and off and set the brightness. It can't change anything else, and it isn't your admin password.</p>
 
     {% if new_token %}
     <div style="display: grid; gap: 8px;">
@@ -17,26 +17,27 @@
         </div>
     </div>
     {% elif created %}
-    <p style="font-size: 0.85rem; margin: 0;">A token was created on {{ created }}. Home Assistant sends it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+    <p style="font-size: 0.85rem; margin: 0;">A token was created on {{ created }}. Send it as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
     {% else %}
-    <p style="font-size: 0.85rem; margin: 0;">No token yet. Create one to connect Home Assistant.</p>
+    <p style="font-size: 0.85rem; margin: 0;">No token yet. Create one to reach the mirror from another system.</p>
     {% endif %}
 
     <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;">
         <button type="button" class="btn primary" hx-post="/admin/panels/system/api-token/create"
                 hx-target="#api-access-card" hx-swap="outerHTML" hx-disabled-elt="this"
-                {% if created %}hx-confirm="Create a new token? The old one stops working, so put the new one in Home Assistant."{% endif %}>
+                {% if created %}hx-confirm="Create a new token? The old one stops working, so put the new one wherever the old one was."{% endif %}>
             <i class="fas fa-plus" aria-hidden="true"></i> {% if created %}Create New Token{% else %}Create Token{% endif %}
         </button>
         {% if created %}
         <button type="button" class="btn danger" hx-post="/admin/panels/system/api-token/remove"
                 hx-target="#api-access-card" hx-swap="outerHTML" hx-disabled-elt="this"
-                hx-confirm="Remove the token? Home Assistant can't reach the mirror until you create a new one.">
+                hx-confirm="Remove the token? Other systems can't reach the mirror until you create a new one.">
             <i class="fas fa-trash-alt" aria-hidden="true"></i> Remove Token
         </button>
         {% endif %}
     </div>
     <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 12px 0 0 0;">
-        The status is at <code>http://mirrordash.local/api/v1/status</code>. The user guide has a ready Home Assistant setup.
+        Every call is described, and can be tried, at <a href="/api/v1/docs" target="_blank" rel="noopener">/api/v1/docs</a>.
+        For Home Assistant, the <a href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md#home-assistant" target="_blank" rel="noopener">user guide</a> has a ready setup.
     </p>
 </section>

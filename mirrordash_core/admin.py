@@ -14,6 +14,7 @@ from typing import Annotated, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 
 from mirrordash_core.config import get_core_version, load_config
@@ -68,13 +69,12 @@ def token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-async def require_api_token(authorization: Annotated[str | None, Header()] = None) -> None:
+async def require_api_token(bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))]) -> None:
     """FastAPI dependency for /api/v1: `Authorization: Bearer <token>` with the token from the
-    API Access card. The admin password is not accepted here."""
+    API card. The admin password is not accepted here. HTTPBearer puts the Authorize button in /api/v1/docs."""
     stored = load_config().get("api_token", {}).get("hash")
-    scheme, _, token = (authorization or "").partition(" ")
-    if not stored or scheme.lower() != "bearer" or not secrets.compare_digest(token_hash(token.strip()), stored):
-        raise HTTPException(status_code=401, detail="Missing or wrong API token. Create one under Hardware > API Access.",
+    if not stored or not bearer or not secrets.compare_digest(token_hash(bearer.credentials.strip()), stored):
+        raise HTTPException(status_code=401, detail="Missing or wrong API token. Create one under Settings > API.",
                             headers={"WWW-Authenticate": "Bearer"})
 
 

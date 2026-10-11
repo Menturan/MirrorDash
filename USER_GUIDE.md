@@ -8,7 +8,7 @@ The admin page explains most settings where you change them. This guide covers w
 - [4. When the screen is on](#4-when-the-screen-is-on)
 - [5. Connecting hardware](#5-connecting-hardware)
 - [6. Updates, backups and recovery](#6-updates-backups-and-recovery)
-- [7. Home Assistant](#7-home-assistant)
+- [7. The API: scripts and Home Assistant](#7-the-api-scripts-and-home-assistant)
 - [8. When something is wrong](#8-when-something-is-wrong)
 - [9. How the SD card is protected](#9-how-the-sd-card-is-protected)
 
@@ -101,15 +101,29 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 
 *   **Updates** are in the Settings tab. *Test versions* gets new versions before everyone else; they can have bugs. After an update the mirror's screen reloads by itself; **Reload Screen** (Power tab) does the same by hand.
 *   **If an update doesn't start**, the mirror goes back to the version before by itself and shows *System Restored*. If even that fails, it starts in *Safe Mode* without extra modules (the mirror shows *Safe Mode Active*): use **Rebuild Active Environment** in the admin page's banner to install everything again.
-*   **A backup** (Backup tab) contains your settings, modules and their data, the hardware settings and the Home Assistant token. It doesn't contain the admin password or the Wi-Fi. Restoring keeps the mirror's admin password, installs the modules again (this needs internet) and restarts.
+*   **A backup** (Backup tab) contains your settings, modules and their data, the hardware settings and the API token. It doesn't contain the admin password or the Wi-Fi. Restoring keeps the mirror's admin password, installs the modules again (this needs internet) and restarts.
 
 ---
 
-## 7. Home Assistant
+## 7. The API: scripts and Home Assistant
+
+Other systems can read the mirror's status and sensors, turn its screen on and off and set its brightness. They need a token: in the admin page, *Settings* → *API* → **Create Token**. Every call is described, and can be tried with your token, at `http://mirrordash.local/api/v1/docs`.
+
+The calls (all with the header `Authorization: Bearer <token>`):
+
+| Call | What it does |
+|------|--------------|
+| `GET /api/v1/status` | Version, uptime, CPU temperature, `screen_on`, `brightness`, running modules and `sensors` (`temperature_c`, `humidity`, `lux`, `motion`, `fan_level`, for what is connected). |
+| `POST /api/v1/screen` `{"state": "on"}` | Wakes the screen for the screen timeout; add `"timeout_minutes": 2` for two minutes. `{"state": "off"}` turns it off. |
+| `POST /api/v1/brightness` `{"value": 60}` | Sets and saves the brightness (10–100). |
+
+A wrong or missing token gets `401`, a value out of range `422`. (The older `POST /admin/screen` still works without a token, so existing automations keep running.)
+
+### Home Assistant
 
 Home Assistant can show the mirror's status and sensors, turn its screen on and off (for example when nobody is home) and set its brightness.
 
-1.  **Create a token**: in the admin page, *Settings* → *Home Assistant & API* → **Create Token**, and copy it.
+1.  **Create a token**: in the admin page, *Settings* → *API* → **Create Token**, and copy it.
 2.  **Save it in Home Assistant**: add this line to `secrets.yaml`, with `Bearer`, a space and your token:
     ```yaml
     mirrordash_token: "Bearer paste-your-token-here"
@@ -193,17 +207,6 @@ template:
             data:
               value: "{{ value }}"
 ```
-
-What the API answers, for your own scripts (all with the header `Authorization: Bearer <token>`):
-
-| Call | What it does |
-|------|--------------|
-| `GET /api/v1/status` | Version, uptime, CPU temperature, `screen_on`, `brightness`, running modules and `sensors` (`temperature_c`, `humidity`, `lux`, `motion`, `fan_level`, for what is connected). |
-| `POST /api/v1/screen` `{"state": "on"}` | Wakes the screen for the screen timeout; add `"timeout_minutes": 2` for two minutes. `{"state": "off"}` turns it off. |
-| `POST /api/v1/brightness` `{"value": 60}` | Sets and saves the brightness (10–100). |
-
-A wrong or missing token gets `401`. (The older `POST /admin/screen` still works without a token, so existing automations keep running.)
-
 ---
 
 ## 8. When something is wrong

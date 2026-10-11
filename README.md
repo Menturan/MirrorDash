@@ -84,7 +84,7 @@ This creates a module with example data and starts a mirror on your computer tha
 
 ## Documentation
 
-* [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, Home Assistant.
+* [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, the API and Home Assistant.
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
 * [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.

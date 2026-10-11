@@ -15,7 +15,7 @@ from mirrordash_core.features.backup import routes as backup
 from mirrordash_core.features.dashboard import routes as dashboard
 from mirrordash_core.features.hardware import routes as hardware
 from mirrordash_core.features.hardware.devices import gpio_inputs
-from mirrordash_core.features.homeassistant import api as homeassistant_api, routes as homeassistant
+from mirrordash_core.features.api import api as api_v1, routes as api
 from mirrordash_core.features.kiosk import routes as kiosk
 from mirrordash_core.features.logs import routes as logs
 from mirrordash_core.features.modules import routes as modules, service as modules_service
@@ -42,7 +42,8 @@ async def lifespan(app: FastAPI):
     await display_power_manager.stop()
     await module_loader.stop_modules()
 
-# No /docs, /redoc or /openapi.json: the admin page is the only client, so they'd only be attack surface
+# No /docs, /redoc or /openapi.json here: the admin page is the only client, so they'd only be attack surface.
+# /api/v1 is its own app with its own description (features/api/api.py).
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
 # CORS — allow same-origin and local network access for admin panel
@@ -56,8 +57,9 @@ app.add_middleware(
 # While the setup hotspot is up, everything but the setup page redirects to it
 app.middleware("http")(wifi.captive_portal_redirect)
 
-for feature in (admin, system_settings, auth, backup, dashboard, hardware, homeassistant, homeassistant_api,
+for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
                 kiosk, logs, modules, modules_service, power, settings, updates, updates_service, wifi):
     app.include_router(feature.router)
+app.mount("/api/v1", api_v1.api)
 
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")

@@ -1,4 +1,4 @@
-"""/api/v1 for Home Assistant: only the API token opens it, and it can read the status and run the screen."""
+"""/api/v1 for other systems: only the API token opens it, and it can read the status and run the screen."""
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -19,7 +19,7 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 @pytest.fixture
 def client():
     with patch("mirrordash_core.admin.load_config", return_value=CONFIG), \
-         patch("mirrordash_core.features.homeassistant.api.load_config", return_value=CONFIG):
+         patch("mirrordash_core.features.api.api.load_config", return_value=CONFIG):
         yield TestClient(app)
 
 
@@ -45,8 +45,17 @@ def test_token_runs_the_screen_and_brightness(client):
     off.assert_called_once()
     with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as save:
         assert client.post("/api/v1/brightness", json={"value": 40}, headers=AUTH).json()["brightness"] == 40
-        assert client.post("/api/v1/brightness", json={"value": True}, headers=AUTH).status_code == 400
+        assert client.post("/api/v1/brightness", json={"value": True}, headers=AUTH).status_code == 422
+        assert client.post("/api/v1/brightness", json={"value": 5}, headers=AUTH).status_code == 422
     save.assert_awaited_once_with(settings={"brightness": 40})
+
+
+def test_only_the_api_is_described(client):
+    spec = client.get("/api/v1/openapi.json").json()
+    assert {"/status", "/screen", "/brightness"} <= spec["paths"].keys()
+    assert spec["components"]["securitySchemes"]["HTTPBearer"]["scheme"] == "bearer"
+    assert client.get("/api/v1/docs").status_code == 200
+    assert client.get("/openapi.json").status_code == 404 and client.get("/docs").status_code == 404
 
 
 def test_admin_creates_and_removes_the_token():
@@ -57,8 +66,8 @@ def test_admin_creates_and_removes_the_token():
         saved.update(config)
     app.dependency_overrides[require_api_key] = lambda: None
     try:
-        with patch("mirrordash_core.features.homeassistant.routes.load_config", side_effect=lambda: dict(saved)), \
-             patch("mirrordash_core.features.homeassistant.routes.save_config", side_effect=save):
+        with patch("mirrordash_core.features.api.routes.load_config", side_effect=lambda: dict(saved)), \
+             patch("mirrordash_core.features.api.routes.save_config", side_effect=save):
             client = TestClient(app)
             r = client.post("/admin/panels/system/api-token/create")
             token = r.text.split('id="api-token-value"')[1].split('value="')[1].split('"')[0]
