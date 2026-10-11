@@ -5,7 +5,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SETUP = (ROOT / "scripts" / "setup_appliance.sh").read_text()
-FINALIZE = (ROOT / "scripts" / "finalize_appliance.sh").read_text()
 RECURSE_SED = "sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt"
 
 
@@ -18,8 +17,7 @@ def test_only_the_root_is_overlaid():
     lock = unit("/etc/systemd/system/mirrordash-lock.service")
     check = "grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt"
     assert lock.index("dpkg -s overlayroot") < lock.index(RECURSE_SED) < lock.index(check) < lock.index("systemctl reboot")
-    assert FINALIZE.index("dpkg -s overlayroot") < FINALIZE.index(RECURSE_SED) < FINALIZE.index(check) < FINALIZE.index("\nreboot")
-    assert "enable_overlayfs" not in SETUP + FINALIZE
+    assert "enable_overlayfs" not in SETUP
 
 
 def test_boot_units_know_the_locked_root():
@@ -42,7 +40,7 @@ def test_no_hobbyist_patterns_in_the_build():
     """AGENTS rules (DevOps): no polling, no scraping human-readable output, no commands that don't
     exist hidden behind `|| true`."""
     build = (ROOT / "scripts" / "build_image.sh").read_text()
-    for script in (SETUP, FINALIZE, build):
+    for script in (SETUP, build):
         assert "sleep " not in script
         assert "nmcli device wait" not in script  # not an nmcli command
         assert "/proc/cmdline | grep" not in script and "unit s print | awk" not in script

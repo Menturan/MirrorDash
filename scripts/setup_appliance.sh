@@ -821,17 +821,6 @@ EOF
   systemctl --root=/ enable mirrordash.service
 }
 
-step_finalize_script() {
-  if [ -f "/opt/MirrorDash/scripts/finalize_appliance.sh" ]; then
-    echo "Copying finalize_appliance.sh from local repository..."
-    cp "/opt/MirrorDash/scripts/finalize_appliance.sh" /usr/local/bin/mirrordash-finalize.sh
-  else
-    echo "Downloading finalize_appliance.sh from GitHub..."
-    curl -sSLf "$GITHUB_RAW/scripts/finalize_appliance.sh" -o /usr/local/bin/mirrordash-finalize.sh
-  fi
-  chmod +x /usr/local/bin/mirrordash-finalize.sh
-}
-
 step_repart_service() {
   echo "Creating MBR partition expander script..."
   cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh
@@ -985,10 +974,10 @@ Mechanism=zram
 EOF
 
   # The first boot needs a writable root (partition, storage, SSH keys), so image builds lock once
-  # at the end of it (build_image.sh checks that overlayroot is in the initramfs); manual
-  # (on-device) builds lock explicitly via mirrordash-finalize.sh instead.
+  # at the end of it (build_image.sh checks that overlayroot is in the initramfs).
+  # ponytail: a run straight on a Pi (no BUILDING_IMAGE) stays unlocked; real images come from build_image.sh.
   if [ -z "${BUILDING_IMAGE:-}" ]; then
-    echo "Not an image build — skipping (run mirrordash-finalize.sh to lock)."
+    echo "Not an image build — skipping the lock."
     return 0
   fi
 
@@ -1101,7 +1090,6 @@ run_step "10" "plymouth_splash" "Configuring Plymouth Splash Screen" step_plymou
 run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_sync
 run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Script & Service" step_wifi_captive_portal
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
-run_step "14" "finalize_script" "Creating Appliance Finalization Script" step_finalize_script
 run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
 run_step "17" "first_boot_lock" "Creating First-Boot OverlayFS Lock Service" step_first_boot_lock
