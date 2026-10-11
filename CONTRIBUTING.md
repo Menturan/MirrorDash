@@ -44,7 +44,7 @@ Logic that isn't trivial gets one small test that fails if the logic breaks.
 - **Less is more.** Reuse what's already here, then the standard library, and only then write new code. No new dependency without a good reason. The full list is in [AGENTS.md](AGENTS.md).
 - **Follow the look.** Everything in [DESIGN.md](DESIGN.md) applies to both the mirror and the admin page.
 - **Know the history.** Read [ARCHITECTURE.md](ARCHITECTURE.md) before you change how something works, and add a decision there when you make one.
-- **Mind the Pi.** The root is read-only on the Pi, so data goes in `~/.mirrordash`. A new `sudo` command also needs a line in `/etc/sudoers.d/mirrordash` (`scripts/setup_appliance.sh`).
+- **Mind the Pi.** The root is read-only on the Pi, so data goes in `~/.mirrordash`. A new `sudo` command also needs a line in `/etc/sudoers.d/mirrordash` (`scripts/configure_image.sh`).
 - **Commits** follow `type(scope): what changed` (`fix(admin): …`, `feat(kiosk): …`, `docs: …`). Anything a user notices also gets a line in [CHANGELOG.md](CHANGELOG.md) under *Unreleased*.
 
 The detailed rules are in `.agents/rules/`.

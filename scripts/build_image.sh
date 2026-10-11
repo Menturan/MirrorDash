@@ -75,8 +75,8 @@ mount "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
 mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
-echo -e "\e[34m[INFO] Executing setup_appliance.sh via systemd-nspawn...\e[0m"
-systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./setup_appliance.sh"
+echo -e "\e[34m[INFO] Executing configure_image.sh via systemd-nspawn...\e[0m"
+systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./configure_image.sh"
 
 # The repo copy is only build input — never ship source or the dev config.json
 rm -rf "$MOUNT_DIR/opt/MirrorDash"

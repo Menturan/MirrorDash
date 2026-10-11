@@ -36,7 +36,7 @@ jobs:
       - name: Run tests
         run: uv run pytest -q
 
-      # setup_appliance.sh builds the OS image; a typo there would otherwise show up an hour into a build
+      # configure_image.sh builds the OS image; a typo there would otherwise show up an hour into a build
       - name: Check shell scripts
         run: |
           for f in scripts/*.sh; do bash -n "$f"; done

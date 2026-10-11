@@ -1,10 +1,10 @@
-"""Runs the real mirrordash-hydrate.sh (extracted from setup_appliance.sh) against a temp /storage."""
+"""Runs the real mirrordash-hydrate.sh (extracted from configure_image.sh) against a temp /storage."""
 import os
 import re
 import subprocess
 from pathlib import Path
 
-SETUP = Path(__file__).parent.parent / "scripts" / "setup_appliance.sh"
+SETUP = Path(__file__).parent.parent / "scripts" / "configure_image.sh"
 
 
 def run_hydrate(tmp_path: Path) -> Path:

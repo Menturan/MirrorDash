@@ -15,7 +15,7 @@ Both are made with one script, `scripts/release.py`, and every real release is s
 | You changed… | Do this |
 | :--- | :--- |
 | The app (anything in `mirrordash_core/`) | [Release the app](#release-the-app): choose **1**, test it on a mirror, then **2**. |
-| The OS (`scripts/setup_appliance.sh`, `scripts/build_image.sh`, system settings) | [Release an OS image](#release-an-os-image): choose **3**, test it on an SD card, then **4**. |
+| The OS (`scripts/configure_image.sh`, `scripts/build_image.sh`, system settings) | [Release an OS image](#release-an-os-image): choose **3**, test it on an SD card, then **4**. |
 | Both | First the app (**1** → **2**), then the image (**3** → **4**). |
 
 The SDK (`mirrordash-sdk`) and modules are released from their own repositories: the SDK with its own
@@ -169,8 +169,8 @@ purpose, one at a time, and build a test image (option 3) afterwards.
 | :--- | :--- | :--- |
 | Raspberry Pi OS base image and its SHA-256 | `TARGET_URL`, `TARGET_SHA256` in `scripts/build_image.sh` | `curl -sLI -o /dev/null -w '%{url_effective}' https://downloads.raspberrypi.org/raspios_lite_arm64_latest`; the checksum is that URL + `.sha256`. |
 | Python dependencies (app and image) | `uv.lock` | `uv lock --upgrade`, then run the tests. The image installs these exact versions. |
-| Clock module in the image | `CLOCK_REF` in `scripts/setup_appliance.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
-| uv in the image | `UV_VERSION` in `scripts/setup_appliance.sh` | The uv release you use locally. |
+| Clock module in the image | `CLOCK_REF` in `scripts/configure_image.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
+| uv in the image | `UV_VERSION` in `scripts/configure_image.sh` | The uv release you use locally. |
 | PiShrink | Commit in the URL in `build-os-image.yml` | The latest commit in `Drewsif/PiShrink`. |
 | Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |
 

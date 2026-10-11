@@ -288,19 +288,19 @@ def test_setup_page_and_what_it_needs_are_not_redirected(_hotspot, client):
 def test_hotspot_dns_answers_every_name_with_the_mirror():
     """The OS image must make NetworkManager's hotspot dnsmasq resolve everything to the mirror."""
     from pathlib import Path
-    script = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
+    script = (Path(__file__).parent.parent / "scripts" / "configure_image.sh").read_text()
     assert "echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf" in script
 
 
 def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=False, saved_wifi=False, phone=False):
-    """Run the real mirrordash-wifi-check.sh (from setup_appliance.sh) offline, against a fake nmcli
+    """Run the real mirrordash-wifi-check.sh (from configure_image.sh) offline, against a fake nmcli
     that keeps the hotspot profile's password in a file. args: "--watch". online: the network (or the
     saved Wi-Fi, once the hotspot lets go of the radio) answers. Returns (password, nmcli and curl calls)."""
     import os
     import re
     import subprocess
     from pathlib import Path
-    setup = (Path(__file__).parent.parent / "scripts" / "setup_appliance.sh").read_text()
+    setup = (Path(__file__).parent.parent / "scripts" / "configure_image.sh").read_text()
     body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check\.sh\n(.*?)\nEOF\n", setup, re.S).group(1)
     tmp_path.mkdir(parents=True, exist_ok=True)
     script = tmp_path / "wifi-check.sh"

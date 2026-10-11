@@ -1,4 +1,4 @@
-"""The Plymouth theme written by setup_appliance.sh, and the boot images it shows.
+"""The Plymouth theme written by configure_image.sh, and the boot images it shows.
 
 Plymouth can't run here, so this guards what broke before: the image must be drawn in every mode
 (pix.script skipped it at shutdown), the script must stay as simple as pix.script, and the images
@@ -9,7 +9,7 @@ import struct
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-SETUP = (ROOT / "scripts" / "setup_appliance.sh").read_text()
+SETUP = (ROOT / "scripts" / "configure_image.sh").read_text()
 STATIC = ROOT / "mirrordash_core" / "static"
 IMAGES = ("splash.png", "restart.png", "shutdown.png")
 

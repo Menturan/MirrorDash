@@ -1,9 +1,9 @@
-"""Runs the real mirrordash-gpio-overlays helper (extracted from setup_appliance.sh) on a temp config.txt."""
+"""Runs the real mirrordash-gpio-overlays helper (extracted from configure_image.sh) on a temp config.txt."""
 import re
 import subprocess
 from pathlib import Path
 
-SETUP = Path(__file__).parent.parent / "scripts" / "setup_appliance.sh"
+SETUP = Path(__file__).parent.parent / "scripts" / "configure_image.sh"
 ORIGINAL = "dtparam=audio=on\n[pi4]\narm_boost=1\n"
 
 

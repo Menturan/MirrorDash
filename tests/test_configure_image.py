@@ -1,10 +1,10 @@
-"""How setup_appliance.sh locks the mirror. Nothing here can run off a Pi, so this guards the lines
+"""How configure_image.sh locks the mirror. Nothing here can run off a Pi, so this guards the lines
 that once made /storage a RAM overlay (lost at every reboot) and the Wi-Fi password land in the log."""
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
-SETUP = (ROOT / "scripts" / "setup_appliance.sh").read_text()
+SETUP = (ROOT / "scripts" / "configure_image.sh").read_text()
 RECURSE_SED = "sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt"
 
 

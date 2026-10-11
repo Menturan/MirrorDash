@@ -15,7 +15,7 @@ export DEBIAN_FRONTEND=noninteractive
 
 # Ensure running as root
 if [ "$EUID" -ne 0 ]; then
-  echo "Please run as root (sudo bash setup_appliance.sh)"
+  echo "Please run as root (sudo bash configure_image.sh)"
   exit 1
 fi
 
