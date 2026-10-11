@@ -1,0 +1,9 @@
+{
+  "name": "mirrordash-matter",
+  "private": true,
+  "description": "The mirror as a Matter device: the screen as a dimmable light, through MirrorDash's /api/v1",
+  "type": "module",
+  "main": "index.mjs",
+  "engines": { "node": ">=20" },
+  "dependencies": { "@matter/main": "0.17.9" }
+}

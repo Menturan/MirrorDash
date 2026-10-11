@@ -36,3 +36,4 @@ scratch/
 
 /.claude
 /build_workspace/
+node_modules/
