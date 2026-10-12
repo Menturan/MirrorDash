@@ -2173,6 +2173,7 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
 .mirror-tile.missing { background: none; border: 1px dashed rgba(245, 158, 11, 0.5); color: var(--text-secondary); }
 .mirror-tile-note { color: var(--text-muted); font-size: 0.68rem; font-weight: 500; }
 .mirror-tile.missing .mirror-tile-note { color: var(--warning); }
+.mirror-tile .btn { justify-self: start; padding: 3px 10px; font-size: 0.72rem; }
 .screen-map-link { display: block; text-decoration: none; }
 
 /* Modules tab: rows instead of cards */

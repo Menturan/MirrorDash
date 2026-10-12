@@ -16,6 +16,13 @@
                                     <span class="mirror-tile-top">{{ icon(m) }}</span>
                                     <span class="mirror-tile-name">{{ m.name }}</span>
                                     <span class="mirror-tile-note">Not installed</span>
+                                    {% if interactive %}
+                                        {# Its module is gone (uninstalled elsewhere, a backup from another mirror), so only the settings are left #}
+                                        <button type="button" class="btn secondary btn-sm"
+                                                hx-post="/admin/panels/modules/config/{{ m.id }}/remove?instance_id={{ m.id }}"
+                                                hx-confirm="Remove {{ m.name }} from the mirror? Its settings are deleted."
+                                                hx-target="#global-status">Remove</button>
+                                    {% endif %}
                                 </div>
                             {% elif interactive %}
                                 {# The name is the button; its ::after covers the tile, the switch sits above it #}

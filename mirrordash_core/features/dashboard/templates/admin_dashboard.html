@@ -45,7 +45,7 @@
         {% endif %}
 
         <!-- Screen Layout Matrix -->
-        <section class="card" style="grid-column: span 5; display: flex; flex-direction: column;">
+        <section class="card" style="grid-column: span 12; display: flex; flex-direction: column;">
             <h2 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
                 <i class="fas fa-th-large" style="color: var(--primary);"></i> On the Screen
             </h2>
@@ -58,14 +58,14 @@
 
         <!-- System Analytics: re-fetched every 10 s while the dashboard tab is open (switching tab
              removes the element, which stops the polling) and the browser tab is visible -->
-        <section class="card" id="system-analytics" style="grid-column: span 7; display: flex; flex-direction: column;"
+        <section class="card" id="system-analytics" style="grid-column: span 12; display: flex; flex-direction: column;"
                  hx-get="/admin/panels/dashboard" hx-select="#system-analytics" hx-target="this" hx-swap="outerHTML"
                  hx-trigger="every 10s [document.visibilityState === 'visible']">
             <h2 style="font-size: 1.05rem; font-weight: 600; display: flex; align-items: center; gap: 8px; margin-bottom: 20px;">
                 <i class="fas fa-chart-line" style="color: var(--primary);"></i> System Analytics
             </h2>
             
-            <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; flex-grow: 1;">
+            <div class="analytics-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; flex-grow: 1;">
                 <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); padding: 16px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px;">
                     <span style="font-size: 0.75rem; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em;">CPU</span>
                     {% if cpu_load is not none %}
@@ -166,6 +166,7 @@
         }
         /* Two short values per row instead of one long column on phones */
         .analytics-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
             gap: 10px !important;
         }
         .analytics-grid > div {

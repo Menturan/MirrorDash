@@ -1078,10 +1078,12 @@ def test_get_panel_and_discover_modules(mock_urlopen, client):
 
 def test_modules_map_switches_each_instance(client):
     cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
-                       "mirrordash-clock-2": {"module": "mirrordash-clock", "position": "bottom_right", "enabled": False}}}
+                       "mirrordash-clock-2": {"module": "mirrordash-clock", "position": "bottom_right", "enabled": False},
+                       "mirrordash_gone": {"position": "middle_left"}}}
     clock = SimpleNamespace(name="mirrordash_clock", dist=None)
     with patch("mirrordash_core.features.modules.service.load_config", return_value=cfg), \
-         patch("mirrordash_core.features.modules.service.find_entry_point", return_value=clock), \
+         patch("mirrordash_core.features.modules.service.find_entry_point",
+               side_effect=lambda name, eps: None if "gone" in name else clock), \
          patch("mirrordash_core.features.modules.routes.list_modules", AsyncMock(return_value={"modules": {}})):
         html = client.get("/admin/panels/modules", headers={"X-API-Key": "secret"}).text
     # Each instance's switch flips that instance, and shows whether it is on
@@ -1089,6 +1091,8 @@ def test_modules_map_switches_each_instance(client):
         url = html.index(f"/admin/panels/modules/config/mirrordash_clock/toggle?instance_id={inst}")
         assert ("checked" in html[html.rindex("<input", 0, url):url]) == on
     assert "Clock 2" in html
+    # An instance whose module is gone can still be removed from the mirror
+    assert 'hx-post="/admin/panels/modules/config/mirrordash_gone/remove?instance_id=mirrordash_gone"' in html
 
 
 def test_github_repo_from_install_urls():
@@ -1254,7 +1258,7 @@ def test_get_panel_dashboard(
     assert response.text.count('class="mirror-tile"') == 1
     assert response.text.count('class="mirror-tile off"') == 1
     assert response.text.count('class="mirror-tile missing"') == 1
-    assert "/toggle" not in response.text  # the dashboard only shows; switching is on the Modules tab
+    assert "/toggle" not in response.text and "/remove" not in response.text  # changes are on the Modules tab
     assert "Clock 2" in response.text
     assert response.text.count("Not installed") == 1
     assert "42.5% Load" in response.text
