@@ -1,24 +1,52 @@
-{# The mirror in miniature, drawn the way the mirror draws itself: black glass, each module's heading
-   pinned to its anchor, the centre left empty. Needs screen_layout and portrait; with interactive set,
-   each module is a button that opens its settings. #}
-<div class="mirror-pane{% if portrait %} portrait{% endif %}">
-    {% for pos in ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right', 'bottom_left', 'bottom_center', 'bottom_right'] %}
-        {% set where = pos.replace('_', ' ')|capitalize %}
-        <div class="mirror-region" title="{{ where }}">
-            {% for m in screen_layout.get(pos, []) %}
-                {% if interactive and m.module %}
-                    <button type="button" class="mirror-mark{% if not m.enabled %} off{% endif %}" title="{{ m.name }}"
-                            aria-label="{{ m.name }}, {{ where|lower }}{% if not m.enabled %}, off{% endif %}"
-                            hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
-                            hx-target="#config-fields-global"
-                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')"><span class="mirror-name">{{ m.name }}</span></button>
-                {% else %}
-                    <span class="mirror-mark{% if not m.enabled or not m.module %} off{% endif %}" title="{{ m.name }}">
-                        <span class="mirror-name">{{ m.name }}</span>{% if not m.module %}<small>Not installed</small>{% endif -%}
-                    </span>
-                {% endif %}
-            {% endfor %}
+{# What is on the mirror, as its three bands (top, middle, bottom), each with left, center and right.
+   Heights follow the content, so a busy position never squeezes the others. Needs screen_layout; with
+   interactive set, a module opens its settings and has a switch that turns it on or off. #}
+{% macro icon(m) %}{% if m.icon.startswith('<svg') %}{{ m.icon | safe }}{% else %}<i class="fas {{ m.icon }}" aria-hidden="true"></i>{% endif %}{% endmacro %}
+<div class="mirror-pane">
+    {% for row in ['top', 'middle', 'bottom'] %}
+        <div class="mirror-band">
+            <span class="mirror-band-label">{{ row|capitalize }}</span>
+            <div class="mirror-slots">
+                {% for col in ['left', 'center', 'right'] %}
+                    {% set placed = screen_layout.get(row ~ '_' ~ col, []) %}
+                    <div class="mirror-slot{% if not placed %} empty{% endif %}" title="{{ row|capitalize }} {{ col }}">
+                        {% for m in placed %}
+                            {% if not m.module %}
+                                <div class="mirror-tile missing">
+                                    <span class="mirror-tile-top">{{ icon(m) }}</span>
+                                    <span class="mirror-tile-name">{{ m.name }}</span>
+                                    <span class="mirror-tile-note">Not installed</span>
+                                </div>
+                            {% elif interactive %}
+                                {# The name is the button; its ::after covers the tile, the switch sits above it #}
+                                <div class="mirror-tile{% if not m.enabled %} off{% endif %}">
+                                    <span class="mirror-tile-top">
+                                        {{ icon(m) }}
+                                        <label class="switch">
+                                            <input type="checkbox" {% if m.enabled %}checked{% endif %}
+                                                   aria-label="{{ m.name }} on the mirror"
+                                                   hx-post="/admin/panels/modules/config/{{ m.module }}/toggle?instance_id={{ m.id }}"
+                                                   hx-trigger="change" hx-swap="none"
+                                                   hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'refreshModules')">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </span>
+                                    <button type="button" class="mirror-tile-name"
+                                            aria-label="{{ m.name }} settings, {{ row }} {{ col }}"
+                                            hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
+                                            hx-target="#config-fields-global"
+                                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')">{{ m.name }}</button>
+                                </div>
+                            {% else %}
+                                <div class="mirror-tile{% if not m.enabled %} off{% endif %}">
+                                    <span class="mirror-tile-top">{{ icon(m) }}{% if not m.enabled %}<span class="mirror-tile-note">Off</span>{% endif %}</span>
+                                    <span class="mirror-tile-name">{{ m.name }}</span>
+                                </div>
+                            {% endif %}
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+            </div>
         </div>
     {% endfor %}
-    {% if not screen_layout %}<p class="mirror-empty">Nothing on the mirror yet.</p>{% endif %}
 </div>

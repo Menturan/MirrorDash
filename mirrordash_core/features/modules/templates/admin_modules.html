@@ -9,11 +9,11 @@
     {% endif %}
 
     <!-- The map and the list change together after a save, so one request refreshes both -->
-    <div id="modules-live"{% if portrait %} class="portrait"{% endif %} hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body"
+    <div id="modules-live" hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body"
          hx-select="#modules-live" hx-swap="outerHTML" hx-disinherit="*">
         <section class="card">
             <h2><i class="fas fa-th-large" aria-hidden="true"></i> Your mirror</h2>
-            <p>Tap a module to change it.</p>
+            <p>Tap a module to change it, or switch it off.</p>
             {% set interactive = true %}
             {% include "screen_map.html" %}
         </section>
@@ -28,19 +28,7 @@
             <div id="installed-modules-container" class="module-list">
                 {% for name, meta in installed_modules.items() %}
                     {% set title = meta.schema.title or name %}
-                    {% set icon_class = meta.schema.icon or "" %}
-                    {% if not icon_class %}
-                        {# ponytail: guesses for the bundled modules, which declare no icon; others get the puzzle piece #}
-                        {% set icon_class = "fa-puzzle-piece" %}
-                        {% if "clock" in name %}{% set icon_class = "fa-clock" %}
-                        {% elif "calendar" in name %}{% set icon_class = "fa-calendar-days" %}
-                        {% elif "weather" in name %}{% set icon_class = "fa-cloud-sun" %}
-                        {% elif "news" in name %}{% set icon_class = "fa-newspaper" %}
-                        {% elif "homeassistant" in name %}{% set icon_class = "fa-house" %}
-                        {% elif "namnsdag" in name %}{% set icon_class = "fa-calendar-check" %}
-                        {% elif "krisinformation" in name %}{% set icon_class = "fa-triangle-exclamation" %}
-                        {% endif %}
-                    {% endif %}
+                    {% set icon_class = meta.icon %}
                     {% set on = meta.instances | selectattr("enabled") | list %}
                     <div class="module-row{% if meta.instances and not on %} off{% endif %}" id="module-card-{{ name }}"
                          data-search="{{ (title ~ ' ' ~ name)|lower }}"

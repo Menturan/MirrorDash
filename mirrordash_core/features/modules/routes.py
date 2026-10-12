@@ -10,7 +10,7 @@ from mirrordash_core.admin import job_response, notify, require_api_key, start_j
 from mirrordash_core.config import find_module_config, load_config, save_config, version_key
 from mirrordash_core.features.modules.loader import module_loader, find_entry_point
 from mirrordash_core.fetch import fetch_json_cached
-from mirrordash_core.features.modules.service import is_portrait, list_community_modules, list_modules, screen_layout, install_module, uninstall_module, update_module
+from mirrordash_core.features.modules.service import list_community_modules, list_modules, screen_layout, install_module, uninstall_module, update_module
 from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.features.settings.schema import get_module_schema
 
@@ -30,7 +30,6 @@ async def get_panel_modules(request: Request):
         context={
             "installed_modules": dict(sorted(modules.items(), key=lambda kv: (kv[1]["schema"].get("title") or kv[0]).lower())),
             "screen_layout": screen_layout(),
-            "portrait": is_portrait(),
             "disk_usage": await get_disk_usage(),
         }
     )

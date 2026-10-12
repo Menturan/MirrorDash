@@ -2132,56 +2132,50 @@ header {
     }
 }
 
-/* The mirror in miniature (screen_map.html, Modules tab and Dashboard): black glass, and each module's
-   label-caps heading pinned to its anchor the way the screen pins it (DESIGN.md, Layout): the left column
-   left, the right column right, the middle row centred, the bottom row growing up from the edge. */
-.mirror-pane {
+/* What is on the mirror (screen_map.html, Modules tab and Dashboard): three bands, each with left,
+   center and right; heights follow the content. Black like the glass, a tile per module. */
+.mirror-pane { display: grid; background: #000; border: 1px solid var(--border-color); border-radius: 12px; }
+.mirror-band { display: grid; gap: 8px; padding: 12px; }
+.mirror-band + .mirror-band { border-top: 1px solid var(--border-color); }
+.mirror-band-label { color: var(--text-muted); font-size: 0.72rem; font-weight: 500; }
+.mirror-slots { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.mirror-slot { display: grid; gap: 6px; align-content: start; min-width: 0; min-height: 46px; border-radius: 8px; }
+.mirror-slot.empty { border: 1px dashed rgba(255, 255, 255, 0.06); }
+.mirror-tile {
     position: relative;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: auto 1fr auto;
-    gap: 12px 18px;
-    aspect-ratio: 16 / 9;
-    width: 100%;
-    max-width: 640px;
-    padding: clamp(14px, 2.5vw, 32px);  /* not %: that is of the card's width, not the pane's */
-    background: #000;
-    border: 1px solid rgba(255, 255, 255, 0.14);
-    border-radius: 4px;
-    container-type: inline-size;
+    gap: 6px;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--text-primary);
 }
-.mirror-pane.portrait { aspect-ratio: 9 / 16; max-width: 380px; }
-.mirror-region { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
-.mirror-region:nth-child(3n+2) { align-items: center; text-align: center; }
-.mirror-region:nth-child(3n) { align-items: flex-end; text-align: right; }
-.mirror-region:nth-child(n+4):nth-child(-n+6) { justify-content: center; }
-.mirror-region:nth-child(n+7) { flex-direction: column-reverse; }
-.mirror-mark {
-    max-width: 100%;
-    padding: 0 0 3px;
+.mirror-tile:hover { border-color: rgba(255, 255, 255, 0.16); }
+.mirror-tile-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-height: 16px; }
+.mirror-tile-name {
+    padding: 0;
     border: 0;
-    border-bottom: 1px solid #666;
-    border-radius: 0;
     background: none;
-    color: #fff;
-    font: 600 0.68rem/1.3 var(--font-family);
-    font-size: clamp(0.68rem, 1.9cqi, 0.82rem);  /* grows with the pane, so a wide one isn't mostly empty */
-    letter-spacing: 0.06em;
-    text-align: inherit;
-    text-transform: uppercase;
+    color: inherit;
+    font: 600 0.75rem/1.25 var(--font-family);
+    text-align: left;
+    hyphens: auto;
+    overflow-wrap: anywhere;
 }
-.mirror-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mirror-mark.off { color: #666; border-bottom-color: #333; }
-.mirror-mark small { display: block; color: var(--warning); font-size: 0.66rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
-button.mirror-mark { cursor: pointer; }
-button.mirror-mark:hover, button.mirror-mark:focus-visible { outline: 1px solid #fff; outline-offset: 4px; }
-.mirror-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #666; font-size: 0.8rem; }
+button.mirror-tile-name { cursor: pointer; }
+button.mirror-tile-name::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }  /* the whole tile opens it */
+button.mirror-tile-name:focus-visible { outline: none; }
+button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary); outline-offset: 2px; }
+.mirror-tile .switch { position: relative; z-index: 1; transform: scale(0.7); transform-origin: right center; margin: -4px -6px -4px 0; }
+.mirror-tile.off { background: none; border-color: var(--border-color); color: var(--text-muted); }
+.mirror-tile.missing { background: none; border: 1px dashed rgba(245, 158, 11, 0.5); color: var(--text-secondary); }
+.mirror-tile-note { color: var(--text-muted); font-size: 0.68rem; font-weight: 500; }
+.mirror-tile.missing .mirror-tile-note { color: var(--warning); }
 .screen-map-link { display: block; text-decoration: none; }
 
-/* Modules tab: rows instead of cards. A rotated (tall) mirror sits beside the list on a wide page */
-@media (min-width: 1000px) {
-    #modules-live.portrait { display: grid; grid-template-columns: minmax(320px, 436px) minmax(0, 1fr); gap: 0 24px; align-items: start; }
-}
+/* Modules tab: rows instead of cards */
 .module-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .module-card-head h2 { margin: 0; }
 .module-search { flex: 0 1 260px; min-width: 0; }

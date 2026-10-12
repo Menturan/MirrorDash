@@ -78,9 +78,14 @@ def github_module(item: dict) -> dict:
     }
 
 
-def is_portrait() -> bool:
-    """The screen is turned on its side (Settings → Display → Rotation), so the mirror is tall."""
-    return load_config().get("system", {}).get("rotation") in ("left", "right")
+def module_icon(name: str, schema: dict | None) -> str:
+    """The module's Font Awesome class (or inline <svg>) from its schema, else a guess from its name."""
+    if schema and schema.get("icon"):
+        return schema["icon"]
+    # ponytail: the bundled modules declare no icon; any other module gets the puzzle piece
+    guesses = {"clock": "fa-clock", "calendar": "fa-calendar-days", "weather": "fa-cloud-sun", "news": "fa-newspaper",
+               "homeassistant": "fa-house", "namnsdag": "fa-calendar-check", "krisinformation": "fa-triangle-exclamation"}
+    return next((icon for key, icon in guesses.items() if key in name), "fa-puzzle-piece")
 
 
 def screen_layout() -> dict[str, list[dict]]:
@@ -89,15 +94,26 @@ def screen_layout() -> dict[str, list[dict]]:
     eps = list(importlib.metadata.entry_points(group="mirrordash.modules"))
     layout = {}
     for inst_id, cfg in load_config().get("modules", {}).items():
-        if isinstance(cfg, dict):
-            ep = find_entry_point(cfg.get("module", inst_id), eps)
-            layout.setdefault(cfg.get("position", "middle_center"), []).append({
-                "id": inst_id,
-                "name": re.sub(r"^mirrordash[-_]", "", inst_id).replace("_", " ").replace("-", " ").title(),
-                "enabled": cfg.get("enabled", True),
-                "module": ep.name if ep else None,
-                "package": ep.dist.name if ep and ep.dist else None,
-            })
+        if not isinstance(cfg, dict):
+            continue
+        ep = find_entry_point(cfg.get("module", inst_id), eps)
+        schema = None
+        try:
+            schema = get_module_schema(ep.load()) if ep else None
+        except Exception as e:
+            logger.warning(f"Could not load schema for '{inst_id}': {e}")
+        base = re.sub(r"-\d+$", "", inst_id)
+        name = (schema or {}).get("title") or re.sub(r"^mirrordash[-_]", "", base).replace("_", " ").replace("-", " ").title()
+        if base != inst_id:
+            name += " " + inst_id.rsplit("-", 1)[1]  # the second clock is "Clock 2"
+        layout.setdefault(cfg.get("position", "middle_center"), []).append({
+            "id": inst_id,
+            "name": name,
+            "icon": module_icon(ep.name if ep else inst_id, schema),
+            "enabled": cfg.get("enabled", True),
+            "module": ep.name if ep else None,
+            "package": ep.dist.name if ep and ep.dist else None,
+        })
     return layout
 
 
@@ -251,6 +267,7 @@ async def list_modules() -> dict:
             "repo": (repo := _installed_repo(ep.dist) if ep.dist else None),
             "screenshot": github_screenshot(repo),
             "schema": schema,
+            "icon": module_icon(name, schema),
             "instances": instances
         }
     return {"modules": result}

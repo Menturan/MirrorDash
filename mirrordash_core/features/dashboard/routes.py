@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request
 from mirrordash_core.admin import require_api_key, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.modules.loader import module_loader
-from mirrordash_core.features.modules.service import is_portrait, screen_layout
+from mirrordash_core.features.modules.service import screen_layout
 
 logger = logging.getLogger("mirrordash.core.dashboard")
 router = APIRouter(prefix="/admin")
@@ -44,7 +44,6 @@ async def get_panel_dashboard(request: Request):
         name="admin_dashboard.html",
         context={
             "screen_layout": screen_layout(),
-            "portrait": is_portrait(),
             "disk_usage": disk_usage,
             "cpu_temp": cpu_temp,
             "cpu_load": get_cpu_load(),
