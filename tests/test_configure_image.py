@@ -36,6 +36,7 @@ def test_first_boot_units_dont_run_on_every_boot():
     assert "systemctl --root=/ mask regenerate_ssh_host_keys.service sshd-keygen.service rpi-resize.service" in SETUP
     assert "touch /etc/cloud/cloud-init.disabled" in SETUP
     assert "userconf.txt\n" not in SETUP and "usermod -s /bin/bash -p" in SETUP
+    assert "rm -f /etc/ssh/sshd_config.d/rename_user.conf" in SETUP
     assert "ssh-keygen -A -f /storage/mirrordash/ssh" in unit("/usr/local/bin/mirrordash-hydrate.sh")
     assert "HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key" in unit("/etc/ssh/sshd_config.d/mirrordash-hostkeys.conf")
 

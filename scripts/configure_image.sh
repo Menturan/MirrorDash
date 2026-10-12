@@ -215,6 +215,8 @@ step_configuring_console_login() {
   # boot on (squashfs), so a user set up then would be gone at the next one.
   usermod -s /bin/bash -p "$(echo 'raspberry' | openssl passwd -6 -stdin)" pi
   systemctl --root=/ disable userconfig.service
+  # The rest of what Pi OS does once the user is set up (cancel-rename): its "SSH may not work" banner
+  rm -f /etc/ssh/sshd_config.d/rename_user.conf
 }
 
 step_setting_up_wayland() {
