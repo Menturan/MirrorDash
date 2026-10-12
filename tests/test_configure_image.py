@@ -16,7 +16,7 @@ def test_only_the_root_is_overlaid():
     """An image is locked from its first boot: a squashfs root under overlayroot, set in the build.
     recurse=0 keeps /storage on the card."""
     image_opts = re.search(r'if \[ -n "\$\{BUILDING_IMAGE:-\}" \]; then\n\s*target_opts\+=\((.*?)\)', SETUP).group(1)
-    assert image_opts == '"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0"'
+    assert image_opts == '"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false"'
     assert "enable_overlayfs" not in SETUP
     assert "boot=overlay" not in SETUP  # not the parameter overlayroot reads
     assert "ConditionKernelCommandLine=!overlayroot" in unit("/etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf")
@@ -32,8 +32,7 @@ def test_repart_finds_the_root_partition_under_overlayroot():
 
 
 def test_first_boot_units_dont_run_on_every_boot():
-    """The image's machine-id is "uninitialized", so each boot is a first boot on the squashfs root."""
-    assert "systemctl --root=/ mask regenerate_ssh_host_keys.service sshd-keygen.service rpi-resize.service" in SETUP
+    """What Pi OS does on a first boot is done in the build or kept on /storage: an image has no first boot."""
     assert "touch /etc/cloud/cloud-init.disabled" in SETUP
     assert "userconf.txt\n" not in SETUP and "usermod -s /bin/bash -p" in SETUP
     assert "rm -f /etc/ssh/sshd_config.d/rename_user.conf" in SETUP

@@ -531,9 +531,12 @@ EOF
     )
     # Image builds: the root is a squashfs (build_image.sh) under a RAM overlay, from the first boot on.
     # recurse=0 overlays only /: by default overlayroot also puts every fstab mount (/storage!) on the
-    # RAM overlay, losing settings and Wi-Fi at reboot.
+    # RAM overlay, losing settings and Wi-Fi at reboot. The image's machine-id is "uninitialized", so
+    # systemd would treat every boot as the first: enable every unit Debian's presets name (SSH,
+    # systemd-networkd, Cog without its path unit...) and rerun the first-boot units (new SSH keys).
+    # Nothing in the image needs a first boot, so there is none.
     if [ -n "${BUILDING_IMAGE:-}" ]; then
-      target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0")
+      target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false")
     fi
 
     for target in "${target_opts[@]}"; do
@@ -1007,10 +1010,8 @@ EOF
   fi
 
   # Image builds are locked from the first boot: the root is a squashfs and cmdline.txt has overlayroot
-  # (step_watchdog_boot_optimization). The image's machine-id is "uninitialized", so systemd treats
-  # every boot as the first: these would make new SSH host keys (they are on /storage instead), grow
-  # the root, or run cloud-init's first-boot setup each time.
-  systemctl --root=/ mask regenerate_ssh_host_keys.service sshd-keygen.service rpi-resize.service
+  # (step_watchdog_boot_optimization). cloud-init would see a new machine every boot (its state is on
+  # the RAM overlay) and set it up again; Pi OS's seed files on the boot partition are empty anyway.
   touch /etc/cloud/cloud-init.disabled
 }
 
