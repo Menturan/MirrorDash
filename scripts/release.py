@@ -417,6 +417,7 @@ def build_test_image():
     (TEST_IMAGE_DIR / "run.json").write_text(json.dumps(
         {"run_id": run_id, "sha": sha, "core_version": core, "image": str(image)}, indent=2))
     print(f"\n  Test image: {image}")
+    print(f"  Checksum:   {image}.sha256 (matches)")
     print("  Flash it, go through the hardware checklist in RELEASING.md, then run this again and choose 4.")
 
 
