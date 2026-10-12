@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-12
+
 ### Added
 - A Reload Screen button in the Power tab loads the mirror's page again, for example if it looks wrong.
 - Every password field in the admin page has Show/Hide.
