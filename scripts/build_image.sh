@@ -81,13 +81,18 @@ systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR"
 # The repo copy is only build input — never ship source or the dev config.json
 rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
-# The read-only root needs overlayroot inside the initramfs; without it the first-boot lock sets
-# overlayroot=tmpfs and nothing happens, and the SD card stays writable. Never ship that.
+# The read-only root needs overlayroot inside the initramfs; without it overlayroot= in cmdline.txt
+# does nothing, and the squashfs root has no writable layer at all. Never ship that.
 # The list is read in full first: `| grep -q` stops reading at the first match, the container is
 # killed for it, and with pipefail that counted as a failure even when overlayroot was there.
 initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8) || true
 if ! grep -q overlayroot <<< "$initramfs_files"; then
-    echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the image would never become read-only.\e[0m"
+    echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the root would have no writable layer.\e[0m"
+    exit 1
+fi
+# The root is a squashfs, a module in Pi OS's kernels: without it the root can't be mounted
+if ! grep -q kernel/fs/squashfs/squashfs.ko <<< "$initramfs_files"; then
+    echo -e "\e[31m[ERROR] squashfs is missing from the initramfs: the mirror couldn't mount its root.\e[0m"
     exit 1
 fi
 if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
@@ -107,13 +112,25 @@ if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/bin/ddcutil; then
     exit 1
 fi
 
-# --- Unmount & Shrink ---
-echo -e "\e[34m[INFO] Setup complete. Unmounting...\e[0m"
+# --- Root as squashfs ---
+# The root is read-only on the mirror (overlayroot), so it ships compressed: about a quarter of the
+# ext4 size, which leaves room for a second root (A/B OS updates) on an 8 GB card.
+# boot/firmware stays in it as an empty mount point; p1 is its own partition.
+echo -e "\e[34m[INFO] Setup complete. Packing the root as squashfs...\e[0m"
+umount "$MOUNT_DIR/boot/firmware"
+mksquashfs "$MOUNT_DIR" root.sqfs -comp zstd -noappend -quiet
 cleanup
 trap - EXIT ERR INT TERM
 
-echo -e "\e[34m[INFO] Shrinking OS partition with PiShrink...\e[0m"
-pishrink.sh -s "$FINAL_IMAGE"
+# p2 becomes the squashfs, in whole MiB. p1 and the disk identifier stay, so root=PARTUUID=...-02 in
+# cmdline.txt still matches; the first boot adds /storage (p3) right after p2.
+P2_START=$(( $(partx -g -o START -n 2 "$FINAL_IMAGE") ))
+P2_MIB=$(( ($(stat -c %s root.sqfs) + 1048575) / 1048576 ))
+P2_SECTORS=$(( P2_MIB * 2048 ))
+echo ",$P2_SECTORS" | sfdisk -q -N 2 "$FINAL_IMAGE"
+truncate -s $(( (P2_START + P2_SECTORS) * 512 )) "$FINAL_IMAGE"
+dd if=root.sqfs of="$FINAL_IMAGE" bs=1M seek=$(( P2_START * 512 )) oflag=seek_bytes conv=notrunc status=none
+rm root.sqfs
 
 echo -e "\e[34m[INFO] Compressing final image to XZ...\e[0m"
 xz -T0 -6 "$FINAL_IMAGE"

@@ -171,7 +171,6 @@ purpose, one at a time, and build a test image (option 3) afterwards.
 | Python dependencies (app and image) | `uv.lock` | `uv lock --upgrade`, then run the tests. The image installs these exact versions. |
 | Clock module in the image | `CLOCK_REF` in `scripts/configure_image.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
 | uv in the image | `UV_VERSION` in `scripts/configure_image.sh` | The uv release you use locally. |
-| PiShrink | Commit in the URL in `build-os-image.yml` | The latest commit in `Drewsif/PiShrink`. |
 | Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |
 
 ### When something fails

@@ -1,11 +1,11 @@
 """How configure_image.sh locks the mirror. Nothing here can run off a Pi, so this guards the lines
 that once made /storage a RAM overlay (lost at every reboot) and the Wi-Fi password land in the log."""
 import re
+import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SETUP = (ROOT / "scripts" / "configure_image.sh").read_text()
-RECURSE_SED = "sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt"
 
 
 def unit(path: str) -> str:
@@ -13,19 +13,31 @@ def unit(path: str) -> str:
 
 
 def test_only_the_root_is_overlaid():
-    """The lock is one kernel parameter; recurse=0 keeps /storage on the card. Checked before rebooting."""
-    lock = unit("/etc/systemd/system/mirrordash-lock.service")
-    check = "grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt"
-    assert lock.index("dpkg -s overlayroot") < lock.index(RECURSE_SED) < lock.index(check) < lock.index("systemctl reboot")
+    """An image is locked from its first boot: a squashfs root under overlayroot, set in the build.
+    recurse=0 keeps /storage on the card."""
+    image_opts = re.search(r'if \[ -n "\$\{BUILDING_IMAGE:-\}" \]; then\n\s*target_opts\+=\((.*?)\)', SETUP).group(1)
+    assert image_opts == '"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0"'
     assert "enable_overlayfs" not in SETUP
-
-
-def test_boot_units_know_the_locked_root():
-    for path in ("/etc/systemd/system/mirrordash-lock.service",
-                 "/etc/systemd/system/mirrordash-repart.service",
-                 "/etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf"):
-        assert "ConditionKernelCommandLine=!overlayroot" in unit(path), path
     assert "boot=overlay" not in SETUP  # not the parameter overlayroot reads
+    assert "ConditionKernelCommandLine=!overlayroot" in unit("/etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf")
+
+
+def test_repart_finds_the_root_partition_under_overlayroot():
+    """`/` is an overlay on a locked mirror, so repart reads root= from the kernel command line;
+    overlayroot= comes first there and must not be taken for it."""
+    expr = re.search(r"findfs \"\$\(sed -n '(.*?)' /proc/cmdline\)\"", unit("/usr/local/bin/mirrordash-repart.sh")).group(1)
+    for cmdline in ("overlayroot=tmpfs:recurse=0 console=tty3 root=PARTUUID=27b94958-02 rootfstype=squashfs rootwait",
+                    "root=PARTUUID=27b94958-02 quiet"):
+        assert subprocess.run(["sed", "-n", expr], input=cmdline + "\n", capture_output=True, text=True).stdout == "PARTUUID=27b94958-02\n"
+
+
+def test_first_boot_units_dont_run_on_every_boot():
+    """The image's machine-id is "uninitialized", so each boot is a first boot on the squashfs root."""
+    assert "systemctl --root=/ mask regenerate_ssh_host_keys.service sshd-keygen.service rpi-resize.service" in SETUP
+    assert "touch /etc/cloud/cloud-init.disabled" in SETUP
+    assert "userconf.txt\n" not in SETUP and "usermod -s /bin/bash -p" in SETUP
+    assert "ssh-keygen -A -f /storage/mirrordash/ssh" in unit("/usr/local/bin/mirrordash-hydrate.sh")
+    assert "HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key" in unit("/etc/ssh/sshd_config.d/mirrordash-hostkeys.conf")
 
 
 def test_swap_is_zram_only():

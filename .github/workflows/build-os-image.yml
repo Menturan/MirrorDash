@@ -49,13 +49,10 @@ jobs:
             parted \
             xz-utils \
             e2fsprogs \
-            pigz \
             wget \
             curl \
             systemd-container \
-            zerofree
-          sudo wget -qO /usr/local/bin/pishrink.sh https://raw.githubusercontent.com/Drewsif/PiShrink/5f358d03eed4b7334657ee93867826a2b42f112a/pishrink.sh
-          sudo chmod +x /usr/local/bin/pishrink.sh
+            squashfs-tools
 
       - name: Build OS image
         run: sudo bash scripts/build_image.sh
@@ -68,5 +65,5 @@ jobs:
             build_workspace/mirrordash-os-*.img.xz
             build_workspace/mirrordash-os-*.img.xz.sha256
           if-no-files-found: error
-          compression-level: 0 # We already compress using PiShrink in build
+          compression-level: 0 # The image is already xz
           retention-days: 14

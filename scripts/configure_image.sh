@@ -210,9 +210,11 @@ step_configuring_console_login() {
   echo "Setting system to graphical target..."
   ln -fs /lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
-  echo "Provisioning headless user for Debian Trixie first-boot..."
-  # Creates a userconf.txt in boot-partitionen with user 'pi' and password 'raspberry' (SHA-512 encrypted)
-  echo "pi:$(echo 'raspberry' | openssl passwd -6 -stdin)" > /boot/firmware/userconf.txt
+  echo "Setting up user 'pi' (password 'raspberry')..."
+  # Done here, not by Pi OS's userconf.txt on the first boot: the image's root is read-only from that
+  # boot on (squashfs), so a user set up then would be gone at the next one.
+  usermod -s /bin/bash -p "$(echo 'raspberry' | openssl passwd -6 -stdin)" pi
+  systemctl --root=/ disable userconfig.service
 }
 
 step_setting_up_wayland() {
@@ -522,7 +524,15 @@ EOF
       "vt.global_cursor_default=0"
       "plymouth.ignore-serial-consoles"
       "logo.nologo"
+      # A kernel panic, or a root the initramfs can't find, restarts the mirror instead of halting it
+      "panic=10"
     )
+    # Image builds: the root is a squashfs (build_image.sh) under a RAM overlay, from the first boot on.
+    # recurse=0 overlays only /: by default overlayroot also puts every fstab mount (/storage!) on the
+    # RAM overlay, losing settings and Wi-Fi at reboot.
+    if [ -n "${BUILDING_IMAGE:-}" ]; then
+      target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0")
+    fi
 
     for target in "${target_opts[@]}"; do
       prefix="${target%%=*}"
@@ -828,8 +838,8 @@ step_repart_service() {
 # MirrorDash MBR Partition Expander
 set -euo pipefail
 
-# Runs only before the lock (ConditionKernelCommandLine), so / is the ext4 root partition itself
-ROOT_PART=$(findmnt -nvo SOURCE /)
+# The root partition from the kernel's root= (PARTUUID=...): / is an overlay on a locked mirror
+ROOT_PART=$(findfs "$(sed -n 's/\(^\|.* \)root=\([^ ]*\).*/\2/p' /proc/cmdline)")
 ROOT_NAME=$(basename "$ROOT_PART")
 DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_PART")"
 PART_NUM=3
@@ -875,9 +885,7 @@ Description=MirrorDash MBR Partition Expander
 DefaultDependencies=no
 After=systemd-udevd.service
 Before=local-fs-pre.target
-# Only before the lock: the lock needs /storage mounted, so a locked mirror has its partition.
-# (Under overlayroot `findmnt /` is "overlayroot", which this script can't resolve to a disk.)
-ConditionKernelCommandLine=!overlayroot
+# Every boot (a no-op once the partition is there): an image's root is locked from the first boot
 
 [Service]
 Type=oneshot
@@ -936,8 +944,25 @@ if [ ! -d /storage/mirrordash/venv ]; then
     ln -sfT venv_a /storage/mirrordash/venv
 fi
 chown pi:pi /storage/mirrordash /storage/mirrordash/venv
+
+# SSH host keys live here: every mirror boots the same root image, and changes to it are gone at reboot.
+# Only the missing ones are made (the first boot).
+mkdir -p /storage/mirrordash/ssh/etc/ssh
+ssh-keygen -A -f /storage/mirrordash/ssh
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh
+
+  cat << 'EOF' > /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
+HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key
+HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ecdsa_key
+HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_rsa_key
+EOF
+  mkdir -p /etc/systemd/system/ssh.service.d
+  cat << 'EOF' > /etc/systemd/system/ssh.service.d/mirrordash.conf
+[Unit]
+# The host keys are on /storage, made by the hydrate script
+After=mirrordash-storage-init.service
+EOF
 
   cat << 'EOF' > /etc/systemd/system/mirrordash-storage-init.service
 [Unit]
@@ -973,41 +998,18 @@ EOF
 Mechanism=zram
 EOF
 
-  # The first boot needs a writable root (partition, storage, SSH keys), so image builds lock once
-  # at the end of it (build_image.sh checks that overlayroot is in the initramfs).
   # ponytail: a run straight on a Pi (no BUILDING_IMAGE) stays unlocked; real images come from build_image.sh.
   if [ -z "${BUILDING_IMAGE:-}" ]; then
     echo "Not an image build — skipping the lock."
     return 0
   fi
 
-  cat << 'EOF' > /etc/systemd/system/mirrordash-lock.service
-[Unit]
-Description=MirrorDash First-Boot OverlayFS Lock
-After=multi-user.target mirrordash-storage-init.service
-ConditionKernelCommandLine=!overlayroot
-# Never lock without the persistent partition: /storage is nofail, so a failed repart or
-# mount would otherwise put all data on the RAM overlay. Skipped (not disabled) => retried next boot.
-ConditionPathIsMountPoint=/storage
-
-[Service]
-Type=oneshot
-# overlayroot must be installed (it is, in the image): without it the parameter below does nothing
-# and the root never locks. Without the package this fails, and the lock is tried again next boot.
-ExecStartPre=/usr/bin/dpkg -s overlayroot
-# The lock itself is one kernel parameter, written once (no-op if any overlayroot= is there; the
-# check below then fails instead of rebooting). recurse=0 overlays only /: by default overlayroot
-# also puts every fstab mount (/storage!) on the RAM overlay, losing settings and Wi-Fi at reboot.
-ExecStart=/usr/bin/sed -i '1{/overlayroot=/!s/^/overlayroot=tmpfs:recurse=0 /}' /boot/firmware/cmdline.txt
-ExecStart=/usr/bin/grep -q overlayroot=tmpfs:recurse=0 /boot/firmware/cmdline.txt
-# Disabled on the still-writable root, so it never runs again once locked
-ExecStart=/usr/bin/systemctl disable mirrordash-lock.service
-ExecStart=/usr/bin/systemctl reboot
-
-[Install]
-WantedBy=graphical.target
-EOF
-  systemctl --root=/ enable mirrordash-lock.service
+  # Image builds are locked from the first boot: the root is a squashfs and cmdline.txt has overlayroot
+  # (step_watchdog_boot_optimization). The image's machine-id is "uninitialized", so systemd treats
+  # every boot as the first: these would make new SSH host keys (they are on /storage instead), grow
+  # the root, or run cloud-init's first-boot setup each time.
+  systemctl --root=/ mask regenerate_ssh_host_keys.service sshd-keygen.service rpi-resize.service
+  touch /etc/cloud/cloud-init.disabled
 }
 
 step_system_cleanup() {
@@ -1017,13 +1019,15 @@ step_system_cleanup() {
 
   echo "Rebuilding initramfs to embed plymouth and kernel updates..."
   sed -i 's/^MODULES=.*/MODULES=most/' /etc/initramfs-tools/initramfs.conf
+  # The root is a squashfs in image builds, and it's a module in Pi OS's kernels
+  grep -qx squashfs /etc/initramfs-tools/modules || echo squashfs >> /etc/initramfs-tools/modules
   
   # Temporarily mask the root filesystem in fstab so mkinitramfs doesn't crash trying to probe it
   cp /etc/fstab /etc/fstab.bak
   trap 'mv -f /etc/fstab.bak /etc/fstab 2>/dev/null || true' EXIT ERR INT TERM
   sed -i '/ \/ /s/^/#/' /etc/fstab
   # ponytail: a non-zero exit is tolerated (it crashed under nspawn before); build_image.sh instead
-  # checks the result: overlayroot and the boot theme must be inside the initramfs.
+  # checks the result: overlayroot, squashfs and the boot theme must be inside the initramfs.
   update-initramfs -u || echo "Warning: update-initramfs exited with a non-zero status"
   mv /etc/fstab.bak /etc/fstab
   trap - EXIT ERR INT TERM
@@ -1092,7 +1096,7 @@ run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Scrip
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
 run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
-run_step "17" "first_boot_lock" "Creating First-Boot OverlayFS Lock Service" step_first_boot_lock
+run_step "17" "first_boot_lock" "Locking the Root (OverlayFS)" step_first_boot_lock
 run_step "18" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 
 END_TIME_TOTAL=$SECONDS
