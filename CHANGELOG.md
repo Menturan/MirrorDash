@@ -12,6 +12,7 @@ There are two kinds of releases:
 ### OS image
 - The system part of the SD card is now compressed (squashfs): about 1.3 GB to flash instead of 3.7 GB, and locked from the very first start, so the mirror no longer restarts once by itself when it's new.
 - After a kernel crash the mirror restarts after 10 seconds instead of staying black.
+- mirrordash.local works right after Wi-Fi setup. Before, the mirror could end up as mirrordash-2.local until the next restart.
 
 ## [0.6.2] - 2026-10-12
 

@@ -171,6 +171,15 @@ EOF
 
   echo "Enabling avahi-daemon service..."
   systemctl --root=/ enable avahi-daemon.service
+  # Going from the setup hotspot to home Wi-Fi, avahi sees its own probe as a name conflict and
+  # stays mirrordash-2.local until restarted, so mirrordash.local/admin breaks right after setup.
+  mkdir -p /etc/NetworkManager/dispatcher.d
+  cat << 'EOF' > /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
+#!/bin/sh
+[ "$2" = up ] && [ "$CONNECTION_ID" != MirrorDash-Setup ] && systemctl try-restart avahi-daemon.service
+exit 0
+EOF
+  chmod 755 /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
 }
 
 step_configuring_nginx() {
