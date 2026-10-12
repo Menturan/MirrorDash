@@ -9,7 +9,7 @@
   3. Build a test OS image    -> CI builds it from master, downloaded to build_workspace/test-image/ to flash
   4. Release the tested image -> CHANGELOG + vX.Y.Z-osN with that same file (nothing is rebuilt)
 
-Needs the GitHub CLI, logged in (`gh auth login`), and the dev venv (.venv) for the tests.
+Needs the GitHub CLI, logged in (`gh auth login`), and the dev venv (.venv, `uv sync --extra dev`) for the tests.
 """
 
 from __future__ import annotations
@@ -187,8 +187,13 @@ def check_ready(tag, tests=True):
         die(f"the tag {tag} already exists.")
     if tests:
         print("\n  Running the tests...")
-        if subprocess.run([str(ROOT / ".venv" / "bin" / "pytest"), "-q"], cwd=ROOT).returncode != 0:
-            die("the tests failed.")
+        # python -m pytest, not .venv/bin/pytest: the scripts' shebangs keep the path the venv
+        # was made at, so they break when the repo moves.
+        python = ROOT / ".venv" / "bin" / "python"
+        if not python.exists():
+            die("no dev venv (.venv); make one with `uv sync --extra dev`.")
+        if subprocess.run([str(python), "-m", "pytest", "-q"], cwd=ROOT).returncode != 0:
+            die("the tests failed (if pytest is missing or the repo moved, run `uv sync --extra dev`).")
 
 
 def commit_and_push(message, *paths):
