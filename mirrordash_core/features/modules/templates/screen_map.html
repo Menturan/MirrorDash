@@ -11,10 +11,10 @@
                             aria-label="{{ m.name }}, {{ where|lower }}{% if not m.enabled %}, off{% endif %}"
                             hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
                             hx-target="#config-fields-global"
-                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')">{{ m.name }}</button>
+                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')"><span class="mirror-name">{{ m.name }}</span></button>
                 {% else %}
                     <span class="mirror-mark{% if not m.enabled or not m.module %} off{% endif %}" title="{{ m.name }}">
-                        {{- m.name }}{% if not m.module %}<small>Not installed</small>{% endif -%}
+                        <span class="mirror-name">{{ m.name }}</span>{% if not m.module %}<small>Not installed</small>{% endif -%}
                     </span>
                 {% endif %}
             {% endfor %}

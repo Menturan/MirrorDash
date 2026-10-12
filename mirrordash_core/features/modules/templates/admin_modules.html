@@ -9,7 +9,7 @@
     {% endif %}
 
     <!-- The map and the list change together after a save, so one request refreshes both -->
-    <div id="modules-live" hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body"
+    <div id="modules-live"{% if portrait %} class="portrait"{% endif %} hx-get="/admin/panels/modules" hx-trigger="refreshModules from:body"
          hx-select="#modules-live" hx-swap="outerHTML" hx-disinherit="*">
         <section class="card">
             <h2><i class="fas fa-th-large" aria-hidden="true"></i> Your mirror</h2>

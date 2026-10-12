@@ -2142,14 +2142,15 @@ header {
     grid-template-rows: auto 1fr auto;
     gap: 12px 18px;
     aspect-ratio: 16 / 9;
+    width: 100%;
     max-width: 640px;
-    padding: 5% 5.5%;
+    padding: clamp(14px, 2.5vw, 32px);  /* not %: that is of the card's width, not the pane's */
     background: #000;
     border: 1px solid rgba(255, 255, 255, 0.14);
     border-radius: 4px;
     container-type: inline-size;
 }
-.mirror-pane.portrait { aspect-ratio: 9 / 16; max-width: 300px; }
+.mirror-pane.portrait { aspect-ratio: 9 / 16; max-width: 380px; }
 .mirror-region { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; }
 .mirror-region:nth-child(3n+2) { align-items: center; text-align: center; }
 .mirror-region:nth-child(3n) { align-items: flex-end; text-align: right; }
@@ -2165,13 +2166,11 @@ header {
     color: #fff;
     font: 600 0.68rem/1.3 var(--font-family);
     font-size: clamp(0.68rem, 1.9cqi, 0.82rem);  /* grows with the pane, so a wide one isn't mostly empty */
-    letter-spacing: 0.08em;
+    letter-spacing: 0.06em;
     text-align: inherit;
     text-transform: uppercase;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
+.mirror-name { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .mirror-mark.off { color: #666; border-bottom-color: #333; }
 .mirror-mark small { display: block; color: var(--warning); font-size: 0.66rem; font-weight: 500; letter-spacing: 0; text-transform: none; }
 button.mirror-mark { cursor: pointer; }
@@ -2179,7 +2178,10 @@ button.mirror-mark:hover, button.mirror-mark:focus-visible { outline: 1px solid 
 .mirror-empty { position: absolute; inset: 0; display: grid; place-items: center; margin: 0; color: #666; font-size: 0.8rem; }
 .screen-map-link { display: block; text-decoration: none; }
 
-/* Modules tab: rows instead of cards */
+/* Modules tab: rows instead of cards. A rotated (tall) mirror sits beside the list on a wide page */
+@media (min-width: 1000px) {
+    #modules-live.portrait { display: grid; grid-template-columns: minmax(320px, 436px) minmax(0, 1fr); gap: 0 24px; align-items: start; }
+}
 .module-card-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 4px; }
 .module-card-head h2 { margin: 0; }
 .module-search { flex: 0 1 260px; min-width: 0; }
