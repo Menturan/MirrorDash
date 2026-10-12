@@ -1346,3 +1346,16 @@ def test_module_config_drawer_shows_standard_then_own_settings(client):
     assert html.count("Screen Position") == 1 and "Module Settings" in html
     assert '<option value="top_left" selected>' in html
     assert "instance_id=mirrordash-clock-2" in new  # a second instance gets its own id
+    assert "Save Configuration" in html and "Add to Mirror" not in html
+
+
+def test_new_instance_gets_its_own_id_when_key_and_entry_point_are_spelled_differently(client):
+    # As in a real config: the key is mirrordash-clock without a module field, the entry point mirrordash_clock
+    ep = MagicMock()
+    ep.load.return_value = type("Clock", (), {"config_schema": {"properties": {}}})
+    cfg = {"modules": {"mirrordash-clock": {"position": "top_left"}}}
+    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=ep), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value=cfg):
+        new = client.get("/admin/panels/modules/config/mirrordash_clock", headers={"X-API-Key": "secret"}).text
+    assert "save?instance_id=mirrordash_clock-2" in new
+    assert "Add to Mirror" in new and "/remove" not in new  # nothing to remove before it's added

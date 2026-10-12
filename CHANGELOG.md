@@ -27,6 +27,7 @@ There are two kinds of releases:
 - SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 
 ### Fixed
+- *Add New* under a module's instances gives the new one its own name (Clock 2) and says it is new, with *Add to Mirror* instead of Save. Before, it could reuse the first instance's name and looked like nothing happened.
 - A module that is set up but no longer installed (removed outside the admin page, or from a backup of another mirror) can be removed from the map on the Modules tab. Before, only editing `config.json` cleared it.
 - *Rebuild environment* no longer loses modules installed from GitHub or added more than once: it reinstalls exactly what was installed, and if one of them can't be installed it keeps the old environment.
 - The SDK for writing modules (`mirrordash-sdk`) no longer shows up as a module to install.

@@ -70,7 +70,7 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     prefix = f"modules[{instance_id}]"
     standard = STANDARD_SCHEMA["properties"]
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
-        "module_name": module_name, "instance_id": instance_id,
+        "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
         "position_form": render_schema_form({"properties": {"position": standard["position"]}}, cfg, prefix, module_name),
         "standard_form": render_schema_form({"properties": {k: v for k, v in standard.items() if k != "position"}},
                                             cfg, prefix, module_name),
@@ -79,11 +79,12 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
 
 
 def _new_instance_id(module_name: str, modules_config: dict) -> str:
-    """The module's own name for its first instance, then name-2, name-3, …"""
-    taken = any(isinstance(c, dict) and c.get("module") == module_name for c in modules_config.values())
-    if not taken and module_name not in modules_config:
+    """The module's own name for its first instance, then name-2, name-3, …
+    - and _ count as the same: the key mirrordash-clock is an instance of the entry point mirrordash_clock."""
+    if find_module_config(modules_config, module_name)[0] is None and module_name not in modules_config:
         return module_name
-    return next(f"{module_name}-{n}" for n in itertools.count(2) if f"{module_name}-{n}" not in modules_config)
+    taken = {key.replace("-", "_") for key in modules_config}
+    return next(f"{module_name}-{n}" for n in itertools.count(2) if f"{module_name}_{n}".replace("-", "_") not in taken)
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
