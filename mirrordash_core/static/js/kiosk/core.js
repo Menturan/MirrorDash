@@ -233,11 +233,11 @@ async function loadActiveModules() {
                 alertDiv.style.marginBottom = '1rem';
                 alertDiv.style.borderColor = data.boot_status === 'safe_mode' ? 'var(--color-error)' : 'var(--color-status-warning)';
                 
-                const title = data.boot_status === 'safe_mode' ? 'Safe Mode Active' : 'System Restored';
+                const title = data.boot_status === 'safe_mode' ? 'Safe Mode' : 'Update Undone';
                 const icon = data.boot_status === 'safe_mode' ? 'shield-alert' : 'rotate-ccw';
                 const msg = data.boot_status === 'safe_mode' 
-                    ? 'Core system booted from Golden Copy. Custom modules are disabled.'
-                    : 'Recovered from boot failure. Update automatically rolled back.';
+                    ? 'MirrorDash couldn’t start, so it started the version that came with the system, without your modules. See the admin page.'
+                    : 'The new version of MirrorDash didn’t start, so the mirror went back to the version before.';
                 
                 alertDiv.innerHTML = `
                     <div style="display:flex; gap:10px; align-items:center;">

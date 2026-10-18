@@ -1084,7 +1084,7 @@ EOF
 # Usage: save-log KIND [journalctl options...]
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback, wifi-lost.
+#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py

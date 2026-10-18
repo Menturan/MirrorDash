@@ -71,6 +71,10 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 
     # 2. If A/B Rollback is not possible or also fails, run Golden Copy (Safe Mode)
     if [ "$MIRRORDASH_BOOT_STATUS" != "safe_mode" ]; then
         echo "All persistent environments failed to boot. Falling back to Golden Copy..."
+        # Keep the crashed start's log for the admin page, as for a rollback above
+        if [ -x /usr/local/lib/mirrordash/save-log ]; then
+            /usr/local/lib/mirrordash/save-log app-safe-mode -u mirrordash -b -n 500 || true
+        fi
         export MIRRORDASH_BOOT_STATUS="safe_mode"
         exec "$GOLDEN_VENV/bin/python" -m mirrordash_core.main
     fi

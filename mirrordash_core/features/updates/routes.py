@@ -25,7 +25,7 @@ async def get_system_update_check():
     if avail:
         return HTMLResponse(content=f"""
             <div style="margin-top: 10px; padding: 10px; background: rgba(160, 255, 186, 0.1); border: 1px solid rgba(16,185,129,0.2); border-radius: 6px;">
-                <p style="margin: 0; color: #a0ffba;"><strong>Update available!</strong> New version v{latest} is available (currently installed: v{current}).</p>
+                <p style="margin: 0; color: #a0ffba;"><strong>MirrorDash update available!</strong> Version v{latest} is ready to install (installed now: v{current}).</p>
                 <button type="button" 
                         class="btn primary btn-sm" 
                         style="margin-top: 10px;"
@@ -39,7 +39,7 @@ async def get_system_update_check():
             </div>
         """ + await os_update_html())
     else:
-        return HTMLResponse(content=f'<div style="margin-top: 10px; color: var(--text-muted);">Your system is up-to-date (v{current}).</div>'
+        return HTMLResponse(content=f'<div style="margin-top: 10px; color: var(--text-muted);">MirrorDash is up-to-date (v{current}).</div>'
                             + await os_update_html())
 
 

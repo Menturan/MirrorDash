@@ -29,18 +29,20 @@
             <i class="{% if boot_status == 'safe_mode' %}fas fa-shield-alt{% else %}fas fa-history{% endif %}" style="margin-right: 8px;"></i>
             <span>
                 {% if boot_status == 'safe_mode' %}
-                <strong>Safe Mode Active</strong>: MirrorDash booted from Golden Copy. Custom modules are disabled.
+                <strong>Safe mode</strong>: MirrorDash couldn't start, not even the version before the last update, so it
+                started the version that came with the system, without your modules. The log is under Logs → Saved Logs.
                 {% else %}
-                <strong>System Rollback Triggered</strong>: Recovered from critical crash. Recent changes may be reverted.
+                <strong>Update undone</strong>: the new version of MirrorDash didn't start, so the mirror went back to the
+                version before. The log is under Logs → Saved Logs.
                 {% endif %}
             </span>
         </div>
         <button id="rebuild-venv-btn" class="btn-action"
                 hx-post="/admin/panels/system/rebuild-venv"
                 hx-target="#global-status"
-                hx-confirm="Are you sure you want to completely rebuild the primary virtual environment? This will re-install core dependencies and active modules from scratch. It might take a few minutes."
+                hx-confirm="Install MirrorDash and all your modules again? It takes a few minutes, and MirrorDash restarts afterwards."
                 hx-disabled-elt="this">
-            <i class="fas fa-tools"></i> Rebuild Active Environment
+            <i class="fas fa-tools"></i> Reinstall MirrorDash and Modules
         </button>
     </div>
     {% endif %}

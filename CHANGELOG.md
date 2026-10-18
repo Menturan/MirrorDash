@@ -5,9 +5,12 @@ What's new in MirrorDash, newest first.
 There are two kinds of releases:
 
 - **App releases** (`0.4.0`) update the MirrorDash software. Existing mirrors get them through *Updates* in the admin page.
-- **OS image releases** (`0.4.0-os1`) are a new SD card image to flash. Each one contains the app release with the same number.
+- **OS image releases** (`0.4.0-os1`) are a new system underneath MirrorDash, with the app release of the same number. Mirrors from the A/B image on get them under *Updates* too; a new mirror (or an older one) flashes the image.
 
 ## [Unreleased]
+
+### Changed
+- The messages after a failed update say what happened in plain words: *Update Undone* when the new version didn't start and the old one is back, *Safe Mode* when MirrorDash started without your modules, each with a pointer to the saved log. The button to fix it is now **Reinstall MirrorDash and Modules**.
 
 ### OS image
 - The system part of the SD card is now compressed (squashfs): about 1.3 GB to flash instead of 3.7 GB, and locked from the very first start, so the mirror no longer restarts once by itself when it's new.

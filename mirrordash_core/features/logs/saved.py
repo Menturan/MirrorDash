@@ -24,6 +24,7 @@ KINDS = {
     "os-trial": "OS update: the new version didn't start properly",
     "os-install": "OS update: installing failed",
     "app-rollback": "App update: the new version crashed and was rolled back",
+    "app-safe-mode": "MirrorDash couldn't start and started in safe mode",
     "wifi-lost": "Wi-Fi: joined, but no traffic got through; joined again",
 }
 

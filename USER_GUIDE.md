@@ -60,6 +60,7 @@ The time zone is taken from your phone. It also sets the country for Wi-Fi (whic
 *   **The internet is down, the router is on:** nothing happens; the modules show their last data until it's back.
 *   **The router is off for a while** (a power cut, a restart): the mirror joins again by itself when it's back. If the mirror started first and put up `MirrorDash-Setup`, it tries your Wi-Fi again every few minutes and goes back to it.
 *   **Your Wi-Fi is gone for good** (a new router or password): within a few minutes the mirror starts `MirrorDash-Setup`; set it up as above.
+*   **The Wi-Fi is connected but nothing gets through** (it happens with the Pi 3's Wi-Fi now and then): within about 6 minutes the mirror notices, joins the Wi-Fi again and keeps the log under *Logs → Saved Logs*.
 
 ---
 
@@ -100,7 +101,8 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 ## 6. Updates, backups and recovery
 
 *   **Updates** are in the Settings tab. *Test versions* gets new versions before everyone else; they can have bugs. After an update the mirror's screen reloads by itself; **Reload Screen** (Power tab) does the same by hand.
-*   **If an update doesn't start**, the mirror goes back to the version before by itself and shows *System Restored*. If even that fails, it starts in *Safe Mode* without extra modules (the mirror shows *Safe Mode Active*): use **Rebuild Active Environment** in the admin page's banner to install everything again.
+*   **If an update doesn't start**, the mirror goes back to the version before by itself and shows *Update Undone*. If even that fails, it starts in *Safe Mode* with the version that came with the system, without your modules: use **Reinstall MirrorDash and Modules** in the admin page's banner to install everything again. Either way, the log that shows why is under *Logs → Saved Logs*.
+*   **System updates** (the Linux system underneath MirrorDash) show up under the same **Check for Updates**, as *OS update available*. **Install OS Update** downloads it, installs it next to the running system and restarts the mirror into it. It takes 10–30 minutes; keep the mirror plugged in. If the network or MirrorDash doesn't come up with the new system, the mirror goes back to the old one by itself within a few minutes, and the admin page says so. Nothing is lost either way.
 *   **A backup** (Backup tab) contains your settings, modules and their data, the hardware settings and the API token. It doesn't contain the admin password or the Wi-Fi. Restoring keeps the mirror's admin password, installs the modules again (this needs internet) and restarts.
 
 ---
@@ -214,11 +216,12 @@ template:
 *   **"Power Warning: Under-voltage Detected" on the dashboard:** the power supply is too weak. The mirror slows down and the SD card can be damaged. Use the official Raspberry Pi power supply (5.1 V, 2.5 A for a Pi 3).
 *   **Modules are empty or missing:** check the mirror's internet connection, and the Logs tab for errors.
 *   **"MirrorDash isn't responding" on the mirror:** it lost contact with its software for more than two minutes and keeps trying. If it doesn't come back, use **Restart MirrorDash** in the Power tab, or unplug and plug in the mirror.
-*   **"MirrorDash didn't start" on the mirror:** unplug it and plug it in again. If it keeps happening, the SD card may need a fresh MirrorDash image (restore your backup afterwards).
+*   **"MirrorDash didn't start" on the mirror:** if a system update was just installed, wait a few minutes: the mirror goes back to the previous system by itself. Otherwise unplug it and plug it in again. If it keeps happening, the SD card may need a fresh MirrorDash image (restore your backup afterwards).
+*   **To find out why something went wrong:** *Logs → Saved Logs* has the log of every update that failed and of Wi-Fi that stopped passing traffic (the newest 5). For a problem that keeps coming back, turn on *Settings → Developer → Developer logging*: the whole system log is then kept across restarts for 7 days (it wears the SD card a little, so it turns itself off).
 *   **The screen looks wrong:** **Reload Screen** in the Power tab.
 
 ---
 
 ## 9. How the SD card is protected
 
-The system part of the SD card is read-only: everything written there during use is gone at the next start, so the system can't wear out or slowly break. Your settings, modules and Wi-Fi are kept on a separate storage partition. That is the part a sudden power cut can damage, which is why you should use **Shut Down** before unplugging.
+The system part of the SD card is read-only: everything written there during use is gone at the next start, so the system can't wear out or slowly break. There are two copies of it: a system update is written to the one that isn't running, and the mirror keeps the old one until the new one has started properly. Your settings, modules and Wi-Fi are kept on a separate storage partition. That is the part a sudden power cut can damage, which is why you should use **Shut Down** before unplugging. The system log stays in memory, so nothing is written to the card all day; only a failed update leaves a log behind, unless *Developer logging* is on.
