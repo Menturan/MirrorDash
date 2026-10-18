@@ -18,9 +18,11 @@ class ConnectionManager:
         logger.info(f"New client connected. Total clients: {len(self.active_connections)}")
 
         # The mirror page's code comes with MirrorDash: on another version than the page was loaded
-        # with (an update or a rollback), the page reloads itself (js/kiosk/core.js)
+        # with (an update or a rollback), the page reloads itself (js/kiosk/core.js). "online" sets
+        # its Offline badge (internet.py; changes come later as {"type": "internet"}).
+        from mirrordash_core.features.kiosk.internet import internet_monitor
         try:
-            await websocket.send_json({"type": "hello", "version": get_core_version()})
+            await websocket.send_json({"type": "hello", "version": get_core_version(), "online": internet_monitor.online})
         except Exception as e:
             logger.error(f"Error greeting new client: {e}")
 

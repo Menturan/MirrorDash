@@ -106,6 +106,12 @@ function connect() {
                 return;
             }
             pageVersion = data.version;
+            showOffline(data.online === false);
+            return;
+        }
+
+        if (data.type === 'internet') {
+            showOffline(!data.online);
             return;
         }
 
@@ -309,23 +315,20 @@ fetch('/static/modules.css')
     .catch(() => '')
     .then(css => { MODULES_CSS = css; connect(); });
 
-// Global Internet Connectivity Monitoring
-function updateOfflineIndicator() {
+// The Offline badge: whether the mirror reaches the internet, as the app sees it (features/kiosk/internet.py).
+// Not navigator.onLine: in Cog it said offline after a start while the mirror was online, and online
+// while the Wi-Fi was joined but nothing got through.
+let offlineShown = false;
+function showOffline(offline) {
     const indicator = document.getElementById('offline-indicator');
-    if (!indicator) return;
-    
-    if (!navigator.onLine) {
+    if (!indicator || offline === offlineShown) return;
+    offlineShown = offline;
+    if (offline) {
         indicator.style.display = 'flex';
         // Small delay to ensure display:flex has applied before opacity transition
         setTimeout(() => indicator.style.opacity = '1', 10);
     } else {
         indicator.style.opacity = '0';
-        setTimeout(() => { 
-            if (navigator.onLine) indicator.style.display = 'none'; 
-        }, 500);
+        setTimeout(() => { if (!offlineShown) indicator.style.display = 'none'; }, 500);
     }
 }
-
-window.addEventListener('online', updateOfflineIndicator);
-window.addEventListener('offline', updateOfflineIndicator);
-updateOfflineIndicator(); // Initialize state on load

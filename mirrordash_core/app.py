@@ -25,6 +25,7 @@ from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
 from mirrordash_core.features.updates import routes as updates, service as updates_service
 from mirrordash_core.features.wifi import routes as wifi
+from mirrordash_core.features.kiosk.internet import internet_monitor
 
 logger = logging.getLogger("mirrordash.core.app")
 
@@ -35,9 +36,11 @@ async def lifespan(app: FastAPI):
         await module_loader.start_modules()
         await display_power_manager.start()
         await gpio_inputs.start()
+        await internet_monitor.start()
     except Exception as e:
         logger.error(f"Error during module startup: {e}", exc_info=True)
     yield
+    await internet_monitor.stop()
     await gpio_inputs.stop()
     await display_power_manager.stop()
     await module_loader.stop_modules()

@@ -321,7 +321,7 @@ def test_mirror_page_hears_the_version_first(client):
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
     with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"):
         with client.websocket_connect("/ws") as ws:
-            assert ws.receive_json() == {"type": "hello", "version": "1.2.3"}
+            assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "online": True}
             assert ws.receive_json()["module"] == "clock"  # then the modules, as before
     manager.latest_messages = {}
 

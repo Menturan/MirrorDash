@@ -9,6 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### Fixed
+- The *Offline* badge on the mirror shows only when the mirror really can't reach the internet. Before, it could show while the mirror was online (and stay away while nothing got through).
+
 ### OS image
 - The system part of the SD card is now compressed (squashfs): about 1.3 GB to flash instead of 3.7 GB, and locked from the very first start, so the mirror no longer restarts once by itself when it's new.
 - After a kernel crash the mirror restarts after 10 seconds instead of staying black.
