@@ -73,6 +73,10 @@ uv run pytest -q                                          # the whole suite, a f
 uv run pytest tests/test_visual_admin.py                  # browser tests (once: uv run playwright install chromium webkit)
 ```
 
+## Building a Test OS Image
+
+Use `python3 scripts/release.py`, option 3: it starts the build, waits, downloads and checks the image and writes `build_workspace/test-image/run.json` (option 4 releases from it). If you start or follow the build yourself, download the artifact with `download_artifact()` in `scripts/release.py`, never `gh run download`: the artifact is close to 2 GB (image and OS update bundle), and `download_artifact()` fetches it over 16 parallel connections (aria2c), resumes a broken download, and shows progress, where `gh run download` uses one connection and shows nothing. Then write `run.json` as `build_test_image()` does.
+
 ## Other Documents
 
 | File | What it's for |
