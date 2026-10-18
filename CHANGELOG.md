@@ -9,10 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### Changed
-- **Settings → Updates** shows MirrorDash and the system in two parts, each with its installed version and its own install button. When both have an update, the system goes first.
-- The messages after a failed update say what happened in plain words: *Update Undone* when the new version didn't start and the old one is back, *Safe Mode* when MirrorDash started without your modules, each with a pointer to the saved log. The button to fix it is now **Reinstall MirrorDash and Modules**.
-
 ### OS image
 - The system part of the SD card is now compressed (squashfs): about 1.3 GB to flash instead of 3.7 GB, and locked from the very first start, so the mirror no longer restarts once by itself when it's new.
 - After a kernel crash the mirror restarts after 10 seconds instead of staying black.
@@ -22,6 +18,12 @@ There are two kinds of releases:
 - When an update goes wrong, the mirror keeps the log that explains why under **Logs → Saved Logs**, where it can be downloaded or deleted. Otherwise nothing is saved, so the SD card doesn't wear out.
 - A mirror whose Wi-Fi stays connected but stops passing traffic now notices within about 6 minutes, keeps the log under **Logs → Saved Logs** and reconnects by itself. Before, it could stay unreachable until it was restarted.
 - **Settings → Developer → Developer logging** keeps the whole system log across restarts, for finding out why something went wrong. It turns itself off after 7 days, so the SD card isn't worn by a forgotten switch.
+
+## [0.6.3] - 2026-10-19
+
+### Changed
+- **Settings → Updates** shows MirrorDash and the system in two parts, each with its installed version and its own install button. When both have an update, the system goes first.
+- The messages after a failed update say what happened in plain words: *Update Undone* when the new version didn't start and the old one is back, *Safe Mode* when MirrorDash started without your modules, each with a pointer to the saved log. The button to fix it is now **Reinstall MirrorDash and Modules**.
 
 ## [0.6.2] - 2026-10-12
 
