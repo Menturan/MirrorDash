@@ -1,6 +1,6 @@
 [project]
 name = "mirrordash"
-version = "0.6.3rc1"
+version = "0.6.3rc2"
 description = "Core application for MirrorDash"
 readme = "README.md"
 authors = [
