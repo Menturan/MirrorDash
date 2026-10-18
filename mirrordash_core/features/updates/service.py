@@ -151,6 +151,13 @@ RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_pa
 BUNDLE_NAME = re.compile(r"^mirrordash-os-v.+-(\d{8}-\d{4})\.raucb$")
 
 
+def format_build(build: str) -> str:
+    """A build stamp for people: 20261018-2237 -> 2026-10-18 22:37 UTC (unchanged if it isn't one)."""
+    if re.fullmatch(r"\d{8}-\d{4}", build):
+        return f"{build[:4]}-{build[4:6]}-{build[6:8]} {build[9:11]}:{build[11:13]} UTC"
+    return build
+
+
 def installed_os_build() -> str | None:
     """The build stamp of the running OS, or None where there are no OS updates (an image from before
     A/B, a Pi set up by hand, a development machine)."""

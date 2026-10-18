@@ -12,16 +12,12 @@
         </form>
     </section>
 
-    <!-- MirrorDash Updates -->
+    <!-- Updates: MirrorDash (the app) and, on A/B images, the system underneath it. One check fills both
+         sections (features/updates/routes.py); each installs on its own, the system first when both can. -->
     <section class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> Updates</h2>
-        <p class="panel-subtitle">Check for a newer version of MirrorDash and install it.</p>
-
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
-            <div>
-                <span style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.05em;">Installed Version</span>
-                <div id="core-current-version" style="font-size: 1rem; font-weight: 600; color: white; margin-top: 2px;">{{ current_version }}</div>
-            </div>
+            <p class="panel-subtitle" style="margin: 0;">Check for a newer MirrorDash{% if os_build %} and a newer system{% endif %}, and install them.</p>
             <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;"
                     hx-get="/admin/panels/system/update-check"
                     hx-target="#core-update-result"
@@ -33,12 +29,33 @@
             </button>
         </div>
 
+        <div class="update-section">
+            <h3 style="margin: 0; font-size: 1rem; color: white;">MirrorDash</h3>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 6px 0;">
+                The mirror's screen, the modules and this admin page. Takes a minute or two; MirrorDash restarts.</p>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
+            <span id="core-current-version" style="font-weight: 600; color: white;">{{ current_version }}</span>
+            <div id="core-update-result"><!-- filled by Check for Updates --></div>
+        </div>
+
+        {% if os_build %}
+        <div class="update-section" style="margin-top: 20px;">
+            <h3 style="margin: 0; font-size: 1rem; color: white;">System</h3>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 6px 0;">
+                Linux, drivers and settings underneath MirrorDash. Takes 10–30 minutes; the mirror restarts, and goes
+                back to the current system by itself if the new one doesn't work.</p>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
+            <span id="os-current-build" style="font-weight: 600; color: white;">build {{ os_build }}</span>
+            <div id="os-update-result"><!-- filled by Check for Updates --></div>
+        </div>
+        {% endif %}
+
         <!-- Opt in to pre-releases; saves on change -->
-        <form class="form-group" style="margin-bottom: 16px;" hx-post="/admin/panels/system/save"
+        <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
               hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
             <div class="form-label-desc" style="margin-bottom: 8px;">
                 <label for="core-prerelease" style="font-weight: 500; font-size: 0.9rem; color: white;">Test versions</label>
-                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Get new versions of MirrorDash before everyone else, to try them out. They can have bugs; turn this off to wait for the regular release.</p>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Get new versions of MirrorDash{% if os_build %} and of the system{% endif %} before everyone else, to try them out. They can have bugs; turn this off to wait for the regular release.</p>
             </div>
             <label class="switch">
                 <input type="hidden" name="prerelease" value="false">
@@ -46,11 +63,6 @@
                 <span class="slider round"></span>
             </label>
         </form>
-
-        <!-- Dynamic result area -->
-        <div id="core-update-result" style="display: block;">
-            <!-- populated by check -->
-        </div>
     </section>
 
     <!-- API: loaded on its own, re-rendered after every change -->

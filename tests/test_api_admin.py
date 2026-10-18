@@ -1399,3 +1399,29 @@ def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
         (tmp_path / "journal" / "system.journal").write_bytes(b"x" * 10)
         page = client.post("/admin/panels/system/dev-logging", data={"on": "false"}, headers=key)
         assert run.call_args.args == ("off",) and "Delete saved system log (1 MB)" in page.text
+
+
+def test_update_check_shows_mirrordash_and_the_system_apart(client):
+    """One check, two sections; with an update for both, the system goes first and MirrorDash's button waits."""
+    app = {"current_version": "0.6.2", "latest_version": "0.6.3", "update_available": True}
+    system = {"supported": True, "installed_build": "20261001-0800", "failed_build": None, "update_available": True,
+              "bundle": {"tag": "v0.6.3-os1", "build": "20261018-2237", "url": "https://example.com/b.raucb", "size": 880_000_000}}
+    key = {"X-API-Key": "secret"}
+    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.routes.check_os_update", AsyncMock(return_value=system)):
+        page = client.get("/admin/panels/system/update-check", headers=key).text
+    core, oob = page.split('<div id="os-update-result" hx-swap-oob="innerHTML">')
+    assert "Install the system update first" in core and "update-trigger" not in core
+    assert "Install System Update" in oob and "2026-10-18 22:37 UTC" in oob
+
+    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.routes.check_os_update",
+               AsyncMock(return_value={**system, "update_available": False, "bundle": None})):
+        page = client.get("/admin/panels/system/update-check", headers=key).text
+    assert "Install MirrorDash v0.6.3" in page and "The system is up-to-date (build 2026-10-01 08:00 UTC)" in page
+
+    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.routes.check_os_update", AsyncMock(return_value={"supported": False})):
+        page = client.get("/admin/panels/system/update-check", headers=key).text
+    assert "os-update-result" not in page  # no system section on mirrors without system updates
+

@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 ### Changed
+- **Settings → Updates** shows MirrorDash and the system in two parts, each with its installed version and its own install button. When both have an update, the system goes first.
 - The messages after a failed update say what happened in plain words: *Update Undone* when the new version didn't start and the old one is back, *Safe Mode* when MirrorDash started without your modules, each with a pointer to the saved log. The button to fix it is now **Reinstall MirrorDash and Modules**.
 
 ### OS image

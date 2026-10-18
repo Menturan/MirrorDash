@@ -9,6 +9,7 @@ from mirrordash_core.admin import events_header, notify, require_api_key, templa
 from mirrordash_core.config import load_config, save_config, get_core_version
 from mirrordash_core.features.modules.loader import module_loader, find_entry_point
 from mirrordash_core.features.settings.ssh import get_ssh_status
+from mirrordash_core.features.updates.service import format_build, installed_os_build
 from mirrordash_core.features.settings.dev_logging import (clear_saved_journal, dev_logging_available,
                                                            dev_logging_until, saved_journal_mb, set_dev_logging)
 
@@ -41,6 +42,8 @@ async def get_panel_config(request: Request):
             "current_version": current_version,
             "prerelease": config.get("system", {}).get("prerelease", False),
             "ssh": await get_ssh_status(),
+            # None where there are no system updates (an image from before A/B, a development machine)
+            "os_build": format_build(build) if (build := installed_os_build()) else None,
             **dev_logging_context(),
         }
     )
