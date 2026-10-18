@@ -56,7 +56,13 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 
         mv -T "/storage/mirrordash/venv_old" "/storage/mirrordash/$OLD_DIR"
         mv -T "/storage/mirrordash/$FAILED_DIR" "/storage/mirrordash/venv_failed"
         ln -sfT "$OLD_DIR" "$VENV_LINK"
-        
+
+        # Keep the crashed start's log for the admin page (Logs): the system log is in RAM only and
+        # gone at the next restart. Only on a MirrorDash image (save-log comes from configure_image.sh).
+        if [ -x /usr/local/lib/mirrordash/save-log ]; then
+            /usr/local/lib/mirrordash/save-log app-rollback -u mirrordash -b -n 500 || true
+        fi
+
         # Boot the rolled-back environment
         export MIRRORDASH_BOOT_STATUS="rollback"
         exec "$VENV_LINK/bin/python" -m mirrordash_core.main

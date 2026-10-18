@@ -44,6 +44,25 @@
             <pre id="logs-viewer" class="logs-viewer">{{ logs_content }}</pre>
         </div>
     </section>
+
+    <!-- Logs saved when an update failed: the system log above is gone after a restart -->
+    <section class="card" style="margin-top: 24px;">
+        <h2><i class="fas fa-file-medical-alt" aria-hidden="true"></i> Saved Logs</h2>
+        <p class="panel-subtitle">When an update goes wrong, the mirror keeps the log that explains why (the newest 5).
+            The rest of the time nothing is saved, so the SD card doesn't wear out.</p>
+        <ul class="backup-list" id="saved-logs-list">
+            {% include "admin_logs_saved_rows.html" %}
+        </ul>
+        {% if saved_logs %}
+        <button type="button" class="btn danger btn-sm" style="margin-top: 12px;"
+                hx-post="/admin/panels/logs/saved/delete-all"
+                hx-confirm="Delete all saved logs? This can't be undone."
+                hx-target="#saved-logs-list"
+                hx-swap="innerHTML">
+            <i class="fas fa-trash"></i> Delete All
+        </button>
+        {% endif %}
+    </section>
 </div>
 
 <script>

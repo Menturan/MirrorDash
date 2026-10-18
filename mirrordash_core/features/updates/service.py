@@ -13,6 +13,7 @@ from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, get_core_version, version_key
 from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
 from mirrordash_core.host import reboot_system, run_restart
+from mirrordash_core.features.logs.saved import save_log
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -256,6 +257,7 @@ async def update_os(bundle: dict) -> None:
     OS_BUNDLE_FILE.unlink(missing_ok=True)
     if proc.returncode != 0:
         OS_PENDING_FILE.unlink(missing_ok=True)
+        await save_log("os-install", "-u", "rauc", "-b", "-n", "300")  # RAUC's own account of the failure
         error = stderr.decode(errors="replace").strip().splitlines()
         logger.error(f"OS update failed: {stderr.decode(errors='replace')}")
         raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {error[-1] if error else 'unknown error'}")

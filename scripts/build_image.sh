@@ -85,24 +85,37 @@ systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR"
 # The repo copy is only build input — never ship source or the dev config.json
 rm -rf "$MOUNT_DIR/opt/MirrorDash"
 
+# The boot files the image depends on, by Pi OS's names: kernel8/initramfs8 for Pi 3 and 4 (64-bit),
+# kernel_2712/initramfs_2712 for Pi 5, and the Pi 3's firmware that goes on p1 too. A new Pi OS that
+# renames one must stop the build, not ship a mirror that can't start.
+for f in kernel8.img initramfs8 kernel_2712.img initramfs_2712 bootcode.bin start.elf fixup.dat; do
+    if [ ! -s "$MOUNT_DIR/boot/firmware/$f" ]; then
+        echo -e "\e[31m[ERROR] $f is missing from the boot files (did Pi OS rename it?).\e[0m"
+        exit 1
+    fi
+done
+
 # The read-only root needs overlayroot inside the initramfs; without it overlayroot= in cmdline.txt
 # does nothing, and the squashfs root has no writable layer at all. Never ship that.
 # The list is read in full first: `| grep -q` stops reading at the first match, the container is
 # killed for it, and with pipefail that counted as a failure even when overlayroot was there.
-initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs /boot/firmware/initramfs8) || true
-if ! grep -q overlayroot <<< "$initramfs_files"; then
-    echo -e "\e[31m[ERROR] overlayroot is missing from the initramfs: the root would have no writable layer.\e[0m"
-    exit 1
-fi
-# The root is a squashfs, a module in Pi OS's kernels: without it the root can't be mounted
-if ! grep -q kernel/fs/squashfs/squashfs.ko <<< "$initramfs_files"; then
-    echo -e "\e[31m[ERROR] squashfs is missing from the initramfs: the mirror couldn't mount its root.\e[0m"
-    exit 1
-fi
-if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
-    echo -e "\e[31m[ERROR] The MirrorDash boot theme is missing from the initramfs.\e[0m"
-    exit 1
-fi
+# Both initramfs files: Pi 3/4 and Pi 5 each have their own.
+for initramfs in initramfs8 initramfs_2712; do
+    initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs "/boot/firmware/$initramfs") || true
+    if ! grep -q overlayroot <<< "$initramfs_files"; then
+        echo -e "\e[31m[ERROR] overlayroot is missing from $initramfs: the root would have no writable layer.\e[0m"
+        exit 1
+    fi
+    # The root is a squashfs, a module in Pi OS's kernels: without it the root can't be mounted
+    if ! grep -q kernel/fs/squashfs/squashfs.ko <<< "$initramfs_files"; then
+        echo -e "\e[31m[ERROR] squashfs is missing from $initramfs: the mirror couldn't mount its root.\e[0m"
+        exit 1
+    fi
+    if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
+        echo -e "\e[31m[ERROR] The MirrorDash boot theme is missing from $initramfs.\e[0m"
+        exit 1
+    fi
+done
 
 # Without a Wi-Fi country the radio stays blocked: no hotspot, no way to set the mirror up.
 if ! grep -q 'cfg80211.ieee80211_regdom=' "$MOUNT_DIR/boot/firmware/cmdline.txt"; then
@@ -191,9 +204,14 @@ fi
 # p4 is an "extended" partition: MBR has room for only 4 partitions, so p5 and up live inside it,
 # each with a 1 MiB gap in front for its small header (EBR). The image ends where p5 ends; the first
 # boot grows p4 to the end of the card.
+# After p1 comes 32 MiB of nothing, on purpose: room for a second copy of p1, so that p1 (the Pi 3
+# firmware and autoboot.txt) can be updated safely one day. The new copy would be written into the
+# empty half, and then the MBR's p1 entry moved over to it in a single 512-byte write (the same idea
+# as RAUC's "boot-mbr-switch" slot type). Today nothing updates p1; the room has to exist now,
+# because a card's layout can't change after it has been flashed.
 MIB=2048
 P1_START=$(( 4 * MIB ));               P1_SIZE=$(( 32 * MIB ))
-P2_START=$(( P1_START + P1_SIZE ));    P2_SIZE=$(( 256 * MIB ))
+P2_START=$(( P1_START + 2 * P1_SIZE ));  P2_SIZE=$(( 256 * MIB ))  # 2 *: p1 and its empty twin
 P3_START=$(( P2_START + P2_SIZE ));    P3_SIZE=$(( 256 * MIB ))
 P4_START=$(( P3_START + P3_SIZE ))
 P5_START=$(( P4_START + MIB ));        P5_SIZE=$(( ROOT_SLOT_MIB * MIB ))

@@ -1032,8 +1032,46 @@ ssh-keygen -A -f /storage/mirrordash/ssh
 
 # RAUC (A/B OS updates) keeps its state here: the root forgets everything at reboot
 mkdir -p /storage/rauc
+
+# Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
+mkdir -p /storage/mirrordash/logs
+chown pi:pi /storage/mirrordash/logs
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh
+
+  # The system log (journal) lives in RAM only, so nothing is written to the SD card all day and it
+  # doesn't wear out. The price: after a restart the log is gone. So when an update fails, this saves
+  # a copy of the relevant part to /storage/mirrordash/logs/ right then (admin page → Logs). Called by
+  # mirrordash-save-trial-log.service (a failed OS trial boot), the app (a failed OS install) and
+  # launch.sh (an app update that was rolled back).
+  mkdir -p /usr/local/lib/mirrordash
+  cat << 'EOF' > /usr/local/lib/mirrordash/save-log
+#!/bin/bash
+# Usage: save-log KIND [journalctl options...]
+#   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
+#   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
+#   KIND is a short name: os-trial, os-install, app-rollback.
+set -euo pipefail
+
+LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py
+KEEP=5
+kind=${1:-}
+shift || true
+case "$kind" in ""|*[!a-z0-9-]*) echo "save-log: invalid kind: $kind" >&2; exit 2 ;; esac
+
+mkdir -p "$LOG_DIR"
+file="$LOG_DIR/$kind-$(date +%Y%m%d-%H%M%S).log"
+# Written under another name first, so the admin page never lists half a file
+journalctl --no-pager "$@" > "$file.part" 2>&1 || true
+mv "$file.part" "$file"
+
+# Only the newest $KEEP: a mirror that fails over and over still uses only a few MB
+find "$LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn | tail -n +$(( KEEP + 1 )) |
+  cut -d' ' -f2- | xargs -r rm -f --
+sync "$LOG_DIR"
+echo "$file"
+EOF
+  chmod 755 /usr/local/lib/mirrordash/save-log
 
   cat << 'EOF' > /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
 HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key
@@ -1282,14 +1320,15 @@ EOF
   #   nm-online: connected to the network within 5 minutes
   #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
   #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
-  # If one fails, FailureAction restarts the mirror; the tryboot flag is gone by then, so it boots
+  # If one fails, OnFailure starts mirrordash-save-trial-log: it saves this boot's log (the RAM log
+  # is gone after a restart) and restarts the mirror. The tryboot flag is gone by then, so it boots
   # the old slot. The app's own admin page then says the update didn't start (features/updates).
   cat << 'EOF' > /etc/systemd/system/mirrordash-mark-good.service
 [Unit]
 Description=Keep the new OS version if the mirror works with it (A/B update)
 Wants=network-online.target
 After=network-online.target mirrordash.service
-FailureAction=reboot
+OnFailure=mirrordash-save-trial-log.service
 
 [Service]
 Type=oneshot
@@ -1303,6 +1342,19 @@ TimeoutStartSec=12min
 WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable mirrordash-mark-good.service
+
+  # The leading "-" lets the restart happen even if saving the log fails, and FailureAction restarts
+  # the mirror if this unit itself fails some other way. Either way it ends up on the old slot.
+  cat << 'EOF' > /etc/systemd/system/mirrordash-save-trial-log.service
+[Unit]
+Description=Save the log of a failed OS trial boot, then restart into the old OS (A/B update)
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b
+ExecStart=/usr/bin/systemctl reboot
+EOF
 
   # /boot/firmware is the boot partition the firmware started from: p2 (slot A) or p3 (slot B).
   # fstab can't say which, since both slots share this root image, so a systemd generator (a script
@@ -1357,6 +1409,12 @@ ConditionKernelCommandLine=!overlayroot
 EOF
   # Swap in compressed RAM only: the default zram+file puts a swap file on the root partition,
   # which is a RAM overlay once locked (and needs systemd-remount-fs).
+  # This setting is read by Pi OS's rpi-swap. If a new Pi OS drops it, the setting would silently do
+  # nothing (and a swap file would land on the RAM overlay), so stop the build instead.
+  if [ ! -e /usr/lib/systemd/system-generators/rpi-swap-generator ]; then
+    echo "Error: Pi OS's rpi-swap is gone; swap needs setting up another way (step_first_boot_lock)." >&2
+    exit 1
+  fi
   mkdir -p /etc/rpi/swap.conf.d
   cat << 'EOF' > /etc/rpi/swap.conf.d/mirrordash.conf
 [Main]
@@ -1376,6 +1434,11 @@ EOF
   # Pi OS grows the root over the card on its first boot (rpi-resize.service). The service itself is
   # skipped here (no first boot), but it still pulls in systemd-growfs-root, which fails on the
   # overlay root at every boot. The card is laid out by mirrordash-repart.sh instead.
+  # Masking a unit that doesn't exist succeeds silently, so a renamed one is caught here.
+  if [ ! -e /usr/lib/systemd/system/rpi-resize.service ]; then
+    echo "Error: Pi OS's rpi-resize.service is gone or renamed; find what grows the root now and turn it off." >&2
+    exit 1
+  fi
   systemctl --root=/ mask rpi-resize.service
 }
 

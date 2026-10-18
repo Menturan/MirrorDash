@@ -1,0 +1,21 @@
+{% for log in saved_logs %}
+<li class="backup-item">
+    <div class="backup-item-info">
+        <strong>{{ log.kind }}</strong>
+        <span>{{ log.created }} · {{ log.size }}</span>
+    </div>
+    <div class="backup-item-actions">
+        <a class="btn secondary btn-sm" href="/admin/logs/saved/{{ log.filename }}" download aria-label="Download {{ log.filename }}" title="Download"><i class="fas fa-download"></i></a>
+        <button class="btn danger btn-sm"
+                hx-post="/admin/panels/logs/saved/delete/{{ log.filename }}"
+                hx-confirm="Delete this saved log? This can't be undone."
+                hx-target="closest li"
+                hx-swap="outerHTML"
+                aria-label="Delete {{ log.filename }}" title="Delete">
+            <i class="fas fa-trash"></i>
+        </button>
+    </div>
+</li>
+{% else %}
+<li class="backup-empty">No saved logs. One is kept here when an update goes wrong.</li>
+{% endfor %}

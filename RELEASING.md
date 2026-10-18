@@ -187,6 +187,23 @@ purpose, one at a time, and build a test image (option 3) afterwards.
 | uv in the image | `UV_VERSION` in `scripts/configure_image.sh` | The uv release you use locally. |
 | Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |
 
+### Bumping the Raspberry Pi OS base image
+
+A new Pi OS reaches mirrors as an OS update, so a mistake here reaches every mirror. The build stops by
+itself when something it depends on is missing or renamed:
+
+- the boot files (`kernel8.img`, `initramfs8`, `kernel_2712.img`, `initramfs_2712`, and the Pi 3
+  firmware `bootcode.bin`, `start.elf`, `fixup.dat` that also goes on p1)
+- overlayroot, squashfs and the boot theme inside both initramfs files
+- the Wi-Fi country in `cmdline.txt`, and `ddcutil`
+- Pi OS's `rpi-resize.service`, `userconfig.service` and `rpi-swap`, which the setup turns off or configures
+- a root too big for its slot (1.5 GiB)
+
+What only a Pi can show: flash the test image on a card and go through the checklist above. Then, on
+a mirror running the previous release, install the new bundle (checklist step 6) and check that it
+comes back with everything kept. If a trial boot fails, the mirror goes back by itself and its log is
+under **Logs → Saved Logs**.
+
 ### When something fails
 
 - **The script stopped**: read its last line, `Stopped: …`. It says what's wrong and what to do (for

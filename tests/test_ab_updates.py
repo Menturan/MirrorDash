@@ -100,11 +100,15 @@ def test_gpio_markers_match_the_gpio_helper():
 
 
 def test_a_failed_trial_boot_restarts_into_the_old_slot():
-    """mirrordash-mark-good: only on a trial boot; network, then the app, then mark-good, and a
-    restart (the old slot) when any of them fails."""
+    """mirrordash-mark-good: only on a trial boot; network, then the app, then mark-good. When any
+    of them fails, the trial boot's log is saved and the mirror restarts (into the old slot)."""
     mark_good = unit("/etc/systemd/system/mirrordash-mark-good.service")
     assert "ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-tryboot" in mark_good
-    assert "FailureAction=reboot" in mark_good
+    assert "OnFailure=mirrordash-save-trial-log.service" in mark_good
+    save = unit("/etc/systemd/system/mirrordash-save-trial-log.service")
+    assert "FailureAction=reboot" in save
+    assert [line for line in save.splitlines() if line.startswith("ExecStart=")] == [
+        "ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b", "ExecStart=/usr/bin/systemctl reboot"]
     starts = [line for line in mark_good.splitlines() if line.startswith("ExecStart=")]
     assert [s.split()[0] for s in starts] == ["ExecStart=/usr/bin/nm-online", "ExecStart=/usr/bin/curl",
                                               "ExecStart=/usr/bin/rauc"]
@@ -150,3 +154,73 @@ def test_no_os_updates_without_an_ab_image(tmp_path, monkeypatch):
     import asyncio
     monkeypatch.setattr(service, "OS_BUILD_FILE", tmp_path / "missing")
     assert asyncio.run(service.check_os_update()) == {"supported": False}
+
+
+# --- Logs saved when an update fails (save-log, features/logs/saved.py) ---
+
+@pytest.fixture
+def save_log(tmp_path):
+    """Runs the real save-log with a fake journalctl; returns (run, log_dir)."""
+    script = tmp_path / "save-log"
+    script.write_text(unit("/usr/local/lib/mirrordash/save-log"))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "journalctl").write_text('#!/bin/sh\necho "journal $*"\n')
+    (bin_dir / "journalctl").chmod(0o755)
+    log_dir = tmp_path / "logs"
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "MIRRORDASH_LOG_DIR": str(log_dir)}
+
+    def run(*args):
+        return subprocess.run(["bash", str(script), *args], env=env, capture_output=True, text=True)
+    return run, log_dir
+
+
+def test_a_saved_log_holds_the_journal(save_log):
+    run, log_dir = save_log
+    result = run("os-trial", "-b")
+    assert result.returncode == 0
+    saved = Path(result.stdout.strip())
+    assert saved.parent == log_dir and saved.name.startswith("os-trial-") and saved.suffix == ".log"
+    assert saved.read_text() == "journal --no-pager -b\n"
+    assert not list(log_dir.glob("*.part"))
+
+
+def test_only_the_newest_five_saved_logs_are_kept(save_log):
+    run, log_dir = save_log
+    log_dir.mkdir()
+    for i in range(6):
+        old = log_dir / f"app-rollback-2026010{i}-000000.log"
+        old.write_text("old")
+        os.utime(old, (1_000_000 + i, 1_000_000 + i))
+    run("os-install", "-u", "rauc")
+    names = sorted(p.name for p in log_dir.glob("*.log"))
+    assert len(names) == 5
+    assert "app-rollback-20260100-000000.log" not in names and "app-rollback-20260101-000000.log" not in names
+    assert any(n.startswith("os-install-") for n in names)
+
+
+def test_save_log_refuses_odd_names(save_log):
+    run, log_dir = save_log
+    assert run("../etc").returncode == 2
+    assert not log_dir.exists()
+
+
+def test_saved_logs_in_the_admin_page(tmp_path, monkeypatch):
+    """Listed newest first, downloaded and deleted by name; nothing outside the folder is reachable."""
+    from fastapi import HTTPException
+    from mirrordash_core.features.logs import saved
+    monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path)
+    (tmp_path / "os-trial-20261018-1200.log").write_text("a")
+    (tmp_path / "app-rollback-20261019-1200.log").write_text("b")
+    os.utime(tmp_path / "os-trial-20261018-1200.log", (1_000_000, 1_000_000))
+    (tmp_path.parent / "secret.log").write_text("not yours")
+
+    logs = saved.saved_logs()
+    assert [log["filename"] for log in logs] == ["app-rollback-20261019-1200.log", "os-trial-20261018-1200.log"]
+    assert logs[1]["kind"].startswith("OS update")
+    with pytest.raises(HTTPException):
+        saved.saved_log_file("../secret.log")
+    saved.delete_saved_logs("os-trial-20261018-1200.log")
+    assert [log["filename"] for log in saved.saved_logs()] == ["app-rollback-20261019-1200.log"]
+    saved.delete_saved_logs()
+    assert saved.saved_logs() == [] and (tmp_path.parent / "secret.log").exists()

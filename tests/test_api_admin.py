@@ -1359,3 +1359,19 @@ def test_new_instance_gets_its_own_id_when_key_and_entry_point_are_spelled_diffe
         new = client.get("/admin/panels/modules/config/mirrordash_clock", headers={"X-API-Key": "secret"}).text
     assert "save?instance_id=mirrordash_clock-2" in new
     assert "Add to Mirror" in new and "/remove" not in new  # nothing to remove before it's added
+
+
+def test_saved_logs_can_be_seen_downloaded_and_deleted(client, tmp_path, monkeypatch):
+    """Logs → Saved Logs: what failed updates left behind; download and delete only reach that folder."""
+    from mirrordash_core.features.logs import saved
+    monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path)
+    (tmp_path / "os-trial-20261018-1200.log").write_text("trial boot log")
+    key = {"X-API-Key": "secret"}
+    with patch("mirrordash_core.features.logs.routes.get_logs", new_callable=AsyncMock, return_value={"logs": ""}):
+        page = client.get("/admin/panels/logs", headers=key).text
+    assert "OS update: the new version didn&#39;t start properly" in page or "OS update: the new version didn't start properly" in page
+    assert "Delete All" in page
+    assert client.get("/admin/logs/saved/os-trial-20261018-1200.log", headers=key).text == "trial boot log"
+    assert client.get("/admin/logs/saved/..%2Fsecret.log", headers=key).status_code == 404
+    assert client.post("/admin/panels/logs/saved/delete/os-trial-20261018-1200.log", headers=key).status_code == 200
+    assert not list(tmp_path.iterdir())

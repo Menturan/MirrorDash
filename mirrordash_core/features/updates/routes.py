@@ -58,6 +58,7 @@ async def os_update_html() -> str:
             <div style="margin-top: 10px; padding: 10px; border: 1px solid var(--color-status-warning); border-radius: 6px;">
                 <strong>The OS update (build {html.escape(data["failed_build"])}) didn't start properly.</strong>
                 The mirror went back to the version it had (build {html.escape(data["installed_build"])}). Nothing was lost.
+                Its log is under Logs → Saved Logs.
             </div>""")
     bundle = data["bundle"]
     if data["update_available"]:

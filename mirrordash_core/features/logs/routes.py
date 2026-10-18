@@ -5,8 +5,9 @@ import html
 import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from mirrordash_core.admin import require_api_key, templates
+from mirrordash_core.features.logs.saved import delete_saved_logs, saved_log_file, saved_logs
 from mirrordash_core.features.modules.loader import module_loader
 
 logger = logging.getLogger("mirrordash.core.logs")
@@ -102,7 +103,8 @@ async def get_panel_logs(request: Request):
         name="admin_logs.html",
         context={
             "logs_content": logs_content,
-            "modules_list": modules_list
+            "modules_list": modules_list,
+            "saved_logs": saved_logs(),
         }
     )
 
@@ -112,3 +114,22 @@ async def get_logs_viewer(type: str = "system", lines: int = 100, module: str | 
     log_data = await get_logs(type=type, lines=lines, module=module)
     logs_content = log_data.get("logs", "No logs found.")
     return HTMLResponse(content=html.escape(logs_content))  # log lines can contain anything, e.g. request paths
+
+
+# --- Logs saved when an update failed (saved.py) ---
+
+@router.get("/logs/saved/{filename}", dependencies=[Depends(require_api_key)])
+async def download_saved_log(filename: str):
+    return FileResponse(saved_log_file(filename), filename=filename, media_type="text/plain")
+
+
+@router.post("/panels/logs/saved/delete/{filename}", dependencies=[Depends(require_api_key)])
+async def delete_saved_log(filename: str):
+    delete_saved_logs(filename)
+    return HTMLResponse(content="")
+
+
+@router.post("/panels/logs/saved/delete-all", dependencies=[Depends(require_api_key)])
+async def delete_all_saved_logs(request: Request):
+    delete_saved_logs()
+    return templates.TemplateResponse(request=request, name="admin_logs_saved_rows.html", context={"saved_logs": []})

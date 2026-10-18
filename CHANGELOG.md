@@ -15,6 +15,7 @@ There are two kinds of releases:
 - mirrordash.local works right after Wi-Fi setup. Before, the mirror could end up as mirrordash-2.local until the next restart.
 - The system underneath MirrorDash can now be updated from **Settings → Check for Updates**, without reflashing the card and keeping everything. The mirror tries the new version first and goes back to the old one by itself if the network or MirrorDash doesn't start with it. This image is the last one you need to flash; it needs an SD card of at least 8 GB.
 - A broken system update falls back within about half a minute instead of more than three.
+- When an update goes wrong, the mirror keeps the log that explains why under **Logs → Saved Logs**, where it can be downloaded or deleted. Otherwise nothing is saved, so the SD card doesn't wear out.
 
 ## [0.6.2] - 2026-10-12
 
