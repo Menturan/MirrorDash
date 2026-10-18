@@ -1084,7 +1084,7 @@ EOF
 # Usage: save-log KIND [journalctl options...]
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost.
+#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, p1-update.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py
@@ -1475,11 +1475,89 @@ esac
 EOF
   chmod 755 /usr/local/lib/mirrordash/rauc-bootloader
 
+  # p1 holds the Pi 3's firmware (bootcode.bin, start.elf, fixup.dat) and autoboot.txt. On a Pi 3 it
+  # is p1's start.elf that boots the chosen slot, so the firmware files in the slots are never used
+  # there: without this, a Pi 3 would keep the firmware it was flashed with while every system update
+  # brings a newer kernel (Pi OS ships the two as a pair). update-p1 renews p1 from the slot that is
+  # running, once a trial boot has proven it (mirrordash-mark-good, below), and only when the files
+  # differ. It never overwrites the p1 in use: the image left 32 MiB empty after p1 (build_image.sh),
+  # so the new p1 is built there and then the MBR's p1 entry is moved over in one 512-byte write.
+  # Not RAUC's "boot-mbr-switch" slot type: it writes p1 from the bundle, autoboot.txt included, and
+  # so forgets which slot is the good one.
+  cat << 'EOF' > /usr/local/lib/mirrordash/update-p1
+#!/bin/bash
+# Usage: update-p1 [--force]
+#   Renew p1 (Pi 3 firmware + autoboot.txt) from the running boot slot when its firmware differs;
+#   --force does it anyway (to test it). Exit 0 when p1 is up to date or was renewed.
+#
+# The 64 MiB from 4 MiB on are two halves of 32 MiB; p1 is one of them, the other is empty:
+#     sector  8192 (4 MiB)  ... 73727    half 1
+#     sector 73728 (36 MiB) ... 139263   half 2     (p2, boot A, starts at 139264)
+# Steps: build the new p1 in the other half, check it file by file, then point the MBR's p1 entry at
+# it. A power cut before that last write leaves the old p1 in use, untouched; after it, the new one.
+# The old half stays as it was until the next renewal: a way back by hand (sfdisk -N 1).
+set -euo pipefail
+
+# Overridable so tests/test_ab_updates.py can run this against fakes
+DISK=${MIRRORDASH_DISK:-/dev/mmcblk0}
+FIRMWARE=${MIRRORDASH_FIRMWARE_DIR:-/boot/firmware}   # the running boot slot, just proven good
+AUTOBOOT=${MIRRORDASH_AUTOBOOT_DIR:-/boot/autoboot}   # p1 now
+NEW=${MIRRORDASH_P1_NEW_DIR:-/run/mirrordash-p1-new}  # where the new p1 is mounted while it's built
+FILES=(bootcode.bin start.elf fixup.dat)
+HALF_1=8192 HALF_2=73728 SIZE=65536  # in 512-byte sectors
+
+die() { echo "update-p1: $*" >&2; exit 1; }
+
+same_firmware() {
+  local f
+  for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$AUTOBOOT/$f" || return 1; done
+}
+if [ "${1:-}" != --force ] && same_firmware; then
+  echo "update-p1: p1's firmware is the running system's; nothing to do."
+  exit 0
+fi
+
+# Where p1 is now (sfdisk --dump: "/dev/mmcblk0p1 : start=        8192, size=       65536, type=c")
+read -r start size < <(sfdisk --dump "$DISK" | sed -n "s|^${DISK}p1 : start= *\([0-9]*\), size= *\([0-9]*\),.*|\1 \2|p")
+case "$start" in
+  "$HALF_1") new=$HALF_2 ;;
+  "$HALF_2") new=$HALF_1 ;;
+  *) die "p1 starts at sector ${start:-?}, not in its reserved place; leaving it alone" ;;
+esac
+[ "$size" = "$SIZE" ] || die "p1 is $size sectors, not $SIZE; leaving it alone"
+
+# 1. The new p1, in the empty half (a loop device over just that part of the card)
+loop=$(losetup --find --show --offset $(( new * 512 )) --sizelimit $(( SIZE * 512 )) "$DISK")
+cleanup() { umount "$NEW" 2>/dev/null || true; losetup -d "$loop" 2>/dev/null || true; }
+trap cleanup EXIT
+mkfs.vfat -n AUTOBOOT "$loop" > /dev/null
+mkdir -p "$NEW"
+mount "$loop" "$NEW"
+cp "${FILES[@]/#/$FIRMWARE/}" "$NEW/"
+cp "$AUTOBOOT/autoboot.txt" "$NEW/"  # as it is now: which slot is primary stays as it is
+sync
+# 2. Check it before anything points at it
+for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$NEW/$f" || die "$f didn't copy correctly; p1 unchanged"; done
+cmp -s "$AUTOBOOT/autoboot.txt" "$NEW/autoboot.txt" || die "autoboot.txt didn't copy correctly; p1 unchanged"
+cleanup
+trap - EXIT
+
+# 3. Switch: only the MBR's p1 entry changes (start, size, type c = FAT32 LBA); the disk identifier stays
+umount "$AUTOBOOT"
+echo "$new,$SIZE,c" | sfdisk -q --no-reread --no-tell-kernel -N 1 "$DISK"
+sync
+partx --update --nr 1 "$DISK"  # the kernel's /dev/mmcblk0p1 follows the new entry
+mount "$AUTOBOOT"              # by its fstab line (PARTUUID=...-01, the same as before)
+echo "update-p1: p1 renewed (now at sector $new)."
+EOF
+  chmod 755 /usr/local/lib/mirrordash/update-p1
+
   # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot the
   # ExecCondition is false and nothing runs. On a trial boot each ExecStart must succeed in turn:
   #   nm-online: connected to the network within 5 minutes
   #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
   #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
+  #   update-p1: renew p1's firmware if it changed (never undoes the update when it fails)
   # If one fails, OnFailure starts mirrordash-save-trial-log: it saves this boot's log (the RAM log
   # is gone after a restart) and restarts the mirror. The tryboot flag is gone by then, so it boots
   # the old slot. The app's own admin page then says the update didn't start (features/updates).
@@ -1496,6 +1574,9 @@ ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-tryboot
 ExecStart=/usr/bin/nm-online -q -t 300
 ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
 ExecStart=/usr/bin/rauc status mark-good
+# Then renew p1's firmware if the new system brought newer (update-p1, above). The "-": whatever
+# happens there, the new system stays; a failure only leaves its log under Saved Logs.
+ExecStart=-/bin/sh -c '/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update -b -n 500'
 TimeoutStartSec=12min
 
 [Install]

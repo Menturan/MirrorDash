@@ -200,7 +200,9 @@ itself when something it depends on is missing or renamed:
 - Pi OS's `rpi-resize.service`, `userconfig.service` and `rpi-swap`, which the setup turns off or configures
 - a root too big for its slot (1.5 GiB)
 
-What only a Pi can show: flash the test image on a card and go through the checklist above. Then, on
+What only a Pi can show: flash the test image on a card and go through the checklist above. On a
+Pi 3, also renew p1 by hand (`sudo /usr/local/lib/mirrordash/update-p1 --force`), restart, and check
+that it starts and that `sudo reboot "0 tryboot"` still boots the other slot once. Then, on
 a mirror running the previous release, install the new bundle (checklist step 6) and check that it
 comes back with everything kept. If a trial boot fails, the mirror goes back by itself and its log is
 under **Logs → Saved Logs**.

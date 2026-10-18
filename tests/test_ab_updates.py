@@ -111,7 +111,9 @@ def test_a_failed_trial_boot_restarts_into_the_old_slot():
         "ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b", "ExecStart=/usr/bin/systemctl reboot"]
     starts = [line for line in mark_good.splitlines() if line.startswith("ExecStart=")]
     assert [s.split()[0] for s in starts] == ["ExecStart=/usr/bin/nm-online", "ExecStart=/usr/bin/curl",
-                                              "ExecStart=/usr/bin/rauc"]
+                                              "ExecStart=/usr/bin/rauc", "ExecStart=-/bin/sh"]
+    # Renewing p1 comes last, after mark-good, and can't fail the unit (the "-")
+    assert "/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update" in starts[-1]
 
 
 def bundle(name, size=800_000_000):
@@ -224,3 +226,83 @@ def test_saved_logs_in_the_admin_page(tmp_path, monkeypatch):
     assert [log["filename"] for log in saved.saved_logs()] == ["app-rollback-20261019-1200.log"]
     saved.delete_saved_logs()
     assert saved.saved_logs() == [] and (tmp_path.parent / "secret.log").exists()
+
+
+# --- Renewing p1 (update-p1) ---
+
+@pytest.fixture
+def p1(tmp_path):
+    """The real update-p1 with fake disk tools: p1 starts where p1.start says; returns run(*args) -> (rc, calls)."""
+    script = tmp_path / "update-p1"
+    script.write_text(unit("/usr/local/lib/mirrordash/update-p1"))
+    firmware, autoboot, new = tmp_path / "firmware", tmp_path / "autoboot", tmp_path / "new"
+    for d in (firmware, autoboot):
+        d.mkdir()
+        for name in ("bootcode.bin", "start.elf", "fixup.dat"):
+            (d / name).write_bytes(b"same " + name.encode())
+    (autoboot / "autoboot.txt").write_text(AUTOBOOT.replace("boot_partition=2\n[tryboot]", "boot_partition=3\n[tryboot]"))
+    state, log, bin_dir = tmp_path / "start", tmp_path / "calls.log", tmp_path / "bin"
+    state.write_text("8192")
+    bin_dir.mkdir()
+    fakes = {
+        "sfdisk": f"""echo "sfdisk $*" >> {log}
+if [ "$1" = --dump ]; then echo "/dev/fake-disk : x"; echo "/dev/fake-diskp1 : start=        $(cat {state}), size=       65536, type=c"; exit 0; fi
+read -r line; echo "${{line%%,*}}" > {state}; echo "sfdisk input $line" >> {log}""",
+        "losetup": f'echo "losetup $*" >> {log}; [ "$1" = -d ] || echo /dev/loop9',
+        "mkfs.vfat": f'echo "mkfs.vfat $*" >> {log}',
+        "mount": f'echo "mount $*" >> {log}',
+        "umount": f'echo "umount $*" >> {log}',
+        "partx": f'echo "partx $*" >> {log}',
+    }
+    for name, text in fakes.items():
+        (bin_dir / name).write_text(f"#!/bin/bash\n{text}\n")
+        (bin_dir / name).chmod(0o755)
+    env = {**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}", "MIRRORDASH_DISK": "/dev/fake-disk",
+           "MIRRORDASH_FIRMWARE_DIR": str(firmware), "MIRRORDASH_AUTOBOOT_DIR": str(autoboot),
+           "MIRRORDASH_P1_NEW_DIR": str(new)}
+
+    def run(*args):
+        result = subprocess.run(["bash", str(script), *args], env=env, capture_output=True, text=True)
+        return result.returncode, (log.read_text().splitlines() if log.exists() else [])
+    run.firmware, run.autoboot, run.new, run.state, run.bin = firmware, autoboot, new, state, bin_dir
+    return run
+
+
+def test_p1_is_left_alone_when_its_firmware_is_current(p1):
+    rc, calls = p1()
+    assert rc == 0 and calls == []
+
+
+def test_newer_firmware_builds_a_new_p1_in_the_other_half_and_switches(p1):
+    (p1.firmware / "start.elf").write_bytes(b"newer start.elf")
+    rc, calls = p1()
+    assert rc == 0
+    assert "losetup --find --show --offset 37748736 --sizelimit 33554432 /dev/fake-disk" in calls  # 73728 * 512
+    # The new p1 has the new firmware and the autoboot.txt as it was (slot B primary stays primary)
+    assert (p1.new / "start.elf").read_bytes() == b"newer start.elf"
+    assert (p1.new / "autoboot.txt").read_text() == (p1.autoboot / "autoboot.txt").read_text()
+    switch = calls.index("sfdisk input 73728,65536,c")
+    assert calls[switch - 2] == f"umount {p1.autoboot}"  # p1 let go of first, then the one MBR write
+    assert calls[switch + 1:] == ["partx --update --nr 1 /dev/fake-disk", f"mount {p1.autoboot}"]
+    assert p1.state.read_text().strip() == "73728"
+    # And back to the first half the next time
+    rc, calls = p1("--force")
+    assert rc == 0 and p1.state.read_text().strip() == "8192"
+
+
+def test_p1_outside_its_reserved_place_is_never_touched(p1):
+    p1.state.write_text("10000")
+    rc, calls = p1("--force")
+    assert rc == 1 and not any(c.startswith(("losetup", "sfdisk input", "umount")) for c in calls)
+
+
+def test_a_bad_copy_switches_nothing(p1):
+    """The new p1 is checked file by file before the MBR points at it."""
+    (p1.firmware / "start.elf").write_bytes(b"newer start.elf")
+    (p1.bin / "sync").write_text(f"#!/bin/bash\n[ -f {p1.new}/start.elf ] && echo broken > {p1.new}/start.elf\nexit 0\n")
+    (p1.bin / "sync").chmod(0o755)
+    rc, calls = p1()
+    assert rc == 1 and not any(c.startswith("sfdisk input") for c in calls)
+    assert p1.state.read_text().strip() == "8192"
+    assert "losetup -d /dev/loop9" in calls  # cleaned up
+

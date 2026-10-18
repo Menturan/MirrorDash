@@ -17,6 +17,7 @@ There are two kinds of releases:
 - A broken system update falls back within about half a minute instead of more than three.
 - When an update goes wrong, the mirror keeps the log that explains why under **Logs → Saved Logs**, where it can be downloaded or deleted. Otherwise nothing is saved, so the SD card doesn't wear out.
 - A mirror whose Wi-Fi stays connected but stops passing traffic now notices within about 6 minutes, keeps the log under **Logs → Saved Logs** and reconnects by itself. Before, it could stay unreachable until it was restarted.
+- On a Raspberry Pi 3, a system update also renews the Pi's start-up firmware (once the new system has started properly), so it keeps up with the new Linux version. It's written next to the old one and switched in one step, so a power cut can't leave it half-written.
 - **Settings → Developer → Developer logging** keeps the whole system log across restarts, for finding out why something went wrong. It turns itself off after 7 days, so the SD card isn't worn by a forgotten switch.
 
 ## [0.6.3] - 2026-10-19
