@@ -65,7 +65,8 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
         # Run journalctl to get system logs
         try:
             proc = await asyncio.create_subprocess_exec(
-                "journalctl", "-n", str(lines), "--no-pager",
+                # -m: with developer logging on, every earlier start is its own folder (its own machine-id)
+                "journalctl", "-m", "-n", str(lines), "--no-pager",
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

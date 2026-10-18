@@ -1375,3 +1375,27 @@ def test_saved_logs_can_be_seen_downloaded_and_deleted(client, tmp_path, monkeyp
     assert client.get("/admin/logs/saved/..%2Fsecret.log", headers=key).status_code == 404
     assert client.post("/admin/panels/logs/saved/delete/os-trial-20261018-1200.log", headers=key).status_code == 200
     assert not list(tmp_path.iterdir())
+
+
+def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
+    import time
+    from mirrordash_core.features.settings import dev_logging
+    monkeypatch.setattr(dev_logging, "FLAG", tmp_path / "dev-logging-until")
+    monkeypatch.setattr(dev_logging, "JOURNAL_DIR", tmp_path / "journal")
+    monkeypatch.setattr(dev_logging, "dev_logging_available", lambda: True)
+    monkeypatch.setattr("mirrordash_core.features.settings.routes.dev_logging_available", lambda: True)
+    key = {"X-API-Key": "secret"}
+
+    def fake_run(action):
+        if action == "on":
+            (tmp_path / "dev-logging-until").write_text(str(int(time.time()) + 7 * 86400))
+        else:
+            (tmp_path / "dev-logging-until").unlink(missing_ok=True)
+
+    with patch.object(dev_logging, "_run", AsyncMock(side_effect=fake_run)) as run:
+        page = client.post("/admin/panels/system/dev-logging", data={"on": ["false", "true"]}, headers=key)
+        assert run.call_args.args == ("on",) and "On until" in page.text
+        (tmp_path / "journal").mkdir()
+        (tmp_path / "journal" / "system.journal").write_bytes(b"x" * 10)
+        page = client.post("/admin/panels/system/dev-logging", data={"on": "false"}, headers=key)
+        assert run.call_args.args == ("off",) and "Delete saved system log (1 MB)" in page.text

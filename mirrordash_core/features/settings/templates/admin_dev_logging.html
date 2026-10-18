@@ -1,0 +1,30 @@
+<!-- Developer logging (dev_logging.py): replaced as a whole after every change -->
+<div id="dev-logging" style="margin-top: 16px;">
+    {% if dev_logging_available %}
+    <form hx-post="/admin/panels/system/dev-logging" hx-target="#dev-logging" hx-swap="outerHTML" hx-trigger="change">
+        <div class="form-group">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <label for="sys-dev-logging" style="font-weight: 500; font-size: 0.9rem; color: white;">Developer logging</label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
+                    Keeps the whole system log on the SD card across restarts, to find out why something went wrong
+                    (up to 64 MB; read it under Logs → Raspberry Pi). Writing it wears the card, so it turns itself
+                    off after 7 days.{% if dev_logging_until %} <strong>On until {{ dev_logging_until.strftime("%Y-%m-%d %H:%M") }}</strong>
+                    (switch it off and on again for 7 more days).{% endif %}</p>
+            </div>
+            <label class="switch">
+                <input type="hidden" name="on" value="false">
+                <input type="checkbox" id="sys-dev-logging" name="on" value="true" {% if dev_logging_until %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+        </div>
+    </form>
+    {% if not dev_logging_until and saved_journal_mb %}
+    <button type="button" class="btn danger btn-sm"
+            hx-post="/admin/panels/system/dev-logging/clear"
+            hx-target="#dev-logging" hx-swap="outerHTML"
+            hx-confirm="Delete the saved system log? This can't be undone.">
+        <i class="fas fa-trash"></i> Delete saved system log ({{ saved_journal_mb }} MB)
+    </button>
+    {% endif %}
+    {% endif %}
+</div>

@@ -677,10 +677,13 @@ step_wifi_captive_portal() {
 #!/bin/bash
 # At boot: no network within 30 s -> start the setup hotspot. With --watch (every 3 minutes, from
 # mirrordash-wifi-watch.timer): on the hotspot, try the saved Wi-Fi again (a router that came back
-# after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart.
+# after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart,
+# and a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic).
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
+# How many watch rounds in a row found no traffic (in RAM: a restart starts over)
+FAILS_FILE="/run/mirrordash-wifi-fails"
 
 hotspot_active() {
     nmcli -t -f NAME connection show --active | grep -qxF "$SSID"
@@ -701,6 +704,36 @@ phone_on_hotspot() {
 # mirror. Nothing to tell at boot (MirrorDash starts after this), so a failure here is harmless.
 tell_mirrordash() {
     curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+}
+
+# Does anything actually get through? The router, or failing that 1.1.1.1 (some routers don't answer
+# ping). NetworkManager only knows the Wi-Fi is joined: the Pi 3's Wi-Fi chip can stay joined while
+# nothing passes, and then NetworkManager sees nothing wrong (a mirror stayed like that for 20 minutes).
+traffic_flows() {
+    local gateway
+    gateway=$(ip route show default dev "$INTERFACE" | awk '{print $3; exit}')
+    { [ -n "$gateway" ] && ping -c 3 -W 2 -q "$gateway" >/dev/null 2>&1; } || ping -c 3 -W 2 -q 1.1.1.1 >/dev/null 2>&1
+}
+
+# Joined but no traffic for 2 rounds in a row (about 6 minutes; one round can be a router restarting):
+# keep the log of what happened (Logs → Saved Logs, once per outage; the system log is in RAM) and
+# join the Wi-Fi again. If that doesn't help, the next rounds try again.
+check_traffic() {
+    local fails
+    if traffic_flows; then
+        rm -f "$FAILS_FILE"
+        return 0
+    fi
+    fails=$(( $(cat "$FAILS_FILE" 2>/dev/null || echo 0) + 1 ))
+    echo "$fails" > "$FAILS_FILE"
+    logger -t mirrordash-wifi "Joined to the Wi-Fi, but no traffic gets through (round $fails)."
+    [ "$fails" -ge 2 ] || return 0
+    if [ "$fails" -eq 2 ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
+        /usr/local/lib/mirrordash/save-log wifi-lost -b -n 3000 >/dev/null || true
+    fi
+    logger -t mirrordash-wifi "Joining the Wi-Fi again..."
+    nmcli device disconnect "$INTERFACE" || true
+    nmcli --wait 45 device connect "$INTERFACE" || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
 }
 
 start_hotspot() {
@@ -761,6 +794,7 @@ fi
 # timeout). Any connection counts, also one without internet. --watch waits longer, so a Wi-Fi
 # change from the admin page (a few seconds without a connection) never starts the hotspot.
 if nm-online -q -t "$([ "${1:-}" = "--watch" ] && echo 60 || echo 30)"; then
+    if [ "${1:-}" = "--watch" ]; then check_traffic; fi
     exit 0
 fi
 start_hotspot
@@ -1050,7 +1084,7 @@ EOF
 # Usage: save-log KIND [journalctl options...]
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback.
+#   KIND is a short name: os-trial, os-install, app-rollback, wifi-lost.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py
@@ -1101,6 +1135,130 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable mirrordash-storage-init.service
+}
+
+step_dev_logging() {
+  # Developer logging: while it is on, the whole system log is kept on /storage across restarts, to
+  # find out why something went wrong (a Wi-Fi that drops, an update that fails). It's off by default:
+  # Pi OS keeps the log in RAM only (Storage=volatile), so nothing is written to the SD card all day.
+  # Turned on from the admin page (Settings → Developer), it switches itself off after 7 days, since a
+  # forgotten switch would keep writing to the card for years. The mechanism is journald's own:
+  #   * a drop-in in /run (gone at every restart, so this script puts it back while it's on) sets
+  #     Storage=persistent; its name sorts after Pi OS's own 40-... file, so it wins;
+  #   * /var/log/journal, where a persistent journal lives, is bind-mounted from /storage.
+  # Each start has its own machine-id here (the image's is "uninitialized"), and journald keeps one
+  # folder per machine-id and only trims its own, so this script keeps the total under its cap by
+  # deleting the oldest starts' folders. Reading them all back needs `journalctl -m` (merge).
+  cat << 'EOF' > /usr/local/bin/mirrordash-dev-logging
+#!/bin/bash
+# Usage: mirrordash-dev-logging on|off|apply|clear
+#   on     keep the whole system log on /storage for the next 7 days (again: 7 more days)
+#   off    stop now (the saved log stays until "clear")
+#   apply  bring the system in line with the setting: at every boot and every hour (the 7 days run out)
+#   clear  delete the saved system log (only while off)
+set -euo pipefail
+
+# Overridable so tests/test_dev_logging.py can run this against a temporary folder
+STORAGE=${MIRRORDASH_STORAGE:-/storage/mirrordash}
+FLAG="$STORAGE/dev-logging-until"      # when it turns off, in seconds since 1970; there = on
+JOURNAL_DIR="$STORAGE/journal"
+DROPIN=${MIRRORDASH_DROPIN:-/run/systemd/journald.conf.d/90-mirrordash-dev-logging.conf}
+TARGET=${MIRRORDASH_JOURNAL_TARGET:-/var/log/journal}
+DAYS=7
+CAP_MB=${MIRRORDASH_JOURNAL_CAP_MB:-64}
+MACHINE_ID_FILE=${MIRRORDASH_MACHINE_ID_FILE:-/etc/machine-id}
+
+is_on() { [ -f "$FLAG" ] && [ "$(cat "$FLAG")" -gt "$(date +%s)" ]; }
+
+# Keep the saved log under CAP_MB: delete whole starts (machine-id folders), oldest first, never the
+# running one. journald trims inside the running one by itself (SystemMaxUse).
+trim() {
+  local current
+  current=$(cat "$MACHINE_ID_FILE" 2>/dev/null || true)
+  while [ "$(du -sm "$JOURNAL_DIR" | cut -f1)" -gt "$CAP_MB" ]; do
+    oldest=$(find "$JOURNAL_DIR" -mindepth 1 -maxdepth 1 -type d ! -name "$current" -printf '%T@ %f\n' | sort -n | head -n 1 | cut -d' ' -f2)
+    [ -n "$oldest" ] || break
+    rm -rf "${JOURNAL_DIR:?}/$oldest"
+  done
+}
+
+apply() {
+  if is_on; then
+    # The folder gets the owner, group and access rights journald expects for /var/log/journal
+    install -d -o root -g systemd-journal -m 2755 "$JOURNAL_DIR"
+    mkdir -p "$TARGET" "$(dirname "$DROPIN")"
+    mountpoint -q "$TARGET" || mount --bind "$JOURNAL_DIR" "$TARGET"
+    if [ ! -f "$DROPIN" ]; then
+      printf '[Journal]\nStorage=persistent\nSystemMaxUse=%sM\n' "$CAP_MB" > "$DROPIN"
+      systemd-tmpfiles --create --prefix "$TARGET"
+      systemctl restart systemd-journald
+      journalctl --flush  # what was logged in RAM since boot moves over too
+    fi
+    trim
+  else
+    rm -f "$FLAG"  # the 7 days are over (or it was turned off)
+    if [ -f "$DROPIN" ]; then
+      rm -f "$DROPIN"
+      journalctl --relinquish-var  # back to RAM before /storage lets go
+      systemctl restart systemd-journald
+    fi
+    if mountpoint -q "$TARGET"; then umount "$TARGET"; fi
+  fi
+}
+
+case "${1:-}" in
+  on)
+    mkdir -p "$STORAGE"
+    echo $(( $(date +%s) + DAYS * 86400 )) > "$FLAG"
+    apply ;;
+  off)
+    rm -f "$FLAG"
+    apply ;;
+  apply)
+    apply ;;
+  clear)
+    if is_on; then echo "Turn developer logging off first." >&2; exit 1; fi
+    rm -rf "${JOURNAL_DIR:?}"
+    ;;
+  *)
+    echo "Usage: mirrordash-dev-logging on|off|apply|clear" >&2; exit 2 ;;
+esac
+EOF
+  chmod 755 /usr/local/bin/mirrordash-dev-logging
+
+  # At every boot once /storage is there, and every hour (that's when the 7 days run out)
+  cat << 'EOF' > /etc/systemd/system/mirrordash-dev-logging.service
+[Unit]
+Description=MirrorDash developer logging (system log kept on /storage while turned on)
+After=mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-dev-logging apply
+EOF
+  cat << 'EOF' > /etc/systemd/system/mirrordash-dev-logging.timer
+[Unit]
+Description=MirrorDash developer logging: at boot and every hour
+
+[Timer]
+OnBootSec=0
+OnCalendar=hourly
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl --root=/ enable mirrordash-dev-logging.timer
+
+  # The admin page turns it on and off (features/settings/dev_logging.py): these exact commands only
+  cat << 'EOF' > /etc/sudoers.d/mirrordash-dev-logging
+# MirrorDash: developer logging from the admin page (Settings → Developer)
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging on
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging off
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging clear
+EOF
+  chmod 440 /etc/sudoers.d/mirrordash-dev-logging
+  visudo -cf /etc/sudoers.d/mirrordash-dev-logging
 }
 
 step_ab_updates() {
@@ -1526,6 +1684,7 @@ run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Scrip
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
 run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
+run_step "16a" "dev_logging" "Setting up Developer Logging" step_dev_logging
 run_step "16b" "ab_updates" "Setting up A/B OS Updates (RAUC)" step_ab_updates
 run_step "17" "first_boot_lock" "Locking the Root (OverlayFS)" step_first_boot_lock
 run_step "18" "system_cleanup" "Performing System Cleanup" step_system_cleanup

@@ -5,10 +5,12 @@ import logging
 import re
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from mirrordash_core.admin import notify, require_api_key, templates
+from mirrordash_core.admin import events_header, notify, require_api_key, templates
 from mirrordash_core.config import load_config, save_config, get_core_version
 from mirrordash_core.features.modules.loader import module_loader, find_entry_point
 from mirrordash_core.features.settings.ssh import get_ssh_status
+from mirrordash_core.features.settings.dev_logging import (clear_saved_journal, dev_logging_available,
+                                                           dev_logging_until, saved_journal_mb, set_dev_logging)
 
 from mirrordash_core.features.settings.schema import get_globals_schema, get_module_schema, validate_config
 
@@ -39,8 +41,34 @@ async def get_panel_config(request: Request):
             "current_version": current_version,
             "prerelease": config.get("system", {}).get("prerelease", False),
             "ssh": await get_ssh_status(),
+            **dev_logging_context(),
         }
     )
+
+
+# --- Developer logging (dev_logging.py): its own small form, re-rendered after every change ---
+
+def dev_logging_context() -> dict:
+    return {"dev_logging_available": dev_logging_available(), "dev_logging_until": dev_logging_until(),
+            "saved_journal_mb": saved_journal_mb()}
+
+
+def _dev_logging_response(request: Request, message: str) -> HTMLResponse:
+    return templates.TemplateResponse(request=request, name="admin_dev_logging.html", context=dev_logging_context(),
+                                      headers=events_header(**{"md-notify": {"message": message, "kind": "success"}}))
+
+
+@router.post("/panels/system/dev-logging", dependencies=[Depends(require_api_key)])
+async def toggle_dev_logging(request: Request):
+    on = (await read_form(request)).get("on") in (True, "true")
+    await set_dev_logging(on)
+    return _dev_logging_response(request, "Developer logging is on for 7 days." if on else "Developer logging is off.")
+
+
+@router.post("/panels/system/dev-logging/clear", dependencies=[Depends(require_api_key)])
+async def clear_dev_logging(request: Request):
+    await clear_saved_journal()
+    return _dev_logging_response(request, "The saved system log is deleted.")
 
 
 @router.post("/panels/config/save-visual", dependencies=[Depends(require_api_key)])

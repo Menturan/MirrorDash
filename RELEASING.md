@@ -100,7 +100,8 @@ the speed and the time left, and asks to try again if the download breaks (witho
 5. **Hardware tab**: moving *Screen Brightness* dims the screen (on an HDMI monitor with DDC/CI;
    otherwise the tab says the screen can't take it). With two buttons connected, each one does what
    its own settings say.
-6. **OS update** (when the OS changed): on a mirror running the previous OS release, copy the new
+6. **OS update** (when the OS changed): turn on **Settings → Developer → Developer logging** first, so a
+   failure leaves its whole log behind. On a mirror running the previous OS release, copy the new
    bundle over and install it: `scp <bundle>.raucb pi@mirrordash.local:/storage/mirrordash/os-update.raucb`,
    then `sudo rauc install /storage/mirrordash/os-update.raucb && sudo reboot`. The mirror comes back with
    everything kept, and `rauc status` shows the other slot booted and good.

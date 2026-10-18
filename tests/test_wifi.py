@@ -292,10 +292,12 @@ def test_hotspot_dns_answers_every_name_with_the_mirror():
     assert "echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf" in script
 
 
-def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=False, saved_wifi=False, phone=False):
+def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=False, saved_wifi=False, phone=False,
+                   traffic=True):
     """Run the real mirrordash-wifi-check.sh (from configure_image.sh) offline, against a fake nmcli
     that keeps the hotspot profile's password in a file. args: "--watch". online: the network (or the
-    saved Wi-Fi, once the hotspot lets go of the radio) answers. Returns (password, nmcli and curl calls)."""
+    saved Wi-Fi, once the hotspot lets go of the radio) answers. traffic: ping gets an answer (online but
+    no traffic is the Pi 3's stuck Wi-Fi). Returns (password, nmcli, curl and save-log calls)."""
     import os
     import re
     import subprocess
@@ -304,16 +306,21 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
     body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check\.sh\n(.*?)\nEOF\n", setup, re.S).group(1)
     tmp_path.mkdir(parents=True, exist_ok=True)
     script = tmp_path / "wifi-check.sh"
-    script.write_text(body.replace("/var/lib/mirrordash-wifi-scan.cache", str(tmp_path / "scan.cache")))
     psk, log = tmp_path / "psk", tmp_path / "nmcli.log"
+    bin_dir = tmp_path / "bin"
+    script.write_text(body.replace("/var/lib/mirrordash-wifi-scan.cache", str(tmp_path / "scan.cache"))
+                      .replace("/run/mirrordash-wifi-fails", str(tmp_path / "fails"))
+                      .replace("/usr/local/lib/mirrordash/save-log", str(bin_dir / "save-log")))
     if saved_password:
         psk.write_text(saved_password)
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
+    bin_dir.mkdir(exist_ok=True)
     fakes = {
         "nm-online": f"exit {0 if online else 1}",
         "logger": "exit 0",
-        "ip": "echo '10.42.0.23 lladdr 3a:00:00:00:00:01 REACHABLE'" if phone else "exit 0",
+        "ip": ('[ "$1" = route ] && { echo "default via 192.168.1.1 dev wlan0 proto dhcp"; exit 0; }\n'
+               + ("echo '10.42.0.23 lladdr 3a:00:00:00:00:01 REACHABLE'" if phone else "exit 0")),
+        "ping": f"exit {0 if traffic else 1}",
+        "save-log": f'echo "save-log $*" >> {log}',
         "curl": f'echo "curl $*" >> {log}',
         "nmcli": f"""echo "$*" >> {log}
 case "$*" in
@@ -442,3 +449,21 @@ def test_wifi_card_and_change(client):
     finally:
         app.dependency_overrides.clear()
         network.failed_switch.clear()
+
+
+
+def test_a_wifi_without_traffic_is_joined_again(tmp_path):
+    """Joined (NetworkManager says online) but nothing gets through: after 2 watch rounds in a row the
+    log is saved once and the Wi-Fi joined again; a round with traffic starts the count over."""
+    run = lambda **kw: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True, **kw)[1]
+    log = tmp_path / "nmcli.log"
+    assert not any("device" in c for c in run(traffic=False))  # one round can be a router restarting
+    calls = run(traffic=False)
+    assert calls[-3:] == ["save-log wifi-lost -b -n 3000", "device disconnect wlan0", "--wait 45 device connect wlan0"]
+    log.unlink()
+    calls = run(traffic=False)  # still nothing: joined again, the log isn't saved twice
+    assert "--wait 45 device connect wlan0" in calls and not any(c.startswith("save-log") for c in calls)
+    log.unlink()
+    run(traffic=True)
+    assert not (tmp_path / "fails").exists()
+    assert not any("device" in c for c in run(traffic=False))
