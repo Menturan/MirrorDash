@@ -882,17 +882,25 @@ if [ -b "${PART_PREFIX}5" ]; then
         exit 0
     fi
     echo "First boot of an A/B image: adding root B (p6) and /storage (p7)..."
-    # Grow the extended partition (p4) to the end of the card, so p6 and p7 fit inside it.
-    parted -s "$DISK" -- resizepart 4 100%
-    # p6 starts 1 MiB after p5 ends: every partition inside the extended one has a small header
-    # (an EBR) in front of it, and whole MiB keep the card's erase blocks aligned. Sizes in MiB.
-    # /sys gives p5's start and size in 512-byte sectors; 2048 sectors = 1 MiB.
+    # Only sfdisk touches this table, never parted: on a test card, parted rewrote the disk
+    # identifier while growing p4. The identifier is the first half of every PARTUUID, and
+    # cmdline.txt finds the root by it (root=PARTUUID=<identifier>-05), so the next boot would have
+    # found no root. sfdisk keeps it. --no-reread / --no-tell-kernel: the card is in use (the root
+    # is on it), so sfdisk only writes the table; partx below tells the kernel about p6 and p7.
+    #
+    # 1. Grow the extended partition (p4) to the end of the card, so p6 and p7 fit inside it.
+    echo ',+' | sfdisk -q --no-reread --no-tell-kernel -N 4 "$DISK"
+    # 2. Add p6 (root B, 1.5 GiB like root A) and p7 (/storage, the rest) inside it. Positions in
+    #    512-byte sectors (/sys gives p5's start and size in them; 2048 sectors = 1 MiB). Each starts
+    #    1 MiB after the previous one ends: every partition inside the extended one has a small
+    #    header (an EBR) in front of it, and whole MiB keep the card's erase blocks aligned.
     P5_NAME=$(basename "${PART_PREFIX}5")
-    P5_END_MIB=$(( ($(cat "/sys/class/block/$P5_NAME/start") + $(cat "/sys/class/block/$P5_NAME/size")) / 2048 ))
-    P6_START_MIB=$(( P5_END_MIB + 1 ))
-    P6_END_MIB=$(( P6_START_MIB + 1536 ))  # 1.5 GiB, the same as root A
-    parted -s -a optimal "$DISK" -- mkpart logical "${P6_START_MIB}MiB" "${P6_END_MIB}MiB"
-    parted -s -a optimal "$DISK" -- mkpart logical ext4 "$(( P6_END_MIB + 1 ))MiB" 100%
+    P5_END=$(( $(cat "/sys/class/block/$P5_NAME/start") + $(cat "/sys/class/block/$P5_NAME/size") ))
+    P6_START=$(( P5_END + 2048 ))
+    P6_SIZE=$(( 1536 * 2048 ))
+    P7_START=$(( P6_START + P6_SIZE + 2048 ))
+    printf 'start=%s, size=%s, type=83\nstart=%s, type=83\n' "$P6_START" "$P6_SIZE" "$P7_START" |
+        sfdisk -q --no-reread --no-tell-kernel --append "$DISK"
     # The card is in use (the root is on it), so the kernel can't reread the whole table:
     # partx -a adds just the new partitions. It complains about the ones that exist; that's fine.
     partx -a "$DISK" || true
@@ -1365,6 +1373,10 @@ EOF
   # (step_watchdog_boot_optimization). cloud-init would see a new machine every boot (its state is on
   # the RAM overlay) and set it up again; Pi OS's seed files on the boot partition are empty anyway.
   touch /etc/cloud/cloud-init.disabled
+  # Pi OS grows the root over the card on its first boot (rpi-resize.service). The service itself is
+  # skipped here (no first boot), but it still pulls in systemd-growfs-root, which fails on the
+  # overlay root at every boot. The card is laid out by mirrordash-repart.sh instead.
+  systemctl --root=/ mask rpi-resize.service
 }
 
 step_system_cleanup() {
