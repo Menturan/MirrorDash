@@ -1094,7 +1094,8 @@ shift || true
 case "$kind" in ""|*[!a-z0-9-]*) echo "save-log: invalid kind: $kind" >&2; exit 2 ;; esac
 
 mkdir -p "$LOG_DIR"
-file="$LOG_DIR/$kind-$(date +%Y%m%d-%H%M%S).log"
+# UTC: a start without the app (a trial boot) hasn't got the time zone yet; the admin page shows local time
+file="$LOG_DIR/$kind-$(date -u +%Y%m%d-%H%M%S).log"
 # Written under another name first, so the admin page never lists half a file
 journalctl --no-pager "$@" > "$file.part" 2>&1 || true
 mv "$file.part" "$file"

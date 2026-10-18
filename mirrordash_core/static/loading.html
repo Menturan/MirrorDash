@@ -136,9 +136,12 @@
             const waited = Date.now() - startedAt;
             if (waited > FAILED_AFTER) {
                 document.body.classList.add('failed');
+                // This page can't tell a trial boot of a new system version (A/B update) from a normal
+                // start, so the text fits both: on a trial boot mirrordash-mark-good restarts the mirror
+                // into the previous version by itself within a few minutes.
                 show('<strong>MirrorDash didn’t start.</strong>' +
-                     'Unplug the mirror and plug it in again.<br>' +
-                     'If this keeps happening, the SD card may need a fresh MirrorDash image.');
+                     'If the system was just updated, the mirror goes back to the previous version by itself within a few minutes.<br>' +
+                     'Otherwise, unplug the mirror and plug it in again. If this keeps happening, the SD card may need a fresh MirrorDash image.');
             } else if (waited > STILL_STARTING_AFTER) {
                 show('Still starting…');
             }
