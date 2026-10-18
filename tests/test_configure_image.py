@@ -16,7 +16,8 @@ def test_only_the_root_is_overlaid():
     """An image is locked from its first boot: a squashfs root under overlayroot, set in the build.
     recurse=0 keeps /storage on the card."""
     image_opts = re.search(r'if \[ -n "\$\{BUILDING_IMAGE:-\}" \]; then\n\s*target_opts\+=\((.*?)\)', SETUP).group(1)
-    assert image_opts == '"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false"'
+    assert image_opts == ('"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false"'
+                          ' "rootdelay=20"')
     assert "enable_overlayfs" not in SETUP
     assert "boot=overlay" not in SETUP  # not the parameter overlayroot reads
     assert "ConditionKernelCommandLine=!overlayroot" in unit("/etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf")

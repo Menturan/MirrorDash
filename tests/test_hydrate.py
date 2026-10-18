@@ -12,7 +12,8 @@ def run_hydrate(tmp_path: Path) -> Path:
     storage, base = tmp_path / "storage", tmp_path / "base_venv"
     base.mkdir(exist_ok=True)
     script = tmp_path / "hydrate.sh"
-    script.write_text(body.replace("/storage/mirrordash", f"{storage}/mirrordash").replace("/home/pi/mirrordash/base_venv", str(base)))
+    script.write_text(body.replace("/storage/mirrordash", f"{storage}/mirrordash").replace("/home/pi/mirrordash/base_venv", str(base))
+                      .replace("/storage/rauc", f"{storage}/rauc"))
     # Stub out root-only commands; mountpoint=0 skips the NetworkManager bind mount
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir(exist_ok=True)
@@ -47,3 +48,14 @@ def test_dangling_link_is_reseeded(tmp_path):
     run_hydrate(tmp_path)
     assert os.readlink(md / "venv") == "venv_a"
     assert (md / "venv_a").is_dir()
+
+
+def test_venv_with_a_missing_python_is_reseeded(tmp_path):
+    """A new OS version with another Python leaves the venv's python link dangling: start over from base_venv."""
+    md = tmp_path / "storage" / "mirrordash"
+    (md / "venv_b" / "bin").mkdir(parents=True)
+    (md / "venv_b" / "bin" / "python").symlink_to("/nonexistent/python3.99")
+    (md / "venv").symlink_to("venv_b")
+    run_hydrate(tmp_path)
+    assert os.readlink(md / "venv") == "venv_a"
+    assert not (md / "venv_b").exists()

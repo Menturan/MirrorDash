@@ -559,7 +559,7 @@ window.pollRestartAndReload = function(options = {}) {
 
     const tick = async () => {
         const secs = Math.round((Date.now() - startedAt) / 1000);
-        if (secs > 900) {
+        if (secs > (options.maxSeconds || 900)) {
             return finish(false, 'This is taking unusually long. Check the mirror, then reload this page.');
         }
         let status = null;

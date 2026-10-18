@@ -6,7 +6,7 @@ There are two kinds of releases:
 | :--- | :--- | :--- |
 | **What** | The Python app (`mirrordash` on PyPI): server, mirror page, admin page. | A Raspberry Pi OS SD-card image with MirrorDash set up: system packages, kiosk, Wi-Fi setup, read-only system. |
 | **Version** | `vX.Y.Z` (test versions `vX.Y.ZrcN`) | `vX.Y.Z-osN`: the image with app `X.Y.Z` |
-| **Reaches mirrors** | **Settings → Check for Updates** in the admin page. Everything is kept. | Flashing the SD card. |
+| **Reaches mirrors** | **Settings → Check for Updates** in the admin page. Everything is kept. | **Settings → Check for Updates** too (an A/B OS update, everything is kept). Flashing only for a new mirror, or one from before A/B updates. |
 
 Both are made with one script, `scripts/release.py`, and every real release is something you tested first.
 
@@ -30,6 +30,10 @@ The SDK (`mirrordash-sdk`) and modules are released from their own repositories:
    change and command instead of making it.
 4. Optional, for faster image downloads: `sudo apt install aria2`. Without it the script downloads by
    itself, a little slower.
+5. The key that signs OS updates must be in GitHub as the secret `RAUC_KEY` (`gh secret set RAUC_KEY < key.pem`).
+   Mirrors install only OS updates signed with it; its certificate is `scripts/rauc/cert.pem`. Keep the
+   key safe outside the repository (a password manager): without it no more OS updates can be made for
+   the mirrors that are out there, and they would have to be reflashed with a new certificate.
 
 Publishing to PyPI needs no password: GitHub Actions does it (trusted publishing, already set up).
 
@@ -77,8 +81,8 @@ Every mirror is now offered the update.
 The image contains the app version on master, so release the app first if it changed.
 
 **1. Build a test image.** Run the script and choose **3**. GitHub Actions runs the tests and builds the
-image (about 30 minutes); the script waits and downloads it to
-`build_workspace/test-image/<run>/mirrordash-os-vX.Y.Z.img.xz`. The image is about 750 MB: the script
+image and the signed update bundle (about 30 minutes); the script waits and downloads them to
+`build_workspace/test-image/<run>/` (`mirrordash-os-vX.Y.Z.img.xz` and `mirrordash-os-vX.Y.Z-<build>.raucb`). The image is about 750 MB: the script
 downloads it over 16 connections at once (with `aria2c` if it's installed), shows how far it has come,
 the speed and the time left, and asks to try again if the download breaks (without building again).
 
@@ -96,9 +100,14 @@ the speed and the time left, and asks to try again if the download breaks (witho
 5. **Hardware tab**: moving *Screen Brightness* dims the screen (on an HDMI monitor with DDC/CI;
    otherwise the tab says the screen can't take it). With two buttons connected, each one does what
    its own settings say.
+6. **OS update** (when the OS changed): on a mirror running the previous OS release, copy the new
+   bundle over and install it: `scp <bundle>.raucb pi@mirrordash.local:/storage/mirrordash/os-update.raucb`,
+   then `sudo rauc install /storage/mirrordash/os-update.raucb && sudo reboot`. The mirror comes back with
+   everything kept, and `rauc status` shows the other slot booted and good.
 
 **3. Release that same image.** Run the script and choose **4**. It publishes `vX.Y.Z-osN` with the
-file you tested; nothing is rebuilt. If master changed since the build, it lists what the image doesn't
+file you tested and its update bundle; nothing is rebuilt. Mirrors are offered the bundle under
+**Settings → Check for Updates**. If master changed since the build, it lists what the image doesn't
 contain and asks before going on. Only the `### OS image` entries under `[Unreleased]` move to the
 image's section; app entries stay for the next app release (they aren't in the image's app version).
 
@@ -125,7 +134,12 @@ sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mi
 sudo reboot
 ```
 
-**OS image** (erases the card):
+**OS** (keeps everything): **Settings → Check for Updates** offers an OS update when a newer bundle is
+released. The mirror downloads it, installs it next to the running system, and restarts into it on trial;
+if the network or the app doesn't come up, it goes back to the old system by itself and the admin page
+says so.
+
+**OS image** (erases the card; for mirrors from before A/B OS updates):
 
 1. **Backup → Create backup** in the admin page and download the `.mirror` file. It doesn't contain the
    admin password or Wi-Fi passwords.
@@ -154,9 +168,9 @@ release.py 4       ──► that same artifact becomes the vX.Y.Z-osN GitHub re
 | :--- | :--- | :--- | :--- |
 | `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
 | `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
-| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min). One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256`. |
+| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min). One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
 
-No secrets are stored in GitHub. PyPI trusts the `publish` job in the `pypi` environment (trusted
+The only secret in GitHub is `RAUC_KEY`, which signs the OS update bundle. PyPI trusts the `publish` job in the `pypi` environment (trusted
 publishing, OIDC); renaming `publish.yml` or the environment breaks that until it is changed on pypi.org
 too.
 

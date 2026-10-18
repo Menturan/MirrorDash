@@ -495,7 +495,7 @@ step_watchdog_boot_optimization() {
   # The hardware watchdog is already on: Raspberry Pi OS ships RuntimeWatchdogSec=1m as a drop-in
   # (/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf).
 
-  # No apt in the background: the app updates itself, and a new OS comes as a new image.
+  # No apt in the background: the app updates itself, and a new OS comes as a RAUC bundle (step_ab_updates).
   # These timers only downloaded package lists, writing to the system disk for nothing.
   systemctl --root=/ mask apt-daily.timer apt-daily-upgrade.timer
 
@@ -544,8 +544,12 @@ EOF
     # systemd would treat every boot as the first: enable every unit Debian's presets name (SSH,
     # systemd-networkd, Cog without its path unit...) and rerun the first-boot units (new SSH keys).
     # Nothing in the image needs a first boot, so there is none.
+    # rootdelay=20: how long the initramfs waits for the root partition (initramfs-tools' default is
+    # 180 s). The SD card shows up within a couple of seconds; if the root still isn't there, a new OS
+    # version is broken, and panic=10 then restarts the mirror into the previous one (A/B, tryboot)
+    # after about half a minute instead of more than three.
     if [ -n "${BUILDING_IMAGE:-}" ]; then
-      target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false")
+      target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false" "rootdelay=20")
     fi
 
     for target in "${target_opts[@]}"; do
@@ -849,19 +853,63 @@ step_repart_service() {
   echo "Creating MBR partition expander script..."
   cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh
 #!/bin/bash
-# MirrorDash MBR Partition Expander
+# MirrorDash MBR Partition Expander: runs at every boot, and only does something on the first one.
+#
+# Two layouts exist:
+#   * An image from build_image.sh (A/B OS updates, see step_ab_updates):
+#       p1 autoboot (Pi firmware + autoboot.txt), p2 boot A, p3 boot B, p4 extended partition,
+#       p5 root A, p6 root B, p7 /storage. The image only holds p1-p5, so it stays small to flash;
+#       this script adds p6 and p7 on the first boot. p4 is the "box" (extended partition) that MBR
+#       needs to hold more than 4 partitions; p5, p6 and p7 live inside it.
+#   * A Pi set up by running configure_image.sh by hand: p1 boot, p2 root, and this script adds
+#     p3 /storage after it.
 set -euo pipefail
 
 # The root partition from the kernel's root= (PARTUUID=...): / is an overlay on a locked mirror
 ROOT_PART=$(findfs "$(sed -n 's/\(^\|.* \)root=\([^ ]*\).*/\2/p' /proc/cmdline)")
 ROOT_NAME=$(basename "$ROOT_PART")
 DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_PART")"
-PART_NUM=3
 # The kernel's naming: a "p" before the number when the disk name ends in a digit (mmcblk0p3, sda3)
 case "$DISK" in
-    *[0-9]) TARGET_PART="${DISK}p${PART_NUM}" ;;
-    *)      TARGET_PART="${DISK}${PART_NUM}" ;;
+    *[0-9]) PART_PREFIX="${DISK}p" ;;
+    *)      PART_PREFIX="${DISK}" ;;
 esac
+
+# --- A/B image: add root B (p6, empty until the first OS update) and /storage (p7) ---
+if [ -b "${PART_PREFIX}5" ]; then
+    if [ -b "${PART_PREFIX}7" ]; then
+        echo "A/B layout is complete."
+        exit 0
+    fi
+    echo "First boot of an A/B image: adding root B (p6) and /storage (p7)..."
+    # Grow the extended partition (p4) to the end of the card, so p6 and p7 fit inside it.
+    parted -s "$DISK" -- resizepart 4 100%
+    # p6 starts 1 MiB after p5 ends: every partition inside the extended one has a small header
+    # (an EBR) in front of it, and whole MiB keep the card's erase blocks aligned. Sizes in MiB.
+    # /sys gives p5's start and size in 512-byte sectors; 2048 sectors = 1 MiB.
+    P5_NAME=$(basename "${PART_PREFIX}5")
+    P5_END_MIB=$(( ($(cat "/sys/class/block/$P5_NAME/start") + $(cat "/sys/class/block/$P5_NAME/size")) / 2048 ))
+    P6_START_MIB=$(( P5_END_MIB + 1 ))
+    P6_END_MIB=$(( P6_START_MIB + 1536 ))  # 1.5 GiB, the same as root A
+    parted -s -a optimal "$DISK" -- mkpart logical "${P6_START_MIB}MiB" "${P6_END_MIB}MiB"
+    parted -s -a optimal "$DISK" -- mkpart logical ext4 "$(( P6_END_MIB + 1 ))MiB" 100%
+    # The card is in use (the root is on it), so the kernel can't reread the whole table:
+    # partx -a adds just the new partitions. It complains about the ones that exist; that's fine.
+    partx -a "$DISK" || true
+    udevadm settle
+    if [ ! -b "${PART_PREFIX}7" ]; then
+        echo "Error: ${PART_PREFIX}7 did not appear after creating it" >&2
+        exit 1
+    fi
+    echo "Formatting ${PART_PREFIX}7 as ext4 with label 'mirrordash-data'..."
+    mkfs.ext4 -F -L mirrordash-data "${PART_PREFIX}7"
+    udevadm settle
+    exit 0
+fi
+
+# --- Hand-made setup: add /storage (p3) right after the root ---
+PART_NUM=3
+TARGET_PART="${PART_PREFIX}${PART_NUM}"
 
 if [ ! -b "$TARGET_PART" ]; then
     echo "Persistent partition $TARGET_PART not found. Creating..."
@@ -945,6 +993,16 @@ if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
     rm -rf /storage/mirrordash/venv
 fi
 
+# The venvs on /storage use the Python that is in the root (/home/pi/.local/share/uv/python/cpython-3.14-...).
+# A new OS version (A/B update) with another Python minor version leaves them unable to start. Then
+# they are thrown away and the app that came with this OS (base_venv) is seeded again below, as on a
+# first boot. Modules installed from the admin page come back with Settings → Rebuild environment.
+# (bin/python is a link to that Python; it's the link that breaks.)
+if [ -L /storage/mirrordash/venv/bin/python ] && ! /storage/mirrordash/venv/bin/python -c ''; then
+    echo "The app's Python doesn't start with this OS version: seeding the app that came with it."
+    rm -rf /storage/mirrordash/venv /storage/mirrordash/venv_a /storage/mirrordash/venv_b /storage/mirrordash/venv_old
+fi
+
 # Seed venv_a only when the active link is missing or dangling (first boot / wiped storage).
 # A valid link is owned by the A/B updater and may point at venv_b — never reset it.
 if [ ! -d /storage/mirrordash/venv ]; then
@@ -963,6 +1021,9 @@ chown pi:pi /storage/mirrordash /storage/mirrordash/venv
 # Only the missing ones are made (the first boot).
 mkdir -p /storage/mirrordash/ssh/etc/ssh
 ssh-keygen -A -f /storage/mirrordash/ssh
+
+# RAUC (A/B OS updates) keeps its state here: the root forgets everything at reboot
+mkdir -p /storage/rauc
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh
 
@@ -994,6 +1055,288 @@ RemainAfterExit=yes
 WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable mirrordash-storage-init.service
+}
+
+step_ab_updates() {
+  # A/B OS updates: a new OS version (kernel, Pi OS, this setup) is installed while the mirror runs,
+  # into the half of the card that isn't in use, and kept only if the mirror works with it.
+  #
+  # The card (made by build_image.sh; the first boot adds p6 and p7, see mirrordash-repart.sh):
+  #   p1  autoboot  bootcode.bin, start.elf, fixup.dat + autoboot.txt: which boot partition to use
+  #   p2  boot A    kernel, initramfs, config.txt, cmdline.txt (root=...-05)    } slot A
+  #   p5  root A    the squashfs root                                           }
+  #   p3  boot B    the same for slot B (root=...-06)                           } slot B
+  #   p6  root B                                                                }
+  #   p7  /storage  settings, Wi-Fi, the app: shared by both slots
+  #
+  # How an update goes (the parts are below):
+  #   1. RAUC (the update tool, rauc.io) checks the bundle's signature against /etc/rauc/ca.cert.pem and
+  #      writes its boot and root images into the slot that isn't running.
+  #   2. RAUC then asks rauc-bootloader to make that slot boot ("set-primary"). rauc-bootloader points
+  #      the new boot partition at its own root, copies the Wi-Fi country and the GPIO settings over
+  #      from the running one, and sets the firmware's one-time "tryboot" flag. If any of that fails,
+  #      RAUC reports the install as failed and the mirror keeps booting the old slot.
+  #   3. At the next restart the firmware boots the [tryboot] partition in autoboot.txt (the new slot)
+  #      once; any restart after that boots the old slot again, unless step 4 made the new one permanent.
+  #   4. On that trial boot, mirrordash-mark-good waits for the network and the app. When both are
+  #      fine it makes the new slot permanent (swaps the partitions in autoboot.txt). If not, it
+  #      restarts the mirror, which then comes back on the old slot. A kernel that doesn't start or a
+  #      missing root restart it too (panic=10, rootdelay=20, the hardware watchdog).
+  #
+  # ponytail: only image builds; a Pi set up by hand has one root and keeps updating through new images.
+  if [ -z "${BUILDING_IMAGE:-}" ]; then
+    echo "Not an image build — no A/B OS updates."
+    return 0
+  fi
+
+  # rauc is the command; rauc-service the background service it talks to (over D-Bus) to install and
+  # to mark a slot good. Neither marks a slot good by itself: only mirrordash-mark-good does that.
+  apt-get install -y --no-install-recommends rauc rauc-service
+
+  # Bundles are signed by the build (build_image.sh, key in the RAUC_KEY secret); RAUC installs only
+  # what this certificate's key signed. The certificate is public; the key is not in the repository.
+  mkdir -p /etc/rauc
+  cp /opt/MirrorDash/scripts/rauc/cert.pem /etc/rauc/ca.cert.pem
+
+  # Which partitions make up each slot. RAUC installs both images of a slot together: a boot slot
+  # names its root slot as "parent". bootname is the name the bootloader backend uses (A or B).
+  # The devices are fixed: MirrorDash boots from the SD card, which is always mmcblk0.
+  cat << 'EOF' > /etc/rauc/system.conf
+[system]
+compatible=mirrordash-rpi
+bootloader=custom
+# The root forgets everything at reboot; RAUC's state (which slot holds what) is kept on /storage
+data-directory=/storage/rauc
+
+[keyring]
+path=/etc/rauc/ca.cert.pem
+
+[handlers]
+bootloader-custom-backend=/usr/local/lib/mirrordash/rauc-bootloader
+
+[slot.rootfs.0]
+device=/dev/mmcblk0p5
+type=raw
+bootname=A
+
+[slot.rootfs.1]
+device=/dev/mmcblk0p6
+type=raw
+bootname=B
+
+[slot.boot.0]
+device=/dev/mmcblk0p2
+type=vfat
+parent=rootfs.0
+
+[slot.boot.1]
+device=/dev/mmcblk0p3
+type=vfat
+parent=rootfs.1
+EOF
+
+  mkdir -p /usr/local/lib/mirrordash
+  cat << 'EOF' > /usr/local/lib/mirrordash/rauc-bootloader
+#!/bin/bash
+# RAUC's bootloader backend for the Raspberry Pi firmware ("bootloader=custom" in /etc/rauc/system.conf).
+# RAUC calls it to ask which slot boots and to switch slots.
+#   Slot A = boot partition 2 + root partition 5;  slot B = boot partition 3 + root partition 6.
+#
+# How the firmware picks a boot partition: it reads autoboot.txt on p1 (mounted at /boot/autoboot):
+#     [all]
+#     tryboot_a_b=1
+#     boot_partition=2     <- the "primary" slot, booted normally
+#     [tryboot]
+#     boot_partition=3     <- booted once, when the one-time tryboot flag is set
+# The flag is set with a firmware call (vcmailbox, below) and cleared by the firmware at the next
+# restart, whatever happens. The firmware tells Linux what it did in the device tree:
+# /proc/device-tree/chosen/bootloader/partition (the boot partition) and .../tryboot (1 on a trial boot).
+# All of this was tested on a Pi 3B before it was built (tryboot spike, October 2026).
+#
+# Commands (RAUC's custom backend interface, rauc.readthedocs.io "Custom bootloader backend"):
+#   get-primary             the slot that boots normally (A or B)
+#   set-primary SLOT        make SLOT boot at the next restart. For the other slot (just installed)
+#                           that is a trial boot only; mark-good makes it permanent. Its boot
+#                           partition is made ready first (prepare_boot).
+#   get-state SLOT          always "good": a bad slot is never primary (see set-state)
+#   set-state SLOT good|bad good on the running trial slot makes it the primary one
+#   get-current             the slot that is running now
+# Ours, not RAUC's:
+#   is-tryboot              exit 0 on a trial boot (mirrordash-mark-good.service)
+#   prepare-boot DIR N      what set-primary does to a boot partition, on the files in DIR for root
+#                           partition N (tests/test_ab_updates.py)
+# A non-zero exit tells RAUC the step failed.
+set -euo pipefail
+
+# Overridable so tests/test_ab_updates.py can run this against fake files
+AUTOBOOT=${MIRRORDASH_AUTOBOOT:-/boot/autoboot/autoboot.txt}
+BOOTLOADER_DT=${MIRRORDASH_BOOTLOADER_DT:-/proc/device-tree/chosen/bootloader}
+CURRENT_BOOT=${MIRRORDASH_CURRENT_BOOT:-/boot/firmware}  # the boot partition that is running now
+VCMAILBOX=${MIRRORDASH_VCMAILBOX:-vcmailbox}
+# The same markers as in /usr/local/bin/mirrordash-gpio-overlays
+GPIO_BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
+GPIO_END='# --- end MirrorDash GPIO ---'
+
+die() { echo "rauc-bootloader: $*" >&2; exit 1; }
+slot_of() { case "$1" in 2) echo A ;; 3) echo B ;; *) die "unknown boot partition: $1" ;; esac; }
+partition_of() { case "$1" in A) echo 2 ;; B) echo 3 ;; *) die "unknown slot: $1" ;; esac; }
+# Device-tree numbers are 4-byte big-endian integers
+dt_number() { od -An -tu4 --endian=big "$BOOTLOADER_DT/$1" | tr -d ' '; }
+# boot_partition= in the [all] section of autoboot.txt
+primary_partition() {
+  awk '/^\[/ { section = $0 } section == "[all]" && /^boot_partition=/ { sub(/^boot_partition=/, ""); print; exit }' "$AUTOBOOT"
+}
+
+# Swap the partitions in autoboot.txt ([all] 2 <-> [tryboot] 3): the slot that was tried becomes
+# the normal one, and the old one becomes the one to try next. Written to a new file that then
+# replaces the old one, with sync before and after: a power cut leaves either the old or the new
+# file, never half of one (the card holds a single autoboot.txt; without it nothing boots).
+swap_primary() {
+  sed -e 's/^boot_partition=2$/boot_partition=X/' \
+      -e 's/^boot_partition=3$/boot_partition=2/' \
+      -e 's/^boot_partition=X$/boot_partition=3/' "$AUTOBOOT" > "$AUTOBOOT.tmp"
+  sync "$AUTOBOOT.tmp"
+  mv "$AUTOBOOT.tmp" "$AUTOBOOT"
+  sync "$AUTOBOOT"
+}
+
+# prepare_boot DIR ROOT_NUMBER: the new boot partition (mounted at DIR) is a copy of the one in the
+# bundle, which was built for slot A on no particular card. It gets what belongs to this mirror:
+#   * root=PARTUUID=<card>-0N: its own root partition. A PARTUUID is the card's disk identifier
+#     plus the partition number, so the identifier is taken from the running cmdline.txt.
+#   * the Wi-Fi country (cfg80211.ieee80211_regdom= in cmdline.txt, set from the time zone).
+#   * the GPIO block in config.txt (buttons, sensors, fans; written by mirrordash-gpio-overlays).
+prepare_boot() {
+  local dir=$1 root_number=$2 disk_id regdom
+  disk_id=$(sed -n 's/.*root=PARTUUID=\([0-9a-f]*\)-.*/\1/p' "$CURRENT_BOOT/cmdline.txt")
+  [ -n "$disk_id" ] || die "no root=PARTUUID= in $CURRENT_BOOT/cmdline.txt"
+  sed -i "s/root=PARTUUID=[^ ]*/root=PARTUUID=${disk_id}-0${root_number}/" "$dir/cmdline.txt"
+
+  regdom=$(grep -o 'cfg80211.ieee80211_regdom=[^ ]*' "$CURRENT_BOOT/cmdline.txt" || true)
+  if [ -n "$regdom" ]; then
+    sed -i "s/cfg80211.ieee80211_regdom=[^ ]*/$regdom/" "$dir/cmdline.txt"
+  fi
+
+  # The new config.txt without a GPIO block of its own (if it has one), then the running one's block
+  {
+    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$dir/config.txt"
+    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy { print } $0 == e { copy = 0 }' "$CURRENT_BOOT/config.txt"
+  } > "$dir/config.txt.new"
+  mv "$dir/config.txt.new" "$dir/config.txt"
+}
+
+case "${1:-}" in
+  get-primary)
+    slot_of "$(primary_partition)" ;;
+  set-primary)
+    boot=$(partition_of "$2")
+    if [ "$boot" != "$(primary_partition)" ]; then
+      # The slot RAUC just installed: make its boot partition ready (p2 -> root p5, p3 -> root p6)
+      mount_dir=$(mktemp -d)
+      mount "/dev/mmcblk0p$boot" "$mount_dir"
+      prepare_boot "$mount_dir" $(( boot + 3 ))
+      sync
+      umount "$mount_dir"
+      rmdir "$mount_dir"
+      # Firmware call "set reboot flags" (tag 0x00038064, a 4-byte value, flag 1 = tryboot).
+      # The next restart boots the [tryboot] partition, once.
+      "$VCMAILBOX" 0x00038064 4 0 1 > /dev/null
+    fi ;;
+  get-state)
+    echo good ;;
+  set-state)
+    slot=$(partition_of "$2") primary=$(primary_partition) current=$(dt_number partition)
+    case "$3" in
+      good)
+        # Only the slot that is running on a trial boot becomes primary
+        if [ "$slot" = "$current" ] && [ "$slot" != "$primary" ]; then swap_primary; fi ;;
+      bad)
+        # RAUC marks the slot it's about to overwrite bad first. That must never be the primary
+        # slot: if the install were cut short, nothing bootable would be left. It only can be
+        # during a trial boot that isn't marked good yet, so the install is refused then.
+        [ "$slot" != "$primary" ] || die "slot $2 is the one the mirror boots; finish the trial boot first" ;;
+      *) die "unknown state: $3" ;;
+    esac ;;
+  get-current)
+    slot_of "$(dt_number partition)" ;;
+  is-tryboot)
+    [ "$(dt_number tryboot)" = 1 ] ;;
+  prepare-boot)
+    prepare_boot "$2" "$3" ;;
+  *)
+    die "unknown command: ${1:-}" ;;
+esac
+EOF
+  chmod 755 /usr/local/lib/mirrordash/rauc-bootloader
+
+  # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot the
+  # ExecCondition is false and nothing runs. On a trial boot each ExecStart must succeed in turn:
+  #   nm-online: connected to the network within 5 minutes
+  #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
+  #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
+  # If one fails, FailureAction restarts the mirror; the tryboot flag is gone by then, so it boots
+  # the old slot. The app's own admin page then says the update didn't start (features/updates).
+  cat << 'EOF' > /etc/systemd/system/mirrordash-mark-good.service
+[Unit]
+Description=Keep the new OS version if the mirror works with it (A/B update)
+Wants=network-online.target
+After=network-online.target mirrordash.service
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-tryboot
+ExecStart=/usr/bin/nm-online -q -t 300
+ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
+ExecStart=/usr/bin/rauc status mark-good
+TimeoutStartSec=12min
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  systemctl --root=/ enable mirrordash-mark-good.service
+
+  # /boot/firmware is the boot partition the firmware started from: p2 (slot A) or p3 (slot B).
+  # fstab can't say which, since both slots share this root image, so a systemd generator (a script
+  # systemd runs very early at every boot) writes the mount from what the firmware reports.
+  # The app writes the Wi-Fi country and the GPIO settings there, for the slot that is running.
+  mkdir -p /etc/systemd/system-generators
+  cat << 'EOF' > /etc/systemd/system-generators/mirrordash-bootslot
+#!/bin/sh
+# systemd generator: $1 is the directory for generated units (see man systemd.generator).
+# The boot partition number comes from the firmware: a 4-byte big-endian integer in the device tree.
+PARTITION=$(od -An -tu4 --endian=big /proc/device-tree/chosen/bootloader/partition 2>/dev/null | tr -d ' ')
+# Not started by the Pi firmware's partition switch (0, or missing): leave /boot/firmware unmounted
+case "$PARTITION" in 2|3) ;; *) exit 0 ;; esac
+cat > "$1/boot-firmware.mount" << UNIT
+[Unit]
+Description=Boot partition the firmware started from (A/B slot)
+
+[Mount]
+What=/dev/mmcblk0p$PARTITION
+Where=/boot/firmware
+Type=vfat
+Options=defaults,noatime
+UNIT
+mkdir -p "$1/local-fs.target.wants"
+ln -sf ../boot-firmware.mount "$1/local-fs.target.wants/boot-firmware.mount"
+EOF
+  chmod 755 /etc/systemd/system-generators/mirrordash-bootslot
+
+  # fstab: p1 (autoboot.txt) goes to /boot/autoboot instead of /boot/firmware, which the generator
+  # above mounts. The root line goes: the root is whichever of p5/p6 the kernel got in root=, and
+  # overlayroot mounts it (an fstab line for p2 would name the boot partition of slot A).
+  mkdir -p /boot/autoboot
+  sed -i -e 's|\s/boot/firmware\s| /boot/autoboot |' -e '/\s\/\s/d' /etc/fstab
+
+  # The admin page installs OS updates (features/updates/service.py: update_os): it downloads the
+  # bundle to this one file and has RAUC install it. RAUC installs only bundles signed with our key.
+  cat << 'EOF' > /etc/sudoers.d/mirrordash-rauc
+# MirrorDash: the admin page installs signed OS updates (A/B)
+pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb
+EOF
+  chmod 440 /etc/sudoers.d/mirrordash-rauc
+  visudo -cf /etc/sudoers.d/mirrordash-rauc
 }
 
 step_first_boot_lock() {
@@ -1108,6 +1451,7 @@ run_step "12" "wifi_captive_portal" "Creating WiFi Fallback Captive Portal Scrip
 run_step "13" "systemd_service" "Creating MirrorDash Background Service" step_systemd_service
 run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
+run_step "16b" "ab_updates" "Setting up A/B OS Updates (RAUC)" step_ab_updates
 run_step "17" "first_boot_lock" "Locking the Root (OverlayFS)" step_first_boot_lock
 run_step "18" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 

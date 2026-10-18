@@ -134,12 +134,15 @@ def notify(message: str, kind: str = "success", **more_events) -> HTMLResponse:
     return ui_events(**{"md-notify": {"message": message, "kind": kind}}, **more_events)
 
 
-def job_response(job_id: str | None, title: str, message: str, success_msg: str, target_panel: str = "") -> HTMLResponse:
-    """Show the progress overlay and follow the job until the app has restarted."""
+def job_response(job_id: str | None, title: str, message: str, success_msg: str, target_panel: str = "",
+                 max_seconds: int = 900) -> HTMLResponse:
+    """Show the progress overlay and follow the job until the app has restarted (the page gives up
+    after max_seconds)."""
     if job_id is None:
         return notify("Another install or update is still running. Please wait for it to finish.", "error")
     return ui_events(**{"md-follow": {"jobId": job_id, "bootId": BOOT_ID, "title": title, "message": message,
-                                      "successMsg": success_msg, "targetPanel": target_panel}})
+                                      "successMsg": success_msg, "targetPanel": target_panel,
+                                      "maxSeconds": max_seconds}})
 
 
 @router.get("/jobs/current", dependencies=[Depends(require_api_key)])

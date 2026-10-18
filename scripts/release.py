@@ -452,7 +452,9 @@ def release_image():
     move_changelog(version, intro=f"OS image with MirrorDash {core}.", only_os_image=True)
     commit_and_push(f"chore: release {tag}", "CHANGELOG.md")
     notes = changelog_section(version) + f"\n\nImage built from {built['sha'][:7]} (Actions run {built['run_id']})."
-    run("gh", "release", "create", tag, str(image), f"{image}.sha256", "--target", run("git", "rev-parse", "HEAD"),
+    # The update bundle goes along: mirrors install it from the admin page (A/B OS update)
+    bundles = [str(b) for b in image.parent.glob("*.raucb")]
+    run("gh", "release", "create", tag, str(image), f"{image}.sha256", *bundles, "--target", run("git", "rev-parse", "HEAD"),
         "--title", tag, "--notes", notes, change=True)
     print(f"\n  {tag} is published with the image you tested.")
 

@@ -52,10 +52,18 @@ jobs:
             wget \
             curl \
             systemd-container \
-            squashfs-tools
+            squashfs-tools \
+            dosfstools \
+            rauc
 
-      - name: Build OS image
-        run: sudo bash scripts/build_image.sh
+      # RAUC_KEY signs the update bundle (see RELEASING.md). sudo drops the environment unless told
+      # to keep it. Without the key the build would make no bundle, so it stops right away instead.
+      - name: Build OS image and update bundle
+        env:
+          RAUC_KEY: ${{ secrets.RAUC_KEY }}
+        run: |
+          if [ -z "$RAUC_KEY" ]; then echo "::error::The RAUC_KEY secret is missing (see RELEASING.md)"; exit 1; fi
+          sudo --preserve-env=RAUC_KEY bash scripts/build_image.sh
 
       - name: Save Image as Workflow Artifact
         uses: actions/upload-artifact@v7
@@ -64,6 +72,7 @@ jobs:
           path: |
             build_workspace/mirrordash-os-*.img.xz
             build_workspace/mirrordash-os-*.img.xz.sha256
+            build_workspace/mirrordash-os-*.raucb
           if-no-files-found: error
-          compression-level: 0 # The image is already xz
+          compression-level: 0 # The image is already xz, the bundle a squashfs
           retention-days: 14

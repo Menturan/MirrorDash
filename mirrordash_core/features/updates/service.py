@@ -4,12 +4,15 @@ import asyncio
 import json
 import logging
 import os
+import re
+import shutil
 import urllib.request
+from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, get_core_version, version_key
 from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
-from mirrordash_core.host import run_restart
+from mirrordash_core.host import reboot_system, run_restart
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -125,6 +128,139 @@ async def rebuild_venv() -> dict:
     logger.info("Fresh venv rebuild completed successfully. Restarting...")
     asyncio.create_task(run_restart())
     return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
+
+
+# --- OS updates (A/B) ---
+# The OS (kernel, Pi OS, system setup) updates as a whole: a signed RAUC bundle from a GitHub release
+# is written into the half of the card that isn't running, and the mirror restarts into it once on
+# trial. It keeps the new version only if the network and the app work; otherwise it comes back on
+# the old one by itself. How that works on the mirror: step_ab_updates in scripts/configure_image.sh.
+#
+# Which build is which: build_image.sh writes its build stamp (UTC, YYYYMMDD-HHMM) to
+# /etc/mirrordash-os-build in the image, and ends the bundle's file name with the same stamp,
+# e.g. mirrordash-os-v0.7.0-20261018-1915.raucb. A higher stamp is a newer OS.
+OS_BUILD_FILE = Path("/etc/mirrordash-os-build")
+# The download, and the build an update was started for (to tell afterwards whether it stuck).
+# /storage/mirrordash belongs to the app's user; the sudoers rule allows installing exactly this file.
+OS_BUNDLE_FILE = Path("/storage/mirrordash/os-update.raucb")
+OS_PENDING_FILE = Path("/storage/mirrordash/os-update-pending")
+# 1 while the firmware runs a new OS version on trial (see rauc-bootloader in configure_image.sh)
+TRYBOOT_FLAG = Path("/proc/device-tree/chosen/bootloader/tryboot")
+RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=30"
+BUNDLE_NAME = re.compile(r"^mirrordash-os-v.+-(\d{8}-\d{4})\.raucb$")
+
+
+def installed_os_build() -> str | None:
+    """The build stamp of the running OS, or None where there are no OS updates (an image from before
+    A/B, a Pi set up by hand, a development machine)."""
+    try:
+        return OS_BUILD_FILE.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def newest_os_bundle(releases: list[dict], prerelease: bool) -> dict | None:
+    """The newest update bundle among GitHub releases ({"tag", "build", "url", "size"}), or None.
+    Pre-releases count only on mirrors with Test versions on; drafts never."""
+    newest = None
+    for release in releases:
+        if release.get("draft") or (release.get("prerelease") and not prerelease):
+            continue
+        for asset in release.get("assets", []):
+            match = BUNDLE_NAME.match(asset.get("name", ""))
+            if match and (newest is None or match.group(1) > newest["build"]):
+                newest = {"tag": release["tag_name"], "build": match.group(1),
+                          "url": asset["browser_download_url"], "size": asset.get("size", 0)}
+    return newest
+
+
+def failed_os_update(installed: str) -> str | None:
+    """The build of an OS update that didn't stick (the mirror came back on its old version), once;
+    None otherwise. While the new version is still on trial, nothing is decided yet."""
+    from mirrordash_core.admin import job_status
+    try:
+        target = OS_PENDING_FILE.read_text().strip()
+    except OSError:
+        return None
+    if job_status()["state"] == "running":
+        return None  # the update is still downloading or installing
+    if target == installed:
+        try:
+            on_trial = TRYBOOT_FLAG.read_bytes() == b"\x00\x00\x00\x01"
+        except OSError:
+            on_trial = False
+        if not on_trial:
+            OS_PENDING_FILE.unlink(missing_ok=True)  # it stuck
+        return None
+    OS_PENDING_FILE.unlink(missing_ok=True)
+    return target
+
+
+async def check_os_update() -> dict:
+    """Whether a newer OS is available for this mirror, and whether the last OS update failed."""
+    installed = installed_os_build()
+    if installed is None:
+        return {"supported": False}
+
+    def _fetch_releases() -> list[dict]:
+        request = urllib.request.Request(RELEASES_URL, headers={"Accept": "application/vnd.github+json",
+                                                                "User-Agent": "MirrorDash"})
+        try:
+            with urllib.request.urlopen(request, timeout=8) as resp:  # noqa: S310
+                return json.loads(resp.read())
+        except Exception as exc:
+            raise RuntimeError(f"GitHub request failed: {exc}") from exc
+
+    try:
+        releases = await asyncio.to_thread(_fetch_releases)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    bundle = newest_os_bundle(releases, prerelease_enabled())
+    return {
+        "supported": True,
+        "installed_build": installed,
+        "bundle": bundle,
+        "update_available": bundle is not None and bundle["build"] > installed,
+        "failed_build": failed_os_update(installed),
+    }
+
+
+async def update_os(bundle: dict) -> None:
+    """Download the bundle to /storage, install it into the other slot, and restart into it on trial.
+    Runs as a background job (admin.start_job); the admin page follows it across the restart."""
+    free = shutil.disk_usage(OS_BUNDLE_FILE.parent).free
+    if free < bundle["size"] + 200 * 1024 * 1024:
+        raise HTTPException(status_code=507, detail=f"Not enough free space for the OS update "
+                                                    f"({bundle['size'] // 1048576} MB plus some room).")
+
+    def _download() -> None:
+        # GitHub sends the file from another address (a redirect); urllib follows it
+        partial = OS_BUNDLE_FILE.with_suffix(".part")
+        with urllib.request.urlopen(bundle["url"], timeout=60) as resp, open(partial, "wb") as out:  # noqa: S310
+            shutil.copyfileobj(resp, out, length=1024 * 1024)
+        partial.replace(OS_BUNDLE_FILE)
+
+    logger.info(f"OS update: downloading {bundle['tag']} (build {bundle['build']})")
+    try:
+        await asyncio.to_thread(_download)
+    except Exception as exc:
+        OS_BUNDLE_FILE.with_suffix(".part").unlink(missing_ok=True)
+        raise HTTPException(status_code=502, detail=f"Downloading the OS update failed: {exc}") from exc
+
+    # RAUC checks the signature, writes the other slot and arms the trial boot (rauc-bootloader)
+    OS_PENDING_FILE.write_text(bundle["build"])
+    logger.info("OS update: installing")
+    proc = await asyncio.create_subprocess_exec("sudo", "-n", "rauc", "install", str(OS_BUNDLE_FILE),
+                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    _, stderr = await proc.communicate()
+    OS_BUNDLE_FILE.unlink(missing_ok=True)
+    if proc.returncode != 0:
+        OS_PENDING_FILE.unlink(missing_ok=True)
+        error = stderr.decode(errors="replace").strip().splitlines()
+        logger.error(f"OS update failed: {stderr.decode(errors='replace')}")
+        raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {error[-1] if error else 'unknown error'}")
+    logger.info("OS update installed. Restarting into it on trial...")
+    asyncio.create_task(reboot_system())
 
 
 async def get_disk_usage() -> dict:
