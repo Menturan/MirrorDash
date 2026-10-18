@@ -202,7 +202,8 @@ itself when something it depends on is missing or renamed:
 
 What only a Pi can show: flash the test image on a card and go through the checklist above. On a
 Pi 3, also renew p1 by hand (`sudo /usr/local/lib/mirrordash/update-p1 --force`), restart, and check
-that it starts and that `sudo reboot "0 tryboot"` still boots the other slot once. Then, on
+that it starts and that `sudo reboot "0 tryboot"` still boots the other slot once (a trial started by
+hand is never kept: the next restart is back on the slot that boots). Then, on
 a mirror running the previous release, install the new bundle (checklist step 6) and check that it
 comes back with everything kept. If a trial boot fails, the mirror goes back by itself and its log is
 under **Logs → Saved Logs**.

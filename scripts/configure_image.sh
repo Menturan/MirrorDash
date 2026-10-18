@@ -1368,7 +1368,7 @@ EOF
 #   set-state SLOT good|bad good on the running trial slot makes it the primary one
 #   get-current             the slot that is running now
 # Ours, not RAUC's:
-#   is-tryboot              exit 0 on a trial boot (mirrordash-mark-good.service)
+#   is-update-trial         exit 0 on the trial boot of the slot RAUC activated last (mirrordash-mark-good.service)
 #   prepare-boot DIR N      what set-primary does to a boot partition, on the files in DIR for root
 #                           partition N (tests/test_ab_updates.py)
 # A non-zero exit tells RAUC the step failed.
@@ -1379,6 +1379,12 @@ AUTOBOOT=${MIRRORDASH_AUTOBOOT:-/boot/autoboot/autoboot.txt}
 BOOTLOADER_DT=${MIRRORDASH_BOOTLOADER_DT:-/proc/device-tree/chosen/bootloader}
 CURRENT_BOOT=${MIRRORDASH_CURRENT_BOOT:-/boot/firmware}  # the boot partition that is running now
 VCMAILBOX=${MIRRORDASH_VCMAILBOX:-vcmailbox}
+# RAUC's own record of the slots: it writes activated.timestamp for a slot each time it activates
+# one (after installing it, or rauc status mark-active). Only a trial boot of the slot activated last
+# may be kept: a trial started by hand (reboot "0 tryboot", e.g. to test) mustn't make an old slot
+# the one that boots. It's RAUC's record rather than our own, so it also holds when the system that
+# installed the update is an older one, with an older copy of this script.
+RAUC_STATUS=${MIRRORDASH_RAUC_STATUS:-/storage/rauc/central.raucs}
 # The same markers as in /usr/local/bin/mirrordash-gpio-overlays
 GPIO_BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
 GPIO_END='# --- end MirrorDash GPIO ---'
@@ -1388,6 +1394,10 @@ slot_of() { case "$1" in 2) echo A ;; 3) echo B ;; *) die "unknown boot partitio
 partition_of() { case "$1" in A) echo 2 ;; B) echo 3 ;; *) die "unknown slot: $1" ;; esac; }
 # Device-tree numbers are 4-byte big-endian integers
 dt_number() { od -An -tu4 --endian=big "$BOOTLOADER_DT/$1" | tr -d ' '; }
+# activated.timestamp of [slot.rootfs.N] in RAUC's status file, or nothing
+activated_at() {
+  awk -v section="[slot.rootfs.$1]" '/^\[/ { mine = ($0 == section) } mine && /^activated\.timestamp=/ { sub(/^[^=]*=/, ""); print }' "$RAUC_STATUS" 2>/dev/null || true
+}
 # boot_partition= in the [all] section of autoboot.txt
 primary_partition() {
   awk '/^\[/ { section = $0 } section == "[all]" && /^boot_partition=/ { sub(/^boot_partition=/, ""); print; exit }' "$AUTOBOOT"
@@ -1465,8 +1475,13 @@ case "${1:-}" in
     esac ;;
   get-current)
     slot_of "$(dt_number partition)" ;;
-  is-tryboot)
-    [ "$(dt_number tryboot)" = 1 ] ;;
+  is-update-trial)
+    [ "$(dt_number tryboot)" = 1 ] || exit 1
+    # Boot partition 2 is rootfs.0, 3 is rootfs.1; the other slot is the other one. ISO 8601 times
+    # sort as text. A slot never activated (the one the card was flashed with) has no time at all.
+    boot=$(dt_number partition)
+    mine=$(activated_at $(( boot - 2 ))) other=$(activated_at $(( 3 - boot )))
+    [ -n "$mine" ] && [[ "$mine" > "$other" ]] ;;
   prepare-boot)
     prepare_boot "$2" "$3" ;;
   *)
@@ -1546,14 +1561,21 @@ trap - EXIT
 umount "$AUTOBOOT"
 echo "$new,$SIZE,c" | sfdisk -q --no-reread --no-tell-kernel -N 1 "$DISK"
 sync
-partx --update --nr 1 "$DISK"  # the kernel's /dev/mmcblk0p1 follows the new entry
-mount "$AUTOBOOT"              # by its fstab line (PARTUUID=...-01, the same as before)
-echo "update-p1: p1 renewed (now at sector $new)."
+# The card now holds the new p1. The kernel still knows p1 at its old place, and can't move the start
+# of a partition it knows ("partx --update" refuses): forget p1 and read it again, then mount it by its
+# fstab line (PARTUUID=...-01, the same as before). If that fails, the card is still right and the
+# next start uses the new p1; only /boot/autoboot stays away until then.
+if partx --delete --nr 1 "$DISK" && partx --add --nr 1 "$DISK" && udevadm settle && mount "$AUTOBOOT"; then
+  echo "update-p1: p1 renewed (now at sector $new)."
+else
+  die "p1 renewed on the card (sector $new), but the running system can't see it until the next restart"
+fi
 EOF
   chmod 755 /usr/local/lib/mirrordash/update-p1
 
-  # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot the
-  # ExecCondition is false and nothing runs. On a trial boot each ExecStart must succeed in turn:
+  # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot, and on a
+  # trial boot started by hand, the ExecCondition is false and nothing runs. On the trial boot of the
+  # slot RAUC activated last (after installing it), each ExecStart must succeed in turn:
   #   nm-online: connected to the network within 5 minutes
   #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
   #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
@@ -1570,7 +1592,7 @@ OnFailure=mirrordash-save-trial-log.service
 
 [Service]
 Type=oneshot
-ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-tryboot
+ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial
 ExecStart=/usr/bin/nm-online -q -t 300
 ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
 ExecStart=/usr/bin/rauc status mark-good

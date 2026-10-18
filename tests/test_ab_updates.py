@@ -30,7 +30,8 @@ def pi(tmp_path):
                                          "cfg80211.ieee80211_regdom=SE quiet\n")
     (current / "config.txt").write_text("[all]\ndisable_splash=1\n" + GPIO)
     env = {**os.environ, "MIRRORDASH_AUTOBOOT": str(tmp_path / "autoboot.txt"), "MIRRORDASH_BOOTLOADER_DT": str(dt),
-           "MIRRORDASH_CURRENT_BOOT": str(current), "MIRRORDASH_VCMAILBOX": "false"}  # a tryboot call would fail
+           "MIRRORDASH_CURRENT_BOOT": str(current), "MIRRORDASH_VCMAILBOX": "false",  # a tryboot call would fail
+           "MIRRORDASH_RAUC_STATUS": str(tmp_path / "central.raucs")}
 
     def run(*args, partition=2, tryboot=0):
         (dt / "partition").write_bytes(partition.to_bytes(4, "big"))
@@ -46,9 +47,23 @@ def test_which_slot_boots_and_runs(pi):
     assert pi("get-primary").stdout == "A\n"
     assert pi("get-current", partition=3).stdout == "B\n"
     assert pi("get-state", "B").stdout == "good\n"
-    assert pi("is-tryboot", tryboot=1).returncode == 0
-    assert pi("is-tryboot").returncode == 1
 
+
+def test_only_the_trial_of_the_slot_activated_last_is_kept(pi):
+    """mark-good runs on the trial boot of the slot RAUC activated last (its own central.raucs), not on
+    a trial started by hand, which would keep an older slot."""
+    status = pi.tmp / "central.raucs"
+    def raucs(**slots):
+        status.write_text("".join(f"[slot.rootfs.{n}]\nstatus=ok\nactivated.timestamp={t}\n\n[slot.boot.{n}]\nstatus=ok\n\n"
+                                  for n, t in slots.items()))
+    assert pi("is-update-trial", partition=3, tryboot=1).returncode == 1  # no record at all
+    raucs(**{"1": "2026-10-18T22:56:32Z"})  # B installed and activated; A came with the card
+    assert pi("is-update-trial", partition=3, tryboot=1).returncode == 0
+    assert pi("is-update-trial", partition=2, tryboot=1).returncode == 1  # A tried by hand: never activated
+    raucs(**{"0": "2026-10-19T10:00:00Z", "1": "2026-10-18T22:56:32Z"})  # later A was installed
+    assert pi("is-update-trial", partition=2, tryboot=1).returncode == 0
+    assert pi("is-update-trial", partition=3, tryboot=1).returncode == 1  # B is the older one now
+    assert pi("is-update-trial", partition=2).returncode == 1  # not a trial boot
 
 def test_a_good_trial_boot_becomes_the_normal_one(pi):
     """mark-good on slot B while it runs on trial swaps the partitions in autoboot.txt."""
@@ -103,7 +118,7 @@ def test_a_failed_trial_boot_restarts_into_the_old_slot():
     """mirrordash-mark-good: only on a trial boot; network, then the app, then mark-good. When any
     of them fails, the trial boot's log is saved and the mirror restarts (into the old slot)."""
     mark_good = unit("/etc/systemd/system/mirrordash-mark-good.service")
-    assert "ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-tryboot" in mark_good
+    assert "ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial" in mark_good
     assert "OnFailure=mirrordash-save-trial-log.service" in mark_good
     save = unit("/etc/systemd/system/mirrordash-save-trial-log.service")
     assert "FailureAction=reboot" in save
@@ -253,6 +268,7 @@ read -r line; echo "${{line%%,*}}" > {state}; echo "sfdisk input $line" >> {log}
         "mount": f'echo "mount $*" >> {log}',
         "umount": f'echo "umount $*" >> {log}',
         "partx": f'echo "partx $*" >> {log}',
+        "udevadm": "exit 0",
     }
     for name, text in fakes.items():
         (bin_dir / name).write_text(f"#!/bin/bash\n{text}\n")
@@ -283,7 +299,8 @@ def test_newer_firmware_builds_a_new_p1_in_the_other_half_and_switches(p1):
     assert (p1.new / "autoboot.txt").read_text() == (p1.autoboot / "autoboot.txt").read_text()
     switch = calls.index("sfdisk input 73728,65536,c")
     assert calls[switch - 2] == f"umount {p1.autoboot}"  # p1 let go of first, then the one MBR write
-    assert calls[switch + 1:] == ["partx --update --nr 1 /dev/fake-disk", f"mount {p1.autoboot}"]
+    assert calls[switch + 1:] == ["partx --delete --nr 1 /dev/fake-disk", "partx --add --nr 1 /dev/fake-disk",
+                                  f"mount {p1.autoboot}"]
     assert p1.state.read_text().strip() == "73728"
     # And back to the first half the next time
     rc, calls = p1("--force")
