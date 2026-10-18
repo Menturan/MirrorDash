@@ -1097,7 +1097,8 @@ mkdir -p "$LOG_DIR"
 # UTC: a start without the app (a trial boot) hasn't got the time zone yet; the admin page shows local time
 file="$LOG_DIR/$kind-$(date -u +%Y%m%d-%H%M%S).log"
 # Written under another name first, so the admin page never lists half a file
-journalctl --no-pager "$@" > "$file.part" 2>&1 || true
+# --utc -o short-iso: every log time in UTC, the same format as the app's log and the Logs tab
+journalctl --no-pager --utc -o short-iso "$@" > "$file.part" 2>&1 || true
 mv "$file.part" "$file"
 
 # Only the newest $KEEP: a mirror that fails over and over still uses only a few MB

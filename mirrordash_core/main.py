@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import logging
+import time
 import uvicorn
 
 import os
@@ -27,9 +28,14 @@ if log_file:
     except Exception:
         pass
 
+# Every log time is UTC in ISO 8601 (2026-10-19T08:15:02.123Z), like the system log shown with --utc and
+# the saved logs: lines from different logs line up without a time zone or summer time to think of.
+# Times meant for people in the admin page (when a log was saved, until when) stay local.
+logging.Formatter.converter = time.gmtime
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format="%(asctime)s.%(msecs)03dZ [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
     handlers=handlers
 )
 

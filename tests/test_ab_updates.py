@@ -181,7 +181,7 @@ def test_a_saved_log_holds_the_journal(save_log):
     assert result.returncode == 0
     saved = Path(result.stdout.strip())
     assert saved.parent == log_dir and saved.name.startswith("os-trial-") and saved.suffix == ".log"
-    assert saved.read_text() == "journal --no-pager -b\n"
+    assert saved.read_text() == "journal --no-pager --utc -o short-iso -b\n"
     assert not list(log_dir.glob("*.part"))
 
 
