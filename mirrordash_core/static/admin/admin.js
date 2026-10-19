@@ -1,5 +1,8 @@
 // The admin page's script (loaded by templates/admin.html)
-let currentApiKey = localStorage.getItem('mirrordash_api_key') || '';
+// Logged in = the server's session cookie (HttpOnly, so this script never sees it or the password).
+// Earlier versions kept the password itself in localStorage: remove it.
+let loggedIn = false;
+try { localStorage.removeItem('mirrordash_api_key'); } catch (_) { /* storage blocked: nothing kept there */ }
 let authPromiseResolve;
 
 // A floating message. Errors stay 8 s, others 4 s; stayMs = 0 keeps it until hideGlobal().
@@ -150,10 +153,9 @@ function showAuthModal(mode, desc) {
     });
 }
 
-// Logged in with a new password: remember it, then show its recovery code once
-function acceptNewPassword(password, recoveryCode) {
-    currentApiKey = password;
-    localStorage.setItem('mirrordash_api_key', currentApiKey);
+// Logged in with a new password (the answer set the session cookie): show its recovery code once
+function acceptNewPassword(recoveryCode) {
+    loggedIn = true;
     setAuthMode('saved');
     document.getElementById('auth-saved-code-input').value = recoveryCode;
 }
@@ -192,22 +194,21 @@ async function handleAuthSubmit(event) {
     submitBtn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Processing…';
     try {
         if (mode === 'login') {
-            const res = await fetch('/admin/system', { headers: { 'X-API-Key': password } });
-            if (res.status === 200 || res.status === 404) {
-                currentApiKey = password;
-                localStorage.setItem('mirrordash_api_key', currentApiKey);
+            const { ok, data } = await postAuth('/admin/auth/login', { password });
+            if (ok) {
+                loggedIn = true;
                 overlay.classList.remove('open');
                 authPromiseResolve(true);
             } else {
-                showAuthError('Invalid password. Please try again.');
+                showAuthError(data.detail || 'Invalid password. Please try again.');  // incl. "Too many wrong tries"
             }
         } else if (mode === 'setup') {
             const { ok, data } = await postAuth('/admin/auth/setup', { password });
-            if (ok) return acceptNewPassword(password, data.recovery_code);
+            if (ok) return acceptNewPassword(data.recovery_code);
             showAuthError('Failed to set password: ' + (data.detail || 'Unknown error'));
         } else if (mode === 'recover') {
             const { ok, data } = await postAuth('/admin/auth/recover', { code, new_password: newPassword });
-            if (ok) return acceptNewPassword(newPassword, data.recovery_code);
+            if (ok) return acceptNewPassword(data.recovery_code);
             showAuthError(data.detail || 'Unknown error');
         }
     } catch (e) {
@@ -228,22 +229,26 @@ async function changeAdminPassword(event) {
     try {
         const res = await fetch('/admin/auth/change-password', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-API-Key': current.value },
-            body: JSON.stringify({ new_password: next.value }),
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ current_password: current.value, new_password: next.value }),
         });
         if (res.ok) {
-            currentApiKey = next.value;
-            localStorage.setItem('mirrordash_api_key', currentApiKey);
             form.reset();
-            showGlobal('Password changed.', 'success');
+            showGlobal('Password changed. Other devices are logged out.', 'success');
         } else {
             const data = await res.json().catch(() => ({}));
-            showGlobal(res.status === 401 ? 'The current password is wrong.' : (data.detail || 'Could not change the password.'), 'error');
+            showGlobal(data.detail || 'Could not change the password.', 'error');
         }
     } catch (e) {
         showGlobal('Could not reach the mirror: ' + e.message, 'error');
     }
     button.disabled = false;
+}
+
+// Settings → Admin Password → Log Out: ends this browser's session
+async function logoutAdmin() {
+    try { await fetch('/admin/auth/logout', { method: 'POST' }); } catch (_) { /* reload asks to log in either way */ }
+    window.location.reload();
 }
 
 async function checkAuthStatus() {
@@ -253,21 +258,17 @@ async function checkAuthStatus() {
         const data = await res.json();
 
         if (data.auth_corrupt) {
-            currentApiKey = '';
-            localStorage.removeItem('mirrordash_api_key');
             return await showAuthModal('recover', 'The admin password settings are damaged. Enter your recovery code and choose a new password.');
         }
 
         if (data.setup_required) {
-            currentApiKey = '';
-            localStorage.removeItem('mirrordash_api_key');
             return await showAuthModal('setup');
-        } else {
-            if (!currentApiKey) {
-                return await showAuthModal('login');
-            }
-            return true;
         }
+        if (!data.logged_in) {
+            return await showAuthModal('login');
+        }
+        loggedIn = true;
+        return true;
     } catch (err) {
         showGlobal('Auth check failed: ' + err.message, 'error');
         return false;
@@ -322,7 +323,7 @@ async function triggerRestart() {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Restarting…';
     let bootId = null;
     try {
-        const res = await fetch('/admin/restart', { method: 'POST', headers: { 'X-API-Key': currentApiKey } });
+        const res = await fetch('/admin/restart', { method: 'POST' });
         if (!res.ok) throw new Error();
         bootId = (await res.json()).boot_id;
     } catch (_) {
@@ -565,7 +566,6 @@ window.pollRestartAndReload = function(options = {}) {
         let status = null;
         try {
             const res = await fetch(options.jobId ? '/admin/jobs/current' : '/health', {
-                headers: { 'X-API-Key': currentApiKey },
                 cache: 'no-store',
                 signal: AbortSignal.timeout(4000),
             });
@@ -604,16 +604,11 @@ document.body.addEventListener('htmx:confirm', async (event) => {
     }
 });
 
-document.body.addEventListener('htmx:configRequest', (event) => {
-    event.detail.headers['X-API-Key'] = currentApiKey;
-});
-
 document.body.addEventListener('htmx:responseError', (event) => {
     const xhr = event.detail.xhr;
-    if (xhr.status === 401 || xhr.status === 403) {
-        if (currentApiKey) {
-            localStorage.removeItem('mirrordash_api_key');
-            currentApiKey = '';
+    if (xhr.status === 401) {  // the session ended (logged out elsewhere, a new password): log in again
+        if (loggedIn) {
+            loggedIn = false;
             window.location.reload();
         }
         return;

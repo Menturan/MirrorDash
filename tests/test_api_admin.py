@@ -160,7 +160,7 @@ def test_change_password_success(mock_save, mock_auth_load, client):
 
     response = client.post(
         "/admin/auth/change-password",
-        json={"new_password": "brand_new_password"},
+        json={"current_password": "secret", "new_password": "brand_new_password"},
         headers={"X-API-Key": "secret"}
     )
     assert response.status_code == 200
@@ -226,7 +226,8 @@ def test_change_password_keeps_the_recovery_code(mock_save, client):
     recovery = {"hash": "h", "salt": "s"}
     config = {"admin_auth": {"hash": mock_hash, "salt": mock_salt, "recovery": recovery}}
     with patch("mirrordash_core.features.auth.routes.load_config", return_value=config):
-        r = client.post("/admin/auth/change-password", json={"new_password": "newpass"}, headers={"X-API-Key": "secret"})
+        r = client.post("/admin/auth/change-password", json={"current_password": "secret", "new_password": "newpass"},
+                        headers={"X-API-Key": "secret"})
     assert r.status_code == 200
     assert mock_save.call_args[0][0]["admin_auth"]["recovery"] == recovery
 
@@ -1626,3 +1627,43 @@ def test_reset_mirror_needs_reset_typed():
         start.assert_not_called()
         assert asyncio.run(routes.factory_reset(confirm=" RESET ")) == "following"
     start.assert_called_once() and follow.assert_called_once()
+
+
+@patch("mirrordash_core.features.auth.routes.load_config", return_value=MOCK_CONFIG)
+@patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG)
+def test_a_login_is_a_session_not_the_password_in_every_request(mock_admin_load, mock_auth_load, client):
+    """The password is sent once; the session cookie (HttpOnly, SameSite=Strict) does the rest, survives
+    a restart, ends at logout, and can't be used from another site."""
+    from mirrordash_core import admin
+    assert client.get("/admin/jobs/current").status_code == 401
+    r = client.post("/admin/auth/login", json={"password": "secret"})
+    assert r.status_code == 200
+    cookie = r.headers["set-cookie"]
+    assert "mirrordash_session=" in cookie and "HttpOnly" in cookie and "SameSite=strict" in cookie
+    assert client.get("/admin/jobs/current").status_code == 200  # no X-API-Key: the cookie
+    assert client.get("/admin/auth/status").json()["logged_in"] is True
+    admin._sessions = None  # a restart: read back from sessions.json
+    assert client.get("/admin/jobs/current").status_code == 200
+    # Another site can't use the browser's session to change something
+    assert client.post("/admin/restart", headers={"Origin": "http://evil.example"}).status_code == 403
+    client.post("/admin/auth/logout")
+    assert client.get("/admin/jobs/current").status_code == 401
+    assert client.get("/admin/jobs/current", headers={"X-API-Key": "secret"}).status_code == 200  # scripts, as before
+
+
+@patch("mirrordash_core.features.auth.routes.load_config", return_value=MOCK_CONFIG)
+@patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG)
+def test_guessing_the_password_is_stopped_after_five_tries(mock_admin_load, mock_auth_load, client):
+    for _ in range(5):
+        assert client.post("/admin/auth/login", json={"password": "guess"}).status_code == 401
+    r = client.post("/admin/auth/login", json={"password": "secret"})  # even the right one, for a minute
+    assert r.status_code == 429 and "Try again in" in r.json()["detail"]
+    assert client.get("/admin/jobs/current", headers={"X-API-Key": "secret"}).status_code == 429
+
+
+def test_a_new_password_logs_every_other_browser_out():
+    from mirrordash_core import admin
+    other, mine = admin.new_session(), admin.new_session()
+    assert admin.session_valid(other) and admin.session_valid(mine)
+    admin.end_all_sessions()
+    assert not admin.session_valid(other) and not admin.session_valid(mine)

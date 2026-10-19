@@ -8,6 +8,8 @@ import json
 import logging
 import os
 import secrets
+import time
+import urllib.parse
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -18,7 +20,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 
-from mirrordash_core.config import get_core_version, load_config
+from mirrordash_core.config import (
+    get_config_path,
+    get_core_version,
+    load_config,
+    write_atomic,
+)
 
 PACKAGE_DIR = Path(__file__).parent.resolve()
 # Each feature keeps its templates next to its code; the page shells live in templates/
@@ -40,28 +47,122 @@ def hash_password(password: str, salt: str) -> str:
     return binascii.hexlify(hash_bytes).decode('ascii')
 
 
-async def require_api_key(x_api_key: Annotated[str | None, Header()] = None) -> None:
-    """FastAPI dependency that validates the X-API-Key header against stored password."""
+# --- Login: a session cookie, so the password is sent once, not with every request ---
+# The admin page logs in with the password (features/auth: /admin/auth/login) and gets a random
+# session token as an HttpOnly cookie; only its sha256 is kept, next to config.json, so a restart
+# (every update ends with one) doesn't log anyone out. X-API-Key with the password still works for
+# scripts and tests. A wrong password from one address 5 times in a minute is refused for a minute.
+SESSION_COOKIE = "mirrordash_session"
+SESSION_SECONDS = 30 * 24 * 3600
+MAX_FAILURES, FAILURE_WINDOW = 5, 60
+_sessions: dict[str, float] | None = None  # token hash -> when it expires
+_failures: dict[str, list[float]] = {}  # client address -> times of its recent wrong passwords
+
+
+def _sessions_file() -> Path:
+    return get_config_path(for_saving=True).parent / "sessions.json"
+
+
+def _live_sessions() -> dict[str, float]:
+    global _sessions
+    if _sessions is None:
+        try:
+            _sessions = json.loads(_sessions_file().read_text())
+        except (OSError, ValueError):
+            _sessions = {}
+    now = time.time()
+    for key in [k for k, expires in _sessions.items() if expires < now]:
+        del _sessions[key]
+    return _sessions
+
+
+def _save_sessions() -> None:
+    try:
+        _sessions_file().parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(_sessions_file(), json.dumps(_live_sessions()))
+    except OSError as e:  # the session still works until the next restart
+        logger.warning(f"Could not save the login sessions: {e}")
+
+
+def new_session() -> str:
+    """Log a browser in: a new session token for its cookie."""
+    token = secrets.token_urlsafe(32)
+    _live_sessions()[token_hash(token)] = time.time() + SESSION_SECONDS
+    _save_sessions()
+    return token
+
+
+def end_session(token: str | None) -> None:
+    if token and _live_sessions().pop(token_hash(token), None):
+        _save_sessions()
+
+
+def end_all_sessions() -> None:
+    """A new password logs every browser out, so a stolen session dies with the old password."""
+    _live_sessions().clear()
+    _save_sessions()
+
+
+def session_valid(token: str | None) -> bool:
+    return bool(token) and token_hash(token) in _live_sessions()
+
+
+def set_session_cookie(response, token: str) -> None:
+    response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_SECONDS, httponly=True, samesite="strict", path="/")
+
+
+def check_throttle(client: str) -> None:
+    """429 when this address got the password (or the recovery code) wrong too often lately."""
+    now = time.time()
+    recent = _failures[client] = [t for t in _failures.get(client, []) if now - t < FAILURE_WINDOW]
+    if len(recent) >= MAX_FAILURES:
+        wait = int(FAILURE_WINDOW - (now - recent[0])) + 1
+        raise HTTPException(status_code=429, detail=f"Too many wrong tries. Try again in {wait} seconds.")
+
+
+def note_failure(client: str) -> None:
+    # ponytail: in memory, so a restart starts the count over; enough against guessing on a home network
+    _failures.setdefault(client, []).append(time.time())
+
+
+def check_password(password: str, client: str) -> bool:
+    """The admin password, with the throttle: raises 429 while this address is locked out."""
+    check_throttle(client)
+    auth = load_config().get("admin_auth") or {}
+    ok = bool(auth.get("hash") and auth.get("salt")) and secrets.compare_digest(
+        hash_password(password, auth["salt"]), auth["hash"])
+    if not ok:
+        note_failure(client)
+    return ok
+
+
+def _same_site(request: Request) -> bool:
+    """A browser sends Origin on a cross-site POST; SameSite=Strict already keeps the cookie off it,
+    this is the second lock."""
+    origin = request.headers.get("origin")
+    return not origin or urllib.parse.urlsplit(origin).netloc == request.headers.get("host")
+
+
+async def require_api_key(request: Request, x_api_key: Annotated[str | None, Header()] = None) -> None:
+    """FastAPI dependency for every admin route: a login session (the cookie), or the password in X-API-Key."""
     config = load_config()
     auth = config.get("admin_auth")
 
     if not auth:
         raise HTTPException(status_code=403, detail="Admin password not set. Please complete setup.")
-
-    if not x_api_key:
-        raise HTTPException(status_code=401, detail="Missing password in X-API-Key header")
-
-    expected_hash = auth.get("hash")
-    salt = auth.get("salt")
-
-    if not expected_hash or not salt:
+    if not auth.get("hash") or not auth.get("salt"):
         raise HTTPException(
             status_code=403,
             detail="Admin auth config is corrupt or incomplete. Please reset the password."
         )
 
-    provided_hash = hash_password(x_api_key, salt)
-    if not secrets.compare_digest(provided_hash, expected_hash):
+    if session_valid(request.cookies.get(SESSION_COOKIE)):
+        if request.method not in ("GET", "HEAD", "OPTIONS") and not _same_site(request):
+            raise HTTPException(status_code=403, detail="Refused: the request came from another site")
+        return
+    if not x_api_key:
+        raise HTTPException(status_code=401, detail="Not logged in")
+    if not check_password(x_api_key, request.client.host if request.client else ""):
         raise HTTPException(status_code=401, detail="Invalid password")
 
 

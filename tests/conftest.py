@@ -21,6 +21,14 @@ def _clear_remote_json_cache():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_logins(monkeypatch):
+    """Every test starts logged out and with no wrong passwords counted against its address."""
+    from mirrordash_core import admin
+    monkeypatch.setattr(admin, "_sessions", {})
+    monkeypatch.setattr(admin, "_failures", {})
+
+
+@pytest.fixture(autouse=True)
 def _never_restart_the_test_run(monkeypatch):
     """run_restart() SIGTERMs its own process; a test that reaches it must not end the run."""
     real_kill = os.kill

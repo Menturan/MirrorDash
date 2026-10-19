@@ -85,10 +85,10 @@
     <!-- Wi-Fi: loaded on its own (a scan takes a moment) -->
     <div hx-get="/admin/panels/wifi" hx-trigger="load" hx-swap="outerHTML"></div>
 
-    <!-- Admin password: plain fetch, not HTMX, because the page has to remember the new password -->
+    <!-- Admin password: plain fetch (admin.js changeAdminPassword), which reports in its own words -->
     <section class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-key" aria-hidden="true"></i> Admin Password</h2>
-        <p class="panel-subtitle">The password for this page. Your recovery code stays the same.</p>
+        <p class="panel-subtitle">The password for this page. Your recovery code stays the same. A new password logs out every other device.</p>
         <form id="admin-password-form" class="stacked-form" onsubmit="changeAdminPassword(event)">
             <div class="form-group">
                 <label for="admin-current-password">Current password</label>
@@ -106,6 +106,9 @@
             </div>
             <button type="submit" class="btn primary">Change Password</button>
         </form>
+        <button type="button" class="btn secondary" style="margin-top: 16px;" onclick="logoutAdmin()">
+            <i class="fas fa-sign-out-alt" aria-hidden="true"></i> Log Out on This Device
+        </button>
     </section>
 
     <!-- Developer: SSH. The switch saves right away, except turning SSH on: that waits for the

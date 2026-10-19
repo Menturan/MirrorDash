@@ -8,8 +8,21 @@ import logging
 import secrets
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 
-from mirrordash_core.admin import hash_password, require_api_key
+from mirrordash_core.admin import (
+    SESSION_COOKIE,
+    check_password,
+    check_throttle,
+    end_all_sessions,
+    end_session,
+    hash_password,
+    new_session,
+    note_failure,
+    require_api_key,
+    session_valid,
+    set_session_cookie,
+)
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
@@ -58,8 +71,36 @@ async def get_auth_status(request: Request) -> dict:
     return {
         "setup_required": setup_required,
         "auth_corrupt": auth_corrupt,
+        "logged_in": session_valid(request.cookies.get(SESSION_COOKIE)),  # the cookie is HttpOnly: JS can't see it
         "wifi_hotspot_active": await is_wifi_hotspot_active(),
     }
+
+
+def _logged_in(body: dict) -> JSONResponse:
+    """The answer, with a new login session for this browser (setup, recover, login, a new password)."""
+    response = JSONResponse(body)
+    set_session_cookie(response, new_session())
+    return response
+
+
+def _client(request: Request) -> str:
+    return request.client.host if request.client else ""
+
+
+@router.post("/auth/login")
+async def login(request: Request, body: dict = Body(...)) -> JSONResponse:
+    """The password, once: the answer sets the session cookie the admin page then uses."""
+    if not isinstance(body.get("password"), str) or not check_password(body["password"], _client(request)):
+        raise HTTPException(status_code=401, detail="Invalid password. Please try again.")
+    return _logged_in({"status": "success"})
+
+
+@router.post("/auth/logout")
+async def logout(request: Request) -> JSONResponse:
+    end_session(request.cookies.get(SESSION_COOKIE))
+    response = JSONResponse({"status": "success"})
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
 
 
 @router.post("/auth/setup")
@@ -75,31 +116,39 @@ async def setup_auth(body: dict = Body(...)) -> dict:
     code = _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
-    return {"status": "success", "recovery_code": code}
+    return _logged_in({"status": "success", "recovery_code": code})
 
 
 @router.post("/auth/change-password", dependencies=[Depends(require_api_key)])
-async def change_password(body: dict = Body(...)) -> dict:
-    """Change the password; the current one comes in X-API-Key. The recovery code stays."""
+async def change_password(request: Request, body: dict = Body(...)) -> JSONResponse:
+    """Change the password. The current one is asked again, so a logged-in page left open can't change
+    it. Every other browser is logged out; this one gets a new session. The recovery code stays."""
+    if not isinstance(body.get("current_password"), str) or not check_password(body["current_password"], _client(request)):
+        raise HTTPException(status_code=401, detail="The current password is wrong.")
     new_password = _check_new_password(body.get("new_password"))
     config = load_config()
     config["admin_auth"] = {**config["admin_auth"], **_hashed(new_password)}
     save_config(config)
-    return {"status": "success"}
+    end_all_sessions()
+    return _logged_in({"status": "success"})
 
 
 @router.post("/auth/recover")
-async def recover_auth(body: dict = Body(...)) -> dict:
-    """Set a new password with the recovery code. The code is used up: the answer has a new one."""
+async def recover_auth(request: Request, body: dict = Body(...)) -> JSONResponse:
+    """Set a new password with the recovery code. The code is used up: the answer has a new one.
+    Every browser is logged out but this one."""
+    check_throttle(_client(request))
     config = load_config()
     stored = (config.get("admin_auth") or {}).get("recovery") or {}
     code = _normalize_code(str(body.get("code") or ""))
     if not (stored.get("hash") and stored.get("salt") and code
             and secrets.compare_digest(hash_password(code, stored["salt"]), stored["hash"])):
+        note_failure(_client(request))
         raise HTTPException(status_code=401, detail="Wrong recovery code")
     auth = _hashed(_check_new_password(body.get("new_password")))
     new_code = _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
     logger.warning("The admin password was reset with the recovery code")
-    return {"status": "success", "recovery_code": new_code}
+    end_all_sessions()
+    return _logged_in({"status": "success", "recovery_code": new_code})

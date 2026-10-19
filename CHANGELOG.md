@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Security: the admin page no longer keeps your password in the browser or sends it with every click. You log in once per device (for 30 days), there is **Log Out on This Device**, a new password logs out every other device, and after five wrong passwords the mirror waits a minute. Other web pages can no longer talk to the admin page on your behalf.
+
 - **Reset Mirror** at the bottom of Settings makes the mirror as new, for giving it away or starting over, without reflashing (it needs the next system version).
 
 - Updates install themselves at night (Settings → Updates → *Install updates automatically*, on unless you turn it off), with the same safety as the buttons: an update that doesn't work is undone and isn't tried again by itself.

@@ -5,7 +5,6 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from mirrordash_core import admin, system_settings
@@ -52,14 +51,8 @@ async def lifespan(app: FastAPI):
 # /api/v1 is its own app with its own description (features/api/api.py).
 app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
 
-# CORS — allow same-origin and local network access for admin panel
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# No CORS: the admin page and the mirror's screen come from this server, Home Assistant calls from its
+# own server, and "any origin, with credentials" would let any web page use a logged-in admin session.
 # While the setup hotspot is up, everything but the setup page redirects to it
 app.middleware("http")(wifi.captive_portal_redirect)
 

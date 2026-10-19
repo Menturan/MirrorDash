@@ -184,10 +184,8 @@ def mock_backend_functions():
         yield mock_save
 
 def navigate_authenticated(page, server_url):
-    # Navigate to public health page first to initialize origin localStorage securely
-    page.goto(f"{server_url}/health")
-    page.evaluate("() => localStorage.setItem('mirrordash_api_key', 'secret')")
-    # Load the admin page directly authenticated
+    # Log in as the page does: the answer sets the session cookie, which page.request shares with the page
+    assert page.request.post(f"{server_url}/admin/auth/login", data={"password": "secret"}).ok
     page.goto(f"{server_url}/admin")
 
 def test_admin_dashboard_navigation_and_drawer(page, server_url):
