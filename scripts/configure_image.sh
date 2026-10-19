@@ -694,9 +694,27 @@ hotspot_active() {
     nmcli -t -f NAME connection show --active | grep -qxF "$SSID"
 }
 
+# The Wi-Fi networks the mirror has joined before (not the hotspot), the last one used first
+saved_wifi() {
+    nmcli -t -f TIMESTAMP,TYPE,NAME connection show | sort -t: -k1,1rn |
+        sed -n 's/^[0-9]*:802-11-wireless://p' | sed 's/\\:/:/g' | grep -vxF "$SSID"
+}
+
 # A Wi-Fi the mirror has joined before (a new mirror has none, so its hotspot just stays up)
 has_saved_wifi() {
-    nmcli -t -f TYPE,NAME connection show | grep '^802-11-wireless:' | grep -vqxF "802-11-wireless:$SSID"
+    [ -n "$(saved_wifi)" ]
+}
+
+# Join a saved Wi-Fi by its name, after a scan. Not `nmcli device connect`: right after the hotspot
+# the chip has no scan results (brcmfmac rejects the first scan), so it saw no saved Wi-Fi and brought
+# the hotspot back up instead, which nm-online counts as online: a mirror stayed on the hotspot for good.
+join_saved_wifi() {
+    local name
+    nmcli -t -f SSID device wifi list --rescan yes >/dev/null 2>&1
+    while IFS= read -r name; do
+        nmcli --wait 45 connection up id "$name" && return 0
+    done < <(saved_wifi)
+    return 1
 }
 
 # Someone is on the hotspot right now (in the middle of setup): don't pull it away from them.
@@ -738,7 +756,7 @@ check_traffic() {
     fi
     logger -t mirrordash-wifi "Joining the Wi-Fi again..."
     nmcli device disconnect "$INTERFACE" || true
-    nmcli --wait 45 device connect "$INTERFACE" || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
+    join_saved_wifi || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
 }
 
 # The Wi-Fi chip didn't start: its driver (brcmfmac, on every Pi with built-in Wi-Fi) is loaded, so
@@ -832,8 +850,8 @@ if [ "${1:-}" = "--watch" ] && hotspot_active; then
     fi
     logger -t mirrordash-wifi "On the hotspot: trying the saved Wi-Fi again..."
     nmcli connection down "$SSID" || true
-    # device connect picks the best saved profile, even one NetworkManager stopped retrying
-    if nmcli --wait 45 device connect "$INTERFACE" && nm-online -q -t 15; then
+    # By name, so it also brings back a profile NetworkManager stopped retrying
+    if join_saved_wifi && nm-online -q -t 15; then
         logger -t mirrordash-wifi "Back on the saved Wi-Fi."
         tell_mirrordash
         exit 0

@@ -336,8 +336,8 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
         "nmcli": f"""echo "$*" >> {log}
 case "$*" in
   "-t -f NAME connection show --active") {"echo MirrorDash-Setup" if hotspot else "true"} ;;
-  "-t -f TYPE,NAME connection show") echo 802-11-wireless:MirrorDash-Setup; {"echo 802-11-wireless:Home" if saved_wifi else "true"} ;;
-  "--wait 45 device connect wlan0") exit {0 if online else 4} ;;
+  "-t -f TIMESTAMP,TYPE,NAME connection show") echo 0:802-11-wireless:MirrorDash-Setup; {"echo 1791246478:802-11-wireless:Home" if saved_wifi else "true"} ;;
+  "--wait 45 connection up id Home") exit {0 if online else 4} ;;
   "-s -g 802-11-wireless-security.psk connection show MirrorDash-Setup") [ -f {psk} ] && cat {psk} || exit 10 ;;
   "connection delete MirrorDash-Setup") rm -f {psk} ;;
   "connection modify MirrorDash-Setup wifi-sec.psk "*) printf %s "$5" > {psk} ;;
@@ -377,8 +377,11 @@ def test_hotspot_from_an_old_image_replaces_the_shared_password(tmp_path):
 def test_the_hotspot_goes_back_to_the_saved_wifi_when_it_returns(tmp_path):
     """After a power cut the router comes up after the mirror: the watch timer tries again."""
     _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", hotspot=True, saved_wifi=True, online=True)
-    assert "connection down MirrorDash-Setup" in calls and "--wait 45 device connect wlan0" in calls
-    assert "connection up MirrorDash-Setup" not in calls
+    # By name, after a scan: `device connect` brought the hotspot back up instead (the chip had no scan
+    # results right after it), and nm-online took that for the saved Wi-Fi
+    i = calls.index("connection down MirrorDash-Setup")
+    assert calls.index("-t -f SSID device wifi list --rescan yes", i) < calls.index("--wait 45 connection up id Home", i)
+    assert "connection up MirrorDash-Setup" not in calls and not any("device connect" in c for c in calls)
     assert calls[-1].startswith("curl") and "/api/wifi/changed" in calls[-1]
 
 
@@ -468,14 +471,16 @@ def test_wifi_card_and_change(client):
 def test_a_wifi_without_traffic_is_joined_again(tmp_path):
     """Joined (NetworkManager says online) but nothing gets through: after 2 watch rounds in a row the
     log is saved once and the Wi-Fi joined again; a round with traffic starts the count over."""
-    run = lambda **kw: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True, **kw)[1]
+    run = lambda **kw: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True, saved_wifi=True, **kw)[1]
     log = tmp_path / "nmcli.log"
     assert not any("device" in c for c in run(traffic=False))  # one round can be a router restarting
     calls = run(traffic=False)
-    assert calls[-3:] == ["save-log wifi-lost -b -n 3000", "device disconnect wlan0", "--wait 45 device connect wlan0"]
+    assert calls[calls.index("save-log wifi-lost -b -n 3000"):] == [
+        "save-log wifi-lost -b -n 3000", "device disconnect wlan0", "-t -f SSID device wifi list --rescan yes",
+        "-t -f TIMESTAMP,TYPE,NAME connection show", "--wait 45 connection up id Home"]
     log.unlink()
     calls = run(traffic=False)  # still nothing: joined again, the log isn't saved twice
-    assert "--wait 45 device connect wlan0" in calls and not any(c.startswith("save-log") for c in calls)
+    assert "--wait 45 connection up id Home" in calls and not any(c.startswith("save-log") for c in calls)
     log.unlink()
     run(traffic=True)
     assert not (tmp_path / "fails").exists()
