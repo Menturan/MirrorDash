@@ -306,11 +306,10 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
     didn't load); chip_comes_back: reloading the driver brings wlan0. Returns (password, and the nmcli, curl,
     save-log, modprobe and systemctl calls)."""
     import os
-    import re
     import subprocess
-    from pathlib import Path
-    setup = (Path(__file__).parent.parent / "scripts" / "configure_image.sh").read_text()
-    body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check\.sh\n(.*?)\nEOF\n", setup, re.S).group(1)
+
+    from test_configure_image import unit
+    body = unit("/usr/local/bin/mirrordash-wifi-check.sh")
     tmp_path.mkdir(parents=True, exist_ok=True)
     script = tmp_path / "wifi-check.sh"
     psk, log = tmp_path / "psk", tmp_path / "nmcli.log"

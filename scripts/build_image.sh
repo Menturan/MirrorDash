@@ -160,7 +160,7 @@ make_vfat() {
 # loads the GPU firmware start.elf (with fixup.dat) from it too. It is start.elf that reads
 # autoboot.txt and then boots the chosen partition: with only bootcode.bin and autoboot.txt here, a
 # Pi 3B stays black (tested October 2026). Pi 4 and 5 read autoboot.txt from their EEPROM bootloader.
-# A system update renews them later from its own boot slot (update-p1 in configure_image.sh).
+# A system update renews them later from its own boot slot (update-p1, scripts/image/rootfs/usr/local/lib/mirrordash/update-p1).
 make_vfat "$PIECES_DIR/autoboot.vfat" 32 AUTOBOOT
 cp "$MOUNT_DIR/boot/firmware/"{bootcode.bin,start.elf,fixup.dat} "$PIECES_DIR/mnt/"
 cat << 'EOF' > "$PIECES_DIR/mnt/autoboot.txt"
@@ -204,7 +204,7 @@ fi
 # each with a 1 MiB gap in front for its small header (EBR). The image ends where p5 ends; the first
 # boot grows p4 to the end of the card.
 # After p1 comes 32 MiB of nothing, on purpose: room for a second copy of p1, so that p1 (the Pi 3
-# firmware and autoboot.txt) can be renewed safely. update-p1 (configure_image.sh) writes the new copy
+# firmware and autoboot.txt) can be renewed safely. update-p1 (scripts/image/rootfs/usr/local/lib/mirrordash/) writes the new copy
 # into the empty half and then moves the MBR's p1 entry over to it in a single 512-byte write. The
 # room has to be there from the start: a card's layout can't change after it has been flashed.
 MIB=2048

@@ -68,7 +68,7 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 
         ln -sfT "$OLD_DIR" "$VENV_LINK"
 
         # Keep the crashed start's log for the admin page (Logs): the system log is in RAM only and
-        # gone at the next restart. Only on a MirrorDash image (save-log comes from configure_image.sh).
+        # gone at the next restart. Only on a MirrorDash image (save-log: scripts/image/rootfs/usr/local/lib/mirrordash/save-log).
         if [ -x /usr/local/lib/mirrordash/save-log ]; then
             /usr/local/lib/mirrordash/save-log app-rollback -u mirrordash -b -n 500 || true
         fi

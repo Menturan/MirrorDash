@@ -1,0 +1,14 @@
+[Unit]
+Description=MirrorDash MBR Partition Expander
+DefaultDependencies=no
+After=systemd-udevd.service
+Before=local-fs-pre.target
+# Every boot (a no-op once the partition is there): an image's root is locked from the first boot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-repart.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=sysinit.target

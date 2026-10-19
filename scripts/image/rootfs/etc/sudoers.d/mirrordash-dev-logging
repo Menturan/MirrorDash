@@ -1,0 +1,4 @@
+# MirrorDash: developer logging from the admin page (Settings → Developer)
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging on
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging off
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging clear

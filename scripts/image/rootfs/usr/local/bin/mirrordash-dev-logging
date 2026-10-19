@@ -1,0 +1,73 @@
+#!/bin/bash
+# Usage: mirrordash-dev-logging on|off|apply|clear
+#   on     keep the whole system log on /storage for the next 7 days (again: 7 more days)
+#   off    stop now (the saved log stays until "clear")
+#   apply  bring the system in line with the setting: at every boot and every hour (the 7 days run out)
+#   clear  delete the saved system log (only while off)
+set -euo pipefail
+
+# Overridable so tests/test_dev_logging.py can run this against a temporary folder
+STORAGE=${MIRRORDASH_STORAGE:-/storage/mirrordash}
+FLAG="$STORAGE/dev-logging-until"      # when it turns off, in seconds since 1970; there = on
+JOURNAL_DIR="$STORAGE/journal"
+DROPIN=${MIRRORDASH_DROPIN:-/run/systemd/journald.conf.d/90-mirrordash-dev-logging.conf}
+TARGET=${MIRRORDASH_JOURNAL_TARGET:-/var/log/journal}
+DAYS=7
+CAP_MB=${MIRRORDASH_JOURNAL_CAP_MB:-64}
+MACHINE_ID_FILE=${MIRRORDASH_MACHINE_ID_FILE:-/etc/machine-id}
+
+is_on() { [ -f "$FLAG" ] && [ "$(cat "$FLAG")" -gt "$(date +%s)" ]; }
+
+# Keep the saved log under CAP_MB: delete whole starts (machine-id folders), oldest first, never the
+# running one. journald trims inside the running one by itself (SystemMaxUse).
+trim() {
+  local current
+  current=$(cat "$MACHINE_ID_FILE" 2>/dev/null || true)
+  while [ "$(du -sm "$JOURNAL_DIR" | cut -f1)" -gt "$CAP_MB" ]; do
+    oldest=$(find "$JOURNAL_DIR" -mindepth 1 -maxdepth 1 -type d ! -name "$current" -printf '%T@ %f\n' | sort -n | head -n 1 | cut -d' ' -f2)
+    [ -n "$oldest" ] || break
+    rm -rf "${JOURNAL_DIR:?}/$oldest"
+  done
+}
+
+apply() {
+  if is_on; then
+    # The folder gets the owner, group and access rights journald expects for /var/log/journal
+    install -d -o root -g systemd-journal -m 2755 "$JOURNAL_DIR"
+    mkdir -p "$TARGET" "$(dirname "$DROPIN")"
+    mountpoint -q "$TARGET" || mount --bind "$JOURNAL_DIR" "$TARGET"
+    if [ ! -f "$DROPIN" ]; then
+      printf '[Journal]\nStorage=persistent\nSystemMaxUse=%sM\n' "$CAP_MB" > "$DROPIN"
+      systemd-tmpfiles --create --prefix "$TARGET"
+      systemctl restart systemd-journald
+      journalctl --flush  # what was logged in RAM since boot moves over too
+    fi
+    trim
+  else
+    rm -f "$FLAG"  # the 7 days are over (or it was turned off)
+    if [ -f "$DROPIN" ]; then
+      rm -f "$DROPIN"
+      journalctl --relinquish-var  # back to RAM before /storage lets go
+      systemctl restart systemd-journald
+    fi
+    if mountpoint -q "$TARGET"; then umount "$TARGET"; fi
+  fi
+}
+
+case "${1:-}" in
+  on)
+    mkdir -p "$STORAGE"
+    echo $(( $(date +%s) + DAYS * 86400 )) > "$FLAG"
+    apply ;;
+  off)
+    rm -f "$FLAG"
+    apply ;;
+  apply)
+    apply ;;
+  clear)
+    if is_on; then echo "Turn developer logging off first." >&2; exit 1; fi
+    rm -rf "${JOURNAL_DIR:?}"
+    ;;
+  *)
+    echo "Usage: mirrordash-dev-logging on|off|apply|clear" >&2; exit 2 ;;
+esac

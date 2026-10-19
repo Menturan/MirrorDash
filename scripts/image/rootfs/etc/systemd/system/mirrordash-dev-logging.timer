@@ -1,0 +1,9 @@
+[Unit]
+Description=MirrorDash developer logging: at boot and every hour
+
+[Timer]
+OnBootSec=0
+OnCalendar=hourly
+
+[Install]
+WantedBy=timers.target

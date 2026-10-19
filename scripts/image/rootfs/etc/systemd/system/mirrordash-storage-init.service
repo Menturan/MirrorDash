@@ -1,0 +1,13 @@
+[Unit]
+Description=Hydrate MirrorDash Storage Partition
+After=local-fs.target
+Requires=local-fs.target
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-hydrate.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

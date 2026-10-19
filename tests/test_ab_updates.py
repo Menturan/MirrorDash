@@ -1,4 +1,4 @@
-"""A/B OS updates: the bootloader backend RAUC calls (rauc-bootloader in configure_image.sh) and the
+"""A/B OS updates: the bootloader backend RAUC calls (rauc-bootloader, scripts/image/rootfs/usr/local/lib/mirrordash/) and the
 admin page's choice of update bundle. The backend runs here against fake files instead of the Pi's
 autoboot.txt and device tree; what the real firmware does was tested on a Pi 3B (tryboot spike)."""
 import os
@@ -342,7 +342,7 @@ def test_the_os_update_interface_stays_the_same():
     from mirrordash_core.features.updates import service
     root = Path(__file__).parent.parent
     build = (root / "scripts" / "build_image.sh").read_text()
-    assert "pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb\n" in SETUP
+    assert "pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb" in unit("/etc/sudoers.d/mirrordash-rauc")
     assert Path("/storage/mirrordash/os-update.raucb") == service.OS_BUNDLE_FILE
     assert "compatible=mirrordash-rpi\n" in unit("/etc/rauc/system.conf") and "compatible=mirrordash-rpi\n" in build
     assert "[bundle]\nformat=verity\n" in build

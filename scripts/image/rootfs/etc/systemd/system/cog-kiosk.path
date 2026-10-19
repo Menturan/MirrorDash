@@ -1,0 +1,8 @@
+[Unit]
+Description=Start Cog once the labwc Wayland socket exists
+
+[Path]
+PathExists=/run/user/1000/wayland-0
+
+[Install]
+WantedBy=multi-user.target

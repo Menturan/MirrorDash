@@ -1,0 +1,3 @@
+#!/bin/sh
+[ "$2" = up ] && [ "$CONNECTION_ID" != MirrorDash-Setup ] && systemctl try-restart avahi-daemon.service
+exit 0

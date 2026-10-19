@@ -44,6 +44,21 @@ fi
 PI_USER="pi"
 PI_HOME="/home/$PI_USER"
 GITHUB_RAW="https://raw.githubusercontent.com/Menturan/MirrorDash/master"
+
+# Every file the setup installs as it is (scripts, systemd units, sudo rules) lives in the repo at
+# the same path under scripts/image/rootfs/, where it can be read, linted and tested on its own.
+# put MODE /path installs it: from the repo copy the image build puts in /opt/MirrorDash, or from
+# GitHub when this runs on a Pi set up by hand. Files with build-time values stay below as heredocs.
+put() {
+  local mode="$1" target="$2" source="scripts/image/rootfs$2"
+  mkdir -p "$(dirname "$target")"
+  if [ -f "/opt/MirrorDash/$source" ]; then
+    install -m "$mode" "/opt/MirrorDash/$source" "$target"
+  else
+    curl -sSLf "$GITHUB_RAW/$source" -o "$target"
+    chmod "$mode" "$target"
+  fi
+}
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
 UV_VERSION="0.12.23"
@@ -164,50 +179,19 @@ step_setting_hostname() {
   # brcmfmac power save on Pi 3/4 stalls traffic for tens of seconds while staying associated
   echo "Disabling Wi-Fi power save..."
   mkdir -p /etc/NetworkManager/conf.d
-  cat << 'EOF' > /etc/NetworkManager/conf.d/mirrordash-wifi-powersave.conf
-[connection]
-wifi.powersave = 2
-EOF
+  put 0644 /etc/NetworkManager/conf.d/mirrordash-wifi-powersave.conf
 
   echo "Enabling avahi-daemon service..."
   systemctl --root=/ enable avahi-daemon.service
   # Going from the setup hotspot to home Wi-Fi, avahi sees its own probe as a name conflict and
   # stays mirrordash-2.local until restarted, so mirrordash.local/admin breaks right after setup.
   mkdir -p /etc/NetworkManager/dispatcher.d
-  cat << 'EOF' > /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
-#!/bin/sh
-[ "$2" = up ] && [ "$CONNECTION_ID" != MirrorDash-Setup ] && systemctl try-restart avahi-daemon.service
-exit 0
-EOF
-  chmod 755 /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
+  put 0755 /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
 }
 
 step_configuring_nginx() {
   rm -f /etc/nginx/sites-enabled/default
-  cat << 'EOF' > /etc/nginx/sites-available/mirrordash
-server {
-    listen 80 default_server;
-    server_name mirrordash.local _;
-
-    # WebSocket endpoint — must upgrade the connection
-    location /ws {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header   Upgrade    $http_upgrade;
-        proxy_set_header   Connection "upgrade";
-        proxy_set_header   Host       $host;
-        proxy_read_timeout 86400;
-    }
-
-    # All other requests
-    location / {
-        proxy_pass         http://127.0.0.1:8000;
-        proxy_set_header   Host              $host;
-        proxy_set_header   X-Real-IP         $remote_addr;
-        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
-    }
-}
-EOF
+  put 0644 /etc/nginx/sites-available/mirrordash
   ln -sf /etc/nginx/sites-available/mirrordash /etc/nginx/sites-enabled/mirrordash
   nginx -t
 
@@ -230,35 +214,7 @@ step_configuring_console_login() {
 
 step_setting_up_wayland() {
   echo "Configuring labwc kiosk systemd service..."
-  cat << 'EOF' > /etc/systemd/system/labwc-kiosk.service
-[Unit]
-Description=Labwc Kiosk Wayland Compositor
-After=systemd-user-sessions.service plymouth-start.service seatd.service
-Wants=seatd.service
-Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
-
-[Service]
-User=pi
-PAMName=login
-WorkingDirectory=~
-TTYPath=/dev/tty1
-TTYReset=yes
-TTYVHangup=yes
-TTYVTDisallocate=yes
-StandardOutput=journal
-StandardError=journal
-Environment=WLR_LIBINPUT_NO_DEVICES=1
-# The empty cursor theme (below), set here too: with only labwc/environment the pointer still showed
-Environment=XCURSOR_THEME=empty
-Environment=XCURSOR_SIZE=24
-ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
-ExecStart=/usr/bin/labwc
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/labwc-kiosk.service
   systemctl --root=/ enable labwc-kiosk.service
 
   echo "Configuring seatd permissions for unprivileged Wayland access..."
@@ -268,11 +224,7 @@ EOF
   # Configure seatd to use the 'video' group instead of 'seat' because the 'pi' user is
   # created on first boot and is not added to the 'seat' group by default, but is always in 'video'.
   mkdir -p /etc/systemd/system/seatd.service.d
-  cat << 'EOF' > /etc/systemd/system/seatd.service.d/group.conf
-[Service]
-ExecStart=
-ExecStart=/usr/sbin/seatd -g video
-EOF
+  put 0644 /etc/systemd/system/seatd.service.d/group.conf
 
   # Ta bort högerklick/terminal-åtkomst på skärmen
   mkdir -p "$PI_HOME/.config/labwc"
@@ -301,40 +253,12 @@ EOF
   printf '[Icon Theme]\nInherits=empty\n' > /usr/share/icons/default/index.theme
 
   echo "Configuring cog kiosk systemd service..."
-  cat << 'EOF' > /etc/systemd/system/cog-kiosk.service
-[Unit]
-Description=Cog WebKit Kiosk
-After=labwc-kiosk.service
-BindsTo=labwc-kiosk.service
-StartLimitIntervalSec=0
-
-[Service]
-User=pi
-Environment="WAYLAND_DISPLAY=wayland-0"
-Environment="XDG_RUNTIME_DIR=/run/user/1000"
-Environment="COG_PLATFORM_WL_VIEW_FULLSCREEN=1"
-Environment="XCURSOR_THEME=empty"
-ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
-Restart=always
-RestartSec=2
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/cog-kiosk.service
 
   # labwc has no readiness notification, so start cog when its Wayland socket appears
   # (otherwise cog races labwc and aborts with "preferred module 'wl' not supported").
   # PathExists re-triggers after labwc restarts, since BindsTo stops cog with it.
-  cat << 'EOF' > /etc/systemd/system/cog-kiosk.path
-[Unit]
-Description=Start Cog once the labwc Wayland socket exists
-
-[Path]
-PathExists=/run/user/1000/wayland-0
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/cog-kiosk.path
   systemctl --root=/ disable cog-kiosk.service 2>/dev/null || true
   systemctl --root=/ enable cog-kiosk.path
 
@@ -398,26 +322,7 @@ EOF
 }
 
 step_passwordless_sudo() {
-  cat << 'EOF' > /etc/sudoers.d/mirrordash
-# MirrorDash application — scoped passwordless sudo
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop ssh
-pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
-pi ALL=(ALL) NOPASSWD: /usr/bin/raspi-config nonint do_wifi_country *
-pi ALL=(ALL) NOPASSWD: /usr/sbin/chpasswd
-pi ALL=(ALL) NOPASSWD: /usr/bin/nmcli *
-pi ALL=(ALL) NOPASSWD: /usr/bin/tee /sys/class/backlight/*/brightness
-pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
-pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
-pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
-pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
-# nmcli gets the Wi-Fi password as an argument: keep it out of the journal (and the admin Logs tab).
-# ponytail: it still shows in `ps` while nmcli runs (local only); passwd-file would close that.
-Defaults!/usr/bin/nmcli !log_allowed
-EOF
-  chmod 440 /etc/sudoers.d/mirrordash
+  put 0440 /etc/sudoers.d/mirrordash
   visudo -cf /etc/sudoers.d/mirrordash
 }
 
@@ -425,70 +330,7 @@ step_gpio_helper() {
   # Root-owned helper the admin page calls (via sudo) to set which sensors/inputs use which pins.
   # It only writes a managed block of device-tree overlays to config.txt; the firmware applies
   # them at the next boot (overlays applied at boot can't be swapped safely at runtime).
-  cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays
-#!/bin/bash
-# Usage: mirrordash-gpio-overlays [type:value ...]
-#   button, button_2..4, pir, mmwave, dht11: GPIO number 2-27      light (BH1750 on I2C): 0x23 or 0x5c
-#   fan, pwm_fan: GPIO:temperature, e.g. fan:14:60 (switch-on temperature 40-80 °C)
-# Each type at most once, one fan, every GPIO at most once, GPIO 2/3 reserved while I2C is used.
-set -euo pipefail
-
-die() { echo "$*" >&2; exit 2; }
-declare -A seen_type=() seen_pin=()
-lines=()
-for arg in "$@"; do
-  type=${arg%%:*} value=${arg#*:} temp=""
-  if [ "$type" = fan ] || [ "$type" = pwm_fan ]; then
-    temp=${value#*:} value=${value%%:*}
-    { [[ "$temp" =~ ^[0-9]+$ ]] && [ "$temp" -ge 40 ] && [ "$temp" -le 80 ]; } || die "invalid fan temperature: $arg"
-  fi
-  [ -z "${seen_type[$type]:-}" ] || die "$type given twice"
-  seen_type[$type]=1
-  case "$type" in
-    button|button_2|button_3|button_4|pir|mmwave|dht11|fan|pwm_fan)
-      { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
-      [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
-      seen_pin[$value]=1 ;;
-    light)
-      [ "$value" = 0x23 ] || [ "$value" = 0x5c ] || die "invalid I2C address: $arg" ;;
-    *)
-      die "unknown device type: $arg" ;;
-  esac
-  case "$type" in
-    # Buttons/sensors become input devices (keycodes KEY_PROG1-3, KEY_MACRO1-3): kernel debounce, no polling
-    button) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button") ;;
-    button_2) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=656,label=mirrordash-button-2") ;;
-    button_3) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=657,label=mirrordash-button-3") ;;
-    button_4) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=658,label=mirrordash-button-4") ;;
-    pir)    lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=149,label=mirrordash-pir") ;;
-    mmwave) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=0,gpio_pull=down,keycode=150,label=mirrordash-mmwave") ;;
-    dht11)  lines+=("dtoverlay=dht11,gpiopin=$value") ;;
-    light)  lines+=("dtparam=i2c_arm=on" "dtoverlay=i2c-sensor,bh1750,addr=$value") ;;
-    # The kernel's thermal framework runs the fan by CPU temperature (millidegrees)
-    fan)    lines+=("dtoverlay=gpio-fan,gpiopin=$value,temp=$((temp * 1000)),hyst=5000") ;;
-    pwm_fan) lines+=("dtoverlay=pwm-gpio-fan,fan_gpio=$value,fan_temp0=$((temp * 1000)),fan_temp1=$((temp * 1000 + 5000)),fan_temp2=$((temp * 1000 + 12500)),fan_temp3=$((temp * 1000 + 20000))") ;;
-  esac
-done
-if [ -n "${seen_type[fan]:-}" ] && [ -n "${seen_type[pwm_fan]:-}" ]; then die "only one fan"; fi
-if [ -n "${seen_type[light]:-}" ] && { [ -n "${seen_pin[2]:-}" ] || [ -n "${seen_pin[3]:-}" ]; }; then
-  die "GPIO 2 and 3 are needed for I2C"
-fi
-
-CONFIG=/boot/firmware/config.txt
-BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
-END='# --- end MirrorDash GPIO ---'
-
-{
-  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
-  echo "$BEGIN"
-  echo "[all]"  # applies to every Pi model, whatever section the file ended in
-  if [ ${#lines[@]} -gt 0 ]; then printf '%s\n' "${lines[@]}"; fi
-  echo "$END"
-} > "$CONFIG.mirrordash-tmp"
-mv "$CONFIG.mirrordash-tmp" "$CONFIG"
-sync
-EOF
-  chmod 755 /usr/local/bin/mirrordash-gpio-overlays
+  put 0755 /usr/local/bin/mirrordash-gpio-overlays
 }
 
 step_watchdog_boot_optimization() {
@@ -673,207 +515,7 @@ step_time_wait_sync() {
 }
 
 step_wifi_captive_portal() {
-  cat << 'EOF' > /usr/local/bin/mirrordash-wifi-check.sh
-#!/bin/bash
-# At boot: no network within 30 s -> start the setup hotspot. With --watch (every 3 minutes, from
-# mirrordash-wifi-watch.timer): on the hotspot, try the saved Wi-Fi again (a router that came back
-# after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart,
-# a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic), and a Wi-Fi
-# chip that didn't start is started again (see recover_wifi_chip).
-INTERFACE="wlan0"
-SSID="MirrorDash-Setup"
-CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
-# How many watch rounds in a row found no traffic (in RAM: a restart starts over)
-FAILS_FILE="/run/mirrordash-wifi-fails"
-# Overridable so tests/test_wifi.py can fake the kernel's view
-SYS=${MIRRORDASH_SYS:-/sys}
-# When the mirror last restarted because its Wi-Fi chip didn't start (on /storage: survives that restart)
-CHIP_REBOOT_FILE=${MIRRORDASH_CHIP_REBOOT_FILE:-/storage/mirrordash/wifi-chip-restart}
-
-hotspot_active() {
-    nmcli -t -f NAME connection show --active | grep -qxF "$SSID"
-}
-
-# The Wi-Fi networks the mirror has joined before (not the hotspot), the last one used first
-saved_wifi() {
-    nmcli -t -f TIMESTAMP,TYPE,NAME connection show | sort -t: -k1,1rn |
-        sed -n 's/^[0-9]*:802-11-wireless://p' | sed 's/\\:/:/g' | grep -vxF "$SSID"
-}
-
-# A Wi-Fi the mirror has joined before (a new mirror has none, so its hotspot just stays up)
-has_saved_wifi() {
-    [ -n "$(saved_wifi)" ]
-}
-
-# Join a saved Wi-Fi by its name, after a scan. Not `nmcli device connect`: right after the hotspot
-# the chip has no scan results (brcmfmac rejects the first scan), so it saw no saved Wi-Fi and brought
-# the hotspot back up instead, which nm-online counts as online: a mirror stayed on the hotspot for good.
-join_saved_wifi() {
-    local name
-    nmcli -t -f SSID device wifi list --rescan yes >/dev/null 2>&1
-    while IFS= read -r name; do
-        nmcli --wait 45 connection up id "$name" && return 0
-    done < <(saved_wifi)
-    return 1
-}
-
-# Someone is on the hotspot right now (in the middle of setup): don't pull it away from them.
-# ponytail: neighbour states, since iw isn't in the image; a phone idle for a minute counts as gone.
-phone_on_hotspot() {
-    ip neigh show dev "$INTERFACE" | grep -qE 'REACHABLE|DELAY|PROBE'
-}
-
-# The hotspot came or went while MirrorDash runs: its screen reloads into the setup prompt or the
-# mirror. Nothing to tell at boot (MirrorDash starts after this), so a failure here is harmless.
-tell_mirrordash() {
-    curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
-}
-
-# Does anything actually get through? The router, or failing that 1.1.1.1 (some routers don't answer
-# ping). NetworkManager only knows the Wi-Fi is joined: the Pi 3's Wi-Fi chip can stay joined while
-# nothing passes, and then NetworkManager sees nothing wrong (a mirror stayed like that for 20 minutes).
-traffic_flows() {
-    local gateway
-    gateway=$(ip route show default dev "$INTERFACE" | awk '{print $3; exit}')
-    { [ -n "$gateway" ] && ping -c 3 -W 2 -q "$gateway" >/dev/null 2>&1; } || ping -c 3 -W 2 -q 1.1.1.1 >/dev/null 2>&1
-}
-
-# Joined but no traffic for 2 rounds in a row (about 6 minutes; one round can be a router restarting):
-# keep the log of what happened (Logs → Saved Logs, once per outage; the system log is in RAM) and
-# join the Wi-Fi again. If that doesn't help, the next rounds try again.
-check_traffic() {
-    local fails
-    if traffic_flows; then
-        rm -f "$FAILS_FILE"
-        return 0
-    fi
-    fails=$(( $(cat "$FAILS_FILE" 2>/dev/null || echo 0) + 1 ))
-    echo "$fails" > "$FAILS_FILE"
-    logger -t mirrordash-wifi "Joined to the Wi-Fi, but no traffic gets through (round $fails)."
-    [ "$fails" -ge 2 ] || return 0
-    if [ "$fails" -eq 2 ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-        /usr/local/lib/mirrordash/save-log wifi-lost -b -n 3000 >/dev/null || true
-    fi
-    logger -t mirrordash-wifi "Joining the Wi-Fi again..."
-    nmcli device disconnect "$INTERFACE" || true
-    join_saved_wifi || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
-}
-
-# The Wi-Fi chip didn't start: its driver (brcmfmac, on every Pi with built-in Wi-Fi) is loaded, so
-# there is a chip, but there is no wlan0. Seen on a Pi 3: "Downloaded RAM image is corrupted" while the
-# chip's firmware loaded at boot; then the mirror has no Wi-Fi and no hotspot until it restarts. A Pi
-# without built-in Wi-Fi (or with it turned off) never loads brcmfmac, and one whose Wi-Fi works has
-# wlan0, so for them this does nothing.
-wifi_chip_failed() {
-    [ -d "$SYS/module/brcmfmac" ] && [ ! -e "$SYS/class/net/$INTERFACE" ]
-}
-
-# Keep the log (once per start), then load the driver again: harmless on every model. If wlan0 still
-# doesn't come and the mirror has no network at all (not even a cable), restart it, at most once an
-# hour, so a chip that is really broken doesn't make it restart over and over.
-recover_wifi_chip() {
-    local last
-    if [ ! -e /run/mirrordash-wifi-chip-logged ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-        /usr/local/lib/mirrordash/save-log wifi-chip -b -n 3000 >/dev/null || true
-        touch /run/mirrordash-wifi-chip-logged
-    fi
-    logger -t mirrordash-wifi "The Wi-Fi chip didn't start (no $INTERFACE); loading its driver again..."
-    # brcmfmac and the maker's part loaded with it (brcmfmac_cyw, _wcc, _bca: depends on the chip)
-    # shellcheck disable=SC2046
-    modprobe -r $(awk '$1 ~ /^brcmfmac_/ { print $1 }' /proc/modules) brcmfmac || true
-    modprobe brcmfmac || true
-    # The driver starts the chip in the background: wait for wlan0 to appear (up to 30 s)
-    udevadm wait --timeout=30 "$SYS/class/net/$INTERFACE" || true
-    if [ -e "$SYS/class/net/$INTERFACE" ]; then
-        logger -t mirrordash-wifi "The Wi-Fi chip started."
-        return 0
-    fi
-    if nm-online -q -t 5; then
-        return 0  # on another network (a cable): no restart for the Wi-Fi alone
-    fi
-    last=$(cat "$CHIP_REBOOT_FILE" 2>/dev/null || echo 0)
-    if [ $(( $(date +%s) - last )) -lt 3600 ]; then
-        logger -t mirrordash-wifi "The Wi-Fi chip still didn't start; restarted less than an hour ago, so not again."
-        return 0
-    fi
-    logger -t mirrordash-wifi "The Wi-Fi chip still didn't start and there is no network: restarting the mirror."
-    date +%s > "$CHIP_REBOOT_FILE"
-    sync
-    systemctl reboot
-}
-
-start_hotspot() {
-    logger -t mirrordash-wifi "No network. Scanning before entering AP mode..."
-    # Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
-    # --rescan yes returns once the fresh scan has finished.
-    SCAN_RESULT=$(nmcli -t -f SSID dev wifi list --rescan yes | sort -u | grep -v '^$' || true)
-    echo "$SCAN_RESULT" > "$CACHE_FILE"
-    chmod 644 "$CACHE_FILE"
-    logger -t mirrordash-wifi "Cached $(echo "$SCAN_RESULT" | grep -c . || echo 0) visible networks for captive portal."
-
-    # Each mirror keeps its own hotspot password: the profile lives on /storage (bind-mounted
-    # system-connections), so it survives reboots until the card is reflashed. The app reads the
-    # password back from NetworkManager and shows it, with a QR code, on the mirror only.
-    # Profiles from older images used the shared password "mirrordash"; those get a new one.
-    SAVED_PASSWORD=$(nmcli -s -g 802-11-wireless-security.psk connection show "$SSID" 2>/dev/null || true)
-    if [ -z "$SAVED_PASSWORD" ] || [ "$SAVED_PASSWORD" = "mirrordash" ]; then
-        nmcli connection delete "$SSID" 2>/dev/null || true
-        # 10 characters without look-alikes (no i l o 0 1); nothing that needs escaping in a Wi-Fi QR code.
-        # ponytail: ~50 bits, enough for a hotspot that is only up during setup; add characters if that changes.
-        PASSWORD=$(tr -dc 'abcdefghjkmnpqrstuvwxyz23456789' </dev/urandom | head -c 10)
-        nmcli connection add type wifi ifname "$INTERFACE" con-name "$SSID" ssid "$SSID" mode ap
-        nmcli connection modify "$SSID" wifi-sec.key-mgmt wpa-psk
-        nmcli connection modify "$SSID" wifi-sec.psk "$PASSWORD"
-        nmcli connection modify "$SSID" wifi-sec.pmf 1
-        nmcli connection modify "$SSID" ipv4.method shared
-        # Only this script starts the hotspot; a saved AP profile must never come up on its own
-        nmcli connection modify "$SSID" connection.autoconnect no
-        logger -t mirrordash-wifi "Created hotspot '$SSID' with a new password."
-    fi
-
-    if nmcli connection up "$SSID"; then
-        logger -t mirrordash-wifi "Hotspot '$SSID' started successfully."
-    else
-        logger -t mirrordash-wifi "Failed to start hotspot."
-    fi
-}
-
-# First: a Wi-Fi chip that didn't start leaves nothing for the rest to work with
-if [ "${1:-}" = "--watch" ] && wifi_chip_failed; then
-    recover_wifi_chip
-    exit 0
-fi
-
-if [ "${1:-}" = "--watch" ] && hotspot_active; then
-    if ! has_saved_wifi || phone_on_hotspot; then
-        exit 0
-    fi
-    logger -t mirrordash-wifi "On the hotspot: trying the saved Wi-Fi again..."
-    nmcli connection down "$SSID" || true
-    # By name, so it also brings back a profile NetworkManager stopped retrying
-    if join_saved_wifi && nm-online -q -t 15; then
-        logger -t mirrordash-wifi "Back on the saved Wi-Fi."
-        tell_mirrordash
-        exit 0
-    fi
-    logger -t mirrordash-wifi "The saved Wi-Fi isn't there. Back to the hotspot."
-    nmcli connection up "$SSID" || logger -t mirrordash-wifi "Failed to start hotspot."
-    tell_mirrordash
-    exit 0
-fi
-
-# nm-online waits on NetworkManager's own state: startup finished, then a connection (or the
-# timeout). Any connection counts, also one without internet. --watch waits longer, so a Wi-Fi
-# change from the admin page (a few seconds without a connection) never starts the hotspot.
-if nm-online -q -t "$([ "${1:-}" = "--watch" ] && echo 60 || echo 30)"; then
-    if [ "${1:-}" = "--watch" ]; then check_traffic; fi
-    exit 0
-fi
-start_hotspot
-[ "${1:-}" = "--watch" ] && tell_mirrordash
-exit 0
-EOF
-  chmod +x /usr/local/bin/mirrordash-wifi-check.sh
+  put 0755 /usr/local/bin/mirrordash-wifi-check.sh
 
   # Captive portal DNS: NetworkManager's dnsmasq reads this directory only for shared (hotspot)
   # connections, never on the home network. Every name answers with the mirror, so the phone's
@@ -882,370 +524,41 @@ EOF
   mkdir -p /etc/NetworkManager/dnsmasq-shared.d
   echo 'address=/#/10.42.0.1' > /etc/NetworkManager/dnsmasq-shared.d/mirrordash-captive.conf
 
-  cat << 'EOF' > /etc/systemd/system/mirrordash-wifi-fallback.service
-[Unit]
-Description=MirrorDash WiFi Fallback Captive Portal Monitor
-After=NetworkManager.service
-Before=mirrordash.service
-
-[Service]
-# oneshot: mirrordash.service (Before=) only starts once the client-vs-hotspot decision
-# is made, so the first page the kiosk loads already reflects the real network state.
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-wifi-check.sh
-RemainAfterExit=yes
-TimeoutStartSec=90
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-wifi-fallback.service
   systemctl --root=/ enable mirrordash-wifi-fallback.service
 
   # Every 3 minutes: the hotspot tries the saved Wi-Fi again, and a Wi-Fi gone for good starts it
-  cat << 'EOF' > /etc/systemd/system/mirrordash-wifi-watch.service
-[Unit]
-Description=MirrorDash WiFi watch (hotspot <-> saved Wi-Fi)
-After=mirrordash-wifi-fallback.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-wifi-check.sh --watch
-TimeoutStartSec=150
-EOF
-  cat << 'EOF' > /etc/systemd/system/mirrordash-wifi-watch.timer
-[Unit]
-Description=MirrorDash WiFi watch every 3 minutes
-
-[Timer]
-OnBootSec=3min
-OnUnitInactiveSec=3min
-
-[Install]
-WantedBy=timers.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-wifi-watch.service
+  put 0644 /etc/systemd/system/mirrordash-wifi-watch.timer
   systemctl --root=/ enable mirrordash-wifi-watch.timer
 }
 
 step_systemd_service() {
-  cat << 'EOF' > /etc/systemd/system/mirrordash.service
-[Unit]
-Description=MirrorDash Core App Backend
-After=network.target mirrordash-storage-init.service
-Requires=mirrordash-storage-init.service
-
-[Service]
-Type=simple
-User=pi
-WorkingDirectory=/home/pi/mirrordash
-Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
-Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
-# The app's own Python, on /storage (hydrate, ARCHITECTURE #16): uv venv and uv python install use it
-Environment="UV_PYTHON_INSTALL_DIR=/storage/mirrordash/python"
-Environment="WAYLAND_DISPLAY=wayland-0"
-Environment="XDG_RUNTIME_DIR=/run/user/1000"
-ExecStart=/home/pi/mirrordash/launch.sh
-# The app restarts itself via SIGTERM (exit 143); that is not a failure
-SuccessExitStatus=143
-Restart=always
-RestartSec=3
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash.service
   systemctl --root=/ enable mirrordash.service
 
   # Restart=always only helps when a process dies. This catches the two that hang alive: an app that
   # no longer answers, and a kiosk whose page stopped (a crashed or frozen WebKit keeps its window).
   # ponytail: found after ~6 minutes, not seconds; the upgrade is WatchdogSec= + sd_notify from the app.
   mkdir -p /usr/local/lib/mirrordash
-  cat << 'EOF' > /usr/local/lib/mirrordash/app-watch
-#!/bin/bash
-# Every 3 minutes (mirrordash-app-watch.timer). Two failed rounds in a row, so an app restarting for an
-# update isn't taken for a hung one. The counts live in /run (RAM), like the Wi-Fi watch's.
-set -u
-STATE=${MIRRORDASH_WATCH_STATE:-/run/mirrordash-app-watch}  # overridable for tests/test_configure_image.py
-mkdir -p "$STATE"
-
-# Counts up the failure $1 and says yes on every second round in a row. The log ($3) is saved the first
-# time only, so a fault that stays doesn't push the other saved logs out (save-log keeps 5).
-act() {
-    local n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 ))
-    echo "$n" > "$STATE/$1"
-    [ $(( n % 2 )) -eq 0 ] || return 1
-    logger -t mirrordash-app-watch "$2"
-    if [ "$n" -eq 2 ]; then /usr/local/lib/mirrordash/save-log "$3" -b -n 2000 >/dev/null || true; fi
-}
-
-if ! health=$(curl -fsS -m 10 http://127.0.0.1:8000/health); then
-    act app "The app hasn't answered for two rounds; restarting it" app-hung && systemctl restart mirrordash.service
-    exit 0
-fi
-rm -f "$STATE/app"
-
-# Seconds since the mirror's own screen showed it's alive; null while the screen is off
-seen=$(sed -n 's/.*"screen_seen_seconds_ago":\([0-9]*\).*/\1/p' <<< "$health")
-if [ -n "$seen" ] && [ "$seen" -gt 300 ]; then
-    act screen "The screen's page has been silent for ${seen}s; restarting the kiosk" screen-lost && systemctl restart cog-kiosk.service
-else
-    rm -f "$STATE/screen"
-fi
-exit 0
-EOF
-  chmod 755 /usr/local/lib/mirrordash/app-watch
-  cat << 'EOF' > /etc/systemd/system/mirrordash-app-watch.service
-[Unit]
-Description=MirrorDash watch (an app or screen that hangs)
-After=mirrordash.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/lib/mirrordash/app-watch
-TimeoutStartSec=120
-EOF
-  cat << 'EOF' > /etc/systemd/system/mirrordash-app-watch.timer
-[Unit]
-Description=MirrorDash watch every 3 minutes
-
-[Timer]
-OnBootSec=5min
-OnUnitInactiveSec=3min
-
-[Install]
-WantedBy=timers.target
-EOF
+  put 0755 /usr/local/lib/mirrordash/app-watch
+  put 0644 /etc/systemd/system/mirrordash-app-watch.service
+  put 0644 /etc/systemd/system/mirrordash-app-watch.timer
   systemctl --root=/ enable mirrordash-app-watch.timer
 }
 
 step_repart_service() {
   echo "Creating MBR partition expander script..."
-  cat << 'EOF' > /usr/local/bin/mirrordash-repart.sh
-#!/bin/bash
-# MirrorDash MBR Partition Expander: runs at every boot, and only does something on the first one.
-#
-# Two layouts exist:
-#   * An image from build_image.sh (A/B OS updates, see step_ab_updates):
-#       p1 autoboot (Pi firmware + autoboot.txt), p2 boot A, p3 boot B, p4 extended partition,
-#       p5 root A, p6 root B, p7 /storage. The image only holds p1-p5, so it stays small to flash;
-#       this script adds p6 and p7 on the first boot. p4 is the "box" (extended partition) that MBR
-#       needs to hold more than 4 partitions; p5, p6 and p7 live inside it.
-#   * A Pi set up by running configure_image.sh by hand: p1 boot, p2 root, and this script adds
-#     p3 /storage after it.
-set -euo pipefail
-
-# The root partition from the kernel's root= (PARTUUID=...): / is an overlay on a locked mirror
-ROOT_PART=$(findfs "$(sed -n 's/\(^\|.* \)root=\([^ ]*\).*/\2/p' /proc/cmdline)")
-ROOT_NAME=$(basename "$ROOT_PART")
-DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_PART")"
-# The kernel's naming: a "p" before the number when the disk name ends in a digit (mmcblk0p3, sda3)
-case "$DISK" in
-    *[0-9]) PART_PREFIX="${DISK}p" ;;
-    *)      PART_PREFIX="${DISK}" ;;
-esac
-
-# --- A/B image: add root B (p6, empty until the first OS update) and /storage (p7) ---
-if [ -b "${PART_PREFIX}5" ]; then
-    if [ -b "${PART_PREFIX}7" ]; then
-        echo "A/B layout is complete."
-        exit 0
-    fi
-    echo "First boot of an A/B image: adding root B (p6) and /storage (p7)..."
-    # Only sfdisk touches this table, never parted: on a test card, parted rewrote the disk
-    # identifier while growing p4. The identifier is the first half of every PARTUUID, and
-    # cmdline.txt finds the root by it (root=PARTUUID=<identifier>-05), so the next boot would have
-    # found no root. sfdisk keeps it. --no-reread / --no-tell-kernel: the card is in use (the root
-    # is on it), so sfdisk only writes the table; partx below tells the kernel about p6 and p7.
-    #
-    # 1. Grow the extended partition (p4) to the end of the card, so p6 and p7 fit inside it.
-    echo ',+' | sfdisk -q --no-reread --no-tell-kernel -N 4 "$DISK"
-    # 2. Add p6 (root B, 1.5 GiB like root A) and p7 (/storage, the rest) inside it. Positions in
-    #    512-byte sectors (/sys gives p5's start and size in them; 2048 sectors = 1 MiB). Each starts
-    #    1 MiB after the previous one ends: every partition inside the extended one has a small
-    #    header (an EBR) in front of it, and whole MiB keep the card's erase blocks aligned.
-    P5_NAME=$(basename "${PART_PREFIX}5")
-    P5_END=$(( $(cat "/sys/class/block/$P5_NAME/start") + $(cat "/sys/class/block/$P5_NAME/size") ))
-    P6_START=$(( P5_END + 2048 ))
-    P6_SIZE=$(( 1536 * 2048 ))
-    P7_START=$(( P6_START + P6_SIZE + 2048 ))
-    printf 'start=%s, size=%s, type=83\nstart=%s, type=83\n' "$P6_START" "$P6_SIZE" "$P7_START" |
-        sfdisk -q --no-reread --no-tell-kernel --append "$DISK"
-    # The card is in use (the root is on it), so the kernel can't reread the whole table:
-    # partx -a adds just the new partitions. It complains about the ones that exist; that's fine.
-    partx -a "$DISK" || true
-    udevadm settle
-    if [ ! -b "${PART_PREFIX}7" ]; then
-        echo "Error: ${PART_PREFIX}7 did not appear after creating it" >&2
-        exit 1
-    fi
-    echo "Formatting ${PART_PREFIX}7 as ext4 with label 'mirrordash-data'..."
-    mkfs.ext4 -F -L mirrordash-data "${PART_PREFIX}7"
-    udevadm settle
-    exit 0
-fi
-
-# --- Hand-made setup: add /storage (p3) right after the root ---
-PART_NUM=3
-TARGET_PART="${PART_PREFIX}${PART_NUM}"
-
-if [ ! -b "$TARGET_PART" ]; then
-    echo "Persistent partition $TARGET_PART not found. Creating..."
-    
-    # Right after the root partition (start + size, in 512-byte sectors, from the kernel)
-    START_SECTOR=$(( $(cat "/sys/class/block/$ROOT_NAME/start") + $(cat "/sys/class/block/$ROOT_NAME/size") ))
-    echo "Creating partition $PART_NUM starting at ${START_SECTOR}s..."
-    
-    # Create partition using parted
-    parted -s -a optimal "$DISK" -- mkpart primary ext4 "${START_SECTOR}s" 100%
-    
-    # Reload partition table and wait for udev to create the device node (using fallback for busy partition tables)
-    partprobe "$DISK" || partx -a "$DISK" || true
-    udevadm settle
-    
-    if [ -b "$TARGET_PART" ]; then
-        echo "Formatting $TARGET_PART as ext4 with label 'mirrordash-data'..."
-        mkfs.ext4 -F -L mirrordash-data "$TARGET_PART"
-        # Ensure udev processes the new disk label symlink before exiting
-        udevadm settle
-    else
-        echo "Error: Partition device $TARGET_PART did not appear after udevadm settle" >&2
-        exit 1
-    fi
-else
-    echo "Persistent partition $TARGET_PART already exists."
-fi
-EOF
-  chmod +x /usr/local/bin/mirrordash-repart.sh
+  put 0755 /usr/local/bin/mirrordash-repart.sh
 
   echo "Configuring mirrordash-repart.service..."
-  cat << 'EOF' > /etc/systemd/system/mirrordash-repart.service
-[Unit]
-Description=MirrorDash MBR Partition Expander
-DefaultDependencies=no
-After=systemd-udevd.service
-Before=local-fs-pre.target
-# Every boot (a no-op once the partition is there): an image's root is locked from the first boot
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-repart.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=sysinit.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-repart.service
 
   systemctl --root=/ enable mirrordash-repart.service
 }
 
 step_storage_hydration() {
-  cat << 'EOF' > /usr/local/bin/mirrordash-hydrate.sh
-#!/bin/bash
-set -euo pipefail
-
-# Defensive mount check: if the partition exists but is not mounted (fstab's nofail lets the boot go
-# on when its fsck wants a person, e.g. after a power cut mid-write), repair it and mount it
-DATA_PART=/dev/disk/by-label/mirrordash-data
-REPAIRED=""
-if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
-    echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
-    rc=0; e2fsck -p "$DATA_PART" || rc=$?
-    # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
-    # mirror that has lost all of them.
-    if [ "$rc" -ge 4 ]; then rc=0; e2fsck -y "$DATA_PART" || rc=$?; fi
-    [ "$rc" -ne 0 ] && REPAIRED=1
-    mount /storage || mount "$DATA_PART" /storage || true
-fi
-# On an image (#5) / is a RAM overlay: without /storage everything below would land in RAM, the
-# mirror would look new and forget whatever is saved at the next restart. Stop instead: the app
-# (Requires= this unit) doesn't start and the screen's loading page says so after a few minutes.
-if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage; then
-    echo "Error: /storage could not be mounted; not starting MirrorDash on a RAM-only /storage." >&2
-    exit 1
-fi
-
-# Ensure parent directory and subdirectories exist on mounted /storage
-mkdir -p /storage/mirrordash/data
-mkdir -p /storage/mirrordash/system-connections
-chown pi:pi /storage/mirrordash
-chown pi:pi /storage/mirrordash/data
-chown root:root /storage/mirrordash/system-connections
-chmod 700 /storage/mirrordash/system-connections
-
-# Bind mount the NetworkManager connections directory to bypass symlink security restrictions
-if ! mountpoint -q /etc/NetworkManager/system-connections; then
-    mkdir -p /etc/NetworkManager/system-connections
-    mount --bind /storage/mirrordash/system-connections /etc/NetworkManager/system-connections
-fi
-
-# Clean up active venv if it is a real directory instead of a symlink
-if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
-    rm -rf /storage/mirrordash/venv
-fi
-
-# Seed venv_a only when the active link is missing or dangling (first boot / wiped storage).
-# A valid link is owned by the A/B updater and may point at venv_b — never reset it.
-if [ ! -d /storage/mirrordash/venv ]; then
-    if [ ! -d "/storage/mirrordash/venv_a" ]; then
-        echo "Hydrating /storage with golden base_venv..."
-        rm -rf /storage/mirrordash/venv_a.tmp
-        cp -a /home/pi/mirrordash/base_venv /storage/mirrordash/venv_a.tmp
-        mv /storage/mirrordash/venv_a.tmp /storage/mirrordash/venv_a
-        chown -R pi:pi /storage/mirrordash/venv_a
-    fi
-    ln -sfT venv_a /storage/mirrordash/venv
-fi
-
-# The app's Python lives on /storage with the app (ARCHITECTURE #16), so an OS update never changes it
-# under the venvs: it used to be the root's, and a root with another Python version left every venv
-# unable to start, which threw away the modules. A venv that still uses the root's Python (one seeded
-# from base_venv above, or from before this) gets a copy of that Python here, once, and is pointed at
-# it: its bin/python link and the home line of its pyvenv.cfg are the only places that name it.
-# A newer Python comes with a MirrorDash update that needs it (uv python install, features/updates).
-PY_ROOT=${MIRRORDASH_PY_ROOT:-/home/pi/.local/share/uv/python}
-PY_STORAGE=${MIRRORDASH_PY_STORAGE:-/storage/mirrordash/python}  # overridable for tests/test_configure_image.py
-VENVS=${MIRRORDASH_VENVS:-/storage/mirrordash}
-for venv in "$VENVS"/venv_a "$VENVS"/venv_b "$VENVS"/venv_old "$VENVS"/venv_failed; do
-    cfg="$venv/pyvenv.cfg"
-    [ -f "$cfg" ] && grep -q "^home = $PY_ROOT/" "$cfg" || continue
-    # e.g. cpython-3.14-linux-aarch64-gnu, uv's link to the full version (cpython-3.14.8-...)
-    name=$(sed -n "s|^home = $PY_ROOT/\([^/]*\)/bin\$|\1|p" "$cfg")
-    if [ -n "$name" ] && [ ! -e "$PY_STORAGE/$name" ]; then
-        real=$(readlink -f "$PY_ROOT/$name") || continue
-        mkdir -p "$PY_STORAGE"
-        # Under another name first: a power cut mid-copy must not leave a half Python that looks done
-        rm -rf "$PY_STORAGE/.copy"
-        cp -a "$real" "$PY_STORAGE/.copy" && mv -T "$PY_STORAGE/.copy" "$PY_STORAGE/${real##*/}"
-        [ "$real" = "$PY_ROOT/$name" ] || ln -sfn "${real##*/}" "$PY_STORAGE/$name"
-    fi
-    [ -e "$PY_STORAGE/$name" ] || continue  # the copy failed (a full card?): keep the root's for now
-    sed -i "s|^home = $PY_ROOT/|home = $PY_STORAGE/|" "$cfg"
-    for link in "$venv"/bin/python*; do
-        target=$(readlink "$link") || continue
-        case "$target" in "$PY_ROOT"/*) ln -sfn "$PY_STORAGE/${target#"$PY_ROOT"/}" "$link" ;; esac
-    done
-done
-[ -d "$PY_STORAGE" ] && chown -R pi:pi "$PY_STORAGE"
-chown pi:pi /storage/mirrordash /storage/mirrordash/venv
-
-# SSH host keys live here: every mirror boots the same root image, and changes to it are gone at reboot.
-# Only the missing ones are made (the first boot).
-mkdir -p /storage/mirrordash/ssh/etc/ssh
-ssh-keygen -A -f /storage/mirrordash/ssh
-
-# RAUC (A/B OS updates) keeps its state here: the root forgets everything at reboot
-mkdir -p /storage/rauc
-
-# Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
-mkdir -p /storage/mirrordash/logs
-chown pi:pi /storage/mirrordash/logs
-
-# The repair above happened before /storage was there to save its log in
-if [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-    /usr/local/lib/mirrordash/save-log storage-repair -b -n 1000 >/dev/null || true
-fi
-EOF
-  chmod +x /usr/local/bin/mirrordash-hydrate.sh
+  put 0755 /usr/local/bin/mirrordash-hydrate.sh
 
   # The system log (journal) lives in RAM only, so nothing is written to the SD card all day and it
   # doesn't wear out. The price: after a restart the log is gone. So when an update fails, this saves
@@ -1253,64 +566,13 @@ EOF
   # mirrordash-save-trial-log.service (a failed OS trial boot), the app (a failed OS install) and
   # launch.sh (an app update that was rolled back).
   mkdir -p /usr/local/lib/mirrordash
-  cat << 'EOF' > /usr/local/lib/mirrordash/save-log
-#!/bin/bash
-# Usage: save-log KIND [journalctl options...]
-#   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
-#   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, wifi-chip, p1-update,
-#   storage-repair, app-hung, screen-lost.
-set -euo pipefail
+  put 0755 /usr/local/lib/mirrordash/save-log
 
-LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py
-KEEP=5
-kind=${1:-}
-shift || true
-case "$kind" in ""|*[!a-z0-9-]*) echo "save-log: invalid kind: $kind" >&2; exit 2 ;; esac
-
-mkdir -p "$LOG_DIR"
-# UTC: a start without the app (a trial boot) hasn't got the time zone yet; the admin page shows local time
-file="$LOG_DIR/$kind-$(date -u +%Y%m%d-%H%M%S).log"
-# Written under another name first, so the admin page never lists half a file
-# --utc -o short-iso: every log time in UTC, the same format as the app's log and the Logs tab
-journalctl --no-pager --utc -o short-iso "$@" > "$file.part" 2>&1 || true
-mv "$file.part" "$file"
-
-# Only the newest $KEEP: a mirror that fails over and over still uses only a few MB
-find "$LOG_DIR" -maxdepth 1 -name '*.log' -printf '%T@ %p\n' | sort -rn | tail -n +$(( KEEP + 1 )) |
-  cut -d' ' -f2- | xargs -r rm -f --
-sync "$LOG_DIR"
-echo "$file"
-EOF
-  chmod 755 /usr/local/lib/mirrordash/save-log
-
-  cat << 'EOF' > /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
-HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key
-HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ecdsa_key
-HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_rsa_key
-EOF
+  put 0644 /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
   mkdir -p /etc/systemd/system/ssh.service.d
-  cat << 'EOF' > /etc/systemd/system/ssh.service.d/mirrordash.conf
-[Unit]
-# The host keys are on /storage, made by the hydrate script
-After=mirrordash-storage-init.service
-EOF
+  put 0644 /etc/systemd/system/ssh.service.d/mirrordash.conf
 
-  cat << 'EOF' > /etc/systemd/system/mirrordash-storage-init.service
-[Unit]
-Description=Hydrate MirrorDash Storage Partition
-After=local-fs.target
-Requires=local-fs.target
-Before=NetworkManager.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-hydrate.sh
-RemainAfterExit=yes
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-storage-init.service
   systemctl --root=/ enable mirrordash-storage-init.service
 }
 
@@ -1326,115 +588,15 @@ step_dev_logging() {
   # Each start has its own machine-id here (the image's is "uninitialized"), and journald keeps one
   # folder per machine-id and only trims its own, so this script keeps the total under its cap by
   # deleting the oldest starts' folders. Reading them all back needs `journalctl -m` (merge).
-  cat << 'EOF' > /usr/local/bin/mirrordash-dev-logging
-#!/bin/bash
-# Usage: mirrordash-dev-logging on|off|apply|clear
-#   on     keep the whole system log on /storage for the next 7 days (again: 7 more days)
-#   off    stop now (the saved log stays until "clear")
-#   apply  bring the system in line with the setting: at every boot and every hour (the 7 days run out)
-#   clear  delete the saved system log (only while off)
-set -euo pipefail
-
-# Overridable so tests/test_dev_logging.py can run this against a temporary folder
-STORAGE=${MIRRORDASH_STORAGE:-/storage/mirrordash}
-FLAG="$STORAGE/dev-logging-until"      # when it turns off, in seconds since 1970; there = on
-JOURNAL_DIR="$STORAGE/journal"
-DROPIN=${MIRRORDASH_DROPIN:-/run/systemd/journald.conf.d/90-mirrordash-dev-logging.conf}
-TARGET=${MIRRORDASH_JOURNAL_TARGET:-/var/log/journal}
-DAYS=7
-CAP_MB=${MIRRORDASH_JOURNAL_CAP_MB:-64}
-MACHINE_ID_FILE=${MIRRORDASH_MACHINE_ID_FILE:-/etc/machine-id}
-
-is_on() { [ -f "$FLAG" ] && [ "$(cat "$FLAG")" -gt "$(date +%s)" ]; }
-
-# Keep the saved log under CAP_MB: delete whole starts (machine-id folders), oldest first, never the
-# running one. journald trims inside the running one by itself (SystemMaxUse).
-trim() {
-  local current
-  current=$(cat "$MACHINE_ID_FILE" 2>/dev/null || true)
-  while [ "$(du -sm "$JOURNAL_DIR" | cut -f1)" -gt "$CAP_MB" ]; do
-    oldest=$(find "$JOURNAL_DIR" -mindepth 1 -maxdepth 1 -type d ! -name "$current" -printf '%T@ %f\n' | sort -n | head -n 1 | cut -d' ' -f2)
-    [ -n "$oldest" ] || break
-    rm -rf "${JOURNAL_DIR:?}/$oldest"
-  done
-}
-
-apply() {
-  if is_on; then
-    # The folder gets the owner, group and access rights journald expects for /var/log/journal
-    install -d -o root -g systemd-journal -m 2755 "$JOURNAL_DIR"
-    mkdir -p "$TARGET" "$(dirname "$DROPIN")"
-    mountpoint -q "$TARGET" || mount --bind "$JOURNAL_DIR" "$TARGET"
-    if [ ! -f "$DROPIN" ]; then
-      printf '[Journal]\nStorage=persistent\nSystemMaxUse=%sM\n' "$CAP_MB" > "$DROPIN"
-      systemd-tmpfiles --create --prefix "$TARGET"
-      systemctl restart systemd-journald
-      journalctl --flush  # what was logged in RAM since boot moves over too
-    fi
-    trim
-  else
-    rm -f "$FLAG"  # the 7 days are over (or it was turned off)
-    if [ -f "$DROPIN" ]; then
-      rm -f "$DROPIN"
-      journalctl --relinquish-var  # back to RAM before /storage lets go
-      systemctl restart systemd-journald
-    fi
-    if mountpoint -q "$TARGET"; then umount "$TARGET"; fi
-  fi
-}
-
-case "${1:-}" in
-  on)
-    mkdir -p "$STORAGE"
-    echo $(( $(date +%s) + DAYS * 86400 )) > "$FLAG"
-    apply ;;
-  off)
-    rm -f "$FLAG"
-    apply ;;
-  apply)
-    apply ;;
-  clear)
-    if is_on; then echo "Turn developer logging off first." >&2; exit 1; fi
-    rm -rf "${JOURNAL_DIR:?}"
-    ;;
-  *)
-    echo "Usage: mirrordash-dev-logging on|off|apply|clear" >&2; exit 2 ;;
-esac
-EOF
-  chmod 755 /usr/local/bin/mirrordash-dev-logging
+  put 0755 /usr/local/bin/mirrordash-dev-logging
 
   # At every boot once /storage is there, and every hour (that's when the 7 days run out)
-  cat << 'EOF' > /etc/systemd/system/mirrordash-dev-logging.service
-[Unit]
-Description=MirrorDash developer logging (system log kept on /storage while turned on)
-After=mirrordash-storage-init.service
-Requires=mirrordash-storage-init.service
-
-[Service]
-Type=oneshot
-ExecStart=/usr/local/bin/mirrordash-dev-logging apply
-EOF
-  cat << 'EOF' > /etc/systemd/system/mirrordash-dev-logging.timer
-[Unit]
-Description=MirrorDash developer logging: at boot and every hour
-
-[Timer]
-OnBootSec=0
-OnCalendar=hourly
-
-[Install]
-WantedBy=timers.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-dev-logging.service
+  put 0644 /etc/systemd/system/mirrordash-dev-logging.timer
   systemctl --root=/ enable mirrordash-dev-logging.timer
 
   # The admin page turns it on and off (features/settings/dev_logging.py): these exact commands only
-  cat << 'EOF' > /etc/sudoers.d/mirrordash-dev-logging
-# MirrorDash: developer logging from the admin page (Settings → Developer)
-pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging on
-pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging off
-pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-dev-logging clear
-EOF
-  chmod 440 /etc/sudoers.d/mirrordash-dev-logging
+  put 0440 /etc/sudoers.d/mirrordash-dev-logging
   visudo -cf /etc/sudoers.d/mirrordash-dev-logging
 }
 
@@ -1482,188 +644,10 @@ step_ab_updates() {
   # Which partitions make up each slot. RAUC installs both images of a slot together: a boot slot
   # names its root slot as "parent". bootname is the name the bootloader backend uses (A or B).
   # The devices are fixed: MirrorDash boots from the SD card, which is always mmcblk0.
-  cat << 'EOF' > /etc/rauc/system.conf
-[system]
-compatible=mirrordash-rpi
-bootloader=custom
-# The root forgets everything at reboot; RAUC's state (which slot holds what) is kept on /storage
-data-directory=/storage/rauc
-
-[keyring]
-path=/etc/rauc/ca.cert.pem
-
-[handlers]
-bootloader-custom-backend=/usr/local/lib/mirrordash/rauc-bootloader
-
-[slot.rootfs.0]
-device=/dev/mmcblk0p5
-type=raw
-bootname=A
-
-[slot.rootfs.1]
-device=/dev/mmcblk0p6
-type=raw
-bootname=B
-
-[slot.boot.0]
-device=/dev/mmcblk0p2
-type=vfat
-parent=rootfs.0
-
-[slot.boot.1]
-device=/dev/mmcblk0p3
-type=vfat
-parent=rootfs.1
-EOF
+  put 0644 /etc/rauc/system.conf
 
   mkdir -p /usr/local/lib/mirrordash
-  cat << 'EOF' > /usr/local/lib/mirrordash/rauc-bootloader
-#!/bin/bash
-# RAUC's bootloader backend for the Raspberry Pi firmware ("bootloader=custom" in /etc/rauc/system.conf).
-# RAUC calls it to ask which slot boots and to switch slots.
-#   Slot A = boot partition 2 + root partition 5;  slot B = boot partition 3 + root partition 6.
-#
-# How the firmware picks a boot partition: it reads autoboot.txt on p1 (mounted at /boot/autoboot):
-#     [all]
-#     tryboot_a_b=1
-#     boot_partition=2     <- the "primary" slot, booted normally
-#     [tryboot]
-#     boot_partition=3     <- booted once, when the one-time tryboot flag is set
-# The flag is set with a firmware call (vcmailbox, below) and cleared by the firmware at the next
-# restart, whatever happens. The firmware tells Linux what it did in the device tree:
-# /proc/device-tree/chosen/bootloader/partition (the boot partition) and .../tryboot (1 on a trial boot).
-# All of this was tested on a Pi 3B before it was built (tryboot spike, October 2026).
-#
-# Commands (RAUC's custom backend interface, rauc.readthedocs.io "Custom bootloader backend"):
-#   get-primary             the slot that boots normally (A or B)
-#   set-primary SLOT        make SLOT boot at the next restart. For the other slot (just installed)
-#                           that is a trial boot only; mark-good makes it permanent. Its boot
-#                           partition is made ready first (prepare_boot).
-#   get-state SLOT          always "good": a bad slot is never primary (see set-state)
-#   set-state SLOT good|bad good on the running trial slot makes it the primary one
-#   get-current             the slot that is running now
-# Ours, not RAUC's:
-#   is-update-trial         exit 0 on the trial boot of the slot RAUC activated last (mirrordash-mark-good.service)
-#   prepare-boot DIR N      what set-primary does to a boot partition, on the files in DIR for root
-#                           partition N (tests/test_ab_updates.py)
-# A non-zero exit tells RAUC the step failed.
-set -euo pipefail
-
-# Overridable so tests/test_ab_updates.py can run this against fake files
-AUTOBOOT=${MIRRORDASH_AUTOBOOT:-/boot/autoboot/autoboot.txt}
-BOOTLOADER_DT=${MIRRORDASH_BOOTLOADER_DT:-/proc/device-tree/chosen/bootloader}
-CURRENT_BOOT=${MIRRORDASH_CURRENT_BOOT:-/boot/firmware}  # the boot partition that is running now
-VCMAILBOX=${MIRRORDASH_VCMAILBOX:-vcmailbox}
-# RAUC's own record of the slots: it writes activated.timestamp for a slot each time it activates
-# one (after installing it, or rauc status mark-active). Only a trial boot of the slot activated last
-# may be kept: a trial started by hand (reboot "0 tryboot", e.g. to test) mustn't make an old slot
-# the one that boots. It's RAUC's record rather than our own, so it also holds when the system that
-# installed the update is an older one, with an older copy of this script.
-RAUC_STATUS=${MIRRORDASH_RAUC_STATUS:-/storage/rauc/central.raucs}
-# The same markers as in /usr/local/bin/mirrordash-gpio-overlays
-GPIO_BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
-GPIO_END='# --- end MirrorDash GPIO ---'
-
-die() { echo "rauc-bootloader: $*" >&2; exit 1; }
-slot_of() { case "$1" in 2) echo A ;; 3) echo B ;; *) die "unknown boot partition: $1" ;; esac; }
-partition_of() { case "$1" in A) echo 2 ;; B) echo 3 ;; *) die "unknown slot: $1" ;; esac; }
-# Device-tree numbers are 4-byte big-endian integers
-dt_number() { od -An -tu4 --endian=big "$BOOTLOADER_DT/$1" | tr -d ' '; }
-# activated.timestamp of [slot.rootfs.N] in RAUC's status file, or nothing
-activated_at() {
-  awk -v section="[slot.rootfs.$1]" '/^\[/ { mine = ($0 == section) } mine && /^activated\.timestamp=/ { sub(/^[^=]*=/, ""); print }' "$RAUC_STATUS" 2>/dev/null || true
-}
-# boot_partition= in the [all] section of autoboot.txt
-primary_partition() {
-  awk '/^\[/ { section = $0 } section == "[all]" && /^boot_partition=/ { sub(/^boot_partition=/, ""); print; exit }' "$AUTOBOOT"
-}
-
-# Swap the partitions in autoboot.txt ([all] 2 <-> [tryboot] 3): the slot that was tried becomes
-# the normal one, and the old one becomes the one to try next. Written to a new file that then
-# replaces the old one, with sync before and after: a power cut leaves either the old or the new
-# file, never half of one (the card holds a single autoboot.txt; without it nothing boots).
-swap_primary() {
-  sed -e 's/^boot_partition=2$/boot_partition=X/' \
-      -e 's/^boot_partition=3$/boot_partition=2/' \
-      -e 's/^boot_partition=X$/boot_partition=3/' "$AUTOBOOT" > "$AUTOBOOT.tmp"
-  sync "$AUTOBOOT.tmp"
-  mv "$AUTOBOOT.tmp" "$AUTOBOOT"
-  sync "$AUTOBOOT"
-}
-
-# prepare_boot DIR ROOT_NUMBER: the new boot partition (mounted at DIR) is a copy of the one in the
-# bundle, which was built for slot A on no particular card. It gets what belongs to this mirror:
-#   * root=PARTUUID=<card>-0N: its own root partition. A PARTUUID is the card's disk identifier
-#     plus the partition number, so the identifier is taken from the running cmdline.txt.
-#   * the Wi-Fi country (cfg80211.ieee80211_regdom= in cmdline.txt, set from the time zone).
-#   * the GPIO block in config.txt (buttons, sensors, fans; written by mirrordash-gpio-overlays).
-prepare_boot() {
-  local dir=$1 root_number=$2 disk_id regdom
-  disk_id=$(sed -n 's/.*root=PARTUUID=\([0-9a-f]*\)-.*/\1/p' "$CURRENT_BOOT/cmdline.txt")
-  [ -n "$disk_id" ] || die "no root=PARTUUID= in $CURRENT_BOOT/cmdline.txt"
-  sed -i "s/root=PARTUUID=[^ ]*/root=PARTUUID=${disk_id}-0${root_number}/" "$dir/cmdline.txt"
-
-  regdom=$(grep -o 'cfg80211.ieee80211_regdom=[^ ]*' "$CURRENT_BOOT/cmdline.txt" || true)
-  if [ -n "$regdom" ]; then
-    sed -i "s/cfg80211.ieee80211_regdom=[^ ]*/$regdom/" "$dir/cmdline.txt"
-  fi
-
-  # The new config.txt without a GPIO block of its own (if it has one), then the running one's block
-  {
-    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$dir/config.txt"
-    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy { print } $0 == e { copy = 0 }' "$CURRENT_BOOT/config.txt"
-  } > "$dir/config.txt.new"
-  mv "$dir/config.txt.new" "$dir/config.txt"
-}
-
-case "${1:-}" in
-  get-primary)
-    slot_of "$(primary_partition)" ;;
-  set-primary)
-    boot=$(partition_of "$2")
-    if [ "$boot" != "$(primary_partition)" ]; then
-      # The slot RAUC just installed: make its boot partition ready (p2 -> root p5, p3 -> root p6)
-      mount_dir=$(mktemp -d)
-      mount "/dev/mmcblk0p$boot" "$mount_dir"
-      prepare_boot "$mount_dir" $(( boot + 3 ))
-      sync
-      umount "$mount_dir"
-      rmdir "$mount_dir"
-      # Firmware call "set reboot flags" (tag 0x00038064, a 4-byte value, flag 1 = tryboot).
-      # The next restart boots the [tryboot] partition, once.
-      "$VCMAILBOX" 0x00038064 4 0 1 > /dev/null
-    fi ;;
-  get-state)
-    echo good ;;
-  set-state)
-    slot=$(partition_of "$2") primary=$(primary_partition) current=$(dt_number partition)
-    case "$3" in
-      good)
-        # Only the slot that is running on a trial boot becomes primary
-        if [ "$slot" = "$current" ] && [ "$slot" != "$primary" ]; then swap_primary; fi ;;
-      bad)
-        # RAUC marks the slot it's about to overwrite bad first. That must never be the primary
-        # slot: if the install were cut short, nothing bootable would be left. It only can be
-        # during a trial boot that isn't marked good yet, so the install is refused then.
-        [ "$slot" != "$primary" ] || die "slot $2 is the one the mirror boots; finish the trial boot first" ;;
-      *) die "unknown state: $3" ;;
-    esac ;;
-  get-current)
-    slot_of "$(dt_number partition)" ;;
-  is-update-trial)
-    [ "$(dt_number tryboot)" = 1 ] || exit 1
-    # Boot partition 2 is rootfs.0, 3 is rootfs.1; the other slot is the other one. ISO 8601 times
-    # sort as text. A slot never activated (the one the card was flashed with) has no time at all.
-    boot=$(dt_number partition)
-    mine=$(activated_at $(( boot - 2 ))) other=$(activated_at $(( 3 - boot )))
-    [ -n "$mine" ] && [[ "$mine" > "$other" ]] ;;
-  prepare-boot)
-    prepare_boot "$2" "$3" ;;
-  *)
-    die "unknown command: ${1:-}" ;;
-esac
-EOF
-  chmod 755 /usr/local/lib/mirrordash/rauc-bootloader
+  put 0755 /usr/local/lib/mirrordash/rauc-bootloader
 
   # p1 holds the Pi 3's firmware (bootcode.bin, start.elf, fixup.dat) and autoboot.txt. On a Pi 3 it
   # is p1's start.elf that boots the chosen slot, so the firmware files in the slots are never used
@@ -1674,79 +658,7 @@ EOF
   # so the new p1 is built there and then the MBR's p1 entry is moved over in one 512-byte write.
   # Not RAUC's "boot-mbr-switch" slot type: it writes p1 from the bundle, autoboot.txt included, and
   # so forgets which slot is the good one.
-  cat << 'EOF' > /usr/local/lib/mirrordash/update-p1
-#!/bin/bash
-# Usage: update-p1 [--force]
-#   Renew p1 (Pi 3 firmware + autoboot.txt) from the running boot slot when its firmware differs;
-#   --force does it anyway (to test it). Exit 0 when p1 is up to date or was renewed.
-#
-# The 64 MiB from 4 MiB on are two halves of 32 MiB; p1 is one of them, the other is empty:
-#     sector  8192 (4 MiB)  ... 73727    half 1
-#     sector 73728 (36 MiB) ... 139263   half 2     (p2, boot A, starts at 139264)
-# Steps: build the new p1 in the other half, check it file by file, then point the MBR's p1 entry at
-# it. A power cut before that last write leaves the old p1 in use, untouched; after it, the new one.
-# The old half stays as it was until the next renewal: a way back by hand (sfdisk -N 1).
-set -euo pipefail
-
-# Overridable so tests/test_ab_updates.py can run this against fakes
-DISK=${MIRRORDASH_DISK:-/dev/mmcblk0}
-FIRMWARE=${MIRRORDASH_FIRMWARE_DIR:-/boot/firmware}   # the running boot slot, just proven good
-AUTOBOOT=${MIRRORDASH_AUTOBOOT_DIR:-/boot/autoboot}   # p1 now
-NEW=${MIRRORDASH_P1_NEW_DIR:-/run/mirrordash-p1-new}  # where the new p1 is mounted while it's built
-FILES=(bootcode.bin start.elf fixup.dat)
-HALF_1=8192 HALF_2=73728 SIZE=65536  # in 512-byte sectors
-
-die() { echo "update-p1: $*" >&2; exit 1; }
-
-same_firmware() {
-  local f
-  for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$AUTOBOOT/$f" || return 1; done
-}
-if [ "${1:-}" != --force ] && same_firmware; then
-  echo "update-p1: p1's firmware is the running system's; nothing to do."
-  exit 0
-fi
-
-# Where p1 is now (sfdisk --dump: "/dev/mmcblk0p1 : start=        8192, size=       65536, type=c")
-read -r start size < <(sfdisk --dump "$DISK" | sed -n "s|^${DISK}p1 : start= *\([0-9]*\), size= *\([0-9]*\),.*|\1 \2|p")
-case "$start" in
-  "$HALF_1") new=$HALF_2 ;;
-  "$HALF_2") new=$HALF_1 ;;
-  *) die "p1 starts at sector ${start:-?}, not in its reserved place; leaving it alone" ;;
-esac
-[ "$size" = "$SIZE" ] || die "p1 is $size sectors, not $SIZE; leaving it alone"
-
-# 1. The new p1, in the empty half (a loop device over just that part of the card)
-loop=$(losetup --find --show --offset $(( new * 512 )) --sizelimit $(( SIZE * 512 )) "$DISK")
-cleanup() { umount "$NEW" 2>/dev/null || true; losetup -d "$loop" 2>/dev/null || true; }
-trap cleanup EXIT
-mkfs.vfat -n AUTOBOOT "$loop" > /dev/null
-mkdir -p "$NEW"
-mount "$loop" "$NEW"
-cp "${FILES[@]/#/$FIRMWARE/}" "$NEW/"
-cp "$AUTOBOOT/autoboot.txt" "$NEW/"  # as it is now: which slot is primary stays as it is
-sync
-# 2. Check it before anything points at it
-for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$NEW/$f" || die "$f didn't copy correctly; p1 unchanged"; done
-cmp -s "$AUTOBOOT/autoboot.txt" "$NEW/autoboot.txt" || die "autoboot.txt didn't copy correctly; p1 unchanged"
-cleanup
-trap - EXIT
-
-# 3. Switch: only the MBR's p1 entry changes (start, size, type c = FAT32 LBA); the disk identifier stays
-umount "$AUTOBOOT"
-echo "$new,$SIZE,c" | sfdisk -q --no-reread --no-tell-kernel -N 1 "$DISK"
-sync
-# The card now holds the new p1. The kernel still knows p1 at its old place, and can't move the start
-# of a partition it knows ("partx --update" refuses): forget p1 and read it again, then mount it by its
-# fstab line (PARTUUID=...-01, the same as before). If that fails, the card is still right and the
-# next start uses the new p1; only /boot/autoboot stays away until then.
-if partx --delete --nr 1 "$DISK" && partx --add --nr 1 "$DISK" && udevadm settle && mount "$AUTOBOOT"; then
-  echo "update-p1: p1 renewed (now at sector $new)."
-else
-  die "p1 renewed on the card (sector $new), but the running system can't see it until the next restart"
-fi
-EOF
-  chmod 755 /usr/local/lib/mirrordash/update-p1
+  put 0755 /usr/local/lib/mirrordash/update-p1
 
   # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot, and on a
   # trial boot started by hand, the ExecCondition is false and nothing runs. On the trial boot of the
@@ -1761,68 +673,19 @@ EOF
   # If one fails, OnFailure starts mirrordash-save-trial-log: it saves this boot's log (the RAM log
   # is gone after a restart) and restarts the mirror. The tryboot flag is gone by then, so it boots
   # the old slot. The app's own admin page then says the update didn't start (features/updates).
-  cat << 'EOF' > /etc/systemd/system/mirrordash-mark-good.service
-[Unit]
-Description=Keep the new OS version if the mirror works with it (A/B update)
-Wants=network-online.target
-After=network-online.target mirrordash.service
-OnFailure=mirrordash-save-trial-log.service
-
-[Service]
-Type=oneshot
-ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial
-ExecStart=/usr/bin/curl -fsS -o /dev/null -m 10 --retry 20 --retry-delay 5 --retry-all-errors https://github.com
-ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
-ExecStart=/usr/bin/rauc status mark-good
-# Then renew p1's firmware if the new system brought newer (update-p1, above). The "-": whatever
-# happens there, the new system stays; a failure only leaves its log under Saved Logs.
-ExecStart=-/bin/sh -c '/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update -b -n 500'
-TimeoutStartSec=12min
-
-[Install]
-WantedBy=multi-user.target
-EOF
+  put 0644 /etc/systemd/system/mirrordash-mark-good.service
   systemctl --root=/ enable mirrordash-mark-good.service
 
   # The leading "-" lets the restart happen even if saving the log fails, and FailureAction restarts
   # the mirror if this unit itself fails some other way. Either way it ends up on the old slot.
-  cat << 'EOF' > /etc/systemd/system/mirrordash-save-trial-log.service
-[Unit]
-Description=Save the log of a failed OS trial boot, then restart into the old OS (A/B update)
-FailureAction=reboot
-
-[Service]
-Type=oneshot
-ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b
-ExecStart=/usr/bin/systemctl reboot
-EOF
+  put 0644 /etc/systemd/system/mirrordash-save-trial-log.service
 
   # /boot/firmware is the boot partition the firmware started from: p2 (slot A) or p3 (slot B).
   # fstab can't say which, since both slots share this root image, so a systemd generator (a script
   # systemd runs very early at every boot) writes the mount from what the firmware reports.
   # The app writes the Wi-Fi country and the GPIO settings there, for the slot that is running.
   mkdir -p /etc/systemd/system-generators
-  cat << 'EOF' > /etc/systemd/system-generators/mirrordash-bootslot
-#!/bin/sh
-# systemd generator: $1 is the directory for generated units (see man systemd.generator).
-# The boot partition number comes from the firmware: a 4-byte big-endian integer in the device tree.
-PARTITION=$(od -An -tu4 --endian=big /proc/device-tree/chosen/bootloader/partition 2>/dev/null | tr -d ' ')
-# Not started by the Pi firmware's partition switch (0, or missing): leave /boot/firmware unmounted
-case "$PARTITION" in 2|3) ;; *) exit 0 ;; esac
-cat > "$1/boot-firmware.mount" << UNIT
-[Unit]
-Description=Boot partition the firmware started from (A/B slot)
-
-[Mount]
-What=/dev/mmcblk0p$PARTITION
-Where=/boot/firmware
-Type=vfat
-Options=defaults,noatime
-UNIT
-mkdir -p "$1/local-fs.target.wants"
-ln -sf ../boot-firmware.mount "$1/local-fs.target.wants/boot-firmware.mount"
-EOF
-  chmod 755 /etc/systemd/system-generators/mirrordash-bootslot
+  put 0755 /etc/systemd/system-generators/mirrordash-bootslot
 
   # fstab: p1 (autoboot.txt) goes to /boot/autoboot instead of /boot/firmware, which the generator
   # above mounts. The root line goes: the root is whichever of p5/p6 the kernel got in root=, and
@@ -1832,11 +695,7 @@ EOF
 
   # The admin page installs OS updates (features/updates/service.py: update_os): it downloads the
   # bundle to this one file and has RAUC install it. RAUC installs only bundles signed with our key.
-  cat << 'EOF' > /etc/sudoers.d/mirrordash-rauc
-# MirrorDash: the admin page installs signed OS updates (A/B)
-pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb
-EOF
-  chmod 440 /etc/sudoers.d/mirrordash-rauc
+  put 0440 /etc/sudoers.d/mirrordash-rauc
   visudo -cf /etc/sudoers.d/mirrordash-rauc
 }
 
@@ -1844,10 +703,7 @@ step_first_boot_lock() {
   # On the locked root, / is an overlay that can't be remounted: systemd-remount-fs fails, and is
   # retried (and fails) every time a unit starts. Nothing to remount there, so skip it.
   mkdir -p /etc/systemd/system/systemd-remount-fs.service.d
-  cat << 'EOF' > /etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf
-[Unit]
-ConditionKernelCommandLine=!overlayroot
-EOF
+  put 0644 /etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf
   # Swap in compressed RAM only: the default zram+file puts a swap file on the root partition,
   # which is a RAM overlay once locked (and needs systemd-remount-fs).
   # This setting is read by Pi OS's rpi-swap. If a new Pi OS drops it, the setting would silently do
@@ -1857,10 +713,7 @@ EOF
     exit 1
   fi
   mkdir -p /etc/rpi/swap.conf.d
-  cat << 'EOF' > /etc/rpi/swap.conf.d/mirrordash.conf
-[Main]
-Mechanism=zram
-EOF
+  put 0644 /etc/rpi/swap.conf.d/mirrordash.conf
 
   # ponytail: a run straight on a Pi (no BUILDING_IMAGE) stays unlocked; real images come from build_image.sh.
   if [ -z "${BUILDING_IMAGE:-}" ]; then

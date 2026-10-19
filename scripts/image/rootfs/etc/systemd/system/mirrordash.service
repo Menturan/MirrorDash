@@ -1,0 +1,25 @@
+[Unit]
+Description=MirrorDash Core App Backend
+After=network.target mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/mirrordash
+Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
+# The app's own Python, on /storage (hydrate, ARCHITECTURE #16): uv venv and uv python install use it
+Environment="UV_PYTHON_INSTALL_DIR=/storage/mirrordash/python"
+Environment="WAYLAND_DISPLAY=wayland-0"
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+ExecStart=/home/pi/mirrordash/launch.sh
+# The app restarts itself via SIGTERM (exit 143); that is not a failure
+SuccessExitStatus=143
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,144 @@
+#!/bin/bash
+# RAUC's bootloader backend for the Raspberry Pi firmware ("bootloader=custom" in /etc/rauc/system.conf).
+# RAUC calls it to ask which slot boots and to switch slots.
+#   Slot A = boot partition 2 + root partition 5;  slot B = boot partition 3 + root partition 6.
+#
+# How the firmware picks a boot partition: it reads autoboot.txt on p1 (mounted at /boot/autoboot):
+#     [all]
+#     tryboot_a_b=1
+#     boot_partition=2     <- the "primary" slot, booted normally
+#     [tryboot]
+#     boot_partition=3     <- booted once, when the one-time tryboot flag is set
+# The flag is set with a firmware call (vcmailbox, below) and cleared by the firmware at the next
+# restart, whatever happens. The firmware tells Linux what it did in the device tree:
+# /proc/device-tree/chosen/bootloader/partition (the boot partition) and .../tryboot (1 on a trial boot).
+# All of this was tested on a Pi 3B before it was built (tryboot spike, October 2026).
+#
+# Commands (RAUC's custom backend interface, rauc.readthedocs.io "Custom bootloader backend"):
+#   get-primary             the slot that boots normally (A or B)
+#   set-primary SLOT        make SLOT boot at the next restart. For the other slot (just installed)
+#                           that is a trial boot only; mark-good makes it permanent. Its boot
+#                           partition is made ready first (prepare_boot).
+#   get-state SLOT          always "good": a bad slot is never primary (see set-state)
+#   set-state SLOT good|bad good on the running trial slot makes it the primary one
+#   get-current             the slot that is running now
+# Ours, not RAUC's:
+#   is-update-trial         exit 0 on the trial boot of the slot RAUC activated last (mirrordash-mark-good.service)
+#   prepare-boot DIR N      what set-primary does to a boot partition, on the files in DIR for root
+#                           partition N (tests/test_ab_updates.py)
+# A non-zero exit tells RAUC the step failed.
+set -euo pipefail
+
+# Overridable so tests/test_ab_updates.py can run this against fake files
+AUTOBOOT=${MIRRORDASH_AUTOBOOT:-/boot/autoboot/autoboot.txt}
+BOOTLOADER_DT=${MIRRORDASH_BOOTLOADER_DT:-/proc/device-tree/chosen/bootloader}
+CURRENT_BOOT=${MIRRORDASH_CURRENT_BOOT:-/boot/firmware}  # the boot partition that is running now
+VCMAILBOX=${MIRRORDASH_VCMAILBOX:-vcmailbox}
+# RAUC's own record of the slots: it writes activated.timestamp for a slot each time it activates
+# one (after installing it, or rauc status mark-active). Only a trial boot of the slot activated last
+# may be kept: a trial started by hand (reboot "0 tryboot", e.g. to test) mustn't make an old slot
+# the one that boots. It's RAUC's record rather than our own, so it also holds when the system that
+# installed the update is an older one, with an older copy of this script.
+RAUC_STATUS=${MIRRORDASH_RAUC_STATUS:-/storage/rauc/central.raucs}
+# The same markers as in /usr/local/bin/mirrordash-gpio-overlays
+GPIO_BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
+GPIO_END='# --- end MirrorDash GPIO ---'
+
+die() { echo "rauc-bootloader: $*" >&2; exit 1; }
+slot_of() { case "$1" in 2) echo A ;; 3) echo B ;; *) die "unknown boot partition: $1" ;; esac; }
+partition_of() { case "$1" in A) echo 2 ;; B) echo 3 ;; *) die "unknown slot: $1" ;; esac; }
+# Device-tree numbers are 4-byte big-endian integers
+dt_number() { od -An -tu4 --endian=big "$BOOTLOADER_DT/$1" | tr -d ' '; }
+# activated.timestamp of [slot.rootfs.N] in RAUC's status file, or nothing
+activated_at() {
+  awk -v section="[slot.rootfs.$1]" '/^\[/ { mine = ($0 == section) } mine && /^activated\.timestamp=/ { sub(/^[^=]*=/, ""); print }' "$RAUC_STATUS" 2>/dev/null || true
+}
+# boot_partition= in the [all] section of autoboot.txt
+primary_partition() {
+  awk '/^\[/ { section = $0 } section == "[all]" && /^boot_partition=/ { sub(/^boot_partition=/, ""); print; exit }' "$AUTOBOOT"
+}
+
+# Swap the partitions in autoboot.txt ([all] 2 <-> [tryboot] 3): the slot that was tried becomes
+# the normal one, and the old one becomes the one to try next. Written to a new file that then
+# replaces the old one, with sync before and after: a power cut leaves either the old or the new
+# file, never half of one (the card holds a single autoboot.txt; without it nothing boots).
+swap_primary() {
+  sed -e 's/^boot_partition=2$/boot_partition=X/' \
+      -e 's/^boot_partition=3$/boot_partition=2/' \
+      -e 's/^boot_partition=X$/boot_partition=3/' "$AUTOBOOT" > "$AUTOBOOT.tmp"
+  sync "$AUTOBOOT.tmp"
+  mv "$AUTOBOOT.tmp" "$AUTOBOOT"
+  sync "$AUTOBOOT"
+}
+
+# prepare_boot DIR ROOT_NUMBER: the new boot partition (mounted at DIR) is a copy of the one in the
+# bundle, which was built for slot A on no particular card. It gets what belongs to this mirror:
+#   * root=PARTUUID=<card>-0N: its own root partition. A PARTUUID is the card's disk identifier
+#     plus the partition number, so the identifier is taken from the running cmdline.txt.
+#   * the Wi-Fi country (cfg80211.ieee80211_regdom= in cmdline.txt, set from the time zone).
+#   * the GPIO block in config.txt (buttons, sensors, fans; written by mirrordash-gpio-overlays).
+prepare_boot() {
+  local dir=$1 root_number=$2 disk_id regdom
+  disk_id=$(sed -n 's/.*root=PARTUUID=\([0-9a-f]*\)-.*/\1/p' "$CURRENT_BOOT/cmdline.txt")
+  [ -n "$disk_id" ] || die "no root=PARTUUID= in $CURRENT_BOOT/cmdline.txt"
+  sed -i "s/root=PARTUUID=[^ ]*/root=PARTUUID=${disk_id}-0${root_number}/" "$dir/cmdline.txt"
+
+  regdom=$(grep -o 'cfg80211.ieee80211_regdom=[^ ]*' "$CURRENT_BOOT/cmdline.txt" || true)
+  if [ -n "$regdom" ]; then
+    sed -i "s/cfg80211.ieee80211_regdom=[^ ]*/$regdom/" "$dir/cmdline.txt"
+  fi
+
+  # The new config.txt without a GPIO block of its own (if it has one), then the running one's block
+  {
+    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$dir/config.txt"
+    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy { print } $0 == e { copy = 0 }' "$CURRENT_BOOT/config.txt"
+  } > "$dir/config.txt.new"
+  mv "$dir/config.txt.new" "$dir/config.txt"
+}
+
+case "${1:-}" in
+  get-primary)
+    slot_of "$(primary_partition)" ;;
+  set-primary)
+    boot=$(partition_of "$2")
+    if [ "$boot" != "$(primary_partition)" ]; then
+      # The slot RAUC just installed: make its boot partition ready (p2 -> root p5, p3 -> root p6)
+      mount_dir=$(mktemp -d)
+      mount "/dev/mmcblk0p$boot" "$mount_dir"
+      prepare_boot "$mount_dir" $(( boot + 3 ))
+      sync
+      umount "$mount_dir"
+      rmdir "$mount_dir"
+      # Firmware call "set reboot flags" (tag 0x00038064, a 4-byte value, flag 1 = tryboot).
+      # The next restart boots the [tryboot] partition, once.
+      "$VCMAILBOX" 0x00038064 4 0 1 > /dev/null
+    fi ;;
+  get-state)
+    echo good ;;
+  set-state)
+    slot=$(partition_of "$2") primary=$(primary_partition) current=$(dt_number partition)
+    case "$3" in
+      good)
+        # Only the slot that is running on a trial boot becomes primary
+        if [ "$slot" = "$current" ] && [ "$slot" != "$primary" ]; then swap_primary; fi ;;
+      bad)
+        # RAUC marks the slot it's about to overwrite bad first. That must never be the primary
+        # slot: if the install were cut short, nothing bootable would be left. It only can be
+        # during a trial boot that isn't marked good yet, so the install is refused then.
+        [ "$slot" != "$primary" ] || die "slot $2 is the one the mirror boots; finish the trial boot first" ;;
+      *) die "unknown state: $3" ;;
+    esac ;;
+  get-current)
+    slot_of "$(dt_number partition)" ;;
+  is-update-trial)
+    [ "$(dt_number tryboot)" = 1 ] || exit 1
+    # Boot partition 2 is rootfs.0, 3 is rootfs.1; the other slot is the other one. ISO 8601 times
+    # sort as text. A slot never activated (the one the card was flashed with) has no time at all.
+    boot=$(dt_number partition)
+    mine=$(activated_at $(( boot - 2 ))) other=$(activated_at $(( 3 - boot )))
+    [ -n "$mine" ] && [[ "$mine" > "$other" ]] ;;
+  prepare-boot)
+    prepare_boot "$2" "$3" ;;
+  *)
+    die "unknown command: ${1:-}" ;;
+esac

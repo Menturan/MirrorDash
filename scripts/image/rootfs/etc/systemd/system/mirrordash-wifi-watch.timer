@@ -1,0 +1,9 @@
+[Unit]
+Description=MirrorDash WiFi watch every 3 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=3min
+
+[Install]
+WantedBy=timers.target

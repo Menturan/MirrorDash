@@ -1,0 +1,9 @@
+[Unit]
+Description=MirrorDash watch every 3 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=3min
+
+[Install]
+WantedBy=timers.target

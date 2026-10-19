@@ -1,0 +1,8 @@
+[Unit]
+Description=MirrorDash developer logging (system log kept on /storage while turned on)
+After=mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-dev-logging apply

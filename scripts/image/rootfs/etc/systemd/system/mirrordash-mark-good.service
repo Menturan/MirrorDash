@@ -1,0 +1,19 @@
+[Unit]
+Description=Keep the new OS version if the mirror works with it (A/B update)
+Wants=network-online.target
+After=network-online.target mirrordash.service
+OnFailure=mirrordash-save-trial-log.service
+
+[Service]
+Type=oneshot
+ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial
+ExecStart=/usr/bin/curl -fsS -o /dev/null -m 10 --retry 20 --retry-delay 5 --retry-all-errors https://github.com
+ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
+ExecStart=/usr/bin/rauc status mark-good
+# Then renew p1's firmware if the new system brought newer (update-p1, above). The "-": whatever
+# happens there, the new system stays; a failure only leaves its log under Saved Logs.
+ExecStart=-/bin/sh -c '/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update -b -n 500'
+TimeoutStartSec=12min
+
+[Install]
+WantedBy=multi-user.target

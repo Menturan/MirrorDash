@@ -1,0 +1,2 @@
+# MirrorDash: the admin page installs signed OS updates (A/B)
+pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb

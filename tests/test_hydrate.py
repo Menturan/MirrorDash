@@ -1,14 +1,15 @@
 """Runs the real mirrordash-hydrate.sh (extracted from configure_image.sh) against a temp /storage."""
 import os
-import re
 import subprocess
 from pathlib import Path
+
+from test_configure_image import unit
 
 SETUP = Path(__file__).parent.parent / "scripts" / "configure_image.sh"
 
 
 def run_hydrate(tmp_path: Path) -> Path:
-    body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-hydrate\.sh\n(.*?)\nEOF\n", SETUP.read_text(), re.S).group(1)
+    body = unit("/usr/local/bin/mirrordash-hydrate.sh")
     storage, base = tmp_path / "storage", tmp_path / "base_venv"
     base.mkdir(exist_ok=True)
     script = tmp_path / "hydrate.sh"

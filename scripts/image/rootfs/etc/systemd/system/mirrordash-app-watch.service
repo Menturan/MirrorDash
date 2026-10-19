@@ -1,0 +1,8 @@
+[Unit]
+Description=MirrorDash watch (an app or screen that hangs)
+After=mirrordash.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/mirrordash/app-watch
+TimeoutStartSec=120

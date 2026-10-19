@@ -1,0 +1,8 @@
+[Unit]
+Description=MirrorDash WiFi watch (hotspot <-> saved Wi-Fi)
+After=mirrordash-wifi-fallback.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-wifi-check.sh --watch
+TimeoutStartSec=150

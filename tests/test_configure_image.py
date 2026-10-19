@@ -1,4 +1,4 @@
-"""How configure_image.sh locks the mirror. Nothing here can run off a Pi, so this guards the lines
+"""How configure_image.sh and the files it installs (scripts/image/rootfs/) lock the mirror. Nothing here can run off a Pi, so this guards the lines
 that once made /storage a RAM overlay (lost at every reboot) and the Wi-Fi password land in the log."""
 import os
 import re
@@ -8,9 +8,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 SETUP = (ROOT / "scripts" / "configure_image.sh").read_text()
+ROOTFS = ROOT / "scripts" / "image" / "rootfs"
+# Everything the setup puts on the mirror, for checks that something is *not* there anywhere
+EVERYTHING = SETUP + "".join(p.read_text() for p in sorted(ROOTFS.rglob("*")) if p.is_file())
 
 
 def unit(path: str) -> str:
+    """A file the setup installs, without its last newline: from scripts/image/rootfs/ (put), or a
+    heredoc still in configure_image.sh (the ones with build-time values)."""
+    if (ROOTFS / path.lstrip("/")).is_file():
+        assert "put 0" in SETUP and re.search(rf"put 0\d+ {re.escape(path)}\n", SETUP), f"{path} is never installed"
+        return (ROOTFS / path.lstrip("/")).read_text().removesuffix("\n")
     return re.search(rf"cat << 'EOF' > {re.escape(path)}\n(.*?)\nEOF\n", SETUP, re.S).group(1)
 
 
@@ -20,8 +28,8 @@ def test_only_the_root_is_overlaid():
     image_opts = re.search(r'if \[ -n "\$\{BUILDING_IMAGE:-\}" \]; then\n\s*target_opts\+=\((.*?)\)', SETUP).group(1)
     assert image_opts == ('"rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false"'
                           ' "rootdelay=20"')
-    assert "enable_overlayfs" not in SETUP
-    assert "boot=overlay" not in SETUP  # not the parameter overlayroot reads
+    assert "enable_overlayfs" not in EVERYTHING
+    assert "boot=overlay" not in EVERYTHING  # not the parameter overlayroot reads
     assert "ConditionKernelCommandLine=!overlayroot" in unit("/etc/systemd/system/systemd-remount-fs.service.d/mirrordash.conf")
 
 
@@ -37,7 +45,7 @@ def test_repart_finds_the_root_partition_under_overlayroot():
 def test_first_boot_units_dont_run_on_every_boot():
     """What Pi OS does on a first boot is done in the build or kept on /storage: an image has no first boot."""
     assert "touch /etc/cloud/cloud-init.disabled" in SETUP
-    assert "userconf.txt\n" not in SETUP and "usermod -s /bin/bash -p" in SETUP
+    assert "userconf.txt\n" not in EVERYTHING and "usermod -s /bin/bash -p" in SETUP
     assert "rm -f /etc/ssh/sshd_config.d/rename_user.conf" in SETUP
     assert "ssh-keygen -A -f /storage/mirrordash/ssh" in unit("/usr/local/bin/mirrordash-hydrate.sh")
     assert "HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key" in unit("/etc/ssh/sshd_config.d/mirrordash-hostkeys.conf")
@@ -63,12 +71,12 @@ def test_no_hobbyist_patterns_in_the_build():
     """AGENTS rules (DevOps): no polling, no scraping human-readable output, no commands that don't
     exist hidden behind `|| true`."""
     build = (ROOT / "scripts" / "build_image.sh").read_text()
-    for script in (SETUP, build):
+    for script in (EVERYTHING, build):
         assert "sleep " not in script
         assert "nmcli device wait" not in script  # not an nmcli command
         assert "/proc/cmdline | grep" not in script and "unit s print | awk" not in script
         assert "grep -m 1 '^version" not in script
-    assert "cache-purge" not in SETUP
+    assert "cache-purge" not in EVERYTHING
     assert "dev wifi list --rescan yes" in unit("/usr/local/bin/mirrordash-wifi-check.sh")
     assert "plymouth/themes/mirrordash/mirrordash.script" in build
     assert "cfg80211.ieee80211_regdom=" in build
@@ -130,3 +138,15 @@ def test_hydrate_moves_the_apps_python_to_storage(tmp_path):
     # The root's Python can now change (an OS update): the venvs still find theirs
     shutil.rmtree(full)
     assert (venvs / "venv_a" / "bin" / "python").resolve().is_file()
+
+
+def test_every_file_in_rootfs_is_installed_and_every_put_has_its_file():
+    """A file added under scripts/image/rootfs/ but never put would silently be missing on the mirror;
+    a put without its file stops the build an hour in."""
+    files = {"/" + str(p.relative_to(ROOTFS)) for p in ROOTFS.rglob("*") if p.is_file()}
+    puts = re.findall(r"^\s*put (0\d{3}) (\S+)$", SETUP, re.M)
+    assert sorted(files) == sorted(path for _, path in puts)
+    for mode, path in puts:  # a script must be executable, a sudo rule must not be (sudo refuses it)
+        text = (ROOTFS / path.lstrip("/")).read_text()
+        assert (mode == "0755") == text.startswith("#!"), path
+        assert mode == "0440" if path.startswith("/etc/sudoers.d/") else True, path

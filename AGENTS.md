@@ -55,6 +55,8 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 
 Split by feature (vertical slices): `mirrordash_core/features/<feature>/` holds a feature's routes, logic and templates; what several features share sits at the package root. Details in `.agents/rules/architecture.md` and ARCHITECTURE #27.
 
+The OS image: `scripts/build_image.sh` builds it, `scripts/configure_image.sh` holds the setup steps, and every file a step installs as it is (scripts, systemd units, sudo rules) lives under `scripts/image/rootfs/` at its path on the mirror, installed with `put <mode> <path>`. Change the file there; the tests read it from there too.
+
 ## Rules Directory
 
 | File | Contents |

@@ -1,0 +1,70 @@
+#!/bin/bash
+# Usage: update-p1 [--force]
+#   Renew p1 (Pi 3 firmware + autoboot.txt) from the running boot slot when its firmware differs;
+#   --force does it anyway (to test it). Exit 0 when p1 is up to date or was renewed.
+#
+# The 64 MiB from 4 MiB on are two halves of 32 MiB; p1 is one of them, the other is empty:
+#     sector  8192 (4 MiB)  ... 73727    half 1
+#     sector 73728 (36 MiB) ... 139263   half 2     (p2, boot A, starts at 139264)
+# Steps: build the new p1 in the other half, check it file by file, then point the MBR's p1 entry at
+# it. A power cut before that last write leaves the old p1 in use, untouched; after it, the new one.
+# The old half stays as it was until the next renewal: a way back by hand (sfdisk -N 1).
+set -euo pipefail
+
+# Overridable so tests/test_ab_updates.py can run this against fakes
+DISK=${MIRRORDASH_DISK:-/dev/mmcblk0}
+FIRMWARE=${MIRRORDASH_FIRMWARE_DIR:-/boot/firmware}   # the running boot slot, just proven good
+AUTOBOOT=${MIRRORDASH_AUTOBOOT_DIR:-/boot/autoboot}   # p1 now
+NEW=${MIRRORDASH_P1_NEW_DIR:-/run/mirrordash-p1-new}  # where the new p1 is mounted while it's built
+FILES=(bootcode.bin start.elf fixup.dat)
+HALF_1=8192 HALF_2=73728 SIZE=65536  # in 512-byte sectors
+
+die() { echo "update-p1: $*" >&2; exit 1; }
+
+same_firmware() {
+  local f
+  for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$AUTOBOOT/$f" || return 1; done
+}
+if [ "${1:-}" != --force ] && same_firmware; then
+  echo "update-p1: p1's firmware is the running system's; nothing to do."
+  exit 0
+fi
+
+# Where p1 is now (sfdisk --dump: "/dev/mmcblk0p1 : start=        8192, size=       65536, type=c")
+read -r start size < <(sfdisk --dump "$DISK" | sed -n "s|^${DISK}p1 : start= *\([0-9]*\), size= *\([0-9]*\),.*|\1 \2|p")
+case "$start" in
+  "$HALF_1") new=$HALF_2 ;;
+  "$HALF_2") new=$HALF_1 ;;
+  *) die "p1 starts at sector ${start:-?}, not in its reserved place; leaving it alone" ;;
+esac
+[ "$size" = "$SIZE" ] || die "p1 is $size sectors, not $SIZE; leaving it alone"
+
+# 1. The new p1, in the empty half (a loop device over just that part of the card)
+loop=$(losetup --find --show --offset $(( new * 512 )) --sizelimit $(( SIZE * 512 )) "$DISK")
+cleanup() { umount "$NEW" 2>/dev/null || true; losetup -d "$loop" 2>/dev/null || true; }
+trap cleanup EXIT
+mkfs.vfat -n AUTOBOOT "$loop" > /dev/null
+mkdir -p "$NEW"
+mount "$loop" "$NEW"
+cp "${FILES[@]/#/$FIRMWARE/}" "$NEW/"
+cp "$AUTOBOOT/autoboot.txt" "$NEW/"  # as it is now: which slot is primary stays as it is
+sync
+# 2. Check it before anything points at it
+for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$NEW/$f" || die "$f didn't copy correctly; p1 unchanged"; done
+cmp -s "$AUTOBOOT/autoboot.txt" "$NEW/autoboot.txt" || die "autoboot.txt didn't copy correctly; p1 unchanged"
+cleanup
+trap - EXIT
+
+# 3. Switch: only the MBR's p1 entry changes (start, size, type c = FAT32 LBA); the disk identifier stays
+umount "$AUTOBOOT"
+echo "$new,$SIZE,c" | sfdisk -q --no-reread --no-tell-kernel -N 1 "$DISK"
+sync
+# The card now holds the new p1. The kernel still knows p1 at its old place, and can't move the start
+# of a partition it knows ("partx --update" refuses): forget p1 and read it again, then mount it by its
+# fstab line (PARTUUID=...-01, the same as before). If that fails, the card is still right and the
+# next start uses the new p1; only /boot/autoboot stays away until then.
+if partx --delete --nr 1 "$DISK" && partx --add --nr 1 "$DISK" && udevadm settle && mount "$AUTOBOOT"; then
+  echo "update-p1: p1 renewed (now at sector $new)."
+else
+  die "p1 renewed on the card (sector $new), but the running system can't see it until the next restart"
+fi

@@ -1,0 +1,8 @@
+[Unit]
+Description=Save the log of a failed OS trial boot, then restart into the old OS (A/B update)
+FailureAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b
+ExecStart=/usr/bin/systemctl reboot

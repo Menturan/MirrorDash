@@ -1,4 +1,4 @@
-"""Developer logging (Settings → Developer): the real mirrordash-dev-logging from configure_image.sh,
+"""Developer logging (Settings → Developer): the real mirrordash-dev-logging (scripts/image/rootfs/usr/local/bin/),
 run against a temporary /storage with fake systemctl/journalctl/mount (the admin switch: test_api_admin.py)."""
 import os
 import subprocess

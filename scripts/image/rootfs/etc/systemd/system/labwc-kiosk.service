@@ -1,0 +1,27 @@
+[Unit]
+Description=Labwc Kiosk Wayland Compositor
+After=systemd-user-sessions.service plymouth-start.service seatd.service
+Wants=seatd.service
+Conflicts=getty@tty1.service autologin@tty1.service plymouth-quit-wait.service
+
+[Service]
+User=pi
+PAMName=login
+WorkingDirectory=~
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+StandardOutput=journal
+StandardError=journal
+Environment=WLR_LIBINPUT_NO_DEVICES=1
+# The empty cursor theme (below), set here too: with only labwc/environment the pointer still showed
+Environment=XCURSOR_THEME=empty
+Environment=XCURSOR_SIZE=24
+ExecStartPre=+-/usr/bin/plymouth quit --retain-splash
+ExecStart=/usr/bin/labwc
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

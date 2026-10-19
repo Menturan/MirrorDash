@@ -22,7 +22,7 @@
 
 2. **Never write files to arbitrary OS paths.** The OS root is read-only in production (OverlayFS). All persistent configuration and data MUST be written to `~/.mirrordash/data/` (which is mapped to a persistent partition). Use `self.data_dir` for persistent module files and `self.cache_dir` for temporary RAM-based files. Writing to `/etc`, `/var`, or other root paths will result in data loss upon reboot.
 
-3. **Strict Sudo Allow-List.** Debian Trixie disables passwordless sudo by default. All `sudo` subprocess calls made by the application are strictly regulated via an explicit allow-list in `/etc/sudoers.d/mirrordash` (written by `scripts/configure_image.sh`). Never add a new `sudo` command to the codebase without also adding it there.
+3. **Strict Sudo Allow-List.** Debian Trixie disables passwordless sudo by default. All `sudo` subprocess calls made by the application are strictly regulated via an explicit allow-list in `/etc/sudoers.d/mirrordash` (the file `scripts/image/rootfs/etc/sudoers.d/mirrordash`). Never add a new `sudo` command to the codebase without also adding it there.
 
 4. **All HTTP network requests inside modules must be non-blocking.** Use `asyncio.to_thread(sync_func)` to wrap synchronous I/O (like `urllib.request`) or use an async HTTP library.
 

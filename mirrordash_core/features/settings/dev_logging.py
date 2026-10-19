@@ -1,7 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 """Developer logging (Settings → Developer): the whole system log kept on /storage for 7 days.
 
-The work is done by /usr/local/bin/mirrordash-dev-logging (scripts/configure_image.sh: step_dev_logging),
+The work is done by /usr/local/bin/mirrordash-dev-logging (scripts/image/rootfs/usr/local/bin/mirrordash-dev-logging),
 run through sudo. Whether it's on is a file on /storage holding when it turns off, so the script can
 read it at boot before the app runs; this module only reads that file and calls the script.
 """

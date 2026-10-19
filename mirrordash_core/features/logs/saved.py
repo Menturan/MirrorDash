@@ -3,7 +3,7 @@
 
 The system log lives in RAM on a mirror (nothing is written to the SD card all day, so it doesn't wear
 out), which means it is gone after a restart. When an update fails, the part that explains why is
-saved to /storage/mirrordash/logs/ by save-log (scripts/configure_image.sh), at most 5 files. Here the
+saved to /storage/mirrordash/logs/ by save-log (scripts/image/rootfs/usr/local/lib/mirrordash/save-log), at most 5 files. Here the
 admin page lists, downloads and deletes them.
 """
 

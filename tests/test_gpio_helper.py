@@ -1,14 +1,15 @@
 """Runs the real mirrordash-gpio-overlays helper (extracted from configure_image.sh) on a temp config.txt."""
-import re
 import subprocess
 from pathlib import Path
+
+from test_configure_image import unit
 
 SETUP = Path(__file__).parent.parent / "scripts" / "configure_image.sh"
 ORIGINAL = "dtparam=audio=on\n[pi4]\narm_boost=1\n"
 
 
 def run_helper(tmp_path: Path, *args: str) -> tuple[int, str]:
-    body = re.search(r"cat << 'EOF' > /usr/local/bin/mirrordash-gpio-overlays\n(.*?)\nEOF\n", SETUP.read_text(), re.S).group(1)
+    body = unit("/usr/local/bin/mirrordash-gpio-overlays")
     config = tmp_path / "config.txt"
     if not config.exists():
         config.write_text(ORIGINAL)

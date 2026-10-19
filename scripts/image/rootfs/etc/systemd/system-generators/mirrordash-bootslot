@@ -1,0 +1,18 @@
+#!/bin/sh
+# systemd generator: $1 is the directory for generated units (see man systemd.generator).
+# The boot partition number comes from the firmware: a 4-byte big-endian integer in the device tree.
+PARTITION=$(od -An -tu4 --endian=big /proc/device-tree/chosen/bootloader/partition 2>/dev/null | tr -d ' ')
+# Not started by the Pi firmware's partition switch (0, or missing): leave /boot/firmware unmounted
+case "$PARTITION" in 2|3) ;; *) exit 0 ;; esac
+cat > "$1/boot-firmware.mount" << UNIT
+[Unit]
+Description=Boot partition the firmware started from (A/B slot)
+
+[Mount]
+What=/dev/mmcblk0p$PARTITION
+Where=/boot/firmware
+Type=vfat
+Options=defaults,noatime
+UNIT
+mkdir -p "$1/local-fs.target.wants"
+ln -sf ../boot-firmware.mount "$1/local-fs.target.wants/boot-firmware.mount"
