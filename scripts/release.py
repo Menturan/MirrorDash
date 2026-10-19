@@ -447,8 +447,8 @@ def build_test_image():
         if subprocess.run(["sha256sum", "--check", "--quiet", f"{image.name}.sha256"], cwd=target).returncode != 0:
             die("the downloaded image doesn't match its checksum; download it again from the release.")
         print(f"  Image: {image} (checksum matches)")
-    print("  When it's good, run this again and choose 4. If it isn't, delete the pre-release and its tag, fix it,")
-    print("  and choose 3 again: the next test version gets the next number.")
+    print("  When it's good, run this again and choose 4. If it isn't: gh release delete " + tag + " (keep the tag,")
+    print("  so its number isn't used again), fix it, and choose 3 again.")
 
 
 def release_image():

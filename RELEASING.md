@@ -135,8 +135,9 @@ uploaded again. If master changed since the build, it lists what the image doesn
 before going on. Only the `### OS image` entries under `[Unreleased]` move to the image's section; app
 entries stay for the next app release (they aren't in the image's app version).
 
-**If the test version isn't good:** delete the pre-release and its tag (`gh release delete vX.Y.Z-osN
---cleanup-tag`), fix it, and choose **3** again; the next test version gets the next number.
+**If the test version isn't good:** delete the pre-release but keep its tag (`gh release delete
+vX.Y.Z-osN`), fix it, and choose **3** again: the kept tag makes the next test version take the next
+number, so a number mirrors may have seen is never used for something else.
 
 ## Writing the CHANGELOG
 
