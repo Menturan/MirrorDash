@@ -678,3 +678,20 @@ def test_admin_says_reconnecting_before_unreachable(page, server_url):
     page.wait_for_selector("#global-status", state="visible")
     assert page.locator("#global-status").text_content() == "Reconnecting to the mirror…"
     page.wait_for_selector("#global-status", state="hidden", timeout=10000)
+
+
+def test_logging_in_with_the_form_keeps_the_page_logged_in(page, server_url):
+    """The login form: a wrong password says so, the right one opens the page, and a reload stays
+    logged in (the session cookie), with no password left in the browser's storage."""
+    page.goto(f"{server_url}/admin")
+    page.wait_for_selector("#auth-overlay.open")
+    page.fill("#auth-password-input", "wrong")
+    page.click("#auth-submit-btn")
+    page.wait_for_selector("#auth-error", state="visible")
+    page.fill("#auth-password-input", "secret")
+    page.click("#auth-submit-btn")
+    page.wait_for_selector("#auth-overlay.open", state="hidden")
+    page.reload()
+    page.wait_for_selector("#page-tab-dashboard")
+    assert not page.locator("#auth-overlay.open").count()
+    assert page.evaluate("() => localStorage.getItem('mirrordash_api_key')") is None
