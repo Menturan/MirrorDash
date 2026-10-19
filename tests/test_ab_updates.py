@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from mirrordash_core.features.updates import service
-from test_configure_image import unit
+from test_configure_image import SETUP, unit
 
 BACKEND = unit("/usr/local/lib/mirrordash/rauc-bootloader")
 AUTOBOOT = "[all]\ntryboot_a_b=1\nboot_partition=2\n[tryboot]\nboot_partition=3\n"
@@ -326,3 +326,31 @@ def test_a_bad_copy_switches_nothing(p1):
     assert p1.state.read_text().strip() == "8192"
     assert "losetup -d /dev/loop9" in calls  # cleaned up
 
+
+
+def test_the_os_update_interface_stays_the_same():
+    """Every mirror out there installs OS updates only this way, frozen in its image: its sudo rule,
+    RAUC 1.13's bundle format, its compatible string, the certificate in its keyring, the bundle
+    name its app looks for. A new app or build that changes one leaves those mirrors unable to install
+    the very update that would change it on them: a deadlock only reflashing gets out of. If one
+    really has to change, the old way has to keep working too (both in the build, the app accepting
+    both) until no mirror has an image from before the change."""
+    import hashlib
+    import re
+    from pathlib import Path
+    from mirrordash_core.features.updates import service
+    root = Path(__file__).parent.parent
+    build = (root / "scripts" / "build_image.sh").read_text()
+    assert "pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb\n" in SETUP
+    assert service.OS_BUNDLE_FILE == Path("/storage/mirrordash/os-update.raucb")
+    assert "compatible=mirrordash-rpi\n" in unit("/etc/rauc/system.conf") and "compatible=mirrordash-rpi\n" in build
+    assert "[bundle]\nformat=verity\n" in build
+    assert "[image.rootfs]\nfilename=rootfs.img\n\n[image.boot]\nfilename=boot.vfat\n" in build
+    assert "[keyring]\npath=/etc/rauc/ca.cert.pem\n" in unit("/etc/rauc/system.conf")
+    assert "cp /opt/MirrorDash/scripts/rauc/cert.pem /etc/rauc/ca.cert.pem" in SETUP
+    assert hashlib.sha256((root / "scripts" / "rauc" / "cert.pem").read_bytes()).hexdigest() == \
+        "e92e17fba0cf758cca576825f1a92dc3e755163bec394bcd3f2d15b569f1a9f4"
+    assert 'BUNDLE="mirrordash-os-v${VERSION}-${OS_BUILD}.raucb"' in build
+    assert "OS_BUILD=$(date -u +%Y%m%d-%H%M)" in build
+    assert service.BUNDLE_NAME.match("mirrordash-os-v0.7.0-os2-20261019-1024.raucb").group(1) == "20261019-1024"
+    assert service.RELEASES_URL.startswith("https://api.github.com/repos/Menturan/MirrorDash/releases")
