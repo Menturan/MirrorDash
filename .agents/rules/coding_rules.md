@@ -49,17 +49,23 @@
 
 9. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
 
-10. **Vector Iconography (Lucide).** Use Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`) instead of colored or multi-color emojis.
+10. **Vector Iconography.** On the mirror and in modules, Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`); in the admin page, the bundled Font Awesome (`<i class="fas fa-…">`), as `DESIGN.md` says. Never colored or multi-color emojis.
 
 11. **Icon Re-Rendering.** When injecting HTML dynamically (e.g., updating modules via WebSockets or JS), you must trigger `lucide.createIcons()` after the DOM updates so the vector glyphs are rendered on the client side.
 
 12. **Responsive Fluidity & Translation Safety.** All module templates/layouts must be designed to be as responsive and flexible as possible. Avoid hardcoded fixed-width columns (e.g. in lists or forecast rows) because localized strings in other languages (such as Swedish or German) can be significantly longer than their English counterparts. Use flexbox or CSS Grid with flexible sizing (`flex: 1`, `min-width`, `max-content`) and text truncation utilities (`text-overflow: ellipsis`) to handle arbitrary string lengths gracefully.
 
 13. **Asynchronous Non-Blocking Panel Rendering.** To maintain a smooth and dynamic user interface, never execute blocking operations (e.g., fetching network indices, querying external APIs, or resolving update checks) inside the main panel/page load route handlers. Main pages/tabs must load and return immediately (typically < 100ms). Use async HTMX triggers (`hx-get="..." hx-trigger="load" hx-swap="..."`) or background fetches to load slow or network-dependent sections dynamically after the initial page has rendered.
+
 14. **Browser tests in the right engine.** `tests/test_visual_admin.py` runs on demand (`uv run pytest tests/test_visual_admin.py`; once: `uv run playwright install chromium webkit`). Admin pages run in Chromium (the file's default). The mirror's own pages (kiosk, `loading.html`, modules) are marked `@pytest.mark.only_browser("webkit")`: WebKit is the engine of the mirror's Cog browser. It still isn't the Pi (no GPU compositing), so check animations on the mirror too.
 
 ## Git
 
-14. **Follow conventional commits with specific scopes:** `feat(<scope>):`, `fix(<scope>):`, `refactor(<scope>):`, `style(<scope>):`, `docs(<scope>):`, `chore(<scope>):`. Always use one of the following scopes:
-    - **Core App**: `api`, `core`, `ui`, `design`, `kiosk`, `frontend`, `auth`, `config` (e.g., `feat(api): add updates panel`).
-    - **System OS (Appliance)**: `scripts`, `os`, `golden-image`, `appliance` (e.g., `fix(scripts): resolve logind-seatd race`).
+15. **Conventional commits:** `<type>(<scope>): <what changes for the mirror or the reader>`.
+    - **Types:** `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore`.
+    - **Scopes** say where the change is, so `git log` can be read by area:
+      - a feature folder: `api`, `auth`, `backup`, `dashboard`, `hardware`, `homeassistant`, `kiosk`, `logs`, `modules`, `power`, `settings`, `updates`, `wifi` (e.g., `fix(wifi): …`);
+      - the shared core and the pages: `core`, `config`, `admin` (the admin page), `mirror` (the mirror's own page), `design`;
+      - the OS image and releasing: `image` (anything that ends up in the OS image), `release`, `ci`;
+      - documentation: `docs(<file or area>)`, e.g. `docs(agents)`, `docs(changelog)`.
+    - Leave the scope out when a change spans many areas.

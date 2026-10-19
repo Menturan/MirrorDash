@@ -18,6 +18,9 @@ from fastapi import HTTPException
 logger = logging.getLogger("mirrordash.core.venv")
 
 STORAGE_DIR = Path("/storage/mirrordash")
+# A package change needs room for a copy of the venv (~50 MB), what it installs and uv's cache, and a
+# new Python another ~90 MB. ponytail: one fixed margin, not an estimate per change.
+MIN_FREE_BYTES = 300 * 1024 * 1024
 # Strip the environment so no server secret reaches a subprocess
 SAFE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV", "UV_PYTHON_INSTALL_DIR")
 
@@ -56,6 +59,12 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
     if not paths:
         return None
     venv_link, active_path, next_path = paths
+    # A full card mid-install leaves a half-built venv and can stop settings from being saved
+    free = shutil.disk_usage(STORAGE_DIR).free + (_size(next_path) if next_path.exists() else 0)
+    if free < MIN_FREE_BYTES:
+        raise HTTPException(status_code=507, detail=f"Not enough free space on the mirror's storage "
+                                                    f"({free // 1048576} MB free, {MIN_FREE_BYTES // 1048576} MB needed). "
+                                                    "Remove a module or a saved backup first.")
     logger.info(f"Preparing A/B swap: Active={active_path.name}, Next={next_path.name}, Clean={force_clean}")
     try:
         if next_path.exists():
@@ -77,6 +86,11 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
         shutil.rmtree(next_path, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
     return active_path, next_path
+
+
+def _size(path: Path) -> int:
+    """Bytes in a folder: an old next venv is deleted first, so its space counts as free."""
+    return sum(f.stat(follow_symlinks=False).st_size for f in path.rglob("*") if not f.is_symlink())
 
 
 async def commit_venv_next(active_path: Path, next_path: Path) -> None:

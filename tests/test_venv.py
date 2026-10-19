@@ -97,3 +97,23 @@ def test_pythons_no_startable_venv_uses_are_removed(tmp_path, monkeypatch):
     venv_on("venv_b", "3.99")
     venv.remove_unused_pythons()
     assert len(list(py.iterdir())) == 3
+
+
+def test_a_package_change_needs_free_space_first(tmp_path, monkeypatch):
+    """A full card mid-install leaves a half-built venv: venv_swap, which every package change goes
+    through, refuses before touching anything."""
+    from collections import namedtuple
+    from fastapi import HTTPException
+    monkeypatch.setattr(venv, "STORAGE_DIR", tmp_path)
+    (tmp_path / "venv_a").mkdir()
+    os.symlink("venv_a", tmp_path / "venv")
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(venv.shutil, "disk_usage", lambda p: usage(1, 1, 100 * 1024 * 1024))
+
+    async def change():
+        async with venv.venv_swap():
+            pass
+    with pytest.raises(HTTPException) as e:
+        asyncio.run(change())
+    assert e.value.status_code == 507 and "100 MB free" in e.value.detail
+    assert os.readlink(tmp_path / "venv") == "venv_a" and not (tmp_path / "venv_b").exists()

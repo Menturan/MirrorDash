@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Installing or updating a module, or MirrorDash, now stops at once with a clear message when the mirror's storage is nearly full. Before, it could fail halfway.
+
 - When a new MirrorDash needs a newer Python, the mirror installs it with the update and first checks that every module works with it. If some don't, nothing changes: the update lists them and you choose whether to install anyway (they're turned off, with their settings kept) or wait.
 - In Safe mode, **Reinstall MirrorDash and Modules** now really brings your modules back. Before, it reinstalled MirrorDash without them, and the modules were then gone for good.
 

@@ -16,9 +16,9 @@ trigger: always_on
 0a. **Be critical and proactive.** Do not blindly execute tasks as described if there is a cleaner, simpler, or more architecturally sound approach. If you think there is a better way of doing things (e.g., serving static files instead of building complex DOM-polling overlays), ALWAYS suggest it and guide the user towards the better solution.
 
 0b. **Strict DevOps Build Philosophy.** When writing or modifying build and appliance scripts (e.g., `build_image.sh`, `configure_image.sh`), you MUST use stable, failsafe, declarative DevOps standards. 
-- **Never** use "hobbyist" hacks: No shell polling loops (`sleep` or `while` checks), no string-scraping HTML for URLs (`grep | cut`), and no arbitrary terminal autologins or `.bash_profile` injections.
-- **Always** use deterministic solutions: Native event waiting (e.g., `nm-online`, systemd `After=`/`Wants=` ordering), native systemd services (`graphical.target`, `PAMName=login`), and canonical API flags (e.g., `curl -w '%{url_effective}'`). 
-Build scripts must be deterministic, free of race-conditions, and mathematically proven to execute correctly without relying on timing or visual DOM layouts.
+- **Never** use "hobbyist" hacks: no waiting by polling (`sleep` in a loop until something looks ready), no string-scraping HTML for URLs (`grep | cut`), and no arbitrary terminal autologins or `.bash_profile` injections. A loop over data (`while read`, deleting the oldest until under a cap) is fine; a loop over time is not.
+- **Always** use deterministic solutions: Native event waiting (e.g., `nm-online`, systemd `After=`/`Wants=` ordering, `udevadm wait`), native systemd services and timers (`PAMName=login`, `OnUnitInactiveSec=`), and canonical API flags (e.g., `curl -w '%{url_effective}'`, `--retry`).
+Build scripts must give the same result every run, without races and without relying on timing or visual DOM layouts; where the platform forces a timeout (a router that is slow to come back), say why next to it.
 
 ## Design & Architecture
 
@@ -34,7 +34,7 @@ Build scripts must be deterministic, free of race-conditions, and mathematically
 
 6. **Professional Grade IoT & Consumer Simplicity.** The system must operate with professional-grade IoT reliability, designed to run continuously for years without manual intervention, memory leaks, or filesystem corruption. Every user-facing interface, including the captive portal network setup wizard, must be designed with ultimate simplicity in mind, ensuring that non-technical users (such as your parents) can use and configure the device safely, intuitively, and without command-line access.
 
-7. **Disk Space Boundary Monitoring.** Active virtual environments (`venv_a`, `venv_b`) and all community modules reside on the persistent `/storage` partition. Any operations modifying packages (like installing or upgrading modules) must check free space (via the `/admin/disk-usage` endpoint, which monitors `/storage`). Always display a warning visual when remaining persistent storage space drops below 500MB to avoid module installation failures.
+7. **Disk Space Boundary Monitoring.** Active virtual environments (`venv_a`, `venv_b`) and all community modules reside on the persistent `/storage` partition. Every package change goes through `venv.venv_swap()`, which refuses to start with too little free space (`MIN_FREE_BYTES`), so a full card can't leave a half-built venv. The admin page shows a warning when free space on `/storage` drops below 500MB (`get_disk_usage()` in `features/updates/service.py`).
 
 8. **Golden Image is a Production IoT Environment.** The image build scripts (`scripts/build_image.sh`, `scripts/configure_image.sh`) must be authored with the same rigour as a professional, high-grade IoT production system. No source code on the device, no editable installs, no debug flags, no leftover dev credentials. Assume zero human intervention after deployment. Treat every instruction as executed by a non-expert.
 
