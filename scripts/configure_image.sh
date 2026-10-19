@@ -167,6 +167,37 @@ step_installing_packages() {
   echo "i2c-dev" > /etc/modules-load.d/mirrordash-i2c.conf
 }
 
+# Sound and hardware video for modules (ARCHITECTURE #32): GStreamer's base plugins, and only the
+# plugins of good and bad that play radio, TV (HLS, the Pi's H.264 decoder) and camera streams. The
+# whole of good and bad is about 270 MB (bad alone pulls in ONNX, oneDNN and GTK); this is about 12 MB.
+MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux"
+MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
+
+step_media() {
+  # The libraries the copied plugins need (objdump -p, NEEDED); most come with Cog anyway
+  apt-get install -y --no-install-recommends \
+      gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-tools \
+      libgstreamer-plugins-bad1.0-0 libgudev-1.0-0 libv4l-0t64 libxml2 libsoup-3.0-0 libmpg123-0t64 libfaad2
+
+  # ponytail: copied out of the .debs, so dpkg doesn't know these files. A mirror never runs apt and
+  # each image builds from Debian's current packages, so nothing is missed; a new plugin is a new name above.
+  local tmp plugin_dir=/usr/lib/aarch64-linux-gnu/gstreamer-1.0 p
+  tmp=$(mktemp -d)
+  (cd "$tmp" && apt-get download gstreamer1.0-plugins-good gstreamer1.0-plugins-bad)
+  for deb in "$tmp"/*.deb; do dpkg-deb -x "$deb" "$tmp/x"; done
+  for p in $MEDIA_PLUGINS_GOOD $MEDIA_PLUGINS_BAD; do
+    install -m 0644 "$tmp/x$plugin_dir/libgst$p.so" "$plugin_dir/"
+  done
+  rm -rf "$tmp"
+
+  # GStreamer skips a plugin whose library is missing; stop the build here rather than on a mirror.
+  # video4linux2 is checked as a plugin: its decoder element only exists where /dev/video10 does.
+  for p in $MEDIA_PLUGINS_GOOD $MEDIA_PLUGINS_BAD alsa playback; do
+    GST_REGISTRY=/tmp/gst-check.bin gst-inspect-1.0 "$p" > /dev/null || { echo "GStreamer plugin $p doesn't load"; exit 1; }
+  done
+  rm -f /tmp/gst-check.bin
+}
+
 step_setting_hostname() {
   echo "mirrordash" > /etc/hostname
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
@@ -820,6 +851,7 @@ START_TIME_TOTAL=$SECONDS
 
 run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent Storage" step_expanding_partition
 run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
+run_step "2b" "media" "Installing the Media Stack (GStreamer)" step_media
 run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
 run_step "4" "configuring_nginx" "Configuring nginx Reverse Proxy" step_configuring_nginx
 run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_configuring_console_login

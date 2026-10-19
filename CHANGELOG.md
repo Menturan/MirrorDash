@@ -26,6 +26,8 @@ There are two kinds of releases:
 
 ### OS image
 
+- The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 12 MB to the system.
+
 - After a restart without internet, the mirror's clock starts at the last time it knew instead of the date the system was built, so times and secure connections are right sooner.
 
 - If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
