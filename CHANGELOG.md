@@ -9,9 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### Fixed
-- The *Offline* badge on the mirror shows only when the mirror really can't reach the internet. Before, it could show while the mirror was online (and stay away while nothing got through).
-
 ### OS image
 - The system part of the SD card is now compressed (squashfs): about 1.3 GB to flash instead of 3.7 GB, and locked from the very first start, so the mirror no longer restarts once by itself when it's new.
 - After a kernel crash the mirror restarts after 10 seconds instead of staying black.
@@ -22,6 +19,11 @@ There are two kinds of releases:
 - A mirror whose Wi-Fi stays connected but stops passing traffic now notices within about 6 minutes, keeps the log under **Logs → Saved Logs** and reconnects by itself. Before, it could stay unreachable until it was restarted.
 - On a Raspberry Pi 3, a system update also renews the Pi's start-up firmware (once the new system has started properly), so it keeps up with the new Linux version. It's written next to the old one and switched in one step, so a power cut can't leave it half-written.
 - **Settings → Developer → Developer logging** keeps the whole system log across restarts, for finding out why something went wrong. It turns itself off after 7 days, so the SD card isn't worn by a forgotten switch.
+
+## [0.7.0] - 2026-10-19
+
+### Fixed
+- The *Offline* badge on the mirror shows only when the mirror really can't reach the internet. Before, it could show while the mirror was online (and stay away while nothing got through).
 
 ## [0.6.3] - 2026-10-19
 
