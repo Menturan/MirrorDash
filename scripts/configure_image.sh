@@ -678,12 +678,17 @@ step_wifi_captive_portal() {
 # At boot: no network within 30 s -> start the setup hotspot. With --watch (every 3 minutes, from
 # mirrordash-wifi-watch.timer): on the hotspot, try the saved Wi-Fi again (a router that came back
 # after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart,
-# and a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic).
+# a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic), and a Wi-Fi
+# chip that didn't start is started again (see recover_wifi_chip).
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 # How many watch rounds in a row found no traffic (in RAM: a restart starts over)
 FAILS_FILE="/run/mirrordash-wifi-fails"
+# Overridable so tests/test_wifi.py can fake the kernel's view
+SYS=${MIRRORDASH_SYS:-/sys}
+# When the mirror last restarted because its Wi-Fi chip didn't start (on /storage: survives that restart)
+CHIP_REBOOT_FILE=${MIRRORDASH_CHIP_REBOOT_FILE:-/storage/mirrordash/wifi-chip-restart}
 
 hotspot_active() {
     nmcli -t -f NAME connection show --active | grep -qxF "$SSID"
@@ -736,6 +741,49 @@ check_traffic() {
     nmcli --wait 45 device connect "$INTERFACE" || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
 }
 
+# The Wi-Fi chip didn't start: its driver (brcmfmac, on every Pi with built-in Wi-Fi) is loaded, so
+# there is a chip, but there is no wlan0. Seen on a Pi 3: "Downloaded RAM image is corrupted" while the
+# chip's firmware loaded at boot; then the mirror has no Wi-Fi and no hotspot until it restarts. A Pi
+# without built-in Wi-Fi (or with it turned off) never loads brcmfmac, and one whose Wi-Fi works has
+# wlan0, so for them this does nothing.
+wifi_chip_failed() {
+    [ -d "$SYS/module/brcmfmac" ] && [ ! -e "$SYS/class/net/$INTERFACE" ]
+}
+
+# Keep the log (once per start), then load the driver again: harmless on every model. If wlan0 still
+# doesn't come and the mirror has no network at all (not even a cable), restart it, at most once an
+# hour, so a chip that is really broken doesn't make it restart over and over.
+recover_wifi_chip() {
+    local last
+    if [ ! -e /run/mirrordash-wifi-chip-logged ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
+        /usr/local/lib/mirrordash/save-log wifi-chip -b -n 3000 >/dev/null || true
+        touch /run/mirrordash-wifi-chip-logged
+    fi
+    logger -t mirrordash-wifi "The Wi-Fi chip didn't start (no $INTERFACE); loading its driver again..."
+    # brcmfmac and the maker's part loaded with it (brcmfmac_cyw, _wcc, _bca: depends on the chip)
+    # shellcheck disable=SC2046
+    modprobe -r $(awk '$1 ~ /^brcmfmac_/ { print $1 }' /proc/modules) brcmfmac || true
+    modprobe brcmfmac || true
+    # The driver starts the chip in the background: wait for wlan0 to appear (up to 30 s)
+    udevadm wait --timeout=30 "$SYS/class/net/$INTERFACE" || true
+    if [ -e "$SYS/class/net/$INTERFACE" ]; then
+        logger -t mirrordash-wifi "The Wi-Fi chip started."
+        return 0
+    fi
+    if nm-online -q -t 5; then
+        return 0  # on another network (a cable): no restart for the Wi-Fi alone
+    fi
+    last=$(cat "$CHIP_REBOOT_FILE" 2>/dev/null || echo 0)
+    if [ $(( $(date +%s) - last )) -lt 3600 ]; then
+        logger -t mirrordash-wifi "The Wi-Fi chip still didn't start; restarted less than an hour ago, so not again."
+        return 0
+    fi
+    logger -t mirrordash-wifi "The Wi-Fi chip still didn't start and there is no network: restarting the mirror."
+    date +%s > "$CHIP_REBOOT_FILE"
+    sync
+    systemctl reboot
+}
+
 start_hotspot() {
     logger -t mirrordash-wifi "No network. Scanning before entering AP mode..."
     # Scan for nearby networks BEFORE entering AP mode (the radio can't scan as a hotspot).
@@ -771,6 +819,12 @@ start_hotspot() {
         logger -t mirrordash-wifi "Failed to start hotspot."
     fi
 }
+
+# First: a Wi-Fi chip that didn't start leaves nothing for the rest to work with
+if [ "${1:-}" = "--watch" ] && wifi_chip_failed; then
+    recover_wifi_chip
+    exit 0
+fi
 
 if [ "${1:-}" = "--watch" ] && hotspot_active; then
     if ! has_saved_wifi || phone_on_hotspot; then
@@ -1084,7 +1138,7 @@ EOF
 # Usage: save-log KIND [journalctl options...]
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, p1-update.
+#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, wifi-chip, p1-update.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py

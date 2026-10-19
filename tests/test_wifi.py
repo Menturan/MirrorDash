@@ -293,11 +293,13 @@ def test_hotspot_dns_answers_every_name_with_the_mirror():
 
 
 def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=False, saved_wifi=False, phone=False,
-                   traffic=True):
+                   traffic=True, chip=True, chip_comes_back=False):
     """Run the real mirrordash-wifi-check.sh (from configure_image.sh) offline, against a fake nmcli
     that keeps the hotspot profile's password in a file. args: "--watch". online: the network (or the
     saved Wi-Fi, once the hotspot lets go of the radio) answers. traffic: ping gets an answer (online but
-    no traffic is the Pi 3's stuck Wi-Fi). Returns (password, nmcli, curl and save-log calls)."""
+    no traffic is the Pi 3's stuck Wi-Fi). chip=False: brcmfmac is loaded but there's no wlan0 (its firmware
+    didn't load); chip_comes_back: reloading the driver brings wlan0. Returns (password, and the nmcli, curl,
+    save-log, modprobe and systemctl calls)."""
     import os
     import re
     import subprocess
@@ -310,7 +312,13 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
     bin_dir = tmp_path / "bin"
     script.write_text(body.replace("/var/lib/mirrordash-wifi-scan.cache", str(tmp_path / "scan.cache"))
                       .replace("/run/mirrordash-wifi-fails", str(tmp_path / "fails"))
+                      .replace("/run/mirrordash-wifi-chip-logged", str(tmp_path / "chip-logged"))
                       .replace("/usr/local/lib/mirrordash/save-log", str(bin_dir / "save-log")))
+    sys_dir = tmp_path / "sys"
+    (sys_dir / "module" / "brcmfmac").mkdir(parents=True, exist_ok=True)
+    (sys_dir / "class" / "net").mkdir(parents=True, exist_ok=True)
+    if chip:
+        (sys_dir / "class" / "net" / "wlan0").mkdir(exist_ok=True)
     if saved_password:
         psk.write_text(saved_password)
     bin_dir.mkdir(exist_ok=True)
@@ -321,6 +329,9 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
                + ("echo '10.42.0.23 lladdr 3a:00:00:00:00:01 REACHABLE'" if phone else "exit 0")),
         "ping": f"exit {0 if traffic else 1}",
         "save-log": f'echo "save-log $*" >> {log}',
+        "modprobe": f'echo "modprobe $*" >> {log}' + (f'; [ "$1" = -r ] || mkdir -p {sys_dir}/class/net/wlan0' if chip_comes_back else ""),
+        "udevadm": "exit 0",
+        "systemctl": f'echo "systemctl $*" >> {log}',
         "curl": f'echo "curl $*" >> {log}',
         "nmcli": f"""echo "$*" >> {log}
 case "$*" in
@@ -336,7 +347,9 @@ exit 0""",
     for name, text in fakes.items():
         (bin_dir / name).write_text(f"#!/bin/bash\n{text}\n")
         (bin_dir / name).chmod(0o755)
-    subprocess.run(["bash", str(script), *args], check=True, env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"})
+    subprocess.run(["bash", str(script), *args], check=True, env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                                                                 "MIRRORDASH_SYS": str(sys_dir),
+                                                                 "MIRRORDASH_CHIP_REBOOT_FILE": str(tmp_path / "chip-restart")})
     return (psk.read_text() if psk.exists() else None), log.read_text().splitlines()
 
 
@@ -467,3 +480,36 @@ def test_a_wifi_without_traffic_is_joined_again(tmp_path):
     run(traffic=True)
     assert not (tmp_path / "fails").exists()
     assert not any("device" in c for c in run(traffic=False))
+
+
+def test_a_wifi_chip_that_didnt_start_is_started_again(tmp_path):
+    """brcmfmac loaded but no wlan0 (its firmware didn't load): the log is kept once and the driver loaded
+    again; that's enough when wlan0 comes back, and nothing else happens."""
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", chip=False, chip_comes_back=True)
+    assert calls[0] == "save-log wifi-chip -b -n 3000"
+    assert calls[1].startswith("modprobe -r") and calls[1].endswith("brcmfmac") and calls[2] == "modprobe brcmfmac"
+    assert not any(c.startswith("systemctl") for c in calls)
+
+
+def test_a_wifi_chip_that_stays_dead_restarts_the_mirror_at_most_once_an_hour(tmp_path):
+    _, calls = run_wifi_check(tmp_path / "a", "k7mxp2qrtw", "--watch", chip=False)
+    assert calls[-1] == "systemctl reboot"
+    # Again within the hour (the stamp survives on /storage): no second restart
+    restart = tmp_path / "a" / "chip-restart"
+    assert restart.exists()
+    (tmp_path / "a" / "nmcli.log").unlink()
+    (tmp_path / "a" / "bin").rename(tmp_path / "a" / "bin-old")
+    _, calls = run_wifi_check(tmp_path / "a", "k7mxp2qrtw", "--watch", chip=False)
+    assert not any(c.startswith("systemctl") for c in calls)
+
+
+def test_no_restart_for_the_wifi_chip_when_a_cable_is_connected(tmp_path):
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", chip=False, online=True)
+    assert "modprobe brcmfmac" in calls and not any(c.startswith("systemctl") for c in calls)
+
+
+def test_a_working_wifi_chip_is_left_alone(tmp_path):
+    """Every model with working Wi-Fi has wlan0: no driver reload, ever."""
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True)
+    assert not any(c.startswith(("modprobe", "save-log wifi-chip")) for c in calls)
+

@@ -26,6 +26,7 @@ KINDS = {
     "app-rollback": "App update: the new version crashed and was rolled back",
     "app-safe-mode": "MirrorDash couldn't start and started in safe mode",
     "wifi-lost": "Wi-Fi: joined, but no traffic got through; joined again",
+    "wifi-chip": "Wi-Fi: the Wi-Fi chip didn't start; started it again",
     "p1-update": "System update: renewing the Pi 3 firmware failed (the update itself stayed)",
 }
 
