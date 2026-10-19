@@ -1425,3 +1425,36 @@ def test_update_check_shows_mirrordash_and_the_system_apart(client):
         page = client.get("/admin/panels/system/update-check", headers=key).text
     assert "os-update-result" not in page  # no system section on mirrors without system updates
 
+
+
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.get_core_version", return_value="0.7.0")
+@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
+def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit, mock_prepare, mock_version,
+                                                                     mock_create_task, mock_restart, tmp_path, monkeypatch):
+    """Safe mode runs base_venv, which has no modules: the button reads them (and the MirrorDash
+    version) from the venv that didn't start, instead of rebuilding an empty one over it."""
+    import os
+    from mirrordash_core.features.backup import service as backup
+    from test_venv import fake_venv
+    real = backup.installed_modules
+    fake_venv(tmp_path / "venv_b")
+    os.symlink("venv_b", tmp_path / "venv")
+    mock_prepare.return_value = (tmp_path / "venv_b", tmp_path / "venv_a")
+    monkeypatch.setenv("MIRRORDASH_BOOT_STATUS", "safe_mode")
+    installed = []
+
+    async def fake_uv_pip(python, command, *args):
+        installed.append(args[-1])
+        return 0, "", ""
+
+    with patch("mirrordash_core.features.updates.service.get_venv_paths",
+               return_value=(tmp_path / "venv", tmp_path / "venv_b", tmp_path / "venv_a")), \
+         patch.object(backup, "installed_modules", side_effect=lambda venv_dir=None: [] if venv_dir is None else real(venv_dir)), \
+         patch("mirrordash_core.features.updates.service.uv_pip", side_effect=fake_uv_pip):
+        response = call(rebuild_venv)
+    assert response.status_code == 200
+    assert installed[0] == "mirrordash==0.9.0"
+    assert sorted(installed[1:]) == ["git+https://github.com/someone/mirrordash-calendar@abc123", "mirrordash-news==1.2.0"]

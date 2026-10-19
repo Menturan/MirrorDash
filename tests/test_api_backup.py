@@ -286,7 +286,8 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
 
     with         patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec", side_effect=fake_exec), \
          patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
-         patch("mirrordash_core.features.backup.service.importlib.metadata.entry_points", return_value=[ep]):
+         patch("mirrordash_core.features.backup.service.venv_distributions",
+               return_value=[MagicMock(entry_points=MagicMock(select=MagicMock(return_value=[ep])))]):
         with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config):
             r = call(create_backup)
         assert r.status_code == 200, r.json()

@@ -55,11 +55,25 @@ def find_local_module_dir(package_name: str) -> Path | None:
     return None
 
 
-def installed_modules() -> list[dict]:
+def venv_distributions(venv_dir: Path | None = None, **kwargs):
+    """The installed packages of this process, or of another venv read from its files: one whose
+    Python doesn't run here (the venv Safe mode couldn't start, another Python version)."""
+    if venv_dir is not None:
+        kwargs["path"] = [str(p) for p in Path(venv_dir).glob("lib/python3.*/site-packages")]
+    return importlib.metadata.distributions(**kwargs)
+
+
+def installed_modules(venv_dir: Path | None = None) -> list[dict]:
     """Every installed module and where it reinstalls from: its local folder, its GitHub commit
-    (PEP 610 records it) or its PyPI version. The backup manifest and the venv rebuild use it."""
+    (PEP 610 records it) or its PyPI version. The backup manifest and the venv rebuild use it.
+    venv_dir: another venv's modules instead of this process's (see venv_distributions)."""
     modules = []
-    for ep in importlib.metadata.entry_points(group='mirrordash.modules'):
+    seen = set()  # a folder twice on sys.path lists its packages twice
+    eps = [ep for dist in venv_distributions(venv_dir) for ep in dist.entry_points.select(group='mirrordash.modules')]
+    for ep in eps:
+        if ep.name in seen:
+            continue
+        seen.add(ep.name)
         package_name = ep.dist.name if ep.dist else ep.name
         entry = {"name": ep.name, "package_name": package_name,
                  "version": ep.dist.version if ep.dist else "0.0.0", "type": "pypi"}

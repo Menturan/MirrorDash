@@ -103,11 +103,21 @@ async def update_core() -> dict:
 async def rebuild_venv() -> dict:
     """Build a fresh venv with this MirrorDash version and the modules installed now, each from
     where it came (local folder, GitHub commit, PyPI version). A module that fails undoes the swap."""
-    from mirrordash_core.features.backup.service import find_local_module_dir, installed_modules
-    if not get_venv_paths():
+    from mirrordash_core.features.backup.service import find_local_module_dir, installed_modules, venv_distributions
+    paths = get_venv_paths()
+    if not paths:
         raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")
     modules = installed_modules()  # read from the active venv, before it is replaced
     current_version = get_core_version()
+    if os.environ.get("MIRRORDASH_BOOT_STATUS") == "safe_mode":
+        # Safe mode runs base_venv, which has no modules: what to reinstall is in the venv that
+        # didn't start (the link), or the one the launcher set aside before that (venv_failed)
+        for venv_dir in (paths[0], paths[0].parent / "venv_failed"):
+            if modules := installed_modules(venv_dir):
+                core = next(iter(venv_distributions(venv_dir, name="mirrordash")), None)
+                current_version = core.version if core else current_version
+                logger.info(f"Safe mode: reinstalling MirrorDash {current_version} and the modules of {venv_dir}")
+                break
     logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
     try:
         async with venv_swap(force_clean=True) as python:

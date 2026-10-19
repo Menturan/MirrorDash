@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- In Safe mode, **Reinstall MirrorDash and Modules** now really brings your modules back. Before, it reinstalled MirrorDash without them, and the modules were then gone for good.
+
 ### OS image
 
 - If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
