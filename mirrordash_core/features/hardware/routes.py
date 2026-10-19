@@ -1,6 +1,5 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import html
 import logging
 
 from fastapi import APIRouter, Depends, Request
@@ -271,15 +270,7 @@ async def get_gpio_status():
 
     system_cfg = load_config().get("system", {})
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
-        return HTMLResponse(content="""
-            <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-                <span><strong>Restart needed:</strong> the changes are used after the mirror restarts.</span>
-                <button type="button" class="btn secondary btn-sm" hx-post="/admin/panels/power/reboot" hx-target="#global-status"
-                        hx-disabled-elt="this" hx-confirm="Restart the mirror now? The screen will be off for about a minute.">
-                    <i class="fas fa-redo" aria-hidden="true"></i> Restart Mirror
-                </button>
-            </div>
-        """)
+        return HTMLResponse(content=templates.get_template("hardware_status.html").render(restart_needed=True))
 
     lines = []
     for d in get_devices(system_cfg):
@@ -302,10 +293,7 @@ async def get_gpio_status():
             texts = await _sensor_texts(d["type"])
             status = " · ".join(value for _, value in texts) if texts else "No reading. Check the wiring."
         lines.append((label, status))
-    if not lines:
-        return HTMLResponse(content="<div>Nothing connected yet.</div>")
-    return HTMLResponse(content="".join(
-        f"<div><strong>{html.escape(label)}:</strong> {html.escape(status)}</div>" for label, status in lines))
+    return HTMLResponse(content=templates.get_template("hardware_status.html").render(lines=lines))
 
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
@@ -323,9 +311,4 @@ async def get_dashboard_sensor():
             tiles += await _sensor_texts(device_type)
     if any(find_device(system_cfg, t) for t in FAN_TYPES) and (fan := _fan_text()):
         tiles.append(("Fan", fan))
-    if not tiles:
-        return HTMLResponse(content='<p style="color: var(--text-muted); margin: 0;">Waiting for the first reading...</p>')
-    return HTMLResponse(content='<div style="display: flex; gap: 32px; flex-wrap: wrap;">' + "".join(
-        f'<div><div style="font-size: 1.8rem; font-weight: 600; color: white;">{html.escape(value)}</div>'
-        f'<div style="font-size: 0.75rem; color: var(--text-muted);">{label}</div></div>'
-        for label, value in tiles) + "</div>")
+    return HTMLResponse(content=templates.get_template("sensor_tiles.html").render(tiles=tiles))

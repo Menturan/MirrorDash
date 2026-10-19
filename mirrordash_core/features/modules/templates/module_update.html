@@ -1,0 +1,23 @@
+{# A module has a newer version (routes.check_module_update_route): its badge and buttons, swapped
+   in out of band. The version comes from PyPI or a GitHub release, so it is only ever text here.
+   target: what to install (the PyPI name, or git+url@tag); notes: PyPI has release notes. #}
+<div id="update-badge-{{ module_name }}" hx-swap-oob="true">
+    <span class="status-badge update-avail">Update Available (v{{ latest_version }})</span>
+</div>
+<div id="update-actions-{{ module_name }}" class="update-item-actions" hx-swap-oob="true">
+    {% if notes %}
+    <button class="btn secondary btn-sm"
+            hx-get="/admin/panels/modules/notes/{{ module_name }}"
+            hx-target="#notes-modal-content-container"
+            onclick="document.getElementById('notes-modal').style.display='flex'; document.getElementById('notes-modal').classList.add('open');">
+        <i class="fas fa-file-alt"></i> Notes
+    </button>
+    {% endif %}
+    <button class="btn secondary btn-sm"
+            hx-post="/admin/panels/modules/upgrade"
+            hx-vals='{{ {"package_name": target} | tojson }}'
+            hx-target="#global-status"
+            hx-confirm="Are you sure you want to upgrade {{ package_name }} to v{{ latest_version }}?">
+        <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
+    </button>
+</div>

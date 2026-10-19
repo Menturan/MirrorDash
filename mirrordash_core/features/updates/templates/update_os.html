@@ -1,0 +1,29 @@
+{# The system's answer to Check for Updates (A/B OS updates, service.check_os_update): swapped into
+   #os-update-result out of band. format_build turns a build stamp into a date for people. #}
+{% if error %}
+<div class="alert alert--error update-result">Failed to check for system updates: {{ error }}</div>
+{% else %}
+{% set installed = format_build(data.installed_build) %}
+{% if data.failed_build %}
+<div class="alert alert--warning update-result">
+    <p><strong>The system update (build {{ format_build(data.failed_build) }}) didn't start properly.</strong>
+        The mirror went back to the system it had (build {{ installed }}). Nothing was lost.
+        The log is under Logs → Saved Logs.</p>
+</div>
+{% endif %}
+{% if data.update_available %}
+{% set bundle = data.bundle %}
+<div class="alert alert--success update-result">
+    <p><strong>System update available!</strong> {{ bundle.tag }} (build {{ format_build(bundle.build) }}).
+        About {{ bundle.size // 1048576 }} MB to download.</p>
+    <button type="button" class="btn primary btn-sm"
+            hx-post="/admin/panels/system/os-update-trigger"
+            hx-target="#os-update-result" hx-swap="innerHTML" hx-disabled-elt="this"
+            hx-confirm="Install the system update {{ bundle.tag }}? It takes 10-30 minutes and the mirror restarts. If the new system doesn't work, the mirror goes back to the current one by itself.">
+        Install System Update
+    </button>
+</div>
+{% else %}
+<p class="muted update-result">The system is up-to-date (build {{ installed }}).</p>
+{% endif %}
+{% endif %}

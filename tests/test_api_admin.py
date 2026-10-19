@@ -1533,10 +1533,11 @@ def test_the_update_card_offers_install_anyway_after_modules_stopped_it():
     data = {"current_version": "0.9.0", "latest_version": "1.0.0", "update_available": True, "needs_python": "3.15"}
     service.incompatible.clear()
     assert "checks that every module works" in routes._app_update_html(data, False)
-    service.incompatible.update(version="1.0.0", python="3.15", modules={"mirrordash_news": "No module named 'cgi'"})
+    service.incompatible.update(version="1.0.0", python="3.15", modules={"mirrordash_news": "No module named 'cgi'<script>"})
     try:
         card = routes._app_update_html(data, False)
-        assert "mirrordash_news" in card and "No module named &#x27;cgi&#x27;" in card
+        # The reason is a module's own error text: escaped, never markup
+        assert "mirrordash_news" in card and "No module named &#39;cgi&#39;&lt;script&gt;" in card and "<script>" not in card
         assert 'hx-post="/admin/panels/system/update-trigger?skip=mirrordash_news"' in card and "Install Anyway" in card
         with patch.object(routes, "start_job", return_value=None) as start, \
              patch.object(routes, "update_core", AsyncMock()) as update:
@@ -1545,3 +1546,22 @@ def test_the_update_card_offers_install_anyway_after_modules_stopped_it():
         update.assert_awaited_once_with(("mirrordash_news",))
     finally:
         service.incompatible.clear()
+
+
+def test_a_packages_own_text_is_never_markup_in_the_admin_page():
+    """Release notes, summary and version come from PyPI or a GitHub release, i.e. from anyone who
+    publishes a mirrordash-* package: they must not be able to run script in the admin page."""
+    from mirrordash_core.features.modules import routes
+    evil = '</textarea><script>alert(1)</script>"\''
+    ep = SimpleNamespace(name="mirrordash_x", dist=SimpleNamespace(name="mirrordash-x", version="0.1.0",
+                                                                   read_text=lambda name: None))
+    pypi = {"info": {"summary": evil, "description": evil, "version": "9.9.9"}}
+    with patch.object(routes, "find_entry_point", return_value=ep), \
+         patch.object(routes, "fetch_json_cached", AsyncMock(return_value=pypi)):
+        notes = asyncio.run(routes.get_module_notes("mirrordash_x")).body.decode()
+        badge = asyncio.run(routes.check_module_update_route("mirrordash_x")).body.decode()
+    for page in (notes, badge):
+        assert "<script>" not in page and "</textarea><" not in page
+    assert notes.count("&lt;script&gt;") == 2  # the title (summary) and the notes themselves
+    assert "renderNotesMarkdown" not in notes  # rendered by admin.js after the swap, not by a <script> (rule 8c)
+    assert 'hx-vals=\'{"package_name": "mirrordash-x"}\'' in badge and "Notes" in badge

@@ -241,21 +241,7 @@ async def check_module_update_route(module_name: str):
                     on_latest = vcs_info.get("requested_revision") == tag_name
                     is_newer = not on_latest and version_key(latest_version) > version_key(current_version)
                     if is_newer:
-                        git_install_url = f"git+{url}@{tag_name}"
-                        return HTMLResponse(content=f"""
-                            <div id="update-badge-{module_name}" hx-swap-oob="true">
-                                <span class="status-badge update-avail">Update Available (v{latest_version})</span>
-                            </div>
-                            <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
-                                <button class="btn secondary btn-sm"
-                                        hx-post="/admin/panels/modules/upgrade"
-                                        hx-vals='{{"package_name": "{git_install_url}"}}'
-                                        hx-target="#global-status"
-                                        hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?">
-                                    <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
-                                </button>
-                            </div>
-                        """)
+                        return _update_html(module_name, package_name, latest_version, f"git+{url}@{tag_name}", notes=False)
         return HTMLResponse(content="")
 
     pypi_data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
@@ -266,28 +252,13 @@ async def check_module_update_route(module_name: str):
     is_newer = version_key(latest_version) > version_key(current_version)
 
     if is_newer:
-        return HTMLResponse(content=f"""
-            <div id="update-badge-{module_name}" hx-swap-oob="true">
-                <span class="status-badge update-avail">Update Available (v{latest_version})</span>
-            </div>
-            <div id="update-actions-{module_name}" hx-swap-oob="true" style="display: flex; gap: 8px; align-items: center;">
-                <button class="btn secondary btn-sm"
-                        hx-get="/admin/panels/modules/notes/{module_name}"
-                        hx-target="#notes-modal-content-container"
-                        onclick="document.getElementById('notes-modal').style.display='flex'; document.getElementById('notes-modal').classList.add('open');">
-                    <i class="fas fa-file-alt"></i> Notes
-                </button>
-                <button class="btn secondary btn-sm"
-                        hx-post="/admin/panels/modules/upgrade"
-                        hx-vals='{{"package_name": "{package_name}"}}'
-                        hx-target="#global-status"
-                        hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?">
-                    <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
-                </button>
-            </div>
-        """)
-    else:
-        return HTMLResponse(content="")
+        return _update_html(module_name, package_name, latest_version, package_name, notes=True)
+    return HTMLResponse(content="")
+
+
+def _update_html(module_name: str, package_name: str, latest_version: str, target: str, notes: bool) -> HTMLResponse:
+    return HTMLResponse(content=templates.get_template("module_update.html").render(
+        module_name=module_name, package_name=package_name, latest_version=latest_version, target=target, notes=notes))
 
 
 @router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
@@ -307,35 +278,9 @@ async def get_module_notes(module_name: str):
     description = info.get("description", "No release notes available.")
     latest_version = info.get("version", "0.0.0")
 
-    return HTMLResponse(content=f"""
-        <header class="modal-header">
-            <div>
-                <h2 id="modal-title"><i class="fas fa-file-alt"></i> {info.get('summary', module_name)} Release Notes</h2>
-                <span id="modal-subtitle" class="modal-subtitle">{package_name} v{latest_version}</span>
-            </div>
-            <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal" onclick="closeReleaseNotesModal()">
-                <i class="fas fa-times"></i>
-            </button>
-        </header>
-        <div id="modal-body" class="modal-body">
-            <textarea id="notes-markdown-source" style="display:none;">{description}</textarea>
-            <div id="notes-rendered-content">Rendering...</div>
-        </div>
-        <footer class="modal-footer">
-            <button id="modal-update-btn" class="btn primary"
-                    hx-post="/admin/panels/modules/upgrade"
-                    hx-vals='{{"package_name": "{package_name}"}}'
-                    hx-target="#global-status"
-                    hx-confirm="Are you sure you want to upgrade {package_name} to v{latest_version}?"
-                    onclick="closeReleaseNotesModal()">
-                <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
-            </button>
-            <button class="btn secondary" onclick="closeReleaseNotesModal()">Close</button>
-        </footer>
-        <script>
-            renderNotesMarkdown();
-        </script>
-    """)
+    return HTMLResponse(content=templates.get_template("module_notes.html").render(
+        summary=info.get("summary") or module_name, package_name=package_name, latest_version=latest_version,
+        description=description))
 
 
 def _shown_name(package_name: str) -> str:

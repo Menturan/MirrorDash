@@ -686,9 +686,17 @@ function renderNotesMarkdown() {
     if (sourceEl && targetEl && window.marked && window.DOMPurify) {
         targetEl.innerHTML = DOMPurify.sanitize(marked.parse(sourceEl.value));
     } else if (sourceEl && targetEl) {
-        targetEl.innerHTML = `<pre style="white-space: pre-wrap; font-family: inherit;">${sourceEl.value}</pre>`;
+        // Without the Markdown libraries (no CDN): the author's text as plain text, never as HTML
+        const pre = document.createElement('pre');
+        pre.className = 'notes-plain';
+        pre.textContent = sourceEl.value;
+        targetEl.replaceChildren(pre);
     }
 }
+// The notes arrive as HTML without a <script> (rule 8c): render them once they are in the modal
+document.body.addEventListener('htmx:afterSettle', (e) => {
+    if (e.target.id === 'notes-modal-content-container') renderNotesMarkdown();
+});
 
 function selectSubFieldColor(btn, inputId, value) {
     const inputEl = document.getElementById(inputId);

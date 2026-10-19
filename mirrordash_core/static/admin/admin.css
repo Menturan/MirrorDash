@@ -144,6 +144,22 @@ h2 {
 .alert--info    { color: var(--text-color);  background-image: linear-gradient(rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.04)); border-color: var(--card-border); }
 .alert--success { color: var(--success-color); background-image: linear-gradient(rgba(160, 255, 186, 0.08), rgba(160, 255, 186, 0.08)); border-color: var(--success-color); }
 .alert--error   { color: var(--error-color);   background-image: linear-gradient(rgba(255, 180, 171, 0.08), rgba(255, 180, 171, 0.08)); border-color: var(--error-color); }
+.alert--warning { color: var(--warning-color); background-image: linear-gradient(rgba(245, 158, 11, 0.08), rgba(245, 158, 11, 0.08)); border-color: var(--warning-color); }
+/* What an alert holds (text, a list, a button) gets its spacing here, not from inline styles */
+.alert p, .alert ul { margin: 0; }
+.alert ul { padding-left: 18px; }
+.alert > * + * { margin-top: 6px; }
+.alert > .btn { margin-top: 10px; }
+/* Secondary text: hints, "up to date", what happens next */
+.muted { color: var(--text-muted); margin: 0; }
+/* A one-line notice with its button beside it, wrapping on a phone (Settings → Hardware) */
+.inline-notice { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* Sensor readings on the Dashboard: the value large, its name small below */
+.reading-tiles { display: flex; gap: 32px; flex-wrap: wrap; }
+.reading-value { font-size: 1.8rem; font-weight: 600; color: var(--text-primary); }
+.reading-label { font-size: 0.75rem; color: var(--text-muted); }
+/* An answer under a button (Settings → Updates): close to the button, no gap below */
+.update-result { margin: 10px 0 0 0; }
 
 /* Floating status message (#global-status): over the page, so nothing below it moves. The alert
    tint is a background-image, so the solid colour here keeps the text readable over content.
@@ -902,7 +918,11 @@ input:checked + .slider:before {
 .update-item-actions {
     display: flex;
     gap: 8px;
+    align-items: center;
 }
+
+/* Release notes as plain text, when the Markdown libraries couldn't load */
+.notes-plain { white-space: pre-wrap; font-family: inherit; }
 
 /* Logs View styles */
 .logs-header {

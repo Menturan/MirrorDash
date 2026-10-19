@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Security: a backup file or a community module's PyPI page could put script into the admin page (a crafted module name, release notes, or file name). Everything they bring is now shown as text only.
+
 - Installing or updating a module, or MirrorDash, now stops at once with a clear message when the mirror's storage is nearly full. Before, it could fail halfway.
 
 - When a new MirrorDash needs a newer Python, the mirror installs it with the update and first checks that every module works with it. If some don't, nothing changes: the update lists them and you choose whether to install anyway (they're turned off, with their settings kept) or wait.

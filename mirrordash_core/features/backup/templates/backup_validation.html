@@ -1,0 +1,45 @@
+{# What a backup holds, before restoring it (routes._summary_or_password_prompt). Everything from the
+   manifest comes from the uploaded file, so it is only ever text here (autoescaped). #}
+{% set modules = manifest.get("modules", []) %}
+<section class="card" id="backup-validation-panel">
+    <h2><i class="fas fa-clipboard-check"></i> Verify Import Contents</h2>
+    <div class="validation-summary">
+        <div class="validation-stat">
+            <span class="label">Manifest Version:</span>
+            <span class="value">{{ manifest.get("backup_version", "1.0") }}</span>
+        </div>
+        <div class="validation-stat">
+            <span class="label">Backup Timestamp:</span>
+            <span class="value">{{ manifest.get("timestamp", "-") }}</span>
+        </div>
+        <div class="validation-stat">
+            <span class="label">Modules Included:</span>
+            <span class="value">{{ modules | length }}</span>
+        </div>
+    </div>
+    <div class="validation-modules-list">
+        <h4>Restored Modules Listing:</h4>
+        <ul>
+            {% for mod in modules %}
+            <li><span><strong>{{ mod.get("package_name") }}</strong> (v{{ mod.get("version") }})</span>
+                <span class="status-badge">{{ "Local source" if mod.get("type") == "local" else "PyPI package" }}</span></li>
+            {% endfor %}
+        </ul>
+    </div>
+    <div class="validation-actions">
+        <form hx-post="/admin/panels/backup/restore" hx-target="#backup-validation-panel" hx-swap="outerHTML"
+              hx-disabled-elt="find button">
+            <input type="hidden" name="filename" value="{{ filename }}">
+            <input type="hidden" name="is_local" value="{{ 'true' if is_local else 'false' }}">
+            {% if password %}<input type="hidden" name="password" value="{{ password }}">{% endif %}
+            <button type="submit" class="btn primary">
+                <i class="fas fa-exclamation-triangle htmx-normal"></i>
+                <i class="fas fa-spinner fa-spin htmx-indicator"></i>
+                <span class="htmx-normal">Start Restoration</span><span class="htmx-indicator">Restoring...</span>
+            </button>
+        </form>
+        <button type="button" class="btn secondary" onclick="document.getElementById('backup-validation-panel').remove()">
+            Cancel
+        </button>
+    </div>
+</section>

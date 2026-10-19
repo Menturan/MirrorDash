@@ -1,0 +1,10 @@
+{# The sensor readings on the Dashboard (routes.get_dashboard_sensor): (label, value) per tile. #}
+{% if tiles %}
+<div class="reading-tiles">
+    {% for label, value in tiles %}
+    <div><div class="reading-value">{{ value }}</div><div class="reading-label">{{ label }}</div></div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="muted">Waiting for the first reading...</p>
+{% endif %}

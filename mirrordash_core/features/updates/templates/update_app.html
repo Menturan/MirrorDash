@@ -1,0 +1,39 @@
+{# MirrorDash's answer to Settings → Updates → Check for Updates (routes.get_system_update_check).
+   blocked: the last try to a newer Python, stopped by modules that don't work with it (service.incompatible). #}
+{% if error %}
+<div class="alert alert--error update-result">Failed to check for MirrorDash updates: {{ error }}</div>
+{% elif not data.update_available %}
+<p class="muted update-result">MirrorDash is up-to-date (v{{ data.current_version }}).</p>
+{% else %}
+{% set latest = data.latest_version %}
+<div class="alert alert--success update-result">
+    <p><strong>MirrorDash update available!</strong> Version v{{ latest }} is ready to install (installed now: v{{ data.current_version }}).</p>
+    {% if system_first %}
+    <p class="muted">There is a system update too: install that first, then this one.</p>
+    <button type="button" class="btn primary btn-sm" disabled>Install the system update first</button>
+    {% elif blocked %}
+    <p>v{{ latest }} needs Python {{ blocked.python }}. These modules don't work with it yet:</p>
+    <ul>
+        {% for name, reason in blocked.modules.items() %}<li><strong>{{ name }}</strong>: {{ reason }}</li>{% endfor %}
+    </ul>
+    <p class="muted">Installing anyway turns them off (their settings are kept); install them again from Modules once
+        their makers have updated them. Or wait.</p>
+    <button type="button" class="btn primary btn-sm"
+            hx-post="/admin/panels/system/update-trigger?skip={{ blocked.modules | join(',') | urlencode }}"
+            hx-target="#core-update-result" hx-swap="innerHTML" hx-disabled-elt="this"
+            hx-confirm="Install MirrorDash v{{ latest }} and turn off {{ blocked.modules | join(', ') }}?">
+        Install Anyway
+    </button>
+    {% else %}
+    {% if data.needs_python %}
+    <p class="muted">It needs Python {{ data.needs_python }}: the mirror installs it and first checks that every module works with it.</p>
+    {% endif %}
+    <button type="button" class="btn primary btn-sm"
+            hx-post="/admin/panels/system/update-trigger"
+            hx-target="#core-update-result" hx-swap="innerHTML" hx-disabled-elt="this"
+            hx-confirm="Install MirrorDash v{{ latest }}? It takes a minute or two, and MirrorDash restarts afterwards.">
+        Install MirrorDash v{{ latest }}
+    </button>
+    {% endif %}
+</div>
+{% endif %}

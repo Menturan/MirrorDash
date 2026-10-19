@@ -1,5 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import html
 import logging
 import os
 import shutil
@@ -28,82 +29,9 @@ logger = logging.getLogger("mirrordash.core.backup")
 router = APIRouter(prefix="/admin")
 
 
-def render_validation_summary(filename: str, manifest: dict, password: str = "", is_local: bool = False) -> str:
-    modules = manifest.get("modules", [])
-    modules_list_items = []
-    for mod in modules:
-        package_name = mod.get("package_name")
-        version = mod.get("version")
-        mod_type = mod.get("type", "pypi")
-        type_badge = '<span style="color: #66ff66;">[Local Source]</span>' if mod_type == "local" else '<span style="color: #66b3ff;">[PyPI Package]</span>'
-        modules_list_items.append(f"<li><strong>{package_name}</strong> (v{version}) - {type_badge}</li>")
-
-    modules_list_html = "\n".join(modules_list_items)
-    password_input = f'<input type="hidden" name="password" value="{password}">' if password else ''
-
-    return f"""
-    <section class="card" id="backup-validation-panel">
-        <h2><i class="fas fa-clipboard-check"></i> Verify Import Contents</h2>
-        <div class="validation-summary">
-            <div class="validation-stat">
-                <span class="label">Manifest Version:</span>
-                <span class="value">{manifest.get('backup_version', '1.0')}</span>
-            </div>
-            <div class="validation-stat">
-                <span class="label">Backup Timestamp:</span>
-                <span class="value">{manifest.get('timestamp', '-')}</span>
-            </div>
-            <div class="validation-stat">
-                <span class="label">Modules Included:</span>
-                <span class="value">{len(modules)}</span>
-            </div>
-        </div>
-        <div class="validation-modules-list" style="margin-top: 1rem;">
-            <h4>Restored Modules Listing:</h4>
-            <ul>
-                {modules_list_html}
-            </ul>
-        </div>
-        <div class="validation-actions" style="margin-top: 1.5rem; display: flex; gap: 10px;">
-            <form hx-post="/admin/panels/backup/restore" 
-                  hx-target="#backup-validation-panel" 
-                  hx-swap="outerHTML"
-                  onclick="this.querySelector('button').disabled = true; this.querySelector('span').innerText = 'Restoring...';">
-                <input type="hidden" name="filename" value="{filename}">
-                <input type="hidden" name="is_local" value="{"true" if is_local else "false"}">
-                {password_input}
-                <button type="submit" class="btn primary">
-                    <i class="fas fa-exclamation-triangle"></i> <span>Start Restoration</span>
-                </button>
-            </form>
-            <button type="button" class="btn secondary" onclick="document.getElementById('backup-validation-panel').remove()">
-                Cancel
-            </button>
-        </div>
-    </section>
-    """
-
-
-def render_password_prompt(filename: str, is_local: bool) -> str:
-    action_url = "/admin/panels/backup/validate-password"
-    is_local_input = f'<input type="hidden" name="is_local" value="{"true" if is_local else "false"}">'
-    return f"""
-    <section class="card" id="backup-password-prompt-panel" style="margin-top: 1rem;">
-        <h2><i class="fas fa-lock"></i> Encrypted Backup</h2>
-        <p>This backup file is encrypted. Please enter the password to decrypt and validate it:</p>
-        <form hx-post="{action_url}" hx-target="#backup-upload-target" hx-swap="innerHTML" style="margin-top: 1rem;">
-            <input type="hidden" name="filename" value="{filename}">
-            {is_local_input}
-            <div class="form-group">
-                <div class="pw-field"><input type="password" id="backup-restore-password" name="password" class="form-control" placeholder="Enter password" required><button type="button" class="pw-reveal" data-reveal="backup-restore-password" aria-controls="backup-restore-password" aria-pressed="false">Show</button></div>
-            </div>
-            <div style="margin-top: 1rem; display: flex; gap: 10px;">
-                <button type="submit" class="btn primary">Verify Password</button>
-                <button type="button" class="btn secondary" onclick="document.getElementById('backup-password-prompt-panel').remove()">Cancel</button>
-            </div>
-        </form>
-    </section>
-    """
+def _error(message: str) -> HTMLResponse:
+    """A one-line error in the upload card; the message may hold a file name, so it is escaped."""
+    return HTMLResponse(content=f'<div class="alert alert--error">{html.escape(message)}</div>')
 
 
 async def _list_backups() -> list[dict]:
@@ -149,17 +77,18 @@ def _summary_or_password_prompt(filename: str, is_local: bool, password: str | N
         manifest = read_manifest(temp_upload(), password)
     except Exception as e:
         logger.error(f"Not a backup file: {e}")
-        return HTMLResponse(content='<div class="alert alert--error">Invalid or corrupt backup archive.</div>')
+        return _error("Invalid or corrupt backup archive.")
     if manifest is None:
-        wrong = '<div class="alert alert--error" style="margin-bottom: 1rem;">Invalid backup password.</div>' if password else ""
-        return HTMLResponse(content=wrong + render_password_prompt(filename, is_local))
-    return HTMLResponse(content=render_validation_summary(filename, manifest, password or "", is_local))
+        return HTMLResponse(content=templates.get_template("backup_password.html").render(
+            filename=filename, is_local=is_local, wrong=bool(password)))
+    return HTMLResponse(content=templates.get_template("backup_validation.html").render(
+        filename=filename, manifest=manifest, password=password or "", is_local=is_local))
 
 
 @router.post("/panels/backup/upload", dependencies=[Depends(require_api_key)])
 async def upload_panel_backup(file: UploadFile = File(...)):
     if not file.filename.endswith(".mirror"):
-        return HTMLResponse(content='<div class="alert alert--error">Invalid file type. File must have .mirror extension.</div>')
+        return _error("Invalid file type. File must have .mirror extension.")
     with open(temp_upload(), "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
     return _summary_or_password_prompt(file.filename, is_local=False)
@@ -170,14 +99,14 @@ async def validate_panel_backup_local(filename: str = Form(...)):
     try:
         shutil.copy(backup_file(filename), temp_upload())
     except HTTPException as e:
-        return HTMLResponse(content=f'<div class="alert alert--error">{e.detail}.</div>')
+        return _error(f"{e.detail}.")
     return _summary_or_password_prompt(filename, is_local=True)
 
 
 @router.post("/panels/backup/validate-password", dependencies=[Depends(require_api_key)])
 async def validate_panel_backup_password(filename: str = Form(...), password: str = Form(...), is_local: bool = Form(...)):
     if not os.path.exists(temp_upload()):
-        return HTMLResponse(content='<div class="alert alert--error">No uploaded backup found to validate.</div>')
+        return _error("No uploaded backup found to validate.")
     return _summary_or_password_prompt(filename, is_local, password)
 
 

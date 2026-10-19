@@ -1,0 +1,15 @@
+{# What is connected and how it is doing (Settings → Hardware, routes.get_hardware_status).
+   restart_needed: new device-tree overlays wait for a restart; lines: (label, status) per device. #}
+{% if restart_needed %}
+<div class="inline-notice">
+    <span><strong>Restart needed:</strong> the changes are used after the mirror restarts.</span>
+    <button type="button" class="btn secondary btn-sm" hx-post="/admin/panels/power/reboot" hx-target="#global-status"
+            hx-disabled-elt="this" hx-confirm="Restart the mirror now? The screen will be off for about a minute.">
+        <i class="fas fa-redo" aria-hidden="true"></i> Restart Mirror
+    </button>
+</div>
+{% elif lines %}
+{% for label, status in lines %}<div><strong>{{ label }}:</strong> {{ status }}</div>{% endfor %}
+{% else %}
+<div>Nothing connected yet.</div>
+{% endif %}

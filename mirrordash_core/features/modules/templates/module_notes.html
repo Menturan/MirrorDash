@@ -1,0 +1,26 @@
+{# A module's release notes from PyPI, in the notes modal (routes.get_module_notes). The text is the
+   package author's, so it goes in as text; admin.js renders it as sanitised Markdown after the swap. #}
+<header class="modal-header">
+    <div>
+        <h2 id="modal-title"><i class="fas fa-file-alt"></i> {{ summary }} Release Notes</h2>
+        <span id="modal-subtitle" class="modal-subtitle">{{ package_name }} v{{ latest_version }}</span>
+    </div>
+    <button id="modal-close-btn" class="modal-close-btn" aria-label="Close modal" onclick="closeReleaseNotesModal()">
+        <i class="fas fa-times"></i>
+    </button>
+</header>
+<div id="modal-body" class="modal-body">
+    <textarea id="notes-markdown-source" hidden>{{ description }}</textarea>
+    <div id="notes-rendered-content">Rendering...</div>
+</div>
+<footer class="modal-footer">
+    <button id="modal-update-btn" class="btn primary"
+            hx-post="/admin/panels/modules/upgrade"
+            hx-vals='{{ {"package_name": package_name} | tojson }}'
+            hx-target="#global-status"
+            hx-confirm="Are you sure you want to upgrade {{ package_name }} to v{{ latest_version }}?"
+            onclick="closeReleaseNotesModal()">
+        <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
+    </button>
+    <button class="btn secondary" onclick="closeReleaseNotesModal()">Close</button>
+</footer>

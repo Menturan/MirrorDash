@@ -343,3 +343,18 @@ def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
     assert read_manifest(locked, "secret") == {"backup_version": "1.0"}
     with pytest.raises(zipfile.BadZipFile):
         read_manifest(str(tmp_path / "backup_manifest.json"))
+
+
+def test_a_backup_file_can_only_show_text_never_markup():
+    """The summary shows what an uploaded file says (module names, versions, its own name, the
+    password typed): a crafted backup must not run script in the admin page."""
+    from mirrordash_core.features.backup import routes
+    evil = '"><script>alert(1)</script>'
+    manifest = {"timestamp": evil, "modules": [{"package_name": evil, "version": evil, "type": "local"}]}
+    with patch.object(routes, "read_manifest", return_value=manifest):
+        page = routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=False, password=evil).body.decode()
+    assert "<script>" not in page and page.count("&lt;script&gt;") == 5  # timestamp, name, version, file name, password
+    assert "Local source" in page and 'hx-disabled-elt="find button"' in page
+    with patch.object(routes, "read_manifest", return_value=None):  # encrypted, wrong password
+        page = routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=True, password="nope").body.decode()
+    assert "Invalid backup password." in page and "<script>" not in page and 'name="is_local" value="true"' in page
