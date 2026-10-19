@@ -90,6 +90,39 @@ async def commit_venv_next(active_path: Path, next_path: Path) -> None:
             os.rename(active_path, venv_old)
     except Exception as e:
         logger.warning(f"Failed to move active venv to venv_old: {e}")
+    remove_unused_pythons()
+
+
+def remove_unused_pythons() -> None:
+    """Delete the Pythons on /storage that no venv the launcher can start uses any more (venv_a,
+    venv_b, and venv_old, its fallback), so each Python upgrade doesn't leave ~90 MB behind.
+    venv_failed needs none: only its files are read (Safe mode's Reinstall). Only on a mirror, where
+    UV_PYTHON_INSTALL_DIR is set (mirrordash.service): never a developer's own uv Pythons."""
+    py_dir = os.environ.get("UV_PYTHON_INSTALL_DIR")
+    if not py_dir or not Path(py_dir).is_dir():
+        return
+    py_dir = Path(py_dir)
+    keep = set()
+    for name in ("venv_a", "venv_b", "venv_old"):
+        try:
+            cfg = (STORAGE_DIR / name / "pyvenv.cfg").read_text()
+        except OSError:
+            continue
+        home = next((line.split("=", 1)[1].strip() for line in cfg.splitlines() if line.startswith("home")), "")
+        # home is uv's minor link (cpython-3.14-...) /bin: keep the link and the folder it points to
+        if home.startswith(f"{py_dir}/"):
+            link = Path(home).parent
+            keep |= {link.name, link.resolve().name}
+    if not keep:
+        return  # nothing reads as a venv of ours: never empty the folder on a guess
+    for entry in py_dir.iterdir():
+        if entry.name.startswith(".") or entry.name in keep:
+            continue  # uv's own .lock, .temp
+        logger.info(f"Removing Python no venv uses any more: {entry.name}")
+        try:
+            entry.unlink() if entry.is_symlink() or not entry.is_dir() else shutil.rmtree(entry)
+        except OSError as e:
+            logger.warning(f"Could not remove {entry}: {e}")
 
 
 async def revert_venv_next(active_path: Path, next_path: Path) -> None:

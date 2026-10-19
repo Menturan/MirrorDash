@@ -62,3 +62,38 @@ def test_installed_modules_of_a_venv_that_doesnt_run(tmp_path):
         ("mirrordash-news", "1.2.0", None)]
     assert next(iter(venv_distributions(venv, name="mirrordash"))).version == "0.9.0"
     assert installed_modules(tmp_path / "missing") == []  # never this process's own packages instead
+
+
+def test_pythons_no_startable_venv_uses_are_removed(tmp_path, monkeypatch):
+    """After an upgrade to 3.15 and the next swap, 3.14 is used by no venv the launcher can start:
+    it goes. venv_old's Python stays (the fallback must start), venv_failed's doesn't count."""
+    py = tmp_path / "python"
+    for full, minor in (("cpython-3.14.8-linux-aarch64-gnu", "cpython-3.14-linux-aarch64-gnu"),
+                        ("cpython-3.15.1-linux-aarch64-gnu", "cpython-3.15-linux-aarch64-gnu"),
+                        ("cpython-3.15.0-linux-aarch64-gnu", None)):  # an older patch uv moved the link off
+        (py / full / "bin").mkdir(parents=True)
+        if minor:
+            (py / minor).symlink_to(full)
+    (py / ".lock").write_text("")
+    md = tmp_path / "storage"
+
+    def venv_on(name, minor):
+        (md / name).mkdir(parents=True, exist_ok=True)
+        (md / name / "pyvenv.cfg").write_text(f"home = {py}/cpython-{minor}-linux-aarch64-gnu/bin\nversion_info = {minor}\n")
+
+    monkeypatch.setattr(venv, "STORAGE_DIR", md)
+    monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", str(py))
+    venv_on("venv_b", "3.15")
+    venv_on("venv_old", "3.14")  # the fallback, still on 3.14
+    venv_on("venv_failed", "3.13")
+    venv.remove_unused_pythons()
+    assert sorted(p.name for p in py.iterdir()) == [".lock", "cpython-3.14-linux-aarch64-gnu", "cpython-3.14.8-linux-aarch64-gnu",
+                                                     "cpython-3.15-linux-aarch64-gnu", "cpython-3.15.1-linux-aarch64-gnu"]
+    venv_on("venv_old", "3.15")  # the next swap: nothing on 3.14 any more
+    venv.remove_unused_pythons()
+    assert sorted(p.name for p in py.iterdir()) == [".lock", "cpython-3.15-linux-aarch64-gnu", "cpython-3.15.1-linux-aarch64-gnu"]
+    # Not on a mirror (no UV_PYTHON_INSTALL_DIR): a developer's Pythons are never touched
+    monkeypatch.delenv("UV_PYTHON_INSTALL_DIR")
+    venv_on("venv_b", "3.99")
+    venv.remove_unused_pythons()
+    assert len(list(py.iterdir())) == 3
