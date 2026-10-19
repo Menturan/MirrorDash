@@ -1,12 +1,12 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import copy
 import json
 import logging
 import os
 import tempfile
 import threading
 import time
-import copy
 from pathlib import Path
 
 logger = logging.getLogger("mirrordash.core.config")
@@ -71,10 +71,9 @@ def migrate_config(data: dict) -> bool:
     if "modules" not in data or not isinstance(data["modules"], dict):
         return changed
     for instance_id, module_cfg in list(data["modules"].items()):
-        if isinstance(module_cfg, dict):
-            if "module" not in module_cfg:
-                module_cfg["module"] = instance_id
-                changed = True
+        if isinstance(module_cfg, dict) and "module" not in module_cfg:
+            module_cfg["module"] = instance_id
+            changed = True
     return changed
 
 def load_config() -> dict:

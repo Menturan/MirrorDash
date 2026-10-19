@@ -4,19 +4,43 @@ import itertools
 import json
 import logging
 import re
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from mirrordash_core.admin import job_response, notify, require_api_key, start_job, templates
-from mirrordash_core.config import find_module_config, load_config, save_config, version_key
-from mirrordash_core.features.modules.loader import module_loader, find_entry_point
-from mirrordash_core.fetch import fetch_json_cached
-from mirrordash_core.features.modules.service import list_community_modules, list_modules, screen_layout, install_module, uninstall_module, update_module
-from mirrordash_core.features.updates.service import get_disk_usage
+
+from mirrordash_core.admin import (
+    job_response,
+    notify,
+    require_api_key,
+    start_job,
+    templates,
+)
+from mirrordash_core.config import (
+    find_module_config,
+    load_config,
+    save_config,
+    version_key,
+)
+from mirrordash_core.features.modules.loader import find_entry_point, module_loader
+from mirrordash_core.features.modules.service import (
+    install_module,
+    list_community_modules,
+    list_modules,
+    screen_layout,
+    uninstall_module,
+    update_module,
+)
 from mirrordash_core.features.settings.schema import get_module_schema
+from mirrordash_core.features.updates.service import get_disk_usage
+from mirrordash_core.fetch import fetch_json_cached
+from mirrordash_core.forms import (
+    STANDARD_FIELDS,
+    STANDARD_SCHEMA,
+    cast_values_by_schema,
+    read_form,
+    render_schema_form,
+)
 
-from mirrordash_core.forms import cast_values_by_schema, read_form
-
-from mirrordash_core.forms import STANDARD_FIELDS, STANDARD_SCHEMA, render_schema_form
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
 

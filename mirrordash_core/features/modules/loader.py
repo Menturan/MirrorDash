@@ -3,19 +3,27 @@
 import asyncio
 import functools
 import hashlib
-import logging
 import importlib.metadata
 import importlib.util
+import json
+import logging
 import os
 import time
-import json
 import urllib.error
 import urllib.parse
 import urllib.request
-from mirrordash_core.config import load_config, get_base_dir, get_core_version
-from mirrordash_core.features.kiosk.ws import manager
+
+from jinja2 import (
+    ChoiceLoader,
+    Environment,
+    FileSystemLoader,
+    PackageLoader,
+    select_autoescape,
+)
+
+from mirrordash_core.config import get_base_dir, get_core_version, load_config
 from mirrordash_core.event_bus import event_bus
-from jinja2 import Environment, PackageLoader, FileSystemLoader, ChoiceLoader, select_autoescape
+from mirrordash_core.features.kiosk.ws import manager
 
 logger = logging.getLogger("mirrordash.core.modules")
 
@@ -100,7 +108,9 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
             except (OSError, ValueError):  # nothing saved yet, or a broken file: fetch
                 pass
         if not keep_running:
-            from mirrordash_core.features.power.display_power import display_power_manager
+            from mirrordash_core.features.power.display_power import (
+                display_power_manager,
+            )
             await display_power_manager.awake.wait()
 
         def get() -> bytes:
@@ -225,7 +235,9 @@ class ModuleLoader:
 
             # Apply display and audio settings
             if system_cfg:
-                from mirrordash_core.features.hardware.display import apply_system_settings
+                from mirrordash_core.features.hardware.display import (
+                    apply_system_settings,
+                )
                 asyncio.create_task(apply_system_settings(
                     system_cfg.get("rotation", "normal"),
                     system_cfg.get("resolution", "auto"),
@@ -249,7 +261,7 @@ class ModuleLoader:
             hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
             if os.path.exists(hash_path):
                 try:
-                    with open(hash_path, "r", encoding="utf-8") as f:
+                    with open(hash_path, encoding="utf-8") as f:
                         pwd_hash = f.read().strip()
                     if pwd_hash:
                         from mirrordash_core.host import apply_system_password_hash

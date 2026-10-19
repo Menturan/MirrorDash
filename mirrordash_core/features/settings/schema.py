@@ -1,11 +1,12 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import json
 import importlib.metadata
+import json
 import logging
 import os
 
 from mirrordash_core.forms import POSITIONS
+
 logger = logging.getLogger("mirrordash.core.settings")
 
 
@@ -40,7 +41,7 @@ def get_module_schema(plugin_class) -> dict | None:
             filepath = os.path.join(plugin_dir, filename)
             if os.path.isfile(filepath):
                 try:
-                    with open(filepath, "r", encoding="utf-8") as f:
+                    with open(filepath, encoding="utf-8") as f:
                         data = json.load(f)
                         if isinstance(data, dict):
                             schema = data
@@ -53,7 +54,7 @@ def get_module_schema(plugin_class) -> dict | None:
         svg_path = os.path.join(plugin_dir, "icon.svg")
         if os.path.isfile(svg_path):
             try:
-                with open(svg_path, "r", encoding="utf-8") as svg_f:
+                with open(svg_path, encoding="utf-8") as svg_f:
                     svg_content = svg_f.read().strip()
                     if svg_content.startswith("<svg"):
                         schema["icon"] = svg_content

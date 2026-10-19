@@ -1,7 +1,9 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import logging
+
 from fastapi import APIRouter, Depends, Request
+
 from mirrordash_core.admin import events_header, require_api_key, templates
 from mirrordash_core.config import load_config, save_config
 
@@ -28,6 +30,7 @@ async def create_api_token(request: Request):
     """A new token replaces the old one. Only its hash is kept, so it is shown this once."""
     import datetime
     import secrets
+
     from mirrordash_core.admin import token_hash
 
     token = secrets.token_urlsafe(32)

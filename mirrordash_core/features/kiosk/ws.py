@@ -2,7 +2,9 @@
 
 import logging
 import time
+
 from fastapi import WebSocket
+
 from mirrordash_core.config import get_core_version
 
 logger = logging.getLogger("mirrordash.core.kiosk")

@@ -1,11 +1,12 @@
-import pytest
-from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from mirrordash_core.app import app
+import pytest
 from conftest import call
-from mirrordash_core.features.modules.service import update_module
+from fastapi.testclient import TestClient
+
 from mirrordash_core.admin import hash_password
+from mirrordash_core.app import app
+from mirrordash_core.features.modules.service import update_module
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -51,7 +52,6 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     
     mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check, mock_proc_clean]
     
-    headers = {"X-API-Key": "secret"}
     # Call the endpoint
     response = call(update_module, "mirrordash")
     
@@ -80,7 +80,6 @@ def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
     
     mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check]
     
-    headers = {"X-API-Key": "secret"}
     # Call the endpoint
     response = call(update_module, "mirrordash")
     

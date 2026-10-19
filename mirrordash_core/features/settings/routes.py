@@ -3,18 +3,27 @@
 import json
 import logging
 import re
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
+
 from mirrordash_core.admin import events_header, notify, require_api_key, templates
-from mirrordash_core.config import load_config, save_config, get_core_version
-from mirrordash_core.features.modules.loader import module_loader, find_entry_point
+from mirrordash_core.config import get_core_version, load_config, save_config
+from mirrordash_core.features.modules.loader import find_entry_point, module_loader
+from mirrordash_core.features.settings.dev_logging import (
+    clear_saved_journal,
+    dev_logging_available,
+    dev_logging_until,
+    saved_journal_mb,
+    set_dev_logging,
+)
+from mirrordash_core.features.settings.schema import (
+    get_globals_schema,
+    get_module_schema,
+    validate_config,
+)
 from mirrordash_core.features.settings.ssh import get_ssh_status
 from mirrordash_core.features.updates.service import format_build, installed_os_build
-from mirrordash_core.features.settings.dev_logging import (clear_saved_journal, dev_logging_available,
-                                                           dev_logging_until, saved_journal_mb, set_dev_logging)
-
-from mirrordash_core.features.settings.schema import get_globals_schema, get_module_schema, validate_config
-
 from mirrordash_core.forms import cast_values_by_schema, read_form
 
 logger = logging.getLogger("mirrordash.core.settings")

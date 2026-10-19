@@ -23,6 +23,7 @@ import logging
 import os
 import struct
 import time
+
 from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
 

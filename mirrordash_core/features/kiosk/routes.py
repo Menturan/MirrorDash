@@ -13,7 +13,11 @@ from mirrordash_core.config import load_config
 from mirrordash_core.features.auth.routes import auth_state
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import module_loader
-from mirrordash_core.features.wifi.network import HOTSPOT_SSID, get_hotspot_password, is_wifi_hotspot_active
+from mirrordash_core.features.wifi.network import (
+    HOTSPOT_SSID,
+    get_hotspot_password,
+    is_wifi_hotspot_active,
+)
 from mirrordash_core.features.wifi.routes import SETUP_HOSTS
 
 logger = logging.getLogger("mirrordash.core.kiosk")

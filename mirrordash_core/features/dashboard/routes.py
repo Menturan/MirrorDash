@@ -2,7 +2,9 @@
 
 import asyncio
 import logging
+
 from fastapi import APIRouter, Depends, Request
+
 from mirrordash_core.admin import require_api_key, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.modules.loader import module_loader
@@ -14,9 +16,18 @@ router = APIRouter(prefix="/admin")
 
 @router.get("/panels/dashboard", dependencies=[Depends(require_api_key)])
 async def get_panel_dashboard(request: Request):
-    from mirrordash_core.features.updates.service import get_disk_usage
-    from mirrordash_core.features.dashboard.telemetry import get_cpu_load, get_cpu_temperature, get_uptime_string, get_ram_usage, get_ntp_status, get_wifi_info, get_undervoltage_detected
     import socket
+
+    from mirrordash_core.features.dashboard.telemetry import (
+        get_cpu_load,
+        get_cpu_temperature,
+        get_ntp_status,
+        get_ram_usage,
+        get_undervoltage_detected,
+        get_uptime_string,
+        get_wifi_info,
+    )
+    from mirrordash_core.features.updates.service import get_disk_usage
 
     # Each of these spawns a system command (df, timedatectl, nmcli, vcgencmd); run them
     # concurrently instead of one after another, which added up on a Pi 3.

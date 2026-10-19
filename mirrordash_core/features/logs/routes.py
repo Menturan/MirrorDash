@@ -4,10 +4,16 @@ import asyncio
 import html
 import logging
 import os
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
+
 from mirrordash_core.admin import require_api_key, templates
-from mirrordash_core.features.logs.saved import delete_saved_logs, saved_log_file, saved_logs
+from mirrordash_core.features.logs.saved import (
+    delete_saved_logs,
+    saved_log_file,
+    saved_logs,
+)
 from mirrordash_core.features.modules.loader import module_loader
 
 logger = logging.getLogger("mirrordash.core.logs")
@@ -33,7 +39,7 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
 
         try:
             filtered_lines = []
-            with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
+            with open(log_file, encoding="utf-8", errors="ignore") as f:
                 all_lines = f.readlines()
 
             for line in reversed(all_lines):
@@ -81,7 +87,7 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
         try:
             syslog_path = "/var/log/syslog"
             if os.path.exists(syslog_path):
-                with open(syslog_path, "r", encoding="utf-8", errors="ignore") as f:
+                with open(syslog_path, encoding="utf-8", errors="ignore") as f:
                     all_lines = f.readlines()
                 last_lines = all_lines[-lines:]
                 return {"logs": "".join(last_lines)}
@@ -97,7 +103,7 @@ async def get_panel_logs(request: Request):
     logs_content = log_data.get("logs", "No logs found.")
 
     modules_list = []
-    for name in module_loader.instances.keys():
+    for name in module_loader.instances:
         modules_list.append(name)
 
     return templates.TemplateResponse(

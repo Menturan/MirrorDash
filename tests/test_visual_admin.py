@@ -1,11 +1,12 @@
+import contextlib
 import os
-import time
 import socket
 import threading
-import uvicorn
+import time
+from unittest.mock import AsyncMock, patch
+
 import pytest
-import contextlib
-from unittest.mock import patch, AsyncMock
+import uvicorn
 
 # The admin pages run in Chromium. The mirror's own pages (kiosk, modules) run in WebKit, the engine
 # of the mirror's Cog browser: marked only_browser("webkit"). Both come from addopts in pyproject.toml.
@@ -13,7 +14,8 @@ pytestmark = pytest.mark.only_browser("chromium")
 
 # Setup mock config
 mock_salt = "0123456789abcdef"
-from mirrordash_core.admin import hash_password
+from mirrordash_core.admin import hash_password  # noqa: E402 (after pytestmark, which reads first)
+
 mock_hash = hash_password("secret", mock_salt)
 
 MOCK_CONFIG = {
@@ -63,6 +65,7 @@ def patch_all_system():
     async def fake_restart():
         # A real restart starts a new process with a new boot id; the admin UI waits for that.
         import uuid
+
         from mirrordash_core import admin as admin_shared
         admin_shared.BOOT_ID = uuid.uuid4().hex
         return True
@@ -126,7 +129,8 @@ def patch_all_system():
         yield
 
 # Import app after helper definitions to maintain logical ordering
-from mirrordash_core.app import app
+from mirrordash_core.app import app  # noqa: E402
+
 
 def get_free_port():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

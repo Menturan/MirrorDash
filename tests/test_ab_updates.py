@@ -6,9 +6,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from test_configure_image import SETUP, unit
 
 from mirrordash_core.features.updates import service
-from test_configure_image import SETUP, unit
 
 BACKEND = unit("/usr/local/lib/mirrordash/rauc-bootloader")
 AUTOBOOT = "[all]\ntryboot_a_b=1\nboot_partition=2\n[tryboot]\nboot_partition=3\n"
@@ -228,6 +228,7 @@ def test_save_log_refuses_odd_names(save_log):
 def test_saved_logs_in_the_admin_page(tmp_path, monkeypatch):
     """Listed newest first, downloaded and deleted by name; nothing outside the folder is reachable."""
     from fastapi import HTTPException
+
     from mirrordash_core.features.logs import saved
     monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path)
     (tmp_path / "os-trial-20261018-1200.log").write_text("a")
@@ -336,13 +337,13 @@ def test_the_os_update_interface_stays_the_same():
     really has to change, the old way has to keep working too (both in the build, the app accepting
     both) until no mirror has an image from before the change."""
     import hashlib
-    import re
     from pathlib import Path
+
     from mirrordash_core.features.updates import service
     root = Path(__file__).parent.parent
     build = (root / "scripts" / "build_image.sh").read_text()
     assert "pi ALL=(ALL) NOPASSWD: /usr/bin/rauc install /storage/mirrordash/os-update.raucb\n" in SETUP
-    assert service.OS_BUNDLE_FILE == Path("/storage/mirrordash/os-update.raucb")
+    assert Path("/storage/mirrordash/os-update.raucb") == service.OS_BUNDLE_FILE
     assert "compatible=mirrordash-rpi\n" in unit("/etc/rauc/system.conf") and "compatible=mirrordash-rpi\n" in build
     assert "[bundle]\nformat=verity\n" in build
     assert "[image.rootfs]\nfilename=rootfs.img\n\n[image.boot]\nfilename=boot.vfat\n" in build

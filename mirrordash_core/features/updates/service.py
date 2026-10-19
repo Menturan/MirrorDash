@@ -9,12 +9,14 @@ import shutil
 import sys
 import urllib.request
 from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+
 from mirrordash_core.admin import require_api_key
-from mirrordash_core.config import load_config, get_core_version, version_key
-from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
-from mirrordash_core.host import reboot_system, run_restart
+from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
+from mirrordash_core.host import reboot_system, run_restart
+from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -191,7 +193,10 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
 async def rebuild_venv() -> dict:
     """Build a fresh venv with this MirrorDash version and the modules installed now, each from
     where it came (local folder, GitHub commit, PyPI version). A module that fails undoes the swap."""
-    from mirrordash_core.features.backup.service import installed_modules, venv_distributions
+    from mirrordash_core.features.backup.service import (
+        installed_modules,
+        venv_distributions,
+    )
     paths = get_venv_paths()
     if not paths:
         raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")

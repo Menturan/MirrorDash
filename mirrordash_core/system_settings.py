@@ -11,7 +11,11 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from mirrordash_core.admin import notify, require_api_key
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.features.hardware import display
-from mirrordash_core.features.hardware.display import apply_brightness, apply_system_settings, get_available_resolutions
+from mirrordash_core.features.hardware.display import (
+    apply_brightness,
+    apply_system_settings,
+    get_available_resolutions,
+)
 from mirrordash_core.features.power.display_power import DEFAULT_WAKE
 from mirrordash_core.features.settings.ssh import apply_ssh, get_ssh_status
 from mirrordash_core.forms import read_form

@@ -1,18 +1,22 @@
-import pytest
 import asyncio
-import os
 import json
 import shutil
-import zipfile
 import tempfile
+import zipfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from conftest import call
 from fastapi.testclient import TestClient
 
-from mirrordash_core.app import app
 from mirrordash_core.admin import hash_password
-from mirrordash_core.features.backup.service import create_backup, list_backups, restore_backup
-from conftest import call
+from mirrordash_core.app import app
+from mirrordash_core.features.backup.service import (
+    create_backup,
+    list_backups,
+    restore_backup,
+)
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -180,7 +184,7 @@ def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
             self.temp_dir.__exit__(exc_type, exc_val, exc_tb)
 
     with patch("mirrordash_core.features.backup.service.tempfile.TemporaryDirectory", FakeTempDirectory), \
-         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock) as mock_restart, \
+         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock), \
          patch("mirrordash_core.features.backup.service.save_config") as mock_save, \
          patch("mirrordash_core.features.backup.service.zipfile.ZipFile"):
          
@@ -329,6 +333,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
 @pytest.mark.skipif(shutil.which("zip") is None, reason="needs the zip tool, like the mirror")
 def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
     import subprocess
+
     from mirrordash_core.features.backup.service import read_manifest
     (tmp_path / "backup_manifest.json").write_text('{"backup_version": "1.0"}')
     subprocess.run(["zip", "-q", "-P", "secret", "locked.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)

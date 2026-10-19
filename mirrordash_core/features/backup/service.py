@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import importlib.metadata
 import json
 import logging
 import os
@@ -8,15 +9,21 @@ import shutil
 import sys
 import tempfile
 import zipfile
-import importlib.metadata
 from datetime import datetime
 from pathlib import Path
-from fastapi import HTTPException
-from mirrordash_core.config import load_config, save_config, get_base_dir, get_core_version
-from mirrordash_core.host import reboot_system, run_restart
-from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 
+from fastapi import HTTPException
+
+from mirrordash_core.config import (
+    get_base_dir,
+    get_core_version,
+    load_config,
+    save_config,
+)
+from mirrordash_core.features.hardware.devices import sync_gpio_overlays
+from mirrordash_core.host import reboot_system, run_restart
 from mirrordash_core.venv import uv_pip
+
 logger = logging.getLogger("mirrordash.core.backup")
 
 
@@ -49,9 +56,8 @@ def find_local_module_dir(package_name: str) -> Path | None:
     for base_dir in [ROOT_DIR / "modules", get_base_dir() / "modules"]:
         if base_dir.exists():
             for child in base_dir.iterdir():
-                if child.is_dir():
-                    if child.name.lower().replace("_", "-") == norm_pkg:
-                        return child
+                if child.is_dir() and child.name.lower().replace("_", "-") == norm_pkg:
+                    return child
     return None
 
 

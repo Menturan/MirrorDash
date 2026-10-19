@@ -1,17 +1,22 @@
 import asyncio
-import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch, AsyncMock, ANY, mock_open
 import json
 from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock, MagicMock, mock_open, patch
 
-from mirrordash_core.app import app
+import pytest
 from conftest import call
+from fastapi.testclient import TestClient
+
+from mirrordash_core.admin import hash_password
+from mirrordash_core.app import app
 from mirrordash_core.features.modules.service import install_module, uninstall_module
 from mirrordash_core.features.settings.schema import get_globals_schema
-from mirrordash_core.features.updates.service import check_core_update, get_disk_usage, rebuild_venv, update_core
-from mirrordash_core.admin import hash_password
+from mirrordash_core.features.updates.service import (
+    check_core_update,
+    get_disk_usage,
+    rebuild_venv,
+    update_core,
+)
 
 # Setup config fixtures for test cases
 mock_salt = "0123456789abcdef"
@@ -319,10 +324,10 @@ def test_mirror_page_hears_the_version_first(client):
     """The kiosk reloads itself when the version it hears differs from the one it was loaded with."""
     from mirrordash_core.features.kiosk.ws import manager
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
-    with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"):
-        with client.websocket_connect("/ws") as ws:
-            assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "online": True}
-            assert ws.receive_json()["module"] == "clock"  # then the modules, as before
+    with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"), \
+         client.websocket_connect("/ws") as ws:
+        assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "online": True}
+        assert ws.receive_json()["module"] == "clock"  # then the modules, as before
     manager.latest_messages = {}
 
 
@@ -363,7 +368,6 @@ def test_config_positions_validation():
 @patch("mirrordash_core.features.modules.service.save_config")
 @patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
 def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
-    headers = {"X-API-Key": "secret"}
     config = MOCK_CONFIG.copy()
     config["modules"] = {"mirrordash-clock": {"enabled": True, "position": "top_left"}}
     mock_load.return_value = config
@@ -392,7 +396,6 @@ def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
 @patch("mirrordash_core.features.modules.service.load_config")
 def test_uninstall_module_invalid_name(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
-    headers = {"X-API-Key": "secret"}
     response = call(uninstall_module, "invalid; rm -rf /")
     assert response.status_code == 400
     assert "Invalid package name" in response.json()["detail"]
@@ -596,7 +599,6 @@ def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, c
     mock_load.return_value = MOCK_CONFIG
     mock_to_thread.return_value = ("1.0.0", ">=3.14")  # PyPI returns same version
 
-    headers = {"X-API-Key": "secret"}
     response = call(check_core_update)
     assert response.status_code == 200
     data = response.json()
@@ -613,7 +615,6 @@ def test_core_update_check_update_available(mock_version, mock_to_thread, mock_l
     mock_load.return_value = MOCK_CONFIG
     mock_to_thread.return_value = ("1.2.0", ">=3.14")  # PyPI has a newer version
 
-    headers = {"X-API-Key": "secret"}
     response = call(check_core_update)
     assert response.status_code == 200
     data = response.json()
@@ -630,7 +631,6 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
     mock_load.return_value = MOCK_CONFIG
     mock_to_thread.side_effect = RuntimeError("PyPI request failed: connection timeout")
 
-    headers = {"X-API-Key": "secret"}
     response = call(check_core_update)
     assert response.status_code == 502
     assert "PyPI request failed" in response.json()["detail"]
@@ -654,7 +654,6 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
         return p
     mock_exec.side_effect = [proc(b""), proc(b"1.1.0rc1\n")]  # uv install, then the installed version
 
-    headers = {"X-API-Key": "secret"}
     response = call(update_core)
     assert response.status_code == 200
     data = response.json()
@@ -702,7 +701,6 @@ def test_core_update_failure(mock_version, mock_create_task, mock_exec,
     mock_proc.communicate = AsyncMock(return_value=(b"", b"pip install failed"))
     mock_exec.return_value = mock_proc
 
-    headers = {"X-API-Key": "secret"}
     response = call(update_core)
     assert response.status_code == 500
     assert "Upgrade failed" in response.json()["detail"]
@@ -740,7 +738,6 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     mock_disk_usage.return_value = (10000000000, 3000000000, 7000000000)
 
-    headers = {"X-API-Key": "secret"}
     response = call(get_disk_usage)
     assert response.status_code == 200
 
@@ -774,7 +771,6 @@ def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare
     mock_proc.communicate = AsyncMock(return_value=(b"", b""))
     mock_exec.return_value = mock_proc
 
-    headers = {"X-API-Key": "secret"}
     response = call(rebuild_venv)
     assert response.status_code == 200
     data = response.json()
@@ -927,7 +923,6 @@ def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, cli
 @patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
 def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, mock_prepare, mock_urlopen, client):
     from pathlib import Path
-    headers = {"X-API-Key": "secret"}
     mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
     
     mock_proc = AsyncMock()
@@ -1385,6 +1380,7 @@ def test_saved_logs_can_be_seen_downloaded_and_deleted(client, tmp_path, monkeyp
 
 def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
     import time
+
     from mirrordash_core.features.settings import dev_logging
     monkeypatch.setattr(dev_logging, "FLAG", tmp_path / "dev-logging-until")
     monkeypatch.setattr(dev_logging, "JOURNAL_DIR", tmp_path / "journal")
@@ -1443,8 +1439,10 @@ def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit
     """Safe mode runs base_venv, which has no modules: the button reads them (and the MirrorDash
     version) from the venv that didn't start, instead of rebuilding an empty one over it."""
     import os
-    from mirrordash_core.features.backup import service as backup
+
     from test_venv import fake_venv
+
+    from mirrordash_core.features.backup import service as backup
     real = backup.installed_modules
     fake_venv(tmp_path / "venv_b")
     os.symlink("venv_b", tmp_path / "venv")
@@ -1467,8 +1465,9 @@ def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit
 
 
 def test_needed_python_reads_requires_python():
-    from mirrordash_core.features.updates.service import needed_python
     import sys
+
+    from mirrordash_core.features.updates.service import needed_python
     now = sys.version_info.minor
     assert needed_python(f">=3.{now}") is None and needed_python(None) is None and needed_python("") is None
     assert needed_python(f">=3.{now + 1}") == f"3.{now + 1}"
@@ -1487,6 +1486,7 @@ def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock
     """A MirrorDash that needs Python 3.15: installed next to 3.14, a new venv gets it and every module,
     each module is loaded once; only when all work (or the admin turns the others off) is it switched in."""
     from pathlib import Path
+
     from mirrordash_core.features.updates import service
     mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
     calls = []

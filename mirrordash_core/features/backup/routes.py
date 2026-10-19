@@ -3,11 +3,26 @@
 import logging
 import os
 import shutil
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
-from mirrordash_core.admin import job_response, notify, require_api_key, start_job, templates
-from mirrordash_core.features.backup.service import (backup_file, create_backup, delete_backup, list_backups,
-                                                     read_manifest, restore_backup, temp_upload)
+
+from mirrordash_core.admin import (
+    job_response,
+    notify,
+    require_api_key,
+    start_job,
+    templates,
+)
+from mirrordash_core.features.backup.service import (
+    backup_file,
+    create_backup,
+    delete_backup,
+    list_backups,
+    read_manifest,
+    restore_backup,
+    temp_upload,
+)
 
 logger = logging.getLogger("mirrordash.core.backup")
 router = APIRouter(prefix="/admin")

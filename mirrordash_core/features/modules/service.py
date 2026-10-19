@@ -7,14 +7,17 @@ import logging
 import re
 import urllib.error
 import urllib.request
+from datetime import UTC
 from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
+
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config
-from mirrordash_core.host import run_restart
-from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
 from mirrordash_core.features.modules.loader import find_entry_point
 from mirrordash_core.features.settings.schema import get_module_schema
+from mirrordash_core.host import run_restart
+from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
@@ -281,7 +284,7 @@ async def scan_community_modules_now():
     """Scan PyPI simple index and GitHub for mirrordash-* packages immediately."""
     global DISCOVERED_COMMUNITY_MODULES, LAST_SCAN_TIMESTAMP
     import gzip
-    from datetime import datetime, timezone
+    from datetime import datetime
     logger.info("Scanning PyPI and GitHub for mirrordash-* community modules...")
     loop = asyncio.get_running_loop()
 
@@ -310,18 +313,18 @@ async def scan_community_modules_now():
         names = re.findall(r'<a href=\"/simple/(mirrordash-[^\"]+)/\">', html)
         names = sorted(set(names) - NOT_MODULES)
 
+        def _fetch_meta(name: str) -> dict | None:
+            url = f"https://pypi.org/pypi/{name}/json"
+            req = urllib.request.Request(url, headers={"User-Agent": "MirrorDash/1.0"})
+            try:
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    return json.loads(resp.read().decode("utf-8"))
+            except Exception:  # one package's metadata failing must not stop the scan
+                return None
+
         # Fetch metadata for each discovered package
         for name in names:
-            def _fetch_meta():
-                url = f"https://pypi.org/pypi/{name}/json"
-                req = urllib.request.Request(url, headers={"User-Agent": "MirrorDash/1.0"})
-                try:
-                    with urllib.request.urlopen(req, timeout=5) as resp:
-                        return json.loads(resp.read().decode("utf-8"))
-                except Exception:
-                    return None
-
-            meta = await loop.run_in_executor(None, _fetch_meta) or {}
+            meta = await loop.run_in_executor(None, _fetch_meta, name) or {}
             info = meta.get("info") or {}
             repo = next(filter(None, map(github_repo, (info.get("project_urls") or {}).values())), None)
             scanned_modules.append({
@@ -365,7 +368,7 @@ async def scan_community_modules_now():
 
     if scanned_modules:
         DISCOVERED_COMMUNITY_MODULES = scanned_modules
-        LAST_SCAN_TIMESTAMP = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+        LAST_SCAN_TIMESTAMP = datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
         logger.info(f"Scan completed. Discovered community modules: {[m['name'] for m in DISCOVERED_COMMUNITY_MODULES]}")
 
 

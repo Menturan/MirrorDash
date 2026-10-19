@@ -25,6 +25,7 @@ import logging
 import time as time_mod
 from datetime import datetime, time
 from zoneinfo import ZoneInfo
+
 from mirrordash_core.config import load_config
 from mirrordash_core.features.hardware.display import set_screen_power
 
@@ -133,7 +134,7 @@ class DisplayPowerManager:
                 self.changed.clear()
                 try:
                     await asyncio.wait_for(self.changed.wait(), timeout=1.0)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     pass
             except asyncio.CancelledError:
                 raise

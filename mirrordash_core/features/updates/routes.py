@@ -3,11 +3,20 @@
 import asyncio
 import html
 import logging
+
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
+
 from mirrordash_core.admin import job_response, notify, require_api_key, start_job
-from mirrordash_core.features.updates.service import (check_core_update, check_os_update, format_build, incompatible,
-                                                      rebuild_venv, update_core, update_os)
+from mirrordash_core.features.updates.service import (
+    check_core_update,
+    check_os_update,
+    format_build,
+    incompatible,
+    rebuild_venv,
+    update_core,
+    update_os,
+)
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")

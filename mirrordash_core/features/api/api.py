@@ -3,14 +3,14 @@
 from the API card (`Authorization: Bearer <token>`). It can read the status and run the screen,
 nothing else. Its own app, so only this API has a description: /api/v1/docs and /api/v1/openapi.json."""
 
+import logging
 from typing import Literal
 
 from fastapi import Depends, FastAPI
 from pydantic import BaseModel, Field
+
 from mirrordash_core.admin import require_api_token
 from mirrordash_core.config import get_core_version, load_config
-
-import logging
 
 logger = logging.getLogger("mirrordash.core.api")
 api = FastAPI(title="MirrorDash API", version=get_core_version(), redoc_url=None,
@@ -58,11 +58,20 @@ class Done(BaseModel):
          dependencies=[Depends(require_api_token)])
 async def get_status() -> dict:
     """The core version, uptime, CPU temperature, screen, brightness, running modules and sensor readings."""
-    from mirrordash_core.features.power.display_power import display_power_manager
-    from mirrordash_core.features.hardware.devices import PRESENCE_TYPES, find_device, gpio_inputs, read_fan_state, read_sensor
-    from mirrordash_core.features.modules.loader import module_loader
+    from mirrordash_core.features.dashboard.telemetry import (
+        get_cpu_temperature,
+        get_uptime_seconds,
+    )
     from mirrordash_core.features.hardware import display
-    from mirrordash_core.features.dashboard.telemetry import get_cpu_temperature, get_uptime_seconds
+    from mirrordash_core.features.hardware.devices import (
+        PRESENCE_TYPES,
+        find_device,
+        gpio_inputs,
+        read_fan_state,
+        read_sensor,
+    )
+    from mirrordash_core.features.modules.loader import module_loader
+    from mirrordash_core.features.power.display_power import display_power_manager
 
     system_cfg = load_config().get("system", {})
     sensors = {}

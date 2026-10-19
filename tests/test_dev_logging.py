@@ -5,7 +5,6 @@ import subprocess
 import time
 
 import pytest
-
 from test_configure_image import unit
 
 SCRIPT = unit("/usr/local/bin/mirrordash-dev-logging")

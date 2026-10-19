@@ -1,9 +1,10 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
-import logging
 import inspect
-from typing import Callable, Any
+import logging
+from collections.abc import Callable
+from typing import Any
 
 logger = logging.getLogger("mirrordash.core.event_bus")
 

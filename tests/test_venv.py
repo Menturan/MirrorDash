@@ -54,7 +54,10 @@ def fake_venv(root: Path, py: str = "3.15") -> Path:
 
 def test_installed_modules_of_a_venv_that_doesnt_run(tmp_path):
     """Safe mode (and a new Python) read the modules from a venv's files: its Python can't start here."""
-    from mirrordash_core.features.backup.service import installed_modules, venv_distributions
+    from mirrordash_core.features.backup.service import (
+        installed_modules,
+        venv_distributions,
+    )
     venv = fake_venv(tmp_path / "venv_b")
     modules = sorted(installed_modules(venv), key=lambda m: m["name"])
     assert [(m["package_name"], m["version"], m.get("source")) for m in modules] == [
@@ -103,6 +106,7 @@ def test_a_package_change_needs_free_space_first(tmp_path, monkeypatch):
     """A full card mid-install leaves a half-built venv: venv_swap, which every package change goes
     through, refuses before touching anything."""
     from collections import namedtuple
+
     from fastapi import HTTPException
     monkeypatch.setattr(venv, "STORAGE_DIR", tmp_path)
     (tmp_path / "venv_a").mkdir()

@@ -46,3 +46,19 @@ packages = ["mirrordash_core"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore=tests/test_visual_admin.py --browser chromium --browser webkit"
+
+# Lint (CI runs `ruff check`): the rules that catch real mistakes, not a style. Run `uvx ruff check --fix`.
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = [
+    "E501",    # long lines: the comments explain why, and wrapping them only hides that
+    "E731",    # a named lambda reads fine for one-line helpers
+    "B008",    # FastAPI's own pattern: Depends()/Body() as argument defaults
+    "B904",    # raise ... from e: worth doing when a handler is touched anyway, not in one sweep
+    "SIM105",  # try/except/pass vs contextlib.suppress: both read fine
+    "SIM108",  # a ternary isn't always easier to read than if/else
+    "SIM114",  # merging if-branches with the same body hides why there are two cases
+]

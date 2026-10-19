@@ -25,7 +25,7 @@ import tomllib
 import urllib.error
 import urllib.request
 import zipfile
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -102,7 +102,7 @@ def release_changelog(version, intro="", keep_os_image=False, only_os_image=Fals
     release: only the OS image entries move; app entries wait for the next app release.
     Exits if there is nothing to release.
     """
-    with open(path, "r") as f:
+    with open(path) as f:
         content = f.read()
     head, marker, rest = content.partition("## [Unreleased]\n")
     if not marker:
@@ -235,7 +235,7 @@ def watch(workflow, sha, since):
 
 
 def now():
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 # --- Downloading the test image -------------------------------------------------------------

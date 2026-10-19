@@ -1,9 +1,11 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, patch
 
 from mirrordash_core.app import app
 from mirrordash_core.features.wifi.network import scan_wifi_networks
+
 
 @pytest.fixture
 def client():
@@ -91,6 +93,7 @@ def test_wifi_setup_failure_restarts_if_the_hotspot_wont_come_back(mock_reboot, 
 def test_restore_captive_ap_starts_the_same_profile(mock_exec):
     """The hotspot comes back with nmcli up on the kept profile, so its password stays the same."""
     import asyncio
+
     from mirrordash_core.features.wifi.network import restore_captive_ap
     proc = AsyncMock(returncode=0)
     proc.communicate.return_value = (b"", b"")
@@ -192,6 +195,7 @@ def test_wifi_prompt_shows_password_and_qr_on_the_mirror(mock_hotspot, mock_pass
 def test_teardown_keeps_the_hotspot_profile(mock_exec):
     """Setup only takes the hotspot down; deleting it would give the mirror a new password every time."""
     import asyncio
+
     from mirrordash_core.features.wifi.network import _teardown_captive_ap
     mock_exec.return_value.wait = AsyncMock(return_value=0)
     mock_exec.return_value.returncode = 0
@@ -245,6 +249,7 @@ def test_hotspot_check_is_not_cached_forever():
     """Boot race: the first check runs before the hotspot is up and must not stick."""
     import asyncio
     from unittest.mock import MagicMock
+
     from mirrordash_core.features.wifi import network
 
     def nmcli_result(names):
@@ -423,6 +428,7 @@ def _nmcli_fake(calls, active="Home", saved=("Home",)):
 
 def test_a_failed_wifi_change_goes_back_to_the_old_network():
     import asyncio
+
     from mirrordash_core.features.wifi import network
     calls = []
     with patch.object(network, "_nmcli", _nmcli_fake(calls)), \

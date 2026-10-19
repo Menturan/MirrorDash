@@ -1,11 +1,11 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import logging
-import time
-import uvicorn
-
 import os
+import time
 from logging.handlers import RotatingFileHandler
+
+import uvicorn
 
 from mirrordash_core.config import get_base_dir
 

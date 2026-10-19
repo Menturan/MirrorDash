@@ -2,10 +2,12 @@
 
 import html
 import logging
+
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+
 from mirrordash_core.admin import events_header, notify, require_api_key, templates
-from mirrordash_core.config import load_config, get_core_version, save_config
+from mirrordash_core.config import get_core_version, load_config, save_config
 from mirrordash_core.system_settings import get_system_settings
 
 logger = logging.getLogger("mirrordash.core.hardware")
@@ -50,10 +52,7 @@ async def get_panel_system(request: Request):
     end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
 
     # Hours list
-    if time_format == "12h":
-        hours_list = list(range(1, 13))
-    else:
-        hours_list = list(range(0, 24))
+    hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
 
     minutes_list = list(range(0, 60))
 
@@ -115,7 +114,17 @@ def _fan_text() -> str | None:
 def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: str = "success",
                   restart_needed: bool = False):
     """The Sensors & Inputs card, plus the page events that report what happened."""
-    from mirrordash_core.features.hardware.devices import BUTTON_ACTIONS, BUTTON_TYPES, DEVICE_TYPES, FAN_TYPES, GPIO_HEADER_PINS, I2C_PINS, DEFAULT_LONG_PRESS, LONG_PRESS_CHOICES, get_devices
+    from mirrordash_core.features.hardware.devices import (
+        BUTTON_ACTIONS,
+        BUTTON_TYPES,
+        DEFAULT_LONG_PRESS,
+        DEVICE_TYPES,
+        FAN_TYPES,
+        GPIO_HEADER_PINS,
+        I2C_PINS,
+        LONG_PRESS_CHOICES,
+        get_devices,
+    )
 
     devices = get_devices(system_cfg)
     used_types = {d["type"] for d in devices}
@@ -174,7 +183,12 @@ async def get_devices_card(request: Request):
 
 @router.post("/panels/system/devices/add", dependencies=[Depends(require_api_key)])
 async def add_device(request: Request):
-    from mirrordash_core.features.hardware.devices import BUTTON_TYPES, DEFAULT_LONG_PRESS, DEVICE_TYPES, PRESS_TYPES
+    from mirrordash_core.features.hardware.devices import (
+        BUTTON_TYPES,
+        DEFAULT_LONG_PRESS,
+        DEVICE_TYPES,
+        PRESS_TYPES,
+    )
 
     form = await request.form()
     device_type = form.get("type", "")
@@ -212,7 +226,14 @@ async def remove_device(request: Request):
 
 @router.post("/panels/system/devices/button-actions", dependencies=[Depends(require_api_key)])
 async def save_button_actions(request: Request):
-    from mirrordash_core.features.hardware.devices import BUTTON_ACTIONS, BUTTON_TYPES, DEFAULT_LONG_PRESS, LONG_PRESS_CHOICES, PRESS_TYPES, find_device
+    from mirrordash_core.features.hardware.devices import (
+        BUTTON_ACTIONS,
+        BUTTON_TYPES,
+        DEFAULT_LONG_PRESS,
+        LONG_PRESS_CHOICES,
+        PRESS_TYPES,
+        find_device,
+    )
 
     form = await request.form()
     actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
@@ -238,7 +259,15 @@ async def save_button_actions(request: Request):
 @router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
 async def get_gpio_status():
     import time
-    from mirrordash_core.features.hardware.devices import BUTTON_TYPES, DEVICE_TYPES, PRESENCE_TYPES, get_devices, gpio_inputs, kernel_boot_id
+
+    from mirrordash_core.features.hardware.devices import (
+        BUTTON_TYPES,
+        DEVICE_TYPES,
+        PRESENCE_TYPES,
+        get_devices,
+        gpio_inputs,
+        kernel_boot_id,
+    )
 
     system_cfg = load_config().get("system", {})
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
@@ -281,7 +310,11 @@ async def get_gpio_status():
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
 async def get_dashboard_sensor():
-    from mirrordash_core.features.hardware.devices import FAN_TYPES, IIO_SENSORS, find_device
+    from mirrordash_core.features.hardware.devices import (
+        FAN_TYPES,
+        IIO_SENSORS,
+        find_device,
+    )
 
     system_cfg = load_config().get("system", {})
     tiles = []

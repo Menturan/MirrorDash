@@ -14,9 +14,15 @@ from mirrordash_core.config import load_config
 from mirrordash_core.features.dashboard.telemetry import get_wifi_info
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import module_loader
-from mirrordash_core.features.wifi.network import (connect_wifi, failed_switch, forget_hotspot_state,
-                                                   is_wifi_hotspot_active, restore_captive_ap, scan_wifi_networks,
-                                                   switch_wifi)
+from mirrordash_core.features.wifi.network import (
+    connect_wifi,
+    failed_switch,
+    forget_hotspot_state,
+    is_wifi_hotspot_active,
+    restore_captive_ap,
+    scan_wifi_networks,
+    switch_wifi,
+)
 from mirrordash_core.host import reboot_system
 
 logger = logging.getLogger("mirrordash.core.wifi")

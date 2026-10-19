@@ -1,10 +1,11 @@
-import pytest
 import asyncio
-from unittest.mock import MagicMock, patch, AsyncMock
-from jinja2 import Environment, DictLoader
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from jinja2 import DictLoader, Environment
 
 import mirrordash_core.features.modules.loader
-from mirrordash_core.features.modules.loader import ModuleLoader, load_translations
+from mirrordash_core.features.modules.loader import ModuleLoader
 
 # Set recovery delay to 0.01s for fast tests
 mirrordash_core.features.modules.loader.MODULE_RESTART_DELAY = 0.01
@@ -230,6 +231,7 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
     import json
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
+
     from mirrordash_core.features.modules.loader import _inject_module_helpers
 
     seen_headers = []
@@ -307,6 +309,7 @@ async def test_fetch_json_sleeps_while_the_screen_is_off(tmp_path):
 async def test_fetch_max_age_uses_the_saved_answer_until_it_is_old(tmp_path):
     """max_age: a young saved answer comes back as fresh without a call; an old one is fetched again."""
     import os
+
     from mirrordash_core.features.modules.loader import _inject_module_helpers
 
     source = tmp_path / "data.json"

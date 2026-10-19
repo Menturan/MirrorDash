@@ -1,9 +1,15 @@
-import os
 import json
-import pytest
+import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
-from mirrordash_core.config import get_config_path, load_config, save_config, invalidate_config_cache
+from unittest.mock import patch
+
+from mirrordash_core.config import (
+    get_config_path,
+    invalidate_config_cache,
+    load_config,
+    save_config,
+)
+
 
 def test_get_config_path_env_var(tmp_path):
     custom_path = tmp_path / "custom_config.json"
@@ -93,7 +99,7 @@ def test_save_config_creates_parent_and_writes(tmp_path):
         
         # Verify directory was created and file written
         assert config_file.exists()
-        with open(config_file, "r") as f:
+        with open(config_file) as f:
             saved = json.load(f)
         assert saved["globals"]["language"] == "sv"
         assert saved["modules"]["mirrordash-clock"]["enabled"] is True

@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import os
+
 from mirrordash_core.config import get_core_version
 
 logger = logging.getLogger("mirrordash.core.dashboard")
@@ -10,7 +11,7 @@ logger = logging.getLogger("mirrordash.core.dashboard")
 
 def get_uptime_seconds() -> float:
     try:
-        with open("/proc/uptime", "r") as f:
+        with open("/proc/uptime") as f:
             return float(f.readline().split()[0])
     except Exception:
         return 0.0
@@ -18,7 +19,7 @@ def get_uptime_seconds() -> float:
 
 def get_cpu_temperature() -> float | None:
     try:
-        with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
+        with open("/sys/class/thermal/thermal_zone0/temp") as f:
             return round(int(f.read().strip()) / 1000.0, 1)
     except Exception:
         return None
@@ -55,7 +56,7 @@ def get_uptime_string() -> str:
 def get_ram_usage() -> dict:
     try:
         meminfo = {}
-        with open("/proc/meminfo", "r") as f:
+        with open("/proc/meminfo") as f:
             for line in f:
                 parts = line.split()
                 if len(parts) >= 2:

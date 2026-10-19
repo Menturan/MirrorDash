@@ -1,6 +1,9 @@
 import asyncio
+
 import pytest
+
 from mirrordash_core.event_bus import EventBus
+
 
 @pytest.mark.asyncio
 async def test_event_bus_basic_publish_subscribe():
@@ -112,6 +115,7 @@ async def test_event_bus_async_callback_crashes():
 
 def test_module_reload_does_not_duplicate_subscriptions():
     import asyncio
+
     from mirrordash_core.event_bus import event_bus
     from mirrordash_core.features.modules.loader import ModuleLoader
 

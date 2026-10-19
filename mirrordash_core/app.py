@@ -10,22 +10,25 @@ from fastapi.staticfiles import StaticFiles
 
 from mirrordash_core import admin, system_settings
 from mirrordash_core.admin import PACKAGE_DIR
+from mirrordash_core.features.api import api as api_v1
+from mirrordash_core.features.api import routes as api
 from mirrordash_core.features.auth import routes as auth
 from mirrordash_core.features.backup import routes as backup
 from mirrordash_core.features.dashboard import routes as dashboard
 from mirrordash_core.features.hardware import routes as hardware
 from mirrordash_core.features.hardware.devices import gpio_inputs
-from mirrordash_core.features.api import api as api_v1, routes as api
 from mirrordash_core.features.kiosk import routes as kiosk
+from mirrordash_core.features.kiosk.internet import internet_monitor
 from mirrordash_core.features.logs import routes as logs
-from mirrordash_core.features.modules import routes as modules, service as modules_service
+from mirrordash_core.features.modules import routes as modules
+from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.loader import module_loader
 from mirrordash_core.features.power import routes as power
 from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
-from mirrordash_core.features.updates import routes as updates, service as updates_service
+from mirrordash_core.features.updates import routes as updates
+from mirrordash_core.features.updates import service as updates_service
 from mirrordash_core.features.wifi import routes as wifi
-from mirrordash_core.features.kiosk.internet import internet_monitor
 
 logger = logging.getLogger("mirrordash.core.app")
 

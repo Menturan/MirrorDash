@@ -1,10 +1,16 @@
-import pytest
 import asyncio
-from unittest.mock import AsyncMock, patch, MagicMock
-from mirrordash_core.host import reboot_system, poweroff_system, apply_system_timezone
-from mirrordash_core.features.hardware.display import get_available_resolutions, apply_system_settings, set_screen_power
-from mirrordash_core.features.wifi.network import scan_wifi_networks, connect_wifi
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+
+from mirrordash_core.features.hardware.display import (
+    get_available_resolutions,
+    set_screen_power,
+)
 from mirrordash_core.features.settings.ssh import get_ssh_status, set_ssh_status
+from mirrordash_core.features.wifi.network import connect_wifi, scan_wifi_networks
+from mirrordash_core.host import apply_system_timezone, poweroff_system, reboot_system
+
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")

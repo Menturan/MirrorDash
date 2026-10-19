@@ -24,7 +24,7 @@ async def reachable() -> bool:
     for host, port in TARGETS:
         try:
             _, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=5)
-        except (OSError, asyncio.TimeoutError):
+        except (TimeoutError, OSError):
             continue
         writer.close()
         try:
@@ -52,7 +52,9 @@ class InternetMonitor:
         if online != self.online:
             self.online = online
             logger.info("The mirror is online again." if online else "The mirror can't reach the internet.")
-            from mirrordash_core.features.kiosk.ws import manager  # ws.py reads self.online for its hello
+            from mirrordash_core.features.kiosk.ws import (
+                manager,  # ws.py reads self.online for its hello
+            )
             await manager.broadcast({"type": "internet", "online": online})
 
     async def _run(self) -> None:

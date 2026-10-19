@@ -1,11 +1,14 @@
-import pytest
-import asyncio
 from datetime import time
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
-from mirrordash_core.features.power.display_power import DisplayPowerManager, display_power_manager
 from mirrordash_core.app import app
+from mirrordash_core.features.power.display_power import (
+    DisplayPowerManager,
+)
+
 
 @pytest.fixture
 def client():
@@ -187,6 +190,7 @@ def test_schedule_with_wake_outside_and_manual_off_inside():
 
 def test_power_form_saves_wake_settings():
     from fastapi.testclient import TestClient
+
     from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     try:

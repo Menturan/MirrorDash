@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from mirrordash_core.features.hardware import devices as hardware
 from mirrordash_core.app import app
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.features.hardware import devices as hardware
 from mirrordash_core.features.hardware.devices import PressClassifier
 
 
@@ -147,7 +147,7 @@ def test_gpio_inputs_button_and_presence_events():
 def test_sensor_readings_are_published():
     async def scenario():
         received = []
-        handlers = {e: (lambda e: lambda data: received.append((e, data)))(e) for e in ("hardware.climate", "hardware.light")}
+        handlers = {e: (lambda kind: lambda data: received.append((kind, data)))(e) for e in ("hardware.climate", "hardware.light")}
         for e, h in handlers.items():
             event_bus.subscribe(e, h)
         inputs = hardware.GpioInputs()

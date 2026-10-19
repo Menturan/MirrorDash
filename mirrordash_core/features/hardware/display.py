@@ -1,9 +1,9 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import glob
 import logging
 import re
-import glob
 
 logger = logging.getLogger("mirrordash.core.hardware")
 
@@ -82,7 +82,7 @@ async def _set_backlight(brightness: int) -> bool:
     if not (backlight_paths and max_backlight_paths):
         return False
     try:
-        with open(max_backlight_paths[0], "r") as f:
+        with open(max_backlight_paths[0]) as f:
             max_val = int(f.read().strip())
         target_val = int((brightness / 100.0) * max_val)
         proc = await asyncio.create_subprocess_exec(
@@ -113,7 +113,7 @@ async def _set_ddc_brightness(brightness: int) -> bool:
         return False
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         logger.warning("ddcutil didn't answer within 10 s; the screen doesn't take brightness over HDMI")

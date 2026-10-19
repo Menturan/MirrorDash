@@ -1,7 +1,10 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import MagicMock, patch
+
 from mirrordash_core.app import app
+
 
 @pytest.fixture
 def client():

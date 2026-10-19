@@ -1,12 +1,12 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import logging
 import os
 
 from fastapi import HTTPException
 
 from mirrordash_core.config import write_atomic
-import logging
 
 logger = logging.getLogger("mirrordash.core.settings")
 

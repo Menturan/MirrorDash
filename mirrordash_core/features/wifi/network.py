@@ -98,7 +98,7 @@ def _load_cached_scan() -> list[str]:
     """Return the pre-AP scan cache if it exists."""
     cache_path = "/var/lib/mirrordash-wifi-scan.cache"
     try:
-        with open(cache_path, "r", encoding="utf-8") as f:
+        with open(cache_path, encoding="utf-8") as f:
             content = f.read().strip()
         if not content:
             return []
@@ -150,7 +150,7 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
             logger.warning(f"WiFi connection failed (code {proc.returncode}): {msg}")
             return False, msg
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         logger.error("WiFi connection timed out.")
         return False, "Connection timed out after 30 seconds."
     except Exception as e:
@@ -237,7 +237,7 @@ async def is_wifi_hotspot_active() -> bool:
                 _hotspot_active_cached = active
                 _hotspot_checked_at = time.monotonic()
                 return active
-        except asyncio.TimeoutError:
+        except TimeoutError:
             continue
         except Exception:
             continue

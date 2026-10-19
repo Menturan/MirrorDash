@@ -35,6 +35,7 @@ MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main
 
 ```bash
 uv run pytest -q                            # everything, a few seconds
+uvx ruff check --fix                        # lint (rules in pyproject.toml); CI runs it too
 uv run playwright install chromium webkit   # once, for the browser tests
 uv run pytest tests/test_visual_admin.py    # admin page in Chromium, the mirror's pages in WebKit (like the Pi's Cog)
 ```

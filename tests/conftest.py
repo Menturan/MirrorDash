@@ -1,9 +1,9 @@
 import os
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
-from pathlib import Path
 
 # Always resolve test config to a throwaway copy of the repo's config.json.
 # This keeps tests away from the developer's ~/.mirrordash/data/config.json (real passwords
@@ -39,6 +39,7 @@ class Answer:
 def call(fn, *args, **kwargs) -> Answer:
     """Call an async feature function as the admin panels do (they don't go over HTTP)."""
     import asyncio
+
     from fastapi import HTTPException
     try:
         return Answer(200, asyncio.run(fn(*args, **kwargs)))

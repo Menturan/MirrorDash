@@ -1,12 +1,11 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import html
 import logging
+
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from mirrordash_core.admin import require_api_key, templates
-from mirrordash_core.config import load_config
-import html
-from fastapi import APIRouter, Depends, HTTPException, Request
+
 from mirrordash_core.admin import BOOT_ID, notify, require_api_key, templates, ui_events
 from mirrordash_core.config import load_config
 from mirrordash_core.host import poweroff_system, reboot_system, sudo_allowed
@@ -73,7 +72,11 @@ async def get_panel_power(request: Request):
     hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
     minutes_list = list(range(0, 60))
 
-    from mirrordash_core.features.hardware.devices import DEVICE_TYPES, PRESENCE_TYPES, get_devices
+    from mirrordash_core.features.hardware.devices import (
+        DEVICE_TYPES,
+        PRESENCE_TYPES,
+        get_devices,
+    )
     return templates.TemplateResponse(
         request=request,
         name="admin_power.html",
@@ -137,8 +140,9 @@ async def reboot_mirror():
 @router.get("/panels/power/screen-status", dependencies=[Depends(require_api_key)])
 async def get_screen_status():
     import math
-    from mirrordash_core.features.power.display_power import display_power_manager
+
     from mirrordash_core.features.hardware.devices import gpio_inputs
+    from mirrordash_core.features.power.display_power import display_power_manager
 
     st = display_power_manager.status()
     if not st["on"]:

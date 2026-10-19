@@ -9,8 +9,9 @@ import logging
 import os
 import secrets
 import uuid
+from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Annotated, Awaitable, Callable
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse

@@ -2,6 +2,7 @@
 """Admin forms built from a JSON schema (a module's config_schema, the global settings), and the
 posted form read back into nested data. One small render function per kind of field."""
 
+import itertools
 import logging
 import re
 from dataclasses import dataclass
@@ -324,7 +325,7 @@ def parse_flat_form_data(form_data: dict) -> dict:
         if not tokens:
             continue
         node = result
-        for token, next_token in zip(tokens, tokens[1:]):
+        for token, next_token in itertools.pairwise(tokens):
             node = _child(node, token, next_token)
         last = tokens[-1]
         if isinstance(node, list):
