@@ -1,0 +1,18 @@
+#!/bin/bash
+# Settings → Reset mirror: the mirror as it was when the card was flashed, without reflashing (to
+# give it away, or to start over). Deletes everything of the owner's on /storage: settings and admin
+# password, the API token, modules and their data, backups, the Wi-Fi networks (the setup hotspot
+# gets a new password), SSH host keys, the app's venvs and Python. Then restarts; at the next start
+# hydrate seeds it all again as on a first boot, and the screen asks for Wi-Fi and a password.
+# Kept: the saved logs (why something failed before) and /storage/rauc (which A/B slot is the good
+# one: outside this folder). Run only by the app (sudo rule), which asks the owner to type RESET.
+set -euo pipefail
+STORAGE=${MIRRORDASH_STORAGE:-/storage/mirrordash}  # overridable for tests/test_configure_image.py
+
+[ "${1:-}" = --yes ] || { echo "usage: mirrordash-factory-reset --yes" >&2; exit 2; }
+[ -d "$STORAGE" ] || { echo "No $STORAGE: nothing to reset" >&2; exit 1; }
+
+logger -t mirrordash-factory-reset "Resetting the mirror to how it was flashed" || true
+find "$STORAGE" -mindepth 1 -maxdepth 1 ! -name logs -exec rm -rf {} +
+sync
+systemctl reboot

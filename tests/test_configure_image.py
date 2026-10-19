@@ -177,3 +177,28 @@ def test_the_clock_starts_at_the_last_saved_time(tmp_path):
     run("restore", now=1_000)  # an old time at start: forward to the saved one
     run("restore", now=9_000)  # NTP is already ahead: left alone
     assert (tmp_path / "set").read_text() == "@5000\n"
+
+
+def test_factory_reset_leaves_only_the_logs(tmp_path):
+    """Everything of the owner's goes (settings, Wi-Fi, modules, keys); the saved logs stay, and the
+    mirror restarts. It does nothing without --yes."""
+    storage = tmp_path / "storage"
+    for name in ("data/config.json", "system-connections/Home.nmconnection", "venv_a/x", "python/x", "ssh/key",
+                 "clock", "logs/os-trial-1.log"):
+        (storage / name).parent.mkdir(parents=True, exist_ok=True)
+        (storage / name).write_text("x")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "systemctl").write_text(f'#!/bin/bash\necho "$*" >> {tmp_path}/systemctl\n')
+    (bin_dir / "logger").write_text("#!/bin/bash\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    script = tmp_path / "reset"
+    script.write_text(unit("/usr/local/bin/mirrordash-factory-reset"))
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "MIRRORDASH_STORAGE": str(storage)}
+    assert subprocess.run(["bash", str(script)], env=env, capture_output=True).returncode == 2
+    assert (storage / "data" / "config.json").exists()
+    subprocess.run(["bash", str(script), "--yes"], env=env, check=True, capture_output=True)
+    assert [p.name for p in storage.iterdir()] == ["logs"] and (storage / "logs" / "os-trial-1.log").exists()
+    assert (tmp_path / "systemctl").read_text() == "reboot\n"
+    assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes" in unit("/etc/sudoers.d/mirrordash")

@@ -1616,3 +1616,13 @@ def test_only_the_mirror_itself_can_start_the_nightly_update(client):
         with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()):
             assert client.post("/admin/auto-update").json() == {"started": "up to date"}
     run.assert_awaited_once()
+
+
+def test_reset_mirror_needs_reset_typed():
+    from mirrordash_core.features.settings import routes
+    with patch.object(routes, "start_job", return_value="job1") as start, \
+         patch.object(routes, "job_response", return_value="following") as follow:
+        assert "Type RESET" in asyncio.run(routes.factory_reset(confirm="reset me")).headers["HX-Trigger-After-Swap"]
+        start.assert_not_called()
+        assert asyncio.run(routes.factory_reset(confirm=" RESET ")) == "following"
+    start.assert_called_once() and follow.assert_called_once()

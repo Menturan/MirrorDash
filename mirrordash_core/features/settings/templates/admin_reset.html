@@ -1,0 +1,18 @@
+{# Settings → Reset mirror (routes.factory_reset): everything of the owner's gone, as when the card was
+   flashed. Typing RESET is the server's check; hx-confirm only says what it means. #}
+<section class="card" id="reset-mirror">
+    <h2><i class="fas fa-eraser" aria-hidden="true"></i> Reset Mirror</h2>
+    <p class="muted">Makes the mirror as it was when its card was flashed, for giving it away or starting over:
+        your settings, the admin password, modules and their data, backups, the Wi-Fi networks and the API token
+        are deleted. The mirror restarts and asks for Wi-Fi and a password again, on its own screen.</p>
+    <form class="stacked-form" hx-post="/admin/panels/system/factory-reset" hx-target="#global-status"
+          hx-swap="innerHTML" hx-disabled-elt="find button"
+          hx-confirm="Reset the mirror? Everything above is deleted and can't be brought back; this phone loses the mirror until it is set up again.">
+        <div class="form-group">
+            <label for="reset-confirm">Type RESET to confirm</label>
+            <input type="text" id="reset-confirm" name="confirm" class="form-control" autocomplete="off"
+                   autocapitalize="characters" spellcheck="false" required>
+        </div>
+        <button type="submit" class="btn danger">Reset Mirror</button>
+    </form>
+</section>

@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **Reset Mirror** at the bottom of Settings makes the mirror as new, for giving it away or starting over, without reflashing (it needs the next system version).
+
 - Updates install themselves at night (Settings → Updates → *Install updates automatically*, on unless you turn it off), with the same safety as the buttons: an update that doesn't work is undone and isn't tried again by itself.
 
 - A wrong password for an encrypted backup now always says so. Before, about one wrong password in 256 was reported as a broken backup file.

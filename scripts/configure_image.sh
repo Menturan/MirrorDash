@@ -323,6 +323,8 @@ EOF
 
 step_passwordless_sudo() {
   put 0440 /etc/sudoers.d/mirrordash
+  # Settings → Reset mirror (the sudo rule above allows exactly this, with --yes)
+  put 0755 /usr/local/bin/mirrordash-factory-reset
   visudo -cf /etc/sudoers.d/mirrordash
 }
 

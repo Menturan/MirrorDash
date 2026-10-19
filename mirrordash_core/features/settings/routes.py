@@ -1,13 +1,21 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
+import asyncio
 import json
 import logging
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.admin import events_header, notify, require_api_key, templates
+from mirrordash_core.admin import (
+    events_header,
+    job_response,
+    notify,
+    require_api_key,
+    start_job,
+    templates,
+)
 from mirrordash_core.config import get_core_version, load_config, save_config
 from mirrordash_core.features.modules.loader import find_entry_point, module_loader
 from mirrordash_core.features.settings.dev_logging import (
@@ -148,3 +156,25 @@ async def add_array_item_route(
         item_title=item_title
     )
     return HTMLResponse(content=html)
+
+
+RESET_HELPER = "/usr/local/bin/mirrordash-factory-reset"  # an OS image file; its sudo rule allows only --yes
+
+
+@router.post("/panels/system/factory-reset", dependencies=[Depends(require_api_key)])
+async def factory_reset(confirm: str = Form("")):
+    """Settings → Reset mirror. The helper deletes the owner's things on /storage and restarts."""
+    if confirm.strip() != "RESET":
+        return notify("Type RESET to reset the mirror.", "error")
+
+    async def work() -> None:
+        proc = await asyncio.create_subprocess_exec("sudo", "-n", RESET_HELPER, "--yes",
+                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+        _, err = await proc.communicate()
+        if proc.returncode != 0:  # e.g. a development machine, which has no such helper
+            raise HTTPException(status_code=500, detail=f"Reset failed: {err.decode(errors='replace').strip()}")
+
+    logger.warning("Factory reset requested from the admin page")
+    return job_response(start_job(work), "Resetting the Mirror",
+                        "Deleting everything and restarting. Then set the mirror up again from its own screen.",
+                        "The mirror has started over. Set it up again from its own screen.")
