@@ -80,6 +80,27 @@ Every mirror is now offered the update.
 
 The image contains the app version on master, so release the app first if it changed.
 
+**1. Publish a test version.** Run the script and choose **3**. GitHub Actions runs the tests, builds the
+image and the signed update bundle (about 30 minutes) and publishes both as the test version
+`vX.Y.Z-osN`: a pre-release on GitHub. Mirrors with *Test versions* on are offered it under
+**Settings → Check for Updates**, in the *System* part, just like a test version of the app; nothing has
+to be copied to a mirror by hand. At the end the script asks whether to download the image as well, to
+flash a card (over 16 connections at once, with `aria2c` if it's installed, into
+`build_workspace/test-image/<run>/`).
+
+**2. Test it.** On your test mirror's admin page: **Settings → Test versions** on, then **Check for
+Updates**, and install. Only mirrors with Test versions on are offered it. If something is wrong, fix it
+on master and choose **1** again: it suggests the next test version (`0.5.0rc2`).
+
+**3. Release it for everyone.** Run the script again and choose **2**. It suggests the version without
+`rc` (`0.5.0`), moves the `[Unreleased]` entries in `CHANGELOG.md` into a `[0.5.0]` section (the
+`### OS image` part stays for the next image), and publishes it with that section as release notes.
+Every mirror is now offered the update.
+
+## Release an OS image
+
+The image contains the app version on master, so release the app first if it changed.
+
 **1. Build a test image.** Run the script and choose **3**. GitHub Actions runs the tests and builds the
 image and the signed update bundle (about 30 minutes); the script waits and downloads them to
 `build_workspace/test-image/<run>/` (`mirrordash-os-vX.Y.Z.img.xz` and `mirrordash-os-vX.Y.Z-<build>.raucb`). The image is about 750 MB: the script
@@ -100,17 +121,22 @@ the speed and the time left, and asks to try again if the download breaks (witho
 5. **Hardware tab**: moving *Screen Brightness* dims the screen (on an HDMI monitor with DDC/CI;
    otherwise the tab says the screen can't take it). With two buttons connected, each one does what
    its own settings say.
-6. **OS update** (when the OS changed): turn on **Settings → Developer → Developer logging** first, so a
-   failure leaves its whole log behind. On a mirror running the previous OS release, copy the new
-   bundle over and install it: `scp <bundle>.raucb pi@mirrordash.local:/storage/mirrordash/os-update.raucb`,
-   then `sudo rauc install /storage/mirrordash/os-update.raucb && sudo reboot`. The mirror comes back with
-   everything kept, and `rauc status` shows the other slot booted and good.
+6. **System update** (when the OS changed): on a mirror running the previous OS release, turn on
+   **Settings → Developer → Developer logging** (a failure then leaves its whole log behind) and *Test
+   versions*, then **Check for Updates → Install System Update**. The mirror comes back with everything
+   kept, and `rauc status` shows the other slot booted and good.
 
-**3. Release that same image.** Run the script and choose **4**. It publishes `vX.Y.Z-osN` with the
-file you tested and its update bundle; nothing is rebuilt. Mirrors are offered the bundle under
-**Settings → Check for Updates**. If master changed since the build, it lists what the image doesn't
-contain and asks before going on. Only the `### OS image` entries under `[Unreleased]` move to the
-image's section; app entries stay for the next app release (they aren't in the image's app version).
+Steps 1–5 need a freshly flashed card (the download at the end of step 3); for a change that only
+reaches mirrors as a system update, step 6 is the test.
+
+**3. Release that same test version.** Run the script and choose **4**. The pre-release you tested
+becomes the release `vX.Y.Z-osN` for every mirror: the same image and bundle, nothing rebuilt or
+uploaded again. If master changed since the build, it lists what the image doesn't contain and asks
+before going on. Only the `### OS image` entries under `[Unreleased]` move to the image's section; app
+entries stay for the next app release (they aren't in the image's app version).
+
+**If the test version isn't good:** delete the pre-release and its tag (`gh release delete vX.Y.Z-osN
+--cleanup-tag`), fix it, and choose **3** again; the next test version gets the next number.
 
 ## Writing the CHANGELOG
 
@@ -161,15 +187,15 @@ works through pull requests). GitHub Actions runs the tests on every push instea
 ```
 git push (master)  ──► Tests
 release.py 1 or 2  ──► tag vX.Y.Z / vX.Y.ZrcN + GitHub release ──► Publish to PyPI: Tests → build → publish ──► mirrors update
-release.py 3       ──► Build OS Image: Tests → build ──► workflow artifact (kept 14 days) ──► you flash and test it
-release.py 4       ──► that same artifact becomes the vX.Y.Z-osN GitHub release (nothing is rebuilt)
+release.py 3       ──► Build OS Image: Tests → build ──► pre-release vX.Y.Z-osN ──► test mirrors install it (or flash the image)
+release.py 4       ──► that same pre-release becomes the vX.Y.Z-osN release (nothing is rebuilt)
 ```
 
 | Workflow (`.github/workflows/`) | Started by | What it does | Result |
 | :--- | :--- | :--- | :--- |
 | `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
 | `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
-| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min). One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
+| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min), and with a tag (option 3 gives one) the result becomes that test version, a pre-release. One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
 
 The only secret in GitHub is `RAUC_KEY`, which signs the OS update bundle. PyPI trusts the `publish` job in the `pypi` environment (trusted
 publishing, OIDC); renaming `publish.yml` or the environment breaks that until it is changed on pypi.org

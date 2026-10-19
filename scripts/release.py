@@ -164,8 +164,18 @@ def pick_version(prompt_title, candidates, pattern, current):
 
 
 def next_os_version(core_version):
+    """The next free vX.Y.Z-osN: after every released one (CHANGELOG) and every test version (tags), so
+    a test version that wasn't good is never reused."""
     builds = re.findall(rf"^## \[{re.escape(core_version)}-os(\d+)\]", (ROOT / "CHANGELOG.md").read_text(), re.M)
-    return f"{core_version}-os{max(map(int, builds), default=0) + 1}"
+    tags = run("git", "tag", "--list", f"v{core_version}-os*").split()
+    tagged = [m[1] for t in tags if (m := re.fullmatch(rf"v{re.escape(core_version)}-os(\d+)", t))]
+    return f"{core_version}-os{max(map(int, [*builds, *tagged]), default=0) + 1}"
+
+
+def os_image_notes():
+    """The ### OS image entries under [Unreleased]: what a test version of the OS brings."""
+    notes = unreleased_notes()
+    return notes.split("### OS image", 1)[1].split("\n### ", 1)[0].strip() if "### OS image" in notes else ""
 
 
 # --- Safety checks --------------------------------------------------------------------------
@@ -402,61 +412,76 @@ def release_app(test):
 
 
 def build_test_image():
-    check_ready(tag=None, tests=False)
+    """Step 3: CI builds the OS image and its update bundle and publishes them as a test version, a
+    GitHub pre-release vX.Y.Z-osN. Mirrors with Test versions on are offered it under Settings → Check
+    for Updates, like a test version of the app; nothing is downloaded to this computer unless you want
+    to flash a card. Step 4 then turns that same pre-release into the release."""
     core = current_version()
     if "rc" in core:
-        print(f"  Note: master is at test version {core}; the image will contain it.")
+        die(f"master is at test version {core}; release the app first (2): an OS image carries a released app.")
+    check_ready(None, tests=False)  # first: it fetches the tags next_os_version counts
+    version = next_os_version(core)
+    tag = f"v{version}"
+    check_ready(tag, tests=False)
     sha = run("git", "rev-parse", "HEAD")
-    confirm(f"This builds an OS image from master ({sha[:7]}, MirrorDash {core}) on GitHub. It takes about 30 minutes.")
+    confirm(f"This builds the OS image and update bundle from master ({sha[:7]}, MirrorDash {core}) on GitHub "
+            f"(about 30 minutes) and publishes them as the test version {tag}: only mirrors with Test versions "
+            "on are offered it.")
     started = now()
-    run("gh", "workflow", "run", "build-os-image.yml", "--ref", "master", change=True)
+    notes = (f"Test version of the MirrorDash OS {version}, for mirrors with Test versions turned on.\n\n"
+             + os_image_notes())
+    run("gh", "workflow", "run", "build-os-image.yml", "--ref", "master", "-f", f"tag={tag}", "-f", f"notes={notes}",
+        change=True)
     run_id = watch("build-os-image.yml", sha, started)
     if DRY:
         return
-    target = TEST_IMAGE_DIR / run_id
-    shutil.rmtree(TEST_IMAGE_DIR, ignore_errors=True)
-    download_artifact(run_id, "mirrordash-os-image", target)
-    image = next(target.glob("*.img.xz"))
-    if subprocess.run(["sha256sum", "--check", "--quiet", f"{image.name}.sha256"], cwd=target).returncode != 0:
-        die("the downloaded image doesn't match its checksum; choose 3 again.")
+    TEST_IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     (TEST_IMAGE_DIR / "run.json").write_text(json.dumps(
-        {"run_id": run_id, "sha": sha, "core_version": core, "image": str(image)}, indent=2))
-    print(f"\n  Test image: {image}")
-    print(f"  Checksum:   {image}.sha256 (matches)")
-    print("  Flash it, go through the hardware checklist in RELEASING.md, then run this again and choose 4.")
+        {"run_id": run_id, "sha": sha, "core_version": core, "tag": tag}, indent=2))
+    print(f"\n  {tag} is published as a test version (a pre-release on GitHub).")
+    print("  On a mirror with Test versions on: Settings → Check for Updates → Install System Update.")
+    if ask("  Download the image too, to flash a card? [y/N] ").lower() == "y":
+        target = TEST_IMAGE_DIR / run_id
+        download_artifact(run_id, "mirrordash-os-image", target)
+        image = next(target.glob("*.img.xz"))
+        if subprocess.run(["sha256sum", "--check", "--quiet", f"{image.name}.sha256"], cwd=target).returncode != 0:
+            die("the downloaded image doesn't match its checksum; download it again from the release.")
+        print(f"  Image: {image} (checksum matches)")
+    print("  When it's good, run this again and choose 4. If it isn't, delete the pre-release and its tag, fix it,")
+    print("  and choose 3 again: the next test version gets the next number.")
 
 
 def release_image():
+    """Step 4: the tested pre-release becomes the release for every mirror. Same files: nothing is rebuilt
+    or uploaded again, so what mirrors get is exactly what was tested."""
     try:
         built = json.loads((TEST_IMAGE_DIR / "run.json").read_text())
     except FileNotFoundError:
-        die("there's no tested image yet; choose 3 first.")
-    image = Path(built["image"])
-    if not image.exists():
-        die(f"the tested image {image} is gone; choose 3 to build a new one.")
+        die("there's no OS test version yet; choose 3 first.")
+    tag = built.get("tag") or die("the last build is from before OS test versions; choose 3 to build one.")
     core = current_version()
     if built["core_version"] != core or "rc" in core:
-        die(f"the image has MirrorDash {built['core_version']} but master is at {core}; "
-            "release the app first (2), then build a new test image (3).")
-    version = next_os_version(core)
-    tag = f"v{version}"
-
-    check_ready(tag)
+        die(f"{tag} has MirrorDash {built['core_version']} but master is at {core}; "
+            "release the app first (2), then build a new OS test version (3).")
+    check_ready(None)
+    info = json.loads(run("gh", "release", "view", tag, "--json", "isPrerelease,assets"))
+    if not info["isPrerelease"]:
+        die(f"{tag} is already released.")
+    names = [a["name"] for a in info["assets"]]
+    if not any(n.endswith(".img.xz") for n in names) or not any(n.endswith(".raucb") for n in names):
+        die(f"{tag} lacks its image or update bundle ({', '.join(names) or 'no files'}); choose 3 again.")
     changed = [f for f in run("git", "diff", "--name-only", built["sha"], "HEAD").splitlines() if f != "CHANGELOG.md"]
     if changed:
-        print(f"\n  Master has changed since the image was built ({built['sha'][:7]}); the image doesn't contain:")
+        print(f"\n  Master has changed since {tag} was built ({built['sha'][:7]}); it doesn't contain:")
         print("".join(f"    {f}\n" for f in changed[:15]), end="")
-    confirm(f"This releases {tag}: moves the CHANGELOG entries, pushes to master and publishes the tested image "
-            f"{image.name} on GitHub. Nothing is rebuilt.")
-
+    confirm(f"This releases {tag} for every mirror: moves the CHANGELOG entries, pushes to master and turns the "
+            f"test version you tried into the release. Nothing is rebuilt.")
+    version = tag[1:]
     move_changelog(version, intro=f"OS image with MirrorDash {core}.", only_os_image=True)
     commit_and_push(f"chore: release {tag}", "CHANGELOG.md")
     notes = changelog_section(version) + f"\n\nImage built from {built['sha'][:7]} (Actions run {built['run_id']})."
-    # The update bundle goes along: mirrors install it from the admin page (A/B OS update)
-    bundles = [str(b) for b in image.parent.glob("*.raucb")]
-    run("gh", "release", "create", tag, str(image), f"{image}.sha256", *bundles, "--target", run("git", "rev-parse", "HEAD"),
-        "--title", tag, "--notes", notes, change=True)
-    print(f"\n  {tag} is published with the image you tested.")
+    run("gh", "release", "edit", tag, "--prerelease=false", "--latest", "--title", tag, "--notes", notes, change=True)
+    print(f"\n  {tag} is released: every mirror is offered it under Settings → Check for Updates.")
 
 
 def main():
@@ -464,8 +489,8 @@ def main():
         print("Dry run: nothing is changed, pushed or published.")
     steps = [("Test version of the app (only test mirrors get it)", lambda: release_app(test=True)),
              ("Release the app for everyone", lambda: release_app(test=False)),
-             ("Build a test OS image to flash", build_test_image),
-             ("Release the tested OS image", release_image)]
+             ("Test version of the OS (only test mirrors get it)", build_test_image),
+             ("Release the tested OS for everyone", release_image)]
     steps[choose("What do you want to do?", [label for label, _ in steps])][1]()
 
 

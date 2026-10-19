@@ -5,6 +5,15 @@ name: Build OS Image
 # See RELEASING.md.
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Publish the result as this test version (a pre-release, e.g. v0.7.0-os1); empty: only the artifact"
+        required: false
+        default: ""
+      notes:
+        description: "Release notes for the test version"
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -23,6 +32,9 @@ jobs:
     needs: test
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
+    # Only this job may write: it publishes the test version (a pre-release) when a tag is given
+    permissions:
+      contents: write
 
     steps:
       - name: Free Disk Space (Critical for OS builds!)
@@ -76,3 +88,17 @@ jobs:
           if-no-files-found: error
           compression-level: 0 # The image is already xz, the bundle a squashfs
           retention-days: 14
+
+      # scripts/release.py 3 gives a tag: the image and its update bundle become a test version, a
+      # GitHub pre-release. Mirrors with Test versions on are offered it in the admin page; release.py 4
+      # later turns this same pre-release into the release (nothing rebuilt or uploaded again).
+      - name: Publish as a test version (pre-release)
+        if: inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          gh release create "$TAG" build_workspace/mirrordash-os-*.img.xz build_workspace/mirrordash-os-*.img.xz.sha256 \
+            build_workspace/mirrordash-os-*.raucb --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
+            --title "$TAG" --notes "$NOTES"
