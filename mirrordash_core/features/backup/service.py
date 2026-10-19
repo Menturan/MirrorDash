@@ -9,6 +9,7 @@ import shutil
 import sys
 import tempfile
 import zipfile
+import zlib
 from datetime import datetime
 from pathlib import Path
 
@@ -116,10 +117,17 @@ def read_manifest(path: str, password: str | None = None) -> dict | None:
     with zipfile.ZipFile(path) as zf:
         if password:
             zf.setpassword(password.encode("utf-8"))
+        encrypted = zf.getinfo("backup_manifest.json").flag_bits & 0x1
         try:
             return json.loads(zf.read("backup_manifest.json").decode("utf-8"))
         except RuntimeError as e:  # "is encrypted, password required" / "Bad password"
             if "password" in str(e).lower() or "encrypted" in str(e).lower():
+                return None
+            raise
+        except (zipfile.BadZipFile, zlib.error):
+            # ZIP encryption checks a password against one byte: about 1 wrong password in 256 gets
+            # past it and only fails here, at the checksum or the decompression. Still a wrong password.
+            if encrypted and password:
                 return None
             raise
 

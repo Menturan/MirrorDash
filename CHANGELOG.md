@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A wrong password for an encrypted backup now always says so. Before, about one wrong password in 256 was reported as a broken backup file.
+
 - Security: a backup file or a community module's PyPI page could put script into the admin page (a crafted module name, release notes, or file name). Everything they bring is now shown as text only.
 
 - Installing or updating a module, or MirrorDash, now stops at once with a clear message when the mirror's storage is nearly full. Before, it could fail halfway.

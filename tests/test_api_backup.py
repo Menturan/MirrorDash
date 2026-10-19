@@ -339,7 +339,9 @@ def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
     subprocess.run(["zip", "-q", "-P", "secret", "locked.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
     locked = str(tmp_path / "locked.mirror")
     assert read_manifest(locked) is None
-    assert read_manifest(locked, "wrong") is None
+    # ZIP encryption checks a password against one byte, so about 1 wrong one in 256 gets past it
+    # and fails at the checksum instead: enough tries that some do, every one still "wrong password"
+    assert all(read_manifest(locked, f"wrong{i}") is None for i in range(3000))
     assert read_manifest(locked, "secret") == {"backup_version": "1.0"}
     with pytest.raises(zipfile.BadZipFile):
         read_manifest(str(tmp_path / "backup_manifest.json"))
