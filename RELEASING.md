@@ -214,7 +214,7 @@ purpose, one at a time, and build a test image (option 3) afterwards.
 | Clock module in the image | `CLOCK_REF` in `scripts/configure_image.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
 | uv in the image | `UV_VERSION` in `scripts/configure_image.sh` | The uv release you use locally. |
 | Python of `base_venv` (Safe mode) | `--python 3.14` in `scripts/configure_image.sh` | Mirrors keep their own Python on `/storage` (ARCHITECTURE #16), so this only changes Safe mode. Not in the first image that moves the app's Python to `/storage`: that image copies this one. |
-| Python the app needs | `requires-python` in `pyproject.toml` | Raising the minor makes every mirror install that Python with the update and try each module with it first (ARCHITECTURE #16). Try it on a test version first. |
+| Python the app needs | `requires-python` in `pyproject.toml`, and `.python-version` (what the tests and CI run, so the same as the mirrors) | Raising the minor makes every mirror install that Python with the update and try each module with it first (ARCHITECTURE #16). Bump both together; try it on a test version first. |
 | Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |
 
 ### Bumping the Raspberry Pi OS base image
