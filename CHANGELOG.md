@@ -20,6 +20,8 @@ There are two kinds of releases:
 
 ### OS image
 
+- After a restart without internet, the mirror's clock starts at the last time it knew instead of the date the system was built, so times and secure connections are right sooner.
+
 - If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
 - The automatic restart of a frozen screen or app (0.7.1) comes with the OS image.
 - A system update no longer deletes your modules or your MirrorDash updates when it brings a new Python: MirrorDash's Python now lives with your settings, and a system update doesn't touch it.
