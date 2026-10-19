@@ -61,3 +61,34 @@ def test_a_venv_whose_python_doesnt_start_is_kept(tmp_path):
     run_hydrate(tmp_path)
     assert os.readlink(md / "venv") == "venv_b"
     assert (md / "venv_b").is_dir() and not (md / "venv_a").exists()
+
+
+def run_launch(tmp_path: Path, trial: bool) -> Path:
+    """Runs the real launch.sh with an app that crashes at once, on venv_b with venv_old behind it."""
+    md = tmp_path / "storage" / "mirrordash"
+    for name in ("venv_b", "venv_old", "base_venv"):
+        (md / name / "bin").mkdir(parents=True)
+        (md / name / "bin" / "python").write_text(f"#!/bin/sh\necho {name} >> {tmp_path}/started\nexit 1\n")
+        (md / name / "bin" / "python").chmod(0o755)
+    (md / "venv").symlink_to("venv_b")
+    bootloader = tmp_path / "rauc-bootloader"
+    bootloader.write_text(f'#!/bin/sh\n[ "$1" = is-update-trial ] && exit {0 if trial else 1}\n')
+    bootloader.chmod(0o755)
+    script = tmp_path / "launch.sh"
+    script.write_text((Path(__file__).parent.parent / "scripts" / "launch.sh").read_text()
+                      .replace("/storage/mirrordash", str(md)).replace("/home/pi/mirrordash/base_venv", str(md / "base_venv"))
+                      .replace("/home/pi/mirrordash", str(tmp_path)).replace("/usr/local/lib/mirrordash/rauc-bootloader", str(bootloader)))
+    subprocess.run(["bash", str(script)], env={"PATH": "/usr/bin:/bin"}, capture_output=True)
+    return md
+
+
+def test_a_crash_on_an_os_trial_boot_leaves_the_app_alone(tmp_path):
+    """On the trial boot of a new OS the crash is the OS's doing: no rollback (that would downgrade
+    the app for good, and Safe mode would get the broken OS kept); mark-good gives up instead."""
+    md = run_launch(tmp_path / "trial", trial=True)
+    assert os.readlink(md / "venv") == "venv_b" and (md / "venv_old").is_dir() and not (md / "venv_failed").exists()
+    assert (tmp_path / "trial" / "started").read_text() == "venv_b\n"
+    # A normal start rolls back as before
+    md = run_launch(tmp_path / "normal", trial=False)
+    assert os.readlink(md / "venv") == "venv_a" and (md / "venv_failed").is_dir()
+    assert (tmp_path / "normal" / "started").read_text() == "venv_b\nvenv_old\n"  # venv_old, now named venv_a

@@ -32,7 +32,17 @@ DURATION=$((END_TIME - START_TIME))
 # If python exited with a crash code and lasted less than 10 seconds, trigger rollback.
 if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 ] && [ "$DURATION" -lt 10 ]; then
     echo "Boot crash detected (Exit Code: $EXIT_CODE, Duration: ${DURATION}s)."
-    
+
+    # On the trial boot of a new OS version the crash is the new OS's doing, not the app's: leave the
+    # venvs alone and keep failing, so /health never answers, mirrordash-mark-good gives up and the
+    # mirror goes back to the old OS with MirrorDash as it was (ARCHITECTURE #31). A rollback here
+    # would downgrade the app for good, and Safe mode would even get the broken OS kept.
+    TRIAL=/usr/local/lib/mirrordash/rauc-bootloader
+    if [ -x "$TRIAL" ] && "$TRIAL" is-update-trial; then
+        echo "This is a trial boot of a new system version: not rolling MirrorDash back."
+        exit $EXIT_CODE
+    fi
+
     # 1. Try A/B Rollback
     if [ -d "/storage/mirrordash/venv_old" ]; then
         TARGET=$(readlink "$VENV_LINK")
