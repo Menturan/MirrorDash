@@ -1,0 +1,12 @@
+[Unit]
+Description=MirrorDash automatic update, at night
+
+[Timer]
+OnCalendar=*-*-* 03:30
+# Spread over an hour, so mirrors don't all ask GitHub and PyPI at the same minute
+RandomizedDelaySec=1h
+# Not caught up after a night with the mirror off: the next night comes soon enough
+Persistent=false
+
+[Install]
+WantedBy=timers.target

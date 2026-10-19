@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Updates install themselves at night (Settings → Updates → *Install updates automatically*, on unless you turn it off), with the same safety as the buttons: an update that doesn't work is undone and isn't tried again by itself.
+
 - A wrong password for an encrypted backup now always says so. Before, about one wrong password in 256 was reported as a broken backup file.
 
 - Security: a backup file or a community module's PyPI page could put script into the admin page (a crafted module name, release notes, or file name). Everything they bring is now shown as text only.

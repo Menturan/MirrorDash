@@ -1,0 +1,9 @@
+[Unit]
+Description=MirrorDash automatic update (asks the app; Settings → Updates says whether it's on)
+After=mirrordash.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The app decides what to install and runs it as its own job; this only asks
+ExecStart=/usr/bin/curl -fsS -m 60 -o /dev/null -X POST http://127.0.0.1:8000/admin/auto-update

@@ -390,3 +390,37 @@ async def get_disk_usage() -> dict:
     except Exception as e:
         logger.error(f"Failed to retrieve disk usage: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {str(e)}")
+
+
+async def auto_update() -> str:
+    """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
+    as pressing the buttons on the Updates card, the system first. It never guesses for the owner:
+    a system build whose trial boot failed isn't tried again by itself, and a newer Python that some
+    modules don't work with waits for someone to choose Install Anyway. Returns what it started."""
+    from mirrordash_core.admin import job_status, start_job
+    from mirrordash_core.config import save_config
+    system = load_config().get("system", {})
+    if not system.get("auto_update", True):
+        return "off"
+    if job_status()["state"] == "running":
+        return "busy"
+    try:
+        os_info = await check_os_update()
+    except HTTPException:
+        os_info = {}  # GitHub unreachable tonight: MirrorDash can still be up to date
+    if os_info.get("failed_build"):  # seen once (failed_os_update): remember it for the nights to come
+        config = load_config()
+        config.setdefault("system", {})["auto_update_skip_build"] = os_info["failed_build"]
+        save_config(config)
+        system = config["system"]
+    bundle = os_info.get("bundle")
+    if os_info.get("update_available") and bundle["build"] != system.get("auto_update_skip_build"):
+        start_job(lambda: update_os(bundle))
+        return "system"
+    app = await check_core_update()
+    if not app["update_available"]:
+        return "up to date"
+    if app.get("needs_python") and incompatible.get("version") == app["latest_version"]:
+        return "waiting for a choice"  # some modules don't work with the newer Python
+    start_job(update_core)
+    return "mirrordash"

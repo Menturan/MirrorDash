@@ -39,6 +39,7 @@ async def get_system_settings() -> dict:
             "volume": system_cfg.get("volume", 80),
             "ssh": ssh_active,
             "prerelease": system_cfg.get("prerelease", False),
+            "auto_update": system_cfg.get("auto_update", True),
             "display_control": system_cfg.get("display_control", {
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
@@ -49,7 +50,8 @@ async def get_system_settings() -> dict:
 
 
 # What a setting is when the config doesn't have it yet
-DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": True, "prerelease": False}
+DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": True, "prerelease": False,
+            "auto_update": True}
 HHMM = re.compile(r"^\d{2}:\d{2}$")
 
 
@@ -70,6 +72,7 @@ def _check(new: dict) -> None:
         (_int_in(wake.get("timeout_minutes", DEFAULT_WAKE["timeout_minutes"]), 1, 1440), "The screen timeout must be 1 to 1440 minutes"),
         (all(isinstance(wake.get(k, True), bool) for k in ("extend", "presence")), "Invalid wake settings"),
         (isinstance(new["prerelease"], bool), "Test versions must be on or off"),
+        (isinstance(new["auto_update"], bool), "Automatic updates must be on or off"),
         (dc.get("mode") != "interval" or all(HHMM.match(interval.get(k, "00:00")) for k in ("start", "end")),
          "Invalid interval time format (HH:MM)"),
     ]

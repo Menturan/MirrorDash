@@ -3,7 +3,7 @@
 import asyncio
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.admin import (
@@ -14,6 +14,7 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.features.updates.service import (
+    auto_update,
     check_core_update,
     check_os_update,
     format_build,
@@ -52,7 +53,9 @@ def _os_update_html(data: dict | BaseException) -> str:
     """The system's part of the check (A/B OS updates, see service.check_os_update)."""
     if isinstance(data, BaseException):
         return _render("update_os.html", error=getattr(data, "detail", None) or str(data))
-    return _render("update_os.html", data=data, format_build=format_build)
+    from mirrordash_core.config import load_config
+    skip_build = load_config().get("system", {}).get("auto_update_skip_build")
+    return _render("update_os.html", data=data, format_build=format_build, skip_build=skip_build)
 
 
 def _render(name: str, **context) -> str:
@@ -92,3 +95,14 @@ async def trigger_rebuild_venv():
     job_id = start_job(rebuild_venv)
     return job_response(job_id, "Reinstalling MirrorDash", "Installing MirrorDash and its modules again. This can take several minutes...",
                         "MirrorDash and its modules were installed again.")
+
+
+@router.post("/auto-update")
+async def post_auto_update(request: Request) -> dict:
+    """The OS image's nightly timer (mirrordash-auto-update.timer) calls this. Only from the mirror
+    itself, so it needs no password; what it may do is what Settings → Updates already allows."""
+    if request.client.host not in ("127.0.0.1", "::1"):
+        raise HTTPException(status_code=403, detail="Only from the mirror itself")
+    started = await auto_update()
+    logger.info(f"Automatic update: {started}")
+    return {"started": started}

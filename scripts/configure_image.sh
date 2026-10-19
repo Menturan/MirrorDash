@@ -552,6 +552,11 @@ step_systemd_service() {
   put 0644 /etc/systemd/system/mirrordash-clock-save.service
   put 0644 /etc/systemd/system/mirrordash-clock-save.timer
   systemctl --root=/ enable mirrordash-clock.service mirrordash-clock-save.timer
+
+  # Nightly updates, when Settings → Updates has them on (the app decides what to install)
+  put 0644 /etc/systemd/system/mirrordash-auto-update.service
+  put 0644 /etc/systemd/system/mirrordash-auto-update.timer
+  systemctl --root=/ enable mirrordash-auto-update.timer
 }
 
 step_repart_service() {

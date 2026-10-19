@@ -50,6 +50,7 @@ async def get_panel_config(request: Request):
             "raw_json_str": raw_json_str,
             "current_version": current_version,
             "prerelease": config.get("system", {}).get("prerelease", False),
+            "auto_update": config.get("system", {}).get("auto_update", True),
             "ssh": await get_ssh_status(),
             # None where there are no system updates (an image from before A/B, a development machine)
             "os_build": format_build(build) if (build := installed_os_build()) else None,

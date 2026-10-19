@@ -1565,3 +1565,54 @@ def test_a_packages_own_text_is_never_markup_in_the_admin_page():
     assert notes.count("&lt;script&gt;") == 2  # the title (summary) and the notes themselves
     assert "renderNotesMarkdown" not in notes  # rendered by admin.js after the swap, not by a <script> (rule 8c)
     assert 'hx-vals=\'{"package_name": "mirrordash-x"}\'' in badge and "Notes" in badge
+
+
+@pytest.mark.parametrize("case", ["off", "busy", "system first", "skipped build", "mirrordash", "waiting", "up to date"])
+def test_the_nightly_update_does_what_the_buttons_would(case):
+    """Off → nothing; the system before MirrorDash; a system build whose trial failed isn't retried
+    by itself; a newer Python some modules don't work with waits for the owner's choice."""
+    from mirrordash_core.features.updates import service
+    system = {"auto_update": case != "off"}
+    if case == "skipped build":
+        system["auto_update_skip_build"] = "20261020-0300"
+    os_info = {"update_available": case in ("system first", "skipped build"), "failed_build": None,
+               "bundle": {"build": "20261020-0300"}}
+    app = {"update_available": case in ("skipped build", "mirrordash", "waiting"), "latest_version": "1.0.0",
+           "needs_python": "3.15" if case == "waiting" else None}
+    started = []
+    service.incompatible.clear()
+    if case == "waiting":
+        service.incompatible.update(version="1.0.0", python="3.15", modules={"x": "y"})
+    with patch.object(service, "load_config", return_value={"system": system}), \
+         patch.object(service, "check_os_update", AsyncMock(return_value=os_info)), \
+         patch.object(service, "check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.admin.job_status", return_value={"state": "running" if case == "busy" else "done"}), \
+         patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)):
+        result = asyncio.run(service.auto_update())
+    service.incompatible.clear()
+    assert result == {"off": "off", "busy": "busy", "system first": "system", "skipped build": "mirrordash",
+                      "mirrordash": "mirrordash", "waiting": "waiting for a choice", "up to date": "up to date"}[case]
+    assert len(started) == (1 if result in ("system", "mirrordash") else 0)
+
+
+def test_a_failed_system_build_is_remembered_for_the_nights_to_come():
+    from mirrordash_core.features.updates import service
+    config = {"system": {}}
+    os_info = {"update_available": True, "failed_build": "20261020-0300", "bundle": {"build": "20261020-0300"}}
+    with patch.object(service, "load_config", return_value=config), \
+         patch("mirrordash_core.config.save_config") as save, \
+         patch.object(service, "check_os_update", AsyncMock(return_value=os_info)), \
+         patch.object(service, "check_core_update", AsyncMock(return_value={"update_available": False})), \
+         patch("mirrordash_core.admin.job_status", return_value={"state": "done"}), \
+         patch("mirrordash_core.admin.start_job") as start:
+        assert asyncio.run(service.auto_update()) == "up to date"
+    assert config["system"]["auto_update_skip_build"] == "20261020-0300"
+    save.assert_called_once() and start.assert_not_called()
+
+
+def test_only_the_mirror_itself_can_start_the_nightly_update(client):
+    with patch("mirrordash_core.features.updates.routes.auto_update", AsyncMock(return_value="up to date")) as run:
+        assert client.post("/admin/auto-update").status_code == 403  # TestClient's address is "testclient"
+        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()):
+            assert client.post("/admin/auto-update").json() == {"started": "up to date"}
+    run.assert_awaited_once()

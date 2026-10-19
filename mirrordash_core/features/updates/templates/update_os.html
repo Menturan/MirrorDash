@@ -13,6 +13,10 @@
 {% endif %}
 {% if data.update_available %}
 {% set bundle = data.bundle %}
+{% if skip_build == bundle.build %}
+<p class="muted update-result">Automatic updates skip this one: it didn't start properly on this mirror before.
+    Install it here to try again.</p>
+{% endif %}
 <div class="alert alert--success update-result">
     <p><strong>System update available!</strong> {{ bundle.tag }} (build {{ format_build(bundle.build) }}).
         About {{ bundle.size // 1048576 }} MB to download.</p>
