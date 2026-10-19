@@ -98,7 +98,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag }}
           NOTES: ${{ inputs.notes }}
+        # The tag is pushed first and the release made on it: GitHub answered "creating a release" with
+        # 404 when given the commit (--target) of a commit that already had a release tag (the app's).
         run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "refs/tags/$TAG"
           gh release create "$TAG" build_workspace/mirrordash-os-*.img.xz build_workspace/mirrordash-os-*.img.xz.sha256 \
-            build_workspace/mirrordash-os-*.raucb --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
+            build_workspace/mirrordash-os-*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title "$TAG" --notes "$NOTES"
