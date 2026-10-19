@@ -1,6 +1,8 @@
 """How configure_image.sh locks the mirror. Nothing here can run off a Pi, so this guards the lines
 that once made /storage a RAM overlay (lost at every reboot) and the Wi-Fi password land in the log."""
+import os
 import re
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -96,3 +98,35 @@ def test_app_watch_restarts_what_hangs(tmp_path):
     assert rounds('{"status":"ok","screen_seen_seconds_ago":30}', 3) == []  # an answer resets the count
     assert rounds('{"status":"ok","screen_seen_seconds_ago":400}', 2) == ["restart cog-kiosk.service"]
     assert rounds('{"status":"ok","screen_seen_seconds_ago":null}', 4) == []  # screen off
+
+
+def test_hydrate_moves_the_apps_python_to_storage(tmp_path):
+    """A venv that uses the root's Python gets a copy of it on /storage and is pointed at that, so an
+    OS update with another Python never leaves the venvs unable to start (it used to delete them)."""
+    hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
+    assert "rm -rf /storage/mirrordash/venv " not in hydrate  # nothing of the app is thrown away
+    block = hydrate[hydrate.index("PY_ROOT="):hydrate.index('[ -d "$PY_STORAGE" ] && chown')]
+    root, storage, venvs = tmp_path / "root", tmp_path / "python", tmp_path / "storage"
+    full = root / "cpython-3.14.8-linux-aarch64-gnu"
+    (full / "bin").mkdir(parents=True)
+    (full / "bin" / "python3.14").write_text("#!/bin/sh\n")
+    (root / "cpython-3.14-linux-aarch64-gnu").symlink_to(full)  # uv's minor link, absolute
+    minor = root / "cpython-3.14-linux-aarch64-gnu"
+    for name in ("venv_a", "venv_old"):
+        (venvs / name / "bin").mkdir(parents=True)
+        (venvs / name / "pyvenv.cfg").write_text(f"home = {minor}/bin\nimplementation = CPython\nversion_info = 3.14\n")
+        (venvs / name / "bin" / "python").symlink_to(minor / "bin" / "python3.14")
+        (venvs / name / "bin" / "python3").symlink_to("python")
+    env = {"PATH": "/usr/bin:/bin", "MIRRORDASH_PY_ROOT": str(root), "MIRRORDASH_PY_STORAGE": str(storage),
+           "MIRRORDASH_VENVS": str(venvs)}
+    for _ in range(2):  # every boot: the second run finds nothing to do
+        subprocess.run(["bash", "-euo", "pipefail", "-c", block], env=env, check=True)
+    assert (storage / "cpython-3.14.8-linux-aarch64-gnu" / "bin" / "python3.14").is_file()
+    assert os.readlink(storage / "cpython-3.14-linux-aarch64-gnu") == "cpython-3.14.8-linux-aarch64-gnu"
+    for name in ("venv_a", "venv_old"):
+        assert (venvs / name / "pyvenv.cfg").read_text().startswith(f"home = {storage}/cpython-3.14-linux-aarch64-gnu/bin\n")
+        assert os.readlink(venvs / name / "bin" / "python") == f"{storage}/cpython-3.14-linux-aarch64-gnu/bin/python3.14"
+        assert os.readlink(venvs / name / "bin" / "python3") == "python"
+    # The root's Python can now change (an OS update): the venvs still find theirs
+    shutil.rmtree(full)
+    assert (venvs / "venv_a" / "bin" / "python").resolve().is_file()

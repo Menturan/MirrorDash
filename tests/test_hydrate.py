@@ -50,12 +50,14 @@ def test_dangling_link_is_reseeded(tmp_path):
     assert (md / "venv_a").is_dir()
 
 
-def test_venv_with_a_missing_python_is_reseeded(tmp_path):
-    """A new OS version with another Python leaves the venv's python link dangling: start over from base_venv."""
+def test_a_venv_whose_python_doesnt_start_is_kept(tmp_path):
+    """It used to be thrown away (and the modules with it) when an OS update brought another Python.
+    The app's Python is on /storage now; if a venv still can't start, launch.sh falls back to the
+    previous one or Safe mode, whose Reinstall button reads the modules from this venv."""
     md = tmp_path / "storage" / "mirrordash"
     (md / "venv_b" / "bin").mkdir(parents=True)
     (md / "venv_b" / "bin" / "python").symlink_to("/nonexistent/python3.99")
     (md / "venv").symlink_to("venv_b")
     run_hydrate(tmp_path)
-    assert os.readlink(md / "venv") == "venv_a"
-    assert not (md / "venv_b").exists()
+    assert os.readlink(md / "venv") == "venv_b"
+    assert (md / "venv_b").is_dir() and not (md / "venv_a").exists()

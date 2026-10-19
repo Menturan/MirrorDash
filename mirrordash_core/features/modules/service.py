@@ -113,6 +113,7 @@ def screen_layout() -> dict[str, list[dict]]:
             "enabled": cfg.get("enabled", True),
             "module": ep.name if ep else None,
             "package": ep.dist.name if ep and ep.dist else None,
+            "disabled_reason": cfg.get("disabled_reason"),  # e.g. turned off by an update to a newer Python
         })
     return layout
 

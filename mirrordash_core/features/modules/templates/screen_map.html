@@ -15,7 +15,7 @@
                                 <div class="mirror-tile missing">
                                     <span class="mirror-tile-top">{{ icon(m) }}</span>
                                     <span class="mirror-tile-name">{{ m.name }}</span>
-                                    <span class="mirror-tile-note">Not installed</span>
+                                    <span class="mirror-tile-note">{% if m.disabled_reason %}Off: {{ m.disabled_reason }}{% else %}Not installed{% endif %}</span>
                                     {% if interactive %}
                                         {# Its module is gone (uninstalled elsewhere, a backup from another mirror), so only the settings are left #}
                                         <button type="button" class="btn secondary btn-sm"

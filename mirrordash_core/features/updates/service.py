@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import sys
 import urllib.request
 from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
@@ -41,8 +42,8 @@ async def check_core_update() -> dict:
     # Resolve the currently installed version
     current_version = get_core_version()
 
-    # Fetch latest version from PyPI without blocking the event loop
-    def _fetch_pypi_version(prerelease: bool) -> str:
+    # Fetch latest version from PyPI without blocking the event loop, and the Python it needs
+    def _fetch_pypi_version(prerelease: bool) -> tuple[str, str | None]:
         url = "https://pypi.org/pypi/mirrordash/json"
         try:
             with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
@@ -50,11 +51,13 @@ async def check_core_update() -> dict:
         except Exception as exc:
             raise RuntimeError(f"PyPI request failed: {exc}") from exc
         if not prerelease:
-            return data["info"]["version"]  # PyPI's latest is always a final release
-        return max((v for v, files in data["releases"].items() if files), key=version_key)
+            # PyPI's latest is always a final release
+            return data["info"]["version"], data["info"].get("requires_python")
+        version = max((v for v, files in data["releases"].items() if files), key=version_key)
+        return version, data["releases"][version][0].get("requires_python")
 
     try:
-        latest_version = await asyncio.to_thread(_fetch_pypi_version, prerelease_enabled())
+        latest_version, requires_python = await asyncio.to_thread(_fetch_pypi_version, prerelease_enabled())
     except RuntimeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
@@ -67,11 +70,96 @@ async def check_core_update() -> dict:
         "current_version": current_version,
         "latest_version": latest_version,
         "update_available": update_available,
+        "needs_python": needed_python(requires_python),
     }
 
 
-async def update_core() -> dict:
-    """Install the latest MirrorDash into the next A/B venv, then restart into it."""
+def needed_python(requires_python: str | None) -> str | None:
+    """The newer Python a release needs ("3.15"), from PyPI's requires_python, or None when the
+    running one will do. ponytail: reads only the ">=3.N" part, all our pyproject has ever used."""
+    match = re.search(r">=\s*3\.(\d+)", requires_python or "")
+    return f"3.{match[1]}" if match and int(match[1]) > sys.version_info.minor else None
+
+
+# The last update to a newer Python that some modules stopped (see _update_to_new_python), for the
+# update check to offer "Install anyway": {"version", "python", "modules": {name: reason}}. In memory:
+# a restart forgets it, and the next attempt finds the same again.
+incompatible: dict = {}
+
+# Loads one module (sys.argv[1], its entry point name) the way the core does, in the venv being built
+PROBE = ("import importlib.metadata as m, sys; "
+         "[ep.load() for ep in m.entry_points(group='mirrordash.modules') if ep.name == sys.argv[1]]")
+
+
+def module_target(mod: dict) -> list[str]:
+    """What `uv pip install` takes to reinstall a module from where it came (installed_modules)."""
+    from mirrordash_core.features.backup.service import find_local_module_dir
+    local_dir = find_local_module_dir(mod["package_name"]) if mod["type"] == "local" else None
+    return ["-e", str(local_dir)] if local_dir else [mod.get("source") or f"{mod['package_name']}=={mod['version']}"]
+
+
+async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]) -> dict:
+    """A MirrorDash that needs a newer Python (ARCHITECTURE #16). The Python goes next to the running
+    one on /storage, an empty venv gets the new MirrorDash and every module, and each module is loaded
+    once in it. Only when all of them work, or the admin chose to turn the ones that don't off (skip),
+    is it switched in; otherwise nothing has changed."""
+    from mirrordash_core.features.backup.service import installed_modules
+    code, _, err = await run("uv", "python", "install", python, timeout=900)
+    if code != 0:
+        raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
+    modules = [m for m in installed_modules() if m["name"] not in skip]  # from the running venv
+    args = ["--prerelease=allow"] if prerelease_enabled() else []
+    try:
+        async with venv_swap(force_clean=True, python=python) as py:
+            code, _, err = await uv_pip(py, "install", *args, f"mirrordash=={version}")
+            if code != 0:
+                raise HTTPException(status_code=500, detail=f"Upgrade failed: {err.strip()}")
+            failed = {}
+            for mod in modules:
+                # ponytail: 10 minutes each, so a module that builds C code on the Pi can't hang the update
+                code, _, err = await uv_pip(py, "install", *module_target(mod), timeout=600)
+                if code != 0 and mod["type"] == "pypi":
+                    # Its newest version may have been made for the new Python already
+                    code, _, err = await uv_pip(py, "install", mod["package_name"], timeout=600)
+                if code == 0:
+                    code, _, err = await run(py, "-c", PROBE, mod["name"], timeout=120)
+                if code != 0:
+                    failed[mod["name"]] = (err.strip().splitlines() or ["unknown error"])[-1]
+            if failed:
+                incompatible.update(version=version, python=python, modules=failed)
+                names = ", ".join(failed)
+                raise HTTPException(status_code=409, detail=(
+                    f"MirrorDash v{version} needs Python {python}, and {names} doesn't work with it, so nothing "
+                    "was changed. Check for updates again to install it anyway with those modules turned off."))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
+    if skip:
+        turn_off_modules(skip, f"doesn't work with Python {python}")
+    incompatible.clear()
+    logger.info(f"mirrordash upgraded to {version} on Python {python}. Restarting server...")
+    asyncio.create_task(run_restart())
+    return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
+
+
+def turn_off_modules(names: tuple[str, ...], reason: str) -> None:
+    """Turn off every instance of these modules (entry point names), keeping their settings."""
+    from mirrordash_core.config import save_config
+    norm = {n.replace("-", "_") for n in names}
+    config = load_config()
+    for instance in config.get("modules", {}).values():
+        if isinstance(instance, dict) and str(instance.get("module", "")).replace("-", "_") in norm:
+            instance.update(enabled=False, disabled_reason=reason)
+    save_config(config)
+
+
+async def update_core(skip: tuple[str, ...] = ()) -> dict:
+    """Install the latest MirrorDash into the next A/B venv, then restart into it. skip: modules to
+    turn off when the new version needs a newer Python they don't work with."""
+    info = await check_core_update()
+    if info.get("needs_python") and info["update_available"]:
+        return await _update_to_new_python(info["needs_python"], info["latest_version"], skip)
     current_version = get_core_version()
     logger.info(f"Upgrading mirrordash (current version: {current_version})")
     try:
@@ -103,7 +191,7 @@ async def update_core() -> dict:
 async def rebuild_venv() -> dict:
     """Build a fresh venv with this MirrorDash version and the modules installed now, each from
     where it came (local folder, GitHub commit, PyPI version). A module that fails undoes the swap."""
-    from mirrordash_core.features.backup.service import find_local_module_dir, installed_modules, venv_distributions
+    from mirrordash_core.features.backup.service import installed_modules, venv_distributions
     paths = get_venv_paths()
     if not paths:
         raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")
@@ -126,8 +214,7 @@ async def rebuild_venv() -> dict:
                 logger.error(f"Failed to install mirrordash: {err}")
                 raise HTTPException(status_code=500, detail=f"Failed to install core: {err}")
             for mod in modules:
-                local_dir = find_local_module_dir(mod["package_name"]) if mod["type"] == "local" else None
-                target = ["-e", str(local_dir)] if local_dir else [mod.get("source") or f"{mod['package_name']}=={mod['version']}"]
+                target = module_target(mod)
                 logger.info(f"Rebuilding venv: installing module {' '.join(target)}")
                 code, _, err = await uv_pip(python, "install", *target)
                 if code != 0:

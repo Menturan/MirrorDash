@@ -939,6 +939,8 @@ User=pi
 WorkingDirectory=/home/pi/mirrordash
 Environment="PATH=/home/pi/mirrordash/.venv/bin:/home/pi/.local/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
+# The app's own Python, on /storage (hydrate, ARCHITECTURE #16): uv venv and uv python install use it
+Environment="UV_PYTHON_INSTALL_DIR=/storage/mirrordash/python"
 Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 ExecStart=/home/pi/mirrordash/launch.sh
@@ -1181,16 +1183,6 @@ if [ -e /storage/mirrordash/venv ] && [ ! -L /storage/mirrordash/venv ]; then
     rm -rf /storage/mirrordash/venv
 fi
 
-# The venvs on /storage use the Python that is in the root (/home/pi/.local/share/uv/python/cpython-3.14-...).
-# A new OS version (A/B update) with another Python minor version leaves them unable to start. Then
-# they are thrown away and the app that came with this OS (base_venv) is seeded again below, as on a
-# first boot. Modules installed from the admin page come back with Settings → Rebuild environment.
-# (bin/python is a link to that Python; it's the link that breaks.)
-if [ -L /storage/mirrordash/venv/bin/python ] && ! /storage/mirrordash/venv/bin/python -c ''; then
-    echo "The app's Python doesn't start with this OS version: seeding the app that came with it."
-    rm -rf /storage/mirrordash/venv /storage/mirrordash/venv_a /storage/mirrordash/venv_b /storage/mirrordash/venv_old
-fi
-
 # Seed venv_a only when the active link is missing or dangling (first boot / wiped storage).
 # A valid link is owned by the A/B updater and may point at venv_b — never reset it.
 if [ ! -d /storage/mirrordash/venv ]; then
@@ -1203,6 +1195,37 @@ if [ ! -d /storage/mirrordash/venv ]; then
     fi
     ln -sfT venv_a /storage/mirrordash/venv
 fi
+
+# The app's Python lives on /storage with the app (ARCHITECTURE #16), so an OS update never changes it
+# under the venvs: it used to be the root's, and a root with another Python version left every venv
+# unable to start, which threw away the modules. A venv that still uses the root's Python (one seeded
+# from base_venv above, or from before this) gets a copy of that Python here, once, and is pointed at
+# it: its bin/python link and the home line of its pyvenv.cfg are the only places that name it.
+# A newer Python comes with a MirrorDash update that needs it (uv python install, features/updates).
+PY_ROOT=${MIRRORDASH_PY_ROOT:-/home/pi/.local/share/uv/python}
+PY_STORAGE=${MIRRORDASH_PY_STORAGE:-/storage/mirrordash/python}  # overridable for tests/test_configure_image.py
+VENVS=${MIRRORDASH_VENVS:-/storage/mirrordash}
+for venv in "$VENVS"/venv_a "$VENVS"/venv_b "$VENVS"/venv_old "$VENVS"/venv_failed; do
+    cfg="$venv/pyvenv.cfg"
+    [ -f "$cfg" ] && grep -q "^home = $PY_ROOT/" "$cfg" || continue
+    # e.g. cpython-3.14-linux-aarch64-gnu, uv's link to the full version (cpython-3.14.8-...)
+    name=$(sed -n "s|^home = $PY_ROOT/\([^/]*\)/bin\$|\1|p" "$cfg")
+    if [ -n "$name" ] && [ ! -e "$PY_STORAGE/$name" ]; then
+        real=$(readlink -f "$PY_ROOT/$name") || continue
+        mkdir -p "$PY_STORAGE"
+        # Under another name first: a power cut mid-copy must not leave a half Python that looks done
+        rm -rf "$PY_STORAGE/.copy"
+        cp -a "$real" "$PY_STORAGE/.copy" && mv -T "$PY_STORAGE/.copy" "$PY_STORAGE/${real##*/}"
+        [ "$real" = "$PY_ROOT/$name" ] || ln -sfn "${real##*/}" "$PY_STORAGE/$name"
+    fi
+    [ -e "$PY_STORAGE/$name" ] || continue  # the copy failed (a full card?): keep the root's for now
+    sed -i "s|^home = $PY_ROOT/|home = $PY_STORAGE/|" "$cfg"
+    for link in "$venv"/bin/python*; do
+        target=$(readlink "$link") || continue
+        case "$target" in "$PY_ROOT"/*) ln -sfn "$PY_STORAGE/${target#"$PY_ROOT"/}" "$link" ;; esac
+    done
+done
+[ -d "$PY_STORAGE" ] && chown -R pi:pi "$PY_STORAGE"
 chown pi:pi /storage/mirrordash /storage/mirrordash/venv
 
 # SSH host keys live here: every mirror boots the same root image, and changes to it are gone at reboot.

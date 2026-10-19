@@ -6,8 +6,8 @@ import logging
 from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
 from mirrordash_core.admin import job_response, notify, require_api_key, start_job
-from mirrordash_core.features.updates.service import (check_core_update, check_os_update, format_build, rebuild_venv,
-                                                      update_core, update_os)
+from mirrordash_core.features.updates.service import (check_core_update, check_os_update, format_build, incompatible,
+                                                      rebuild_venv, update_core, update_os)
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -39,8 +39,28 @@ def _app_update_html(data: dict | BaseException, system_first: bool) -> str:
         button = """<button type="button" class="btn primary btn-sm" style="margin-top: 10px;" disabled>
                     Install the system update first
                 </button>"""
+    elif incompatible.get("version") == data.get("latest_version"):
+        # The last try stopped because some modules don't work with the newer Python it needs
+        names = ", ".join(incompatible["modules"])
+        reasons = "".join(f"<li><strong>{html.escape(name)}</strong>: {html.escape(reason)}</li>"
+                          for name, reason in incompatible["modules"].items())
+        button = f"""<p style="margin: 8px 0 0 0;">v{latest} needs Python {html.escape(incompatible["python"])}. These modules
+                    don't work with it yet:</p><ul style="margin: 4px 0 0 18px;">{reasons}</ul>
+                <p style="margin: 6px 0 0 0; color: var(--text-muted);">Installing anyway turns them off (their settings
+                    are kept); install them again from Modules once their makers have updated them. Or wait.</p>
+                <button type="button" class="btn primary btn-sm" style="margin-top: 10px;"
+                        hx-post="/admin/panels/system/update-trigger?skip={html.escape(",".join(incompatible["modules"]))}"
+                        hx-target="#core-update-result"
+                        hx-swap="innerHTML"
+                        hx-confirm="Install MirrorDash v{latest} and turn off {html.escape(names)}?"
+                        hx-disabled-elt="this">
+                    Install Anyway
+                </button>"""
     else:
-        button = f"""<button type="button" class="btn primary btn-sm" style="margin-top: 10px;"
+        python_note = (f'<p style="margin: 6px 0 0 0; color: var(--text-muted);">It needs Python {html.escape(data["needs_python"])}: '
+                       "the mirror installs it and first checks that every module works with it.</p>"
+                       if data.get("needs_python") else "")
+        button = python_note + f"""<button type="button" class="btn primary btn-sm" style="margin-top: 10px;"
                         hx-post="/admin/panels/system/update-trigger"
                         hx-target="#core-update-result"
                         hx-swap="innerHTML"
@@ -92,8 +112,10 @@ def _os_update_html(data: dict | BaseException) -> str:
 
 
 @router.post("/panels/system/update-trigger", dependencies=[Depends(require_api_key)])
-async def trigger_system_update():
-    job_id = start_job(update_core)
+async def trigger_system_update(skip: str = ""):
+    """skip: modules (entry point names, comma-separated) to turn off, see "Install Anyway"."""
+    modules = tuple(name for name in skip.split(",") if name)
+    job_id = start_job(lambda: update_core(modules))
     return job_response(job_id, "Updating MirrorDash", "Installing the new version. This can take a few minutes...",
                         "MirrorDash was updated successfully.")
 

@@ -19,7 +19,7 @@ logger = logging.getLogger("mirrordash.core.venv")
 
 STORAGE_DIR = Path("/storage/mirrordash")
 # Strip the environment so no server secret reaches a subprocess
-SAFE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV")
+SAFE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV", "UV_PYTHON_INSTALL_DIR")
 
 
 def get_venv_paths():
@@ -44,9 +44,14 @@ def _point_link(venv_link: Path, target: Path) -> None:
     os.replace(tmp_link, venv_link)
 
 
-async def prepare_venv_next(force_clean: bool = False):
-    """Copy the active venv to the next one (or create it empty) and point the link at it.
-    Returns (active_path, next_path), or None when not on a mirror."""
+def running_python() -> str:
+    """This process's Python version, e.g. "3.14": what a new venv gets unless told otherwise."""
+    return f"{sys.version_info.major}.{sys.version_info.minor}"
+
+
+async def prepare_venv_next(force_clean: bool = False, python: str | None = None):
+    """Copy the active venv to the next one (or create it empty, with `python`, default the running
+    one) and point the link at it. Returns (active_path, next_path), or None when not on a mirror."""
     paths = get_venv_paths()
     if not paths:
         return None
@@ -59,7 +64,9 @@ async def prepare_venv_next(force_clean: bool = False):
             shutil.copytree(active_path, next_path, symlinks=True)
         else:
             next_path.parent.mkdir(parents=True, exist_ok=True)
-            await run("uv", "venv", "--python", "3.14", str(next_path))
+            code, _, err = await run("uv", "venv", "--python", python or running_python(), str(next_path))
+            if code != 0:
+                raise RuntimeError(err.strip() or "uv venv failed")
     except Exception as e:
         logger.error(f"Failed to clone/create virtual environment: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
@@ -96,10 +103,11 @@ async def revert_venv_next(active_path: Path, next_path: Path) -> None:
 
 
 @asynccontextmanager
-async def venv_swap(force_clean: bool = False):
+async def venv_swap(force_clean: bool = False, python: str | None = None):
     """Yield the Python to install into: the next A/B venv on a mirror, this process's elsewhere.
-    The swap is kept when the block finishes and undone when it raises."""
-    swap = await prepare_venv_next(force_clean=force_clean)
+    The swap is kept when the block finishes and undone when it raises. python: the version of an
+    empty venv (force_clean), e.g. a newer one a MirrorDash update needs."""
+    swap = await prepare_venv_next(force_clean=force_clean, python=python)
     try:
         yield str(swap[1] / "bin" / "python") if swap else sys.executable
     except BaseException:
@@ -110,18 +118,24 @@ async def venv_swap(force_clean: bool = False):
         await commit_venv_next(*swap)
 
 
-async def run(*cmd: str) -> tuple[int, str, str]:
-    """Run a command with the stripped environment: (returncode, stdout, stderr)."""
+async def run(*cmd: str, timeout: float | None = None) -> tuple[int, str, str]:
+    """Run a command with the stripped environment: (returncode, stdout, stderr). After timeout
+    seconds it is stopped and returns 124, like timeout(1)."""
     env = {k: v for k, v in os.environ.items() if k in SAFE_ENV_KEYS}
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE,
                                                 stderr=asyncio.subprocess.PIPE, env=env)
-    out, err = await proc.communicate()
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        return 124, "", f"took more than {timeout:.0f} s"
     return proc.returncode, out.decode(errors="replace"), err.decode(errors="replace")
 
 
-async def uv_pip(python: str, command: str, *args: str) -> tuple[int, str, str]:
+async def uv_pip(python: str, command: str, *args: str, timeout: float | None = None) -> tuple[int, str, str]:
     """`uv pip <command> --python <python> <args>`."""
-    return await run("uv", "pip", command, "--python", python, *args)
+    return await run("uv", "pip", command, "--python", python, *args, timeout=timeout)
 
 
 async def clean_uv_cache() -> None:

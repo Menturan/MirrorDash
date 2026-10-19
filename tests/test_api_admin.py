@@ -585,13 +585,16 @@ def test_get_globals_schema():
 # Core self-update tests
 # ---------------------------------------------------------------------------
 
+# A newer MirrorDash on the Python already running (update_core asks PyPI first)
+SAME_PYTHON = {"update_available": True, "needs_python": None, "latest_version": "1.1.0"}
+
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.asyncio.to_thread", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=False when versions match."""
     mock_load.return_value = MOCK_CONFIG
-    mock_to_thread.return_value = "1.0.0"  # PyPI returns same version
+    mock_to_thread.return_value = ("1.0.0", ">=3.14")  # PyPI returns same version
 
     headers = {"X-API-Key": "secret"}
     response = call(check_core_update)
@@ -608,7 +611,7 @@ def test_core_update_check_up_to_date(mock_version, mock_to_thread, mock_load, c
 def test_core_update_check_update_available(mock_version, mock_to_thread, mock_load, client):
     """Core update check returns update_available=True when PyPI has a newer version."""
     mock_load.return_value = MOCK_CONFIG
-    mock_to_thread.return_value = "1.2.0"  # PyPI has a newer version
+    mock_to_thread.return_value = ("1.2.0", ">=3.14")  # PyPI has a newer version
 
     headers = {"X-API-Key": "secret"}
     response = call(check_core_update)
@@ -633,6 +636,7 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
     assert "PyPI request failed" in response.json()["detail"]
 
 
+@patch("mirrordash_core.features.updates.service.check_core_update", new=AsyncMock(return_value=SAME_PYTHON))
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
@@ -662,6 +666,7 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     assert install[install.index("--refresh-package") + 1] == "mirrordash"  # a fresh index, not uv's cache
 
 
+@patch("mirrordash_core.features.updates.service.check_core_update", new=AsyncMock(return_value=SAME_PYTHON))
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_task")
@@ -682,6 +687,7 @@ def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_c
     mock_create_task.assert_not_called()
 
 
+@patch("mirrordash_core.features.updates.service.check_core_update", new=AsyncMock(return_value=SAME_PYTHON))
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_task")
@@ -774,7 +780,7 @@ def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare
     data = response.json()
     assert data["status"] == "success"
     assert "rebuilt successfully" in data["message"]
-    mock_prepare.assert_awaited_once_with(force_clean=True)
+    mock_prepare.assert_awaited_once_with(force_clean=True, python=None)
     mock_commit.assert_awaited_once_with(Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
     mock_create_task.assert_called_once()
 
@@ -1458,3 +1464,84 @@ def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit
     assert response.status_code == 200
     assert installed[0] == "mirrordash==0.9.0"
     assert sorted(installed[1:]) == ["git+https://github.com/someone/mirrordash-calendar@abc123", "mirrordash-news==1.2.0"]
+
+
+def test_needed_python_reads_requires_python():
+    from mirrordash_core.features.updates.service import needed_python
+    import sys
+    now = sys.version_info.minor
+    assert needed_python(f">=3.{now}") is None and needed_python(None) is None and needed_python("") is None
+    assert needed_python(f">=3.{now + 1}") == f"3.{now + 1}"
+    assert needed_python(f">= 3.{now + 1}, <4") == f"3.{now + 1}"
+
+
+@pytest.mark.parametrize("case", ["all work", "one doesn't", "install anyway"])
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
+@patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
+def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock_revert, mock_commit, mock_prepare,
+                                                              mock_create_task, mock_restart, case):
+    """A MirrorDash that needs Python 3.15: installed next to 3.14, a new venv gets it and every module,
+    each module is loaded once; only when all work (or the admin turns the others off) is it switched in."""
+    from pathlib import Path
+    from mirrordash_core.features.updates import service
+    mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
+    calls = []
+    config = {"modules": {"news-1": {"module": "mirrordash-news", "enabled": True, "feed": "svt"}}}
+
+    async def fake_run(*cmd, timeout=None):
+        calls.append(cmd)
+        if case == "one doesn't" and cmd[-1] == "mirrordash_news":  # installs, but import fails
+            return 1, "", "Traceback ...\nModuleNotFoundError: No module named 'cgi'"
+        return 0, "", ""
+
+    async def fake_uv_pip(python, command, *args, timeout=None):
+        return await fake_run("uv", "pip", command, *args)
+
+    check = {"update_available": True, "needs_python": "3.15", "latest_version": "1.0.0"}
+    skip = ("mirrordash_news",) if case == "install anyway" else ()
+    service.incompatible.clear()
+    with patch.object(service, "check_core_update", AsyncMock(return_value=check)), \
+         patch.object(service, "run", side_effect=fake_run), patch.object(service, "uv_pip", side_effect=fake_uv_pip), \
+         patch.object(service, "load_config", return_value=config), patch("mirrordash_core.config.save_config") as save:
+        response = call(lambda: service.update_core(skip))
+    assert calls[0] == ("uv", "python", "install", "3.15")
+    mock_prepare.assert_awaited_once_with(force_clean=True, python="3.15")
+    assert ("uv", "pip", "install", "mirrordash==1.0.0") in calls
+    if case == "one doesn't":
+        assert response.status_code == 409 and "mirrordash_news" in response.json()["detail"]
+        assert service.incompatible == {"version": "1.0.0", "python": "3.15",
+                                        "modules": {"mirrordash_news": "ModuleNotFoundError: No module named 'cgi'"}}
+        mock_revert.assert_awaited_once() and mock_commit.assert_not_awaited()
+        save.assert_not_called()
+    else:
+        assert response.status_code == 200
+        mock_commit.assert_awaited_once()
+        installed = [c[3] for c in calls if c[:3] == ("uv", "pip", "install")]
+        assert ("mirrordash-news==1.2.0" in installed) is (case == "all work")
+        if case == "install anyway":  # turned off, its settings kept
+            assert config["modules"]["news-1"] == {"module": "mirrordash-news", "enabled": False, "feed": "svt",
+                                                   "disabled_reason": "doesn't work with Python 3.15"}
+            save.assert_called_once()
+
+
+def test_the_update_card_offers_install_anyway_after_modules_stopped_it():
+    from mirrordash_core.features.updates import routes, service
+    data = {"current_version": "0.9.0", "latest_version": "1.0.0", "update_available": True, "needs_python": "3.15"}
+    service.incompatible.clear()
+    assert "checks that every module works" in routes._app_update_html(data, False)
+    service.incompatible.update(version="1.0.0", python="3.15", modules={"mirrordash_news": "No module named 'cgi'"})
+    try:
+        card = routes._app_update_html(data, False)
+        assert "mirrordash_news" in card and "No module named &#x27;cgi&#x27;" in card
+        assert 'hx-post="/admin/panels/system/update-trigger?skip=mirrordash_news"' in card and "Install Anyway" in card
+        with patch.object(routes, "start_job", return_value=None) as start, \
+             patch.object(routes, "update_core", AsyncMock()) as update:
+            asyncio.run(routes.trigger_system_update(skip="mirrordash_news"))
+            asyncio.run(start.call_args.args[0]())
+        update.assert_awaited_once_with(("mirrordash_news",))
+    finally:
+        service.incompatible.clear()
