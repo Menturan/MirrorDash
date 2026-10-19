@@ -1,0 +1,15 @@
+[Unit]
+Description=MirrorDash clock: back to the last saved time at start, saved at shutdown
+After=mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+# Before the network, so the first TLS calls (and NTP's own sanity check) see a recent time
+Before=NetworkManager.service mirrordash.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/mirrordash/clock restore
+ExecStop=/usr/local/lib/mirrordash/clock save
+
+[Install]
+WantedBy=multi-user.target

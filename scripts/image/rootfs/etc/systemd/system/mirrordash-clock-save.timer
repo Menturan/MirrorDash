@@ -1,0 +1,9 @@
+[Unit]
+Description=MirrorDash clock: save the time every hour (a power cut gives no shutdown to save at)
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=1h
+
+[Install]
+WantedBy=timers.target

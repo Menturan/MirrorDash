@@ -150,3 +150,30 @@ def test_every_file_in_rootfs_is_installed_and_every_put_has_its_file():
         text = (ROOTFS / path.lstrip("/")).read_text()
         assert (mode == "0755") == text.startswith("#!"), path
         assert mode == "0440" if path.startswith("/etc/sudoers.d/") else True, path
+
+
+def test_the_clock_starts_at_the_last_saved_time(tmp_path):
+    """No clock battery: the time is saved on /storage once NTP has set it, and a start moves the
+    clock forward to it, never back."""
+    script = tmp_path / "clock"
+    script.write_text(unit("/usr/local/lib/mirrordash/clock"))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "timedatectl").write_text('#!/bin/bash\necho "$SYNCED"\n')
+    (bin_dir / "date").write_text(f'#!/bin/bash\n[ "$1" = +%s ] && {{ echo "$NOW"; exit; }}\n'
+                                  f'[ "$1" = -s ] && echo "$2" >> {tmp_path}/set\nexit 0\n')
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+    saved = tmp_path / "clock-file"
+
+    def run(*args, synced="yes", now=1_000):
+        env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "MIRRORDASH_CLOCK_FILE": str(saved), "SYNCED": synced, "NOW": str(now)}
+        subprocess.run(["bash", str(script), *args], env=env, check=True, capture_output=True)
+
+    run("save", synced="no")
+    assert not saved.exists()  # a time NTP hasn't confirmed is never saved
+    run("save")
+    os.utime(saved, (5_000, 5_000))
+    run("restore", now=1_000)  # an old time at start: forward to the saved one
+    run("restore", now=9_000)  # NTP is already ahead: left alone
+    assert (tmp_path / "set").read_text() == "@5000\n"

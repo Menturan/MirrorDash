@@ -1,0 +1,22 @@
+#!/bin/bash
+# The Pi has no clock battery, and the root (RAM) forgets everything, so every start used to begin at
+# the image's build date until NTP answered: TLS fails on a clock months behind, and log times are
+# wrong. This keeps the last good time on /storage (like Debian's fake-hwclock, which loads before
+# /storage is mounted, so it can't be used):
+#   save     the time, only once NTP has set it (a wrong time saved would be loaded next start)
+#   restore  move the clock forward to the saved time, never back (NTP may already be ahead)
+# ponytail: the saved time is behind by up to an hour plus how long the mirror was off; NTP corrects it.
+set -u
+FILE=${MIRRORDASH_CLOCK_FILE:-/storage/mirrordash/clock}  # overridable for tests/test_configure_image.py
+
+case "${1:-}" in
+  save)
+    [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ] || exit 0
+    touch "$FILE" ;;
+  restore)
+    saved=$(stat -c %Y "$FILE" 2>/dev/null) || exit 0
+    if [ "$saved" -gt "$(date +%s)" ]; then
+        date -s "@$saved" >/dev/null && echo "Clock set forward to the last saved time: $(date -u)"
+    fi ;;
+  *) echo "usage: clock save|restore" >&2; exit 2 ;;
+esac

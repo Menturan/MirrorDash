@@ -1,0 +1,7 @@
+[Unit]
+Description=MirrorDash clock: save the time (once NTP has set it)
+After=mirrordash-storage-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/mirrordash/clock save

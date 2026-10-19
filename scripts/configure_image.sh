@@ -545,6 +545,13 @@ step_systemd_service() {
   put 0644 /etc/systemd/system/mirrordash-app-watch.service
   put 0644 /etc/systemd/system/mirrordash-app-watch.timer
   systemctl --root=/ enable mirrordash-app-watch.timer
+
+  # The last good time, kept on /storage: no clock battery, and the root forgets (clock script)
+  put 0755 /usr/local/lib/mirrordash/clock
+  put 0644 /etc/systemd/system/mirrordash-clock.service
+  put 0644 /etc/systemd/system/mirrordash-clock-save.service
+  put 0644 /etc/systemd/system/mirrordash-clock-save.timer
+  systemctl --root=/ enable mirrordash-clock.service mirrordash-clock-save.timer
 }
 
 step_repart_service() {
