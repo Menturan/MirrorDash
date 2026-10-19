@@ -13,6 +13,7 @@ There are two kinds of releases:
 
 - If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
 - The automatic restart of a frozen screen or app (0.7.1) comes with the OS image.
+- A system update is kept only if the mirror reaches the internet with it. Before, an update whose Wi-Fi didn't work could be kept because the setup hotspot counted as a connection, and the mirror then couldn't get the update that fixed it.
 - A mirror that has put up `MirrorDash-Setup` (for example after a power cut, when the router starts after the mirror) goes back to your Wi-Fi by itself within a few minutes. Before, it kept putting the hotspot back up and stayed there until it was restarted.
 
 ## [0.7.1] - 2026-10-19

@@ -1728,7 +1728,10 @@ EOF
   # Step 4 above: keep a new OS version only if the mirror works with it. On a normal boot, and on a
   # trial boot started by hand, the ExecCondition is false and nothing runs. On the trial boot of the
   # slot RAUC activated last (after installing it), each ExecStart must succeed in turn:
-  #   nm-online: connected to the network within 5 minutes
+  #   curl:      github.com answers within 5 minutes: the internet, not just a connection. nm-online
+  #              counts the setup hotspot as online, so an OS whose Wi-Fi can't join the home network
+  #              (the hotspot comes up instead) was kept, and the mirror could never fetch the update
+  #              that fixes it. github.com is where the next update comes from (no API rate limit).
   #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
   #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
   #   update-p1: renew p1's firmware if it changed (never undoes the update when it fails)
@@ -1745,7 +1748,7 @@ OnFailure=mirrordash-save-trial-log.service
 [Service]
 Type=oneshot
 ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial
-ExecStart=/usr/bin/nm-online -q -t 300
+ExecStart=/usr/bin/curl -fsS -o /dev/null -m 10 --retry 20 --retry-delay 5 --retry-all-errors https://github.com
 ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
 ExecStart=/usr/bin/rauc status mark-good
 # Then renew p1's firmware if the new system brought newer (update-p1, above). The "-": whatever

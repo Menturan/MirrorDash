@@ -125,8 +125,11 @@ def test_a_failed_trial_boot_restarts_into_the_old_slot():
     assert [line for line in save.splitlines() if line.startswith("ExecStart=")] == [
         "ExecStart=-/usr/local/lib/mirrordash/save-log os-trial -b", "ExecStart=/usr/bin/systemctl reboot"]
     starts = [line for line in mark_good.splitlines() if line.startswith("ExecStart=")]
-    assert [s.split()[0] for s in starts] == ["ExecStart=/usr/bin/nm-online", "ExecStart=/usr/bin/curl",
+    assert [s.split()[0] for s in starts] == ["ExecStart=/usr/bin/curl", "ExecStart=/usr/bin/curl",
                                               "ExecStart=/usr/bin/rauc", "ExecStart=-/bin/sh"]
+    # The internet, not nm-online: that counts the setup hotspot as online, and an OS whose Wi-Fi
+    # can't join the home network would be kept and could never be updated again
+    assert starts[0].endswith(" https://github.com") and "nm-online" not in mark_good
     # Renewing p1 comes last, after mark-good, and can't fail the unit (the "-")
     assert "/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update" in starts[-1]
 
