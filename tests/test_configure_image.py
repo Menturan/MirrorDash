@@ -41,6 +41,14 @@ def test_first_boot_units_dont_run_on_every_boot():
     assert "HostKey /storage/mirrordash/ssh/etc/ssh/ssh_host_ed25519_key" in unit("/etc/ssh/sshd_config.d/mirrordash-hostkeys.conf")
 
 
+def test_hydrate_never_fills_a_ram_storage():
+    """On an image a /storage that didn't mount is a folder in the RAM overlay: hydrate repairs the
+    partition, and stops before writing anything there if it still isn't mounted."""
+    hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
+    stop = hydrate.index("! mountpoint -q /storage; then\n    echo \"Error: /storage could not be mounted")
+    assert hydrate.index('e2fsck -p "$DATA_PART"') < stop < hydrate.index("mkdir -p /storage")
+
+
 def test_swap_is_zram_only():
     assert unit("/etc/rpi/swap.conf.d/mirrordash.conf") == "[Main]\nMechanism=zram"
 
@@ -63,3 +71,28 @@ def test_no_hobbyist_patterns_in_the_build():
     assert "plymouth/themes/mirrordash/mirrordash.script" in build
     assert "cfg80211.ieee80211_regdom=" in build
 
+
+
+def test_app_watch_restarts_what_hangs(tmp_path):
+    """Two silent rounds restart the app (or the kiosk), and again every second round while it stays."""
+    script = tmp_path / "app-watch"
+    script.write_text(unit("/usr/local/lib/mirrordash/app-watch"))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "curl").write_text('#!/bin/bash\n[ -n "$HEALTH" ] || exit 7\necho "$HEALTH"\n')
+    (bin_dir / "systemctl").write_text(f'#!/bin/bash\necho "$*" >> {tmp_path}/restarts\n')
+    (bin_dir / "logger").write_text("#!/bin/bash\n")
+    for f in bin_dir.iterdir():
+        f.chmod(0o755)
+
+    def rounds(health: str, n: int) -> list[str]:
+        (tmp_path / "restarts").write_text("")
+        env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "HEALTH": health, "MIRRORDASH_WATCH_STATE": str(tmp_path / "state")}
+        for _ in range(n):
+            subprocess.run(["bash", str(script)], env=env, check=True, capture_output=True)
+        return (tmp_path / "restarts").read_text().splitlines()
+
+    assert rounds("", 4) == ["restart mirrordash.service"] * 2
+    assert rounds('{"status":"ok","screen_seen_seconds_ago":30}', 3) == []  # an answer resets the count
+    assert rounds('{"status":"ok","screen_seen_seconds_ago":400}', 2) == ["restart cog-kiosk.service"]
+    assert rounds('{"status":"ok","screen_seen_seconds_ago":null}', 4) == []  # screen off

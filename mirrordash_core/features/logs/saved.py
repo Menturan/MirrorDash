@@ -28,6 +28,9 @@ KINDS = {
     "wifi-lost": "Wi-Fi: joined, but no traffic got through; joined again",
     "wifi-chip": "Wi-Fi: the Wi-Fi chip didn't start; started it again",
     "p1-update": "System update: renewing the Pi 3 firmware failed (the update itself stayed)",
+    "storage-repair": "The storage partition had errors and was repaired at start",
+    "app-hung": "MirrorDash stopped answering and was restarted",
+    "screen-lost": "The mirror's screen stopped and was restarted",
 }
 
 

@@ -7,10 +7,11 @@ one). Lost both? Remove `admin_auth` from config.json over SSH or on the SD card
 import logging
 import secrets
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 
 from mirrordash_core.admin import hash_password, require_api_key
 from mirrordash_core.config import load_config, save_config
+from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
 
 logger = logging.getLogger("mirrordash.core.auth")
@@ -51,7 +52,8 @@ def auth_state(config: dict) -> tuple[bool, bool]:
 
 
 @router.get("/auth/status")
-async def get_auth_status() -> dict:
+async def get_auth_status(request: Request) -> dict:
+    manager.saw(request.client)  # the setup prompts on the mirror's screen poll this
     setup_required, auth_corrupt = auth_state(load_config())
     return {
         "setup_required": setup_required,

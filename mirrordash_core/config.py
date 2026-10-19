@@ -5,6 +5,7 @@ import logging
 import os
 import tempfile
 import threading
+import time
 import copy
 from pathlib import Path
 
@@ -85,21 +86,29 @@ def load_config() -> dict:
             return copy.deepcopy(_config_cache)
 
         config_path = get_config_path()
+        data = None
         if config_path.exists():
             try:
-                with open(config_path, "r") as f:
-                    data = json.load(f)
-                    if not isinstance(data, dict):
-                        data = {}
-                    if "modules" not in data:
-                        data["modules"] = {}
-                    if "globals" not in data:
-                        data["globals"] = get_default_globals()
-                    if migrate_config(data):
-                        need_save = True
-                    _config_cache = data
-            except json.JSONDecodeError as e:
-                logger.error(f"{config_path.name} is malformed: {e}. Using empty config.")
+                data = json.loads(config_path.read_text())
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                # Never overwrite it with defaults: keep it for a person to look at, take the last good
+                # one save_config kept. A power cut mid-write or a bad hand edit ends up here.
+                broken = config_path.with_name(f"{config_path.name}.broken-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}")
+                config_path.rename(broken)
+                data = _read_json(_backup_path(config_path))
+                logger.error(f"{config_path.name} is malformed: {e}. Kept as {broken.name}; "
+                             + ("using the last good copy." if data is not None else "no good copy, using defaults."))
+                need_save = data is not None
+        if data is not None:
+            if not isinstance(data, dict):
+                data = {}
+            if "modules" not in data:
+                data["modules"] = {}
+            if "globals" not in data:
+                data["globals"] = get_default_globals()
+            if migrate_config(data):
+                need_save = True
+            _config_cache = data
 
         if _config_cache is None:
             _config_cache = {
@@ -136,21 +145,49 @@ def save_config(config: dict) -> None:
     # Work on a deep copy of the config
     config_copy = copy.deepcopy(config)
 
-    # Write to a temp file in the same directory then rename — atomic on POSIX
-    fd, tmp_path = tempfile.mkstemp(dir=str(config_path.parent), suffix=".json")
+    # The file as it is now becomes the backup load_config falls back to, but only when it reads:
+    # a broken file must never replace a good backup. ponytail: one backup generation.
+    if _read_json(config_path) is not None:
+        write_atomic(_backup_path(config_path), config_path.read_text())
+    write_atomic(config_path, json.dumps(config_copy, indent=2))
+    with _config_lock:
+        _config_cache = config_copy  # update cache with deep copy
+    logger.info(f"Configuration saved successfully to {config_path}.")
+
+def _backup_path(config_path: Path) -> Path:
+    return config_path.with_name(config_path.name + ".bak")
+
+def _read_json(path: Path):
+    """The file's JSON, or None when it is missing or doesn't read."""
     try:
-        with os.fdopen(fd, "w") as f:
-            json.dump(config_copy, f, indent=2)
-        os.rename(tmp_path, str(config_path))
-        with _config_lock:
-            _config_cache = config_copy  # update cache with deep copy
-        logger.info(f"Configuration saved successfully to {config_path}.")
-    except Exception:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+def write_atomic(path: Path | str, text: str, mode: int | None = None) -> None:
+    """Write a file so a power cut leaves either the old or the new content, never a torn or empty file."""
+    path = Path(path)
+    fd, tmp_path = tempfile.mkstemp(dir=str(path.parent), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        if mode is not None:
+            os.chmod(tmp_path, mode)
+        os.replace(tmp_path, path)
+    except BaseException:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+    # The rename itself is only durable once the directory is written
+    dir_fd = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(dir_fd)
+    finally:
+        os.close(dir_fd)
 
 def invalidate_config_cache() -> None:
     """Force next load_config() to re-read from disk."""

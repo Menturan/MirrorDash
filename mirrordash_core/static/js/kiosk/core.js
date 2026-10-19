@@ -315,6 +315,10 @@ fetch('/static/modules.css')
     .catch(() => '')
     .then(css => { MODULES_CSS = css; connect(); });
 
+// Tells the app this page still runs: mirrordash-app-watch restarts the kiosk when it stops (a crashed
+// or frozen WebKit can keep its window, and even its WebSocket, open)
+setInterval(() => { if (socket && socket.readyState === WebSocket.OPEN) socket.send('alive'); }, 60 * 1000);
+
 // The Offline badge: whether the mirror reaches the internet, as the app sees it (features/kiosk/internet.py).
 // Not navigator.onLine: in Cog it said offline after a start while the mirror was online, and online
 // while the Wi-Fi was joined but nothing got through.

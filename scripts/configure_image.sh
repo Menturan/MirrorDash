@@ -935,6 +935,67 @@ StandardError=journal
 WantedBy=multi-user.target
 EOF
   systemctl --root=/ enable mirrordash.service
+
+  # Restart=always only helps when a process dies. This catches the two that hang alive: an app that
+  # no longer answers, and a kiosk whose page stopped (a crashed or frozen WebKit keeps its window).
+  # ponytail: found after ~6 minutes, not seconds; the upgrade is WatchdogSec= + sd_notify from the app.
+  mkdir -p /usr/local/lib/mirrordash
+  cat << 'EOF' > /usr/local/lib/mirrordash/app-watch
+#!/bin/bash
+# Every 3 minutes (mirrordash-app-watch.timer). Two failed rounds in a row, so an app restarting for an
+# update isn't taken for a hung one. The counts live in /run (RAM), like the Wi-Fi watch's.
+set -u
+STATE=${MIRRORDASH_WATCH_STATE:-/run/mirrordash-app-watch}  # overridable for tests/test_configure_image.py
+mkdir -p "$STATE"
+
+# Counts up the failure $1 and says yes on every second round in a row. The log ($3) is saved the first
+# time only, so a fault that stays doesn't push the other saved logs out (save-log keeps 5).
+act() {
+    local n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 ))
+    echo "$n" > "$STATE/$1"
+    [ $(( n % 2 )) -eq 0 ] || return 1
+    logger -t mirrordash-app-watch "$2"
+    if [ "$n" -eq 2 ]; then /usr/local/lib/mirrordash/save-log "$3" -b -n 2000 >/dev/null || true; fi
+}
+
+if ! health=$(curl -fsS -m 10 http://127.0.0.1:8000/health); then
+    act app "The app hasn't answered for two rounds; restarting it" app-hung && systemctl restart mirrordash.service
+    exit 0
+fi
+rm -f "$STATE/app"
+
+# Seconds since the mirror's own screen showed it's alive; null while the screen is off
+seen=$(sed -n 's/.*"screen_seen_seconds_ago":\([0-9]*\).*/\1/p' <<< "$health")
+if [ -n "$seen" ] && [ "$seen" -gt 300 ]; then
+    act screen "The screen's page has been silent for ${seen}s; restarting the kiosk" screen-lost && systemctl restart cog-kiosk.service
+else
+    rm -f "$STATE/screen"
+fi
+exit 0
+EOF
+  chmod 755 /usr/local/lib/mirrordash/app-watch
+  cat << 'EOF' > /etc/systemd/system/mirrordash-app-watch.service
+[Unit]
+Description=MirrorDash watch (an app or screen that hangs)
+After=mirrordash.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/mirrordash/app-watch
+TimeoutStartSec=120
+EOF
+  cat << 'EOF' > /etc/systemd/system/mirrordash-app-watch.timer
+[Unit]
+Description=MirrorDash watch every 3 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=3min
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl --root=/ enable mirrordash-app-watch.timer
 }
 
 step_repart_service() {
@@ -1062,12 +1123,25 @@ step_storage_hydration() {
 #!/bin/bash
 set -euo pipefail
 
-# Defensive mount check: if the partition exists but is not mounted, force-mount it
-if [ -b "/dev/disk/by-label/mirrordash-data" ]; then
-    if ! mountpoint -q /storage; then
-        echo "Warning: /storage is not mounted but the partition exists. Mounting it..."
-        mount /storage || mount /dev/disk/by-label/mirrordash-data /storage
-    fi
+# Defensive mount check: if the partition exists but is not mounted (fstab's nofail lets the boot go
+# on when its fsck wants a person, e.g. after a power cut mid-write), repair it and mount it
+DATA_PART=/dev/disk/by-label/mirrordash-data
+REPAIRED=""
+if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
+    echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
+    rc=0; e2fsck -p "$DATA_PART" || rc=$?
+    # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
+    # mirror that has lost all of them.
+    if [ "$rc" -ge 4 ]; then rc=0; e2fsck -y "$DATA_PART" || rc=$?; fi
+    [ "$rc" -ne 0 ] && REPAIRED=1
+    mount /storage || mount "$DATA_PART" /storage || true
+fi
+# On an image (#5) / is a RAM overlay: without /storage everything below would land in RAM, the
+# mirror would look new and forget whatever is saved at the next restart. Stop instead: the app
+# (Requires= this unit) doesn't start and the screen's loading page says so after a few minutes.
+if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage; then
+    echo "Error: /storage could not be mounted; not starting MirrorDash on a RAM-only /storage." >&2
+    exit 1
 fi
 
 # Ensure parent directory and subdirectories exist on mounted /storage
@@ -1124,6 +1198,11 @@ mkdir -p /storage/rauc
 # Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
 mkdir -p /storage/mirrordash/logs
 chown pi:pi /storage/mirrordash/logs
+
+# The repair above happened before /storage was there to save its log in
+if [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
+    /usr/local/lib/mirrordash/save-log storage-repair -b -n 1000 >/dev/null || true
+fi
 EOF
   chmod +x /usr/local/bin/mirrordash-hydrate.sh
 
@@ -1138,7 +1217,8 @@ EOF
 # Usage: save-log KIND [journalctl options...]
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
-#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, wifi-chip, p1-update.
+#   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, wifi-chip, p1-update,
+#   storage-repair, app-hung, screen-lost.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py

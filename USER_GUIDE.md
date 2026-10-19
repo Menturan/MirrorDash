@@ -218,7 +218,7 @@ template:
 *   **Modules are empty or missing:** check the mirror's internet connection, and the Logs tab for errors.
 *   **"MirrorDash isn't responding" on the mirror:** it lost contact with its software for more than two minutes and keeps trying. If it doesn't come back, use **Restart MirrorDash** in the Power tab, or unplug and plug in the mirror.
 *   **"MirrorDash didn't start" on the mirror:** if a system update was just installed, wait a few minutes: the mirror goes back to the previous system by itself. Otherwise unplug it and plug it in again. If it keeps happening, the SD card may need a fresh MirrorDash image (restore your backup afterwards).
-*   **To find out why something went wrong:** *Logs → Saved Logs* has the log of every update that failed and of Wi-Fi that stopped passing traffic (the newest 5). For a problem that keeps coming back, turn on *Settings → Developer → Developer logging*: the whole system log is then kept across restarts for 7 days (it wears the SD card a little, so it turns itself off).
+*   **To find out why something went wrong:** *Logs → Saved Logs* has the log of every update that failed, of Wi-Fi that stopped passing traffic, of a screen or app that froze and was restarted, and of a storage partition that was repaired (the newest 5). For a problem that keeps coming back, turn on *Settings → Developer → Developer logging*: the whole system log is then kept across restarts for 7 days (it wears the SD card a little, so it turns itself off).
 *   **The screen looks wrong:** **Reload Screen** in the Power tab.
 
 ---

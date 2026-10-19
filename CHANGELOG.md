@@ -9,6 +9,14 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A settings file damaged by a power cut no longer resets the mirror to its defaults: it goes back to the last good settings, and keeps the damaged file next to them.
+- If the mirror's screen freezes or the app stops answering, the mirror restarts it by itself within about 6 minutes and keeps the log under **Logs → Saved Logs**.
+
+### OS image
+
+- If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
+- The automatic restart of a frozen screen or app (above) comes with the OS image.
+
 ## [0.7.0-os2] - 2026-10-19
 
 OS image with MirrorDash 0.7.0.

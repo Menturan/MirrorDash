@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import logging
+import time
 from fastapi import WebSocket
 from mirrordash_core.config import get_core_version
 
@@ -11,9 +12,19 @@ class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
         self.latest_messages: dict[str, dict] = {}
+        # When the mirror's own screen last showed it's alive (mirrordash-app-watch restarts the kiosk
+        # when it stops). A start counts, so the screen has time to load.
+        self.screen_seen = time.monotonic()
+
+    def saw(self, client) -> None:
+        """A request from a loopback client: the mirror's own screen, whose page sends "alive" every
+        minute (js/kiosk/core.js) or polls /admin/auth/status (the setup prompts)."""
+        if client and client.host in ("127.0.0.1", "::1"):
+            self.screen_seen = time.monotonic()
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()
+        self.saw(websocket.client)
         self.active_connections.append(websocket)
         logger.info(f"New client connected. Total clients: {len(self.active_connections)}")
 

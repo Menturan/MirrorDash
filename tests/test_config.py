@@ -60,6 +60,23 @@ def test_load_config_malformed(tmp_path):
         assert "globals" in config
         assert "modules" in config
         assert config["globals"]["language"] == "en"
+    # ...but the broken file is kept, never overwritten with the defaults
+    assert [p.read_text() for p in tmp_path.glob("config.json.broken-*")] == ["invalid json{"]
+
+def test_load_config_broken_falls_back_to_last_good(tmp_path):
+    config_file = tmp_path / "config.json"
+    with patch("mirrordash_core.config.get_config_path", return_value=config_file):
+        invalidate_config_cache()
+        save_config({"globals": {"language": "sv"}, "modules": {}})
+        save_config({"globals": {"language": "de"}, "modules": {}})  # the "sv" file becomes the backup
+        config_file.write_text("")  # a power cut mid-write
+        invalidate_config_cache()
+        assert load_config()["globals"]["language"] == "sv"
+        assert json.loads(config_file.read_text())["globals"]["language"] == "sv"  # written back
+        # A broken file never replaces a good backup
+        config_file.write_text("{")
+        save_config({"globals": {"language": "fr"}, "modules": {}})
+        assert json.loads((tmp_path / "config.json.bak").read_text())["globals"]["language"] == "sv"
 
 def test_save_config_creates_parent_and_writes(tmp_path):
     # Target file in a nested subdirectory that doesn't exist yet

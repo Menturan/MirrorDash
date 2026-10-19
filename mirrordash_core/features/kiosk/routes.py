@@ -3,6 +3,7 @@
 
 import logging
 import os
+import time
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, RedirectResponse
@@ -51,7 +52,11 @@ async def get_design() -> FileResponse:
 @router.get("/health")
 async def health() -> dict:
     from mirrordash_core.admin import BOOT_ID
-    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"), "boot_id": BOOT_ID}
+    from mirrordash_core.features.power.display_power import display_power_manager
+    # None while the screen is off: there is nothing to watch then
+    screen_seen = round(time.monotonic() - manager.screen_seen) if display_power_manager.is_on else None
+    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
+            "boot_id": BOOT_ID, "screen_seen_seconds_ago": screen_seen}
 
 
 @router.get("/api/active-modules")
@@ -110,6 +115,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     try:
         while True:
             await websocket.receive_text()
+            manager.saw(websocket.client)
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:

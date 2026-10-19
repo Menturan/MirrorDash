@@ -4,6 +4,8 @@ import asyncio
 import os
 
 from fastapi import HTTPException
+
+from mirrordash_core.config import write_atomic
 import logging
 
 logger = logging.getLogger("mirrordash.core.settings")
@@ -67,9 +69,7 @@ async def _set_pi_password(password: str) -> None:
         logger.error(f"openssl hash failed: {err.decode(errors='replace').strip()}")
         raise HTTPException(status_code=500, detail="Failed to hash system password.")
     try:
-        with open(PASSWORD_HASH_FILE, "w", encoding="utf-8") as f:
-            f.write(out.decode().strip())
-        os.chmod(PASSWORD_HASH_FILE, 0o600)
+        write_atomic(PASSWORD_HASH_FILE, out.decode().strip(), 0o600)
     except OSError as e:
         logger.error(f"Failed to write password hash to disk: {e}")
 

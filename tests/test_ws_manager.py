@@ -7,6 +7,7 @@ class MockWebSocket:
         self.accepted = False
         self.sent_messages = []
         self.should_fail = should_fail
+        self.client = None
 
     async def accept(self):
         self.accepted = True
@@ -120,3 +121,16 @@ async def test_ws_manager_clear_cache():
 
 
 
+
+
+def test_only_the_mirrors_own_screen_counts_as_seen():
+    """mirrordash-app-watch restarts the kiosk when the screen's page goes silent: a phone or the admin
+    page in another browser must not keep a dead screen looking alive."""
+    from types import SimpleNamespace
+    manager = ConnectionManager()
+    manager.screen_seen = 0.0
+    manager.saw(SimpleNamespace(host="192.168.1.20"))
+    manager.saw(None)
+    assert manager.screen_seen == 0.0
+    manager.saw(SimpleNamespace(host="::1"))
+    assert manager.screen_seen > 0.0
