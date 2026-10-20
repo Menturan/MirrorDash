@@ -170,7 +170,8 @@ step_installing_packages() {
 # Sound and hardware video for modules (ARCHITECTURE #32): GStreamer's base plugins, and only the
 # plugins of good and bad that play radio, TV (HLS, the Pi's H.264 decoder) and camera streams. The
 # whole of good and bad is about 270 MB (bad alone pulls in ONNX, oneDNN and GTK); this is about 12 MB.
-MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux"
+# autodetect (autoaudiosink): without it WebKit's web process crashes on any <audio> or <video>.
+MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux autodetect"
 MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
 
 step_media() {
