@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
+import contextlib
 import functools
 import hashlib
 import importlib.metadata
@@ -169,6 +170,18 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         plugin_instance.fetch = fetch
     if not hasattr(plugin_instance, "fetch_json"):
         plugin_instance.fetch_json = fetch_json
+
+    if not hasattr(plugin_instance, "video_is_playing"):
+        # `async with self.video_is_playing():` around playback: meanwhile the other modules update once a
+        # minute (ws.py, ARCHITECTURE #33). ponytail: async only; a sync run_loop can't hold it.
+        @contextlib.asynccontextmanager
+        async def video_is_playing():
+            await manager.set_video_playing(module_name, True)
+            try:
+                yield
+            finally:
+                await manager.set_video_playing(module_name, False)
+        plugin_instance.video_is_playing = video_is_playing
 
     if not hasattr(plugin_instance, "render_template"):
         try:

@@ -333,3 +333,14 @@ svg.lucide, .lucide {
     color: var(--color-standard-gray);
     line-height: 1.4;
 }
+
+/* ============================================================
+   While a video plays (data-video-is-playing on the module's host, ARCHITECTURE #33): every
+   animation and transition in a module stands still, so nothing redraws under the video
+   ============================================================ */
+:host([data-video-is-playing]) *,
+:host([data-video-is-playing]) *::before,
+:host([data-video-is-playing]) *::after {
+    animation-play-state: paused !important;
+    transition: none !important;
+}

@@ -53,22 +53,58 @@ function updateCarouselGroup(groupContainer) {
         groupContainer._carouselTimer = null;
     }
 
-    if (slides.length > 1) {
-        const intervalSec = parseInt(groupContainer.getAttribute('data-carousel-interval'), 10) || 15;
-        groupContainer._carouselTimer = setInterval(() => {
-            const currentSlides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
-            if (currentSlides.length <= 1) return;
-            
-            const currentActive = groupContainer.querySelector('.carousel-slide.carousel-active');
-            let nextIndex = 0;
-            if (currentActive) {
-                const currentIndex = currentSlides.indexOf(currentActive);
-                nextIndex = (currentIndex + 1) % currentSlides.length;
-                currentActive.classList.remove('carousel-active');
-            }
-            currentSlides[nextIndex].classList.add('carousel-active');
-        }, intervalSec * 1000);
+    // While a video plays, the minute timer (setVideoIsPlaying) steps the carousels instead
+    if (slides.length > 1 && !videoIsPlaying) {
+        groupContainer._carouselTimer = setInterval(() => stepCarousel(groupContainer), carouselInterval(groupContainer));
     }
+}
+
+function carouselInterval(groupContainer) {
+    return (parseInt(groupContainer.getAttribute('data-carousel-interval'), 10) || 15) * 1000;
+}
+
+function stepCarousel(groupContainer) {
+    const currentSlides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
+    if (currentSlides.length <= 1) return;
+    groupContainer._steppedAt = Date.now();
+
+    const currentActive = groupContainer.querySelector('.carousel-slide.carousel-active');
+    let nextIndex = 0;
+    if (currentActive) {
+        const currentIndex = currentSlides.indexOf(currentActive);
+        nextIndex = (currentIndex + 1) % currentSlides.length;
+        currentActive.classList.remove('carousel-active');
+    }
+    currentSlides[nextIndex].classList.add('carousel-active');
+}
+
+// While a module plays a video, the page redraws once a minute, on the minute, so the video's window
+// stays smooth (ARCHITECTURE #33): the server sends the module updates then, the carousels step then
+// (without their fade, style.css), and modules see data-video-is-playing on their host and the
+// mirrordash:video_is_playing event, and tick once a minute.
+let videoIsPlaying = false;
+let minuteTimer = null;
+const untilTheMinute = () => 60000 - Date.now() % 60000;
+
+function setVideoIsPlaying(playing) {
+    if (playing === videoIsPlaying) return;
+    videoIsPlaying = playing;
+    for (const el of [document.documentElement, ...document.querySelectorAll('[data-module]')]) {
+        el.toggleAttribute('data-video-is-playing', playing);
+    }
+    clearTimeout(minuteTimer);
+    if (playing) {
+        const onTheMinute = () => {
+            // A carousel slower than a minute keeps its own pace; a faster one steps once a minute
+            for (const group of document.querySelectorAll('.carousel-group-container')) {
+                if (Date.now() - (group._steppedAt || 0) >= carouselInterval(group) - 1000) stepCarousel(group);
+            }
+            minuteTimer = setTimeout(onTheMinute, untilTheMinute());
+        };
+        minuteTimer = setTimeout(onTheMinute, untilTheMinute());
+    }
+    document.querySelectorAll('.carousel-group-container').forEach(updateCarouselGroup);  // stops or restarts their timers
+    window.dispatchEvent(new CustomEvent('mirrordash:video_is_playing', { detail: { playing } }));
 }
 
 function connect() {
@@ -107,6 +143,12 @@ function connect() {
             }
             pageVersion = data.version;
             showOffline(data.online === false);
+            setVideoIsPlaying(data.video_is_playing === true);
+            return;
+        }
+
+        if (data.type === 'video_is_playing') {
+            setVideoIsPlaying(data.playing === true);
             return;
         }
 
@@ -172,6 +214,7 @@ function connect() {
         moduleDiv.style.maxHeight = data.max_height || '';
         moduleDiv.style.zIndex    = data.z_index != null ? String(data.z_index) : '';
         moduleDiv.style.opacity   = data.opacity  != null ? String(data.opacity)  : '';
+        moduleDiv.toggleAttribute('data-video-is-playing', videoIsPlaying);
 
         const shadow = moduleDiv.shadowRoot || moduleDiv.attachShadow({ mode: 'open' });
         shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}</style>` + data.html;

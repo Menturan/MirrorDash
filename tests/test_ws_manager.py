@@ -1,3 +1,4 @@
+from unittest.mock import patch
 
 import pytest
 
@@ -136,3 +137,48 @@ def test_only_the_mirrors_own_screen_counts_as_seen():
     assert manager.screen_seen == 0.0
     manager.saw(SimpleNamespace(host="::1"))
     assert manager.screen_seen > 0.0
+
+
+@pytest.mark.asyncio
+async def test_while_a_video_plays_the_other_modules_update_once_a_minute():
+    """ARCHITECTURE #33: the player's own updates go out, the others' wait for the minute (send_pending)
+    or for the video to stop; a module that ends its block, even cancelled, lets go."""
+    import asyncio
+
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+
+    manager = ConnectionManager()
+    ws = MockWebSocket()
+    await manager.connect(ws)
+    sent = ws.sent_messages
+    clock = {"module": "clock", "html": "<p>12:00</p>"}
+
+    with patch("mirrordash_core.features.modules.loader.manager", manager):
+        tv = type("Tv", (), {})()
+        _inject_module_helpers(tv, "tv", {}, "tv", {})
+        async with tv.video_is_playing():
+            assert sent[-1] == {"type": "video_is_playing", "playing": True}
+            await manager.broadcast({"module": "tv", "html": "<p>SVT1</p>"})
+            await manager.broadcast(clock)
+            await manager.broadcast({**clock, "html": "<p>12:01</p>"})
+            assert sent[-1]["module"] == "tv"
+            late = MockWebSocket()
+            await manager.connect(late)                    # a page that comes now gets the state and the latest
+            assert late.sent_messages[0]["video_is_playing"] is True
+            assert {**clock, "html": "<p>12:01</p>"} in late.sent_messages
+            await manager.send_pending()                   # on the minute
+            assert sent[-1] == {**clock, "html": "<p>12:01</p>"}
+            await manager.broadcast({**clock, "html": "<p>12:02</p>"})
+        assert sent[-2:] == [{"type": "video_is_playing", "playing": False}, {**clock, "html": "<p>12:02</p>"}]
+        await manager.broadcast({**clock, "html": "<p>12:03</p>"})  # not playing: at once
+        assert sent[-1]["html"] == "<p>12:03</p>"
+
+        async def play():
+            async with tv.video_is_playing():
+                await asyncio.sleep(3600)
+        task = asyncio.create_task(play())
+        await asyncio.sleep(0)
+        assert manager.video_players == {"tv"}
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+        assert manager.video_players == set() and manager._minute_task is None

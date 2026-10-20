@@ -216,6 +216,11 @@ body, html {
     pointer-events: auto;
 }
 
+/* While a video plays the slides switch at once: a fade would redraw under the video (ARCHITECTURE #33) */
+html[data-video-is-playing] .carousel-slide {
+    transition: none;
+}
+
 /* ============================================================
    #9: WebSocket connection status indicator
    ============================================================ */

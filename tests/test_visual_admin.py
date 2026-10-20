@@ -695,3 +695,49 @@ def test_logging_in_with_the_form_keeps_the_page_logged_in(page, server_url):
     page.wait_for_selector("#page-tab-dashboard")
     assert not page.locator("#auth-overlay.open").count()
     assert page.evaluate("() => localStorage.getItem('mirrordash_api_key')") is None
+
+
+@pytest.mark.only_browser("webkit")
+def test_while_a_video_plays_the_page_holds_still(page):
+    """ARCHITECTURE #33: modules see video_is_playing on their host and as an event, their animations
+    stand still, and the carousels drop their fade and their own timers (they step on the minute)."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    send = lambda msg: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(msg))
+    spinner = "<span class='module-loading-spinner'></span>"
+    for module in ("news", "weather"):
+        send({"module": module, "position": "top_left", "html": spinner, "carousel_group": "g", "carousel_interval": 5})
+    page.evaluate("addEventListener('mirrordash:video_is_playing', e => window.__heard = e.detail.playing)")
+    group = "document.querySelector('.carousel-group-container')"
+    slide = "document.querySelector('[data-module=news]')"
+    assert page.evaluate(f"{group}._carouselTimer") is not None
+
+    send({"type": "video_is_playing", "playing": True})
+    assert page.evaluate("window.__heard") is True
+    assert page.evaluate(f"document.documentElement.hasAttribute('data-video-is-playing') && {slide}.hasAttribute('data-video-is-playing')")
+    assert page.evaluate(f"getComputedStyle({slide}).transitionDuration") == "0s"
+    assert page.evaluate(f"getComputedStyle({slide}.shadowRoot.querySelector('span')).animationPlayState") == "paused"
+    assert page.evaluate(f"{group}._carouselTimer") is None
+    send({"module": "clock", "position": "top_right", "html": "<p>12:00</p>"})  # drawn while playing
+    assert page.evaluate("document.querySelector('[data-module=clock]').hasAttribute('data-video-is-playing')")
+
+    send({"type": "video_is_playing", "playing": False})
+    assert page.evaluate("window.__heard") is False
+    assert not page.evaluate(f"{slide}.hasAttribute('data-video-is-playing')")
+    assert page.evaluate(f"{group}._carouselTimer") is not None
