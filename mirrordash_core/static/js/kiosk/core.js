@@ -152,8 +152,8 @@ function connect() {
             return;
         }
 
-        // A module's play_video asks where its video window goes: the element with data-video-window on
-        // its card, in CSS pixels, which are the screen's (features/video/window.py places the player there)
+        // A module's video_window asks where its video goes: the element with data-video-window on
+        // its card, in CSS pixels, which are the screen's (features/video/window.py places the module's player there)
         if (data.type === 'video_window') {
             const host = document.querySelector(`[data-module="${CSS.escape(data.module)}"]`);
             const box = host?.shadowRoot?.querySelector('[data-video-window]')?.getBoundingClientRect();

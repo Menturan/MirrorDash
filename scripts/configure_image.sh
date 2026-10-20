@@ -171,7 +171,8 @@ step_installing_packages() {
 # plugins of good and bad that play radio, TV (HLS, the Pi's H.264 decoder) and camera streams. The
 # whole of good and bad is about 270 MB (bad alone pulls in ONNX, oneDNN and GTK); this is about 12 MB.
 # autodetect (autoaudiosink): without it WebKit's web process crashes on any <audio> or <video>.
-# python3-gi and the two GStreamer typelibs (about 3 MB) run the core's video player (features/video/play.py).
+# python3-gi and the two GStreamer typelibs (about 3 MB): a module's video player runs on the system's
+# Python with them (ARCHITECTURE #34); the app's own Python has no GStreamer bindings.
 MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux autodetect"
 MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
 

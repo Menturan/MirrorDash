@@ -1,8 +1,5 @@
 """A module's video window (features/video, ARCHITECTURE #34)."""
 import asyncio
-import importlib.util
-import sys
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -35,29 +32,14 @@ def test_the_screen_switches_to_50_hz_and_back():
     assert window.refresh_switch("", 50) is None                                 # not on a mirror
 
 
-def test_subtitles_leave_the_playlist_and_addresses_become_absolute():
-    spec = importlib.util.spec_from_file_location("play", window.PLAY)  # run by the system's Python on a mirror
-    play = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(play)
-    master = ('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,URI="audio/a.m3u8",GROUP-ID="aac"\n'
-              '#EXT-X-MEDIA:TYPE=SUBTITLES,URI="subs/s.m3u8",GROUP-ID="subs"\n'
-              '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="aac",SUBTITLES="subs"\nvideo/360.m3u8?token=1\n')
-    assert play.without_subtitles(master, "https://tv.example/live/master.m3u8") == (
-        '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,URI="https://tv.example/live/audio/a.m3u8",GROUP-ID="aac"\n'
-        '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="aac"\nhttps://tv.example/live/video/360.m3u8?token=1\n')
-
-
 @pytest.mark.asyncio
-async def test_play_video_places_the_window_and_cleans_up(tmp_path):
+async def test_video_window_places_the_player_and_cleans_up(tmp_path):
     """The page says where the card's video window is; the rule, 50 Hz and video_is_playing hold while the
-    player runs, and all go when it ends or is cancelled."""
+    block runs, and all go when it ends, also by an error or a cancel."""
     rc_xml = tmp_path / "rc.xml"
     rc_xml.write_text(BASE_RC)
-    player = tmp_path / "play.py"
-    player.write_text("import sys, time\nopen(sys.argv[0] + '.args', 'w').write(' '.join(sys.argv[1:]))\n"
-                      "time.sleep(float(sys.argv[1].split('=')[1]))\n")
     manager = ConnectionManager()
-    commands, seen_while_playing = [], []
+    commands = []
 
     async def page(message):  # the mirror's page, as core.js answers
         if message.get("type") == "video_window":
@@ -65,37 +47,24 @@ async def test_play_video_places_the_window_and_cleans_up(tmp_path):
 
     async def run(*command):
         commands.append(command)
-        if command == ("wlr-randr",):
-            seen_while_playing.append(rc_xml.read_text())
-            return WLR_RANDR
-        return ""
+        return WLR_RANDR if command == ("wlr-randr",) else ""
 
     with patch.object(window, "manager", manager), patch.object(manager, "broadcast", side_effect=page), \
-         patch.object(window, "RC_XML", rc_xml), patch.object(window, "PLAY", player), \
-         patch.object(window, "SYSTEM_PYTHON", sys.executable), patch.object(window, "_run", side_effect=run), \
+         patch.object(window, "RC_XML", rc_xml), patch.object(window, "_run", side_effect=run), \
          patch.object(window, "_one_at_a_time", asyncio.Lock()):
-        task = asyncio.create_task(window.play_video("tv", "x=0.3", hz=50))
-        for _ in range(100):
-            await asyncio.sleep(0.02)
-            if manager.video_players:
-                break
-        assert manager.video_players == {"tv"} and 'x="1440"' in rc_xml.read_text()
-        assert ("wlr-randr", "--output", "HDMI-A-1", "--mode", "1920x1080@50Hz") in commands
-        assert await task == 0
-        assert Path(str(player) + ".args").read_text() == "x=0.3"
+        async with window.video_window("tv", hz=50) as placed:
+            assert placed == window.VideoWindow("mirrordash-video", [1440, 810, 480, 270], False)
+            assert manager.video_players == {"tv"} and 'identifier="mirrordash-video"' in rc_xml.read_text()
+            assert ("wlr-randr", "--output", "HDMI-A-1", "--mode", "1920x1080@50Hz") in commands
         assert rc_xml.read_text() == BASE_RC and manager.video_players == set()
         assert commands[-2:] == [("wlr-randr", "--output", "HDMI-A-1", "--mode", "1920x1080@60Hz"),
                                  ("pkill", "-HUP", "-x", "labwc")]
 
-        task = asyncio.create_task(window.play_video("tv", "x=60", fullscreen=True))
-        await asyncio.sleep(0.5)
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
+        with pytest.raises(RuntimeError):
+            async with window.video_window("tv", fullscreen=True) as placed:
+                assert placed.rect is None and placed.fullscreen
+                raise RuntimeError("the player failed")
         assert rc_xml.read_text() == BASE_RC and manager.video_players == set()
-
-    with pytest.raises(ValueError):
-        await window.play_video("tv", "http://a b")
 
 
 def test_only_the_mirrors_own_screen_says_where_the_window_is():

@@ -121,7 +121,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         while True:
             text = await websocket.receive_text()
             manager.saw(websocket.client)
-            # Where a module's video window is, asked by features/video; only the mirror's own screen counts
+            # Where a module's video window is, asked by features/video/window.py; only the mirror's own screen counts
             if text.startswith("{") and on_screen(websocket.client):
                 try:
                     message = json.loads(text)

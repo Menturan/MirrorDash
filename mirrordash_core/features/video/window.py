@@ -1,23 +1,24 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
-"""A module's video window (ARCHITECTURE #34): `await self.play_video(uri)` plays a stream or file over
-the element with `data-video-window` on the module's card, or fullscreen, and returns when it ends.
+"""A module's video window (ARCHITECTURE #34): `async with self.video_window() as window:` places the
+module's own player over the element with `data-video-window` on its card, or lets it play fullscreen.
 
-The player is its own process (play.py, with the system's GStreamer); its window is placed by a labwc
-window rule that this writes into rc.xml while it plays, at the element's place on the page. While it
-plays, the other modules update once a minute (video_is_playing), and with hz= the screen runs at that
-refresh rate (50 for European TV, which otherwise judders at 60 Hz).
+The core does what a module may not: it writes a labwc window rule for the player's app id into rc.xml
+at the element's place on the page, switches the screen's refresh rate with hz= (50 for European TV,
+which otherwise judders at 60 Hz), and holds video_is_playing so the other modules update once a minute.
+The player itself, and what it plays, belong to the module.
 """
 import asyncio
+import contextlib
 import logging
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 from mirrordash_core.features.kiosk.ws import manager
 
 logger = logging.getLogger("mirrordash.core.video")
 
-PLAY = Path(__file__).with_name("play.py")
-SYSTEM_PYTHON = "/usr/bin/python3"  # has python3-gi; the app's own Python doesn't
+APP_ID = "mirrordash-video"
 RC_XML = Path.home() / ".config" / "labwc" / "rc.xml"  # in the RAM root: a rule left by a crash goes at the next start
 RULE = re.compile(r"<!-- mirrordash-video -->.*?<!-- /mirrordash-video -->", re.S)
 MODE = re.compile(r"^\s+(\d+)x(\d+) px, ([\d.]+) Hz(.*)$", re.M)
@@ -35,7 +36,7 @@ def with_rule(rc_xml: str, rect: list[int] | None) -> str:
     if rect is None:
         return rc_xml
     x, y, width, height = rect
-    rule = ('<!-- mirrordash-video --><windowRules><windowRule identifier="mirrordash-video" serverDecoration="no" '
+    rule = (f'<!-- mirrordash-video --><windowRules><windowRule identifier="{APP_ID}" serverDecoration="no" '
             f'ignoreFocusRequest="yes"><action name="MoveTo" x="{x}" y="{y}" /><action name="ResizeTo" '
             f'width="{width}" height="{height}" /></windowRule></windowRules><!-- /mirrordash-video -->')
     return rc_xml.replace("</labwc_config>", rule + "</labwc_config>")
@@ -93,11 +94,18 @@ async def _place(rect: list[int] | None) -> None:
         await _run("pkill", "-HUP", "-x", "labwc")  # labwc rereads rc.xml
 
 
-async def play_video(instance_id: str, uri: str, *, fullscreen: bool = False, hz: int | None = None) -> int:
-    """Play uri until it ends (or the call is cancelled, which stops it); returns the player's exit code
-    (0 at the end, 1 on an error, which is logged)."""
-    if not isinstance(uri, str) or not uri or any(c.isspace() for c in uri):
-        raise ValueError(f"play_video: not an address: {uri!r}")
+@dataclass(frozen=True)
+class VideoWindow:
+    app_id: str               # the player's window must have this app id (GLib.set_prgname in a GStreamer player)
+    rect: list[int] | None    # where it goes in screen pixels (x, y, width, height); None: fullscreen or unknown
+    fullscreen: bool
+
+
+@contextlib.asynccontextmanager
+async def video_window(instance_id: str, *, fullscreen: bool = False, hz: int | None = None):
+    """While the block runs, a window with app id `mirrordash-video` lands over the card's data-video-window
+    element (or the module plays fullscreen), the screen runs at hz if it can, and the other modules update
+    once a minute. The module starts and stops its own player inside the block."""
     async with _one_at_a_time:
         rect = None
         if not fullscreen:
@@ -105,26 +113,13 @@ async def play_video(instance_id: str, uri: str, *, fullscreen: bool = False, hz
             if rect is None:
                 logger.warning(f"{instance_id}: no element with data-video-window on its card; the video plays in the middle")
         switch = refresh_switch(await _run("wlr-randr") or "", hz) if hz else None
-        process = None
         try:
             await _place(rect)
             if switch:
                 await _run("wlr-randr", "--output", switch[0], "--mode", switch[1])
             await manager.set_video_playing(instance_id, True)
-            process = await asyncio.create_subprocess_exec(
-                SYSTEM_PYTHON, "-I", str(PLAY), uri, *(["--fullscreen"] if fullscreen else []),
-                stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-            _, err = await process.communicate()
-            if process.returncode:
-                logger.warning(f"{instance_id}: the video stopped: {err.decode(errors='replace').strip()[-500:]}")
-            return process.returncode
+            yield VideoWindow(APP_ID, rect, fullscreen)
         finally:
-            if process and process.returncode is None:  # cancelled: stop the player
-                process.terminate()
-                try:
-                    await asyncio.wait_for(process.wait(), 5)
-                except TimeoutError:
-                    process.kill()
             await manager.set_video_playing(instance_id, False)
             if switch:
                 await _run("wlr-randr", "--output", switch[0], "--mode", switch[2])
