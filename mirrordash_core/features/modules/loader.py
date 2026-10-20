@@ -183,6 +183,11 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
                 await manager.set_video_playing(module_name, False)
         plugin_instance.video_is_playing = video_is_playing
 
+    if not hasattr(plugin_instance, "play_video"):
+        # `await self.play_video(uri, fullscreen=False, hz=None)`: over the card's data-video-window element
+        from mirrordash_core.features.video.window import play_video
+        plugin_instance.play_video = functools.partial(play_video, module_name)
+
     if not hasattr(plugin_instance, "render_template"):
         try:
             loaders = []

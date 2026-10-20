@@ -11,6 +11,11 @@ from mirrordash_core.config import get_core_version
 logger = logging.getLogger("mirrordash.core.kiosk")
 
 
+def on_screen(client) -> bool:
+    """Whether a client is the mirror's own screen (a loopback address)."""
+    return bool(client) and client.host in ("127.0.0.1", "::1")
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
@@ -27,7 +32,7 @@ class ConnectionManager:
     def saw(self, client) -> None:
         """A request from a loopback client: the mirror's own screen, whose page sends "alive" every
         minute (js/kiosk/core.js) or polls /admin/auth/status (the setup prompts)."""
-        if client and client.host in ("127.0.0.1", "::1"):
+        if on_screen(client):
             self.screen_seen = time.monotonic()
 
     async def connect(self, websocket: WebSocket) -> None:

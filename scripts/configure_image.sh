@@ -171,6 +171,7 @@ step_installing_packages() {
 # plugins of good and bad that play radio, TV (HLS, the Pi's H.264 decoder) and camera streams. The
 # whole of good and bad is about 270 MB (bad alone pulls in ONNX, oneDNN and GTK); this is about 12 MB.
 # autodetect (autoaudiosink): without it WebKit's web process crashes on any <audio> or <video>.
+# python3-gi and the two GStreamer typelibs (about 3 MB) run the core's video player (features/video/play.py).
 MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux autodetect"
 MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
 
@@ -178,7 +179,8 @@ step_media() {
   # The libraries the copied plugins need (objdump -p, NEEDED); most come with Cog anyway
   apt-get install -y --no-install-recommends \
       gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-tools \
-      libgstreamer-plugins-bad1.0-0 libgudev-1.0-0 libv4l-0t64 libxml2 libsoup-3.0-0 libmpg123-0t64 libfaad2
+      libgstreamer-plugins-bad1.0-0 libgudev-1.0-0 libv4l-0t64 libxml2 libsoup-3.0-0 libmpg123-0t64 libfaad2 \
+      python3-gi gir1.2-gstreamer-1.0 gir1.2-gst-plugins-base-1.0
 
   # ponytail: copied out of the .debs, so dpkg doesn't know these files. A mirror never runs apt and
   # each image builds from Debian's current packages, so nothing is missed; a new plugin is a new name above.
@@ -197,6 +199,8 @@ step_media() {
     GST_REGISTRY=/tmp/gst-check.bin gst-inspect-1.0 "$p" > /dev/null || { echo "GStreamer plugin $p doesn't load"; exit 1; }
   done
   rm -f /tmp/gst-check.bin
+  python3 -c 'import gi; gi.require_version("Gst", "1.0"); from gi.repository import Gst' \
+      || { echo "GStreamer's Python bindings don't load"; exit 1; }
 }
 
 step_setting_hostname() {

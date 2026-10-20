@@ -26,7 +26,7 @@ There are two kinds of releases:
 
 ### OS image
 
-- The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 12 MB to the system.
+- The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 15 MB to the system.
 
 - After a restart without internet, the mirror's clock starts at the last time it knew instead of the date the system was built, so times and secure connections are right sooner.
 

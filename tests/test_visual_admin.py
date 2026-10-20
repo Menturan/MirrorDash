@@ -741,3 +741,38 @@ def test_while_a_video_plays_the_page_holds_still(page):
     assert page.evaluate("window.__heard") is False
     assert not page.evaluate(f"{slide}.hasAttribute('data-video-is-playing')")
     assert page.evaluate(f"{group}._carouselTimer") is not None
+
+
+@pytest.mark.only_browser("webkit")
+def test_the_page_says_where_a_modules_video_window_is(page):
+    """features/video asks; the page answers with the data-video-window element's place in CSS pixels."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.__sent = []; window.WebSocket = class { constructor() { window.__ws = this; }"
+                         " send(text) { window.__sent.push(text); } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    send = lambda msg: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(msg))
+    send({"module": "tv", "position": "top_left", "html": "<div data-video-window style='width:480px;height:270px'></div>"})
+    send({"module": "clock", "position": "top_right", "html": "<p>12:00</p>"})
+
+    send({"type": "video_window", "module": "tv"})
+    send({"type": "video_window", "module": "clock"})
+    answers = [json.loads(t) for t in page.evaluate("window.__sent") if t.startswith("{")]
+    box = page.evaluate("(b => [b.left, b.top])(document.querySelector('[data-module=tv]')"
+                        ".shadowRoot.querySelector('div').getBoundingClientRect())")
+    assert answers[0] == {"type": "video_window", "module": "tv", "rect": [round(box[0]), round(box[1]), 480, 270]}
+    assert answers[1] == {"type": "video_window", "module": "clock", "rect": None}  # no window on its card

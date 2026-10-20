@@ -1,6 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 """The mirror's own screen: the page, its WebSocket and what it asks the server for."""
 
+import json
 import logging
 import os
 import time
@@ -11,7 +12,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.auth.routes import auth_state
-from mirrordash_core.features.kiosk.ws import manager
+from mirrordash_core.features.kiosk.ws import manager, on_screen
 from mirrordash_core.features.modules.loader import module_loader
 from mirrordash_core.features.wifi.network import (
     HOTSPOT_SSID,
@@ -118,8 +119,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await manager.connect(websocket)
     try:
         while True:
-            await websocket.receive_text()
+            text = await websocket.receive_text()
             manager.saw(websocket.client)
+            # Where a module's video window is, asked by features/video; only the mirror's own screen counts
+            if text.startswith("{") and on_screen(websocket.client):
+                try:
+                    message = json.loads(text)
+                except ValueError:
+                    continue
+                if isinstance(message, dict) and message.get("type") == "video_window":
+                    from mirrordash_core.features.video.window import window_reported
+                    window_reported(message.get("module"), message.get("rect"))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:
