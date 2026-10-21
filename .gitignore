@@ -34,6 +34,7 @@ modules/*/
 # Scratch folder for temporary work
 scratch/
 
-/.claude
+/.claude/*
+!/.claude/skills/
 /build_workspace/
 node_modules/
