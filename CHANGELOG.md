@@ -9,6 +9,21 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 15 MB to the system.
+
+- After a restart without internet, the mirror's clock starts at the last time it knew instead of the date the system was built, so times and secure connections are right sooner.
+
+- If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
+- The automatic restart of a frozen screen or app (0.7.1) comes with the OS image.
+- A system update no longer deletes your modules or your MirrorDash updates when it brings a new Python: MirrorDash's Python now lives with your settings, and a system update doesn't touch it.
+- If MirrorDash can't start on a new system version, the mirror goes back to the old system and keeps MirrorDash as it was. Before, it took the older MirrorDash, or Safe mode, and could keep the broken system.
+- A system update is kept only if the mirror reaches the internet with it. Before, an update whose Wi-Fi didn't work could be kept because the setup hotspot counted as a connection, and the mirror then couldn't get the update that fixed it.
+- A mirror that has put up `MirrorDash-Setup` (for example after a power cut, when the router starts after the mirror) goes back to your Wi-Fi by itself within a few minutes. Before, it kept putting the hotspot back up and stayed there until it was restarted.
+
+## [0.8.0] - 2026-10-21
+
 - Security: the admin page no longer keeps your password in the browser or sends it with every click. You log in once per device (for 30 days), there is **Log Out on This Device**, a new password logs out every other device, and after five wrong passwords the mirror waits a minute. Other web pages can no longer talk to the admin page on your behalf.
 
 - **Reset Mirror** at the bottom of Settings makes the mirror as new, for giving it away or starting over, without reflashing (it needs the next system version).
@@ -23,19 +38,6 @@ There are two kinds of releases:
 
 - When a new MirrorDash needs a newer Python, the mirror installs it with the update and first checks that every module works with it. If some don't, nothing changes: the update lists them and you choose whether to install anyway (they're turned off, with their settings kept) or wait.
 - In Safe mode, **Reinstall MirrorDash and Modules** now really brings your modules back. Before, it reinstalled MirrorDash without them, and the modules were then gone for good.
-
-### OS image
-
-- The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 15 MB to the system.
-
-- After a restart without internet, the mirror's clock starts at the last time it knew instead of the date the system was built, so times and secure connections are right sooner.
-
-- If the storage partition (settings, modules, Wi-Fi) has errors after a power cut, the mirror repairs it at start and keeps the log. Before, it could start as if new and forget everything at the next restart; now, if it can't be repaired, the screen says so.
-- The automatic restart of a frozen screen or app (0.7.1) comes with the OS image.
-- A system update no longer deletes your modules or your MirrorDash updates when it brings a new Python: MirrorDash's Python now lives with your settings, and a system update doesn't touch it.
-- If MirrorDash can't start on a new system version, the mirror goes back to the old system and keeps MirrorDash as it was. Before, it took the older MirrorDash, or Safe mode, and could keep the broken system.
-- A system update is kept only if the mirror reaches the internet with it. Before, an update whose Wi-Fi didn't work could be kept because the setup hotspot counted as a connection, and the mirror then couldn't get the update that fixed it.
-- A mirror that has put up `MirrorDash-Setup` (for example after a power cut, when the router starts after the mirror) goes back to your Wi-Fi by itself within a few minutes. Before, it kept putting the hotspot back up and stayed there until it was restarted.
 
 ## [0.7.1] - 2026-10-19
 
