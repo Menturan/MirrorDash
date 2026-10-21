@@ -85,17 +85,9 @@ async def _set_backlight(brightness: int) -> bool:
         with open(max_backlight_paths[0]) as f:
             max_val = int(f.read().strip())
         target_val = int((brightness / 100.0) * max_val)
-        try:
-            # Writable for the video group (udev: 90-mirrordash-backlight.rules), so no sudo
-            with open(backlight_paths[0], "w") as f:
-                f.write(f"{target_val}\n")
-        except PermissionError:
-            # ponytail: images before the udev rule allow only `sudo tee`; drop once none is left
-            proc = await asyncio.create_subprocess_exec("sudo", "-n", "tee", backlight_paths[0], stdin=asyncio.subprocess.PIPE,
-                                                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-            _, err = await proc.communicate(input=f"{target_val}\n".encode())
-            if proc.returncode != 0:
-                raise PermissionError(err.decode(errors="replace").strip())
+        # Writable for the video group (udev: 90-mirrordash-backlight.rules), so no sudo
+        with open(backlight_paths[0], "w") as f:
+            f.write(f"{target_val}\n")
     except Exception as e:
         logger.warning(f"Failed to write to backlight device {backlight_paths[0]}: {e}")
         return False

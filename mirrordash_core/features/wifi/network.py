@@ -14,15 +14,6 @@ NM_CONN_DIR = "/etc/NetworkManager/system-connections"
 NM_PERSISTENT_LINK = "/storage/mirrordash/system-connections"
 
 
-# Images with this rule let pi use NetworkManager through polkit; older ones only through `sudo nmcli`.
-# ponytail: drop the sudo branch once no mirror runs an image without the rule.
-NM_POLKIT_RULE = "/etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules"
-
-
-def nmcli() -> list[str]:
-    return ["nmcli"] if os.path.exists(NM_POLKIT_RULE) else ["sudo", "-n", "nmcli"]
-
-
 def ensure_nm_wifi_persistence() -> None:
     """Ensure NetworkManager WiFi profiles survive OverlayFS by symlinking to the persistent partition.
 
@@ -82,7 +73,7 @@ async def _scan_live() -> list[str]:
     logger.info("Scanning for WiFi networks...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            *nmcli(), "-t", "-f", "SSID", "dev", "wifi", "list",
+            "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -139,7 +130,7 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
         logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
 
     # ponytail: the password shows in `ps` while nmcli runs (local only); passwd-file would close that.
-    cmd = [*nmcli(), "dev", "wifi", "connect", ssid]
+    cmd = ["nmcli", "dev", "wifi", "connect", ssid]
     if password:
         cmd.extend(["password", password])
 
@@ -171,7 +162,7 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
 async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
     """`nmcli <args>`: (returncode, output or error); (1, reason) when it can't run."""
     try:
-        proc = await asyncio.create_subprocess_exec(*nmcli(), *args, stdout=asyncio.subprocess.PIPE,
+        proc = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
                                                     stderr=asyncio.subprocess.PIPE)
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except Exception as e:
@@ -251,7 +242,7 @@ async def get_hotspot_password() -> str:
     """The setup hotspot's password, read from its NetworkManager profile; "" if it can't be read."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            *nmcli(), "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
+            "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -269,7 +260,7 @@ async def restore_captive_ap() -> bool:
     global _hotspot_active_cached, _hotspot_checked_at
     try:
         proc = await asyncio.create_subprocess_exec(
-            *nmcli(), "connection", "up", HOTSPOT_SSID,
+            "nmcli", "connection", "up", HOTSPOT_SSID,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
@@ -293,7 +284,7 @@ async def _teardown_captive_ap() -> None:
     global _hotspot_active_cached, _hotspot_checked_at
     _hotspot_active_cached = False
     _hotspot_checked_at = time.monotonic()
-    cmd = [*nmcli(), "connection", "down", HOTSPOT_SSID]
+    cmd = ["nmcli", "connection", "down", HOTSPOT_SSID]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,

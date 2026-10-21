@@ -7,7 +7,6 @@ import pytest
 from conftest import call
 from fastapi.testclient import TestClient
 
-from mirrordash_core import host
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
 from mirrordash_core.features.modules.service import install_module, uninstall_module
@@ -491,7 +490,7 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     # Verify both openssl and the helper were called
     assert mock_subproc.call_count == 2
     mock_subproc.assert_any_call(
-        "sudo", "-n", host.PI_PASSWORD_HELPER,
+        "sudo", "-n", "/usr/local/bin/mirrordash-pi-password",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
