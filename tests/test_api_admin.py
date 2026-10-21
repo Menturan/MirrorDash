@@ -642,7 +642,7 @@ def test_core_update_check_pypi_error(mock_version, mock_to_thread, mock_load, c
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @pytest.mark.parametrize("prerelease", [False, True])
 def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_restart,
@@ -670,7 +670,7 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
 @patch("mirrordash_core.features.updates.service.check_core_update", new=AsyncMock(return_value=SAME_PYTHON))
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_create_task, mock_exec,
                                                            mock_load, client):
@@ -691,7 +691,7 @@ def test_core_update_without_a_newer_version_doesnt_restart(mock_version, mock_c
 @patch("mirrordash_core.features.updates.service.check_core_update", new=AsyncMock(return_value=SAME_PYTHON))
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 def test_core_update_failure(mock_version, mock_create_task, mock_exec,
                               mock_load, client):
@@ -754,7 +754,7 @@ def test_disk_usage_success(mock_disk_usage, mock_load, client):
 @patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
@@ -793,7 +793,7 @@ REBUILD_MODULES = [
 @pytest.mark.parametrize("failing", [None, "mirrordash-news==1.2.0"])
 @patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
@@ -1467,7 +1467,7 @@ def test_update_check_shows_mirrordash_and_the_system_apart(client):
 
 
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="0.7.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
@@ -1513,7 +1513,7 @@ def test_needed_python_reads_requires_python():
 
 @pytest.mark.parametrize("on_mirror", [True, False])
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_task, mock_restart, on_mirror, monkeypatch):
     from contextlib import asynccontextmanager
 
@@ -1549,7 +1549,7 @@ def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_ta
 
 @pytest.mark.parametrize("case", ["all work", "one doesn't", "install anyway"])
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+@patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)

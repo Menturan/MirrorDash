@@ -1,8 +1,7 @@
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
-from jinja2 import DictLoader, Environment
 
 import mirrordash_core.features.modules.loader
 from mirrordash_core.features.modules.loader import ModuleLoader
@@ -36,94 +35,37 @@ class DummySyncPlugin:
         if self.run_count == 1:
             raise ValueError("First run sync crash simulation")
 
-@pytest.mark.asyncio
-async def test_closure_late_binding_translate():
-    # Setup two mock instances to simulate late binding in loops
-    instances = []
-    configs = [
-        {"translations": {"greeting": "Hello"}},
-        {"translations": {"greeting": "Hej"}}
-    ]
-    
-    # Factory function from module_loader.py to make sure it captures scope correctly
-    def make_translate(bound_instance):
-        def translate(key: str, default: str = None) -> str:
-            val = bound_instance.translations.get(key)
-            if val is not None:
-                return val
-            return default if default is not None else key
-        return translate
+def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, monkeypatch):
+    """Two modules loaded one after the other keep their own translate() and render_template(): the
+    helpers are closures over each instance (a late-binding bug once gave every module the last one's),
+    and the configured language's file goes over en.json."""
+    from mirrordash_core.features.modules.loader import (
+        _inject_module_helpers,
+        load_translations,
+    )
 
-    for cfg in configs:
-        instance = MagicMock()
-        instance.translations = cfg["translations"]
-        instance.translate = make_translate(instance)
-        instances.append(instance)
-
-    # Validate that each bound instance returns its own translations
-    assert instances[0].translate("greeting") == "Hello"
-    assert instances[1].translate("greeting") == "Hej"
-
-@pytest.mark.asyncio
-async def test_closure_late_binding_render_template():
-    # Setup two mock instances with distinct templates and contexts
-    env1 = Environment(loader=DictLoader({"test.html": "A: {{ greeting }} {{ translations.greeting }}"}))
-    env2 = Environment(loader=DictLoader({"test.html": "B: {{ greeting }} {{ translations.greeting }}"}))
+    for pkg, greeting in (("md_test_a", "Hej"), ("md_test_b", "Hallå")):
+        (tmp_path / pkg / "translations").mkdir(parents=True)
+        (tmp_path / pkg / "templates").mkdir()
+        (tmp_path / pkg / "__init__.py").write_text("")
+        (tmp_path / pkg / "translations" / "en.json").write_text('{"greeting": "Hello", "bye": "Bye"}')
+        (tmp_path / pkg / "translations" / "sv.json").write_text(f'{{"greeting": "{greeting}"}}')
+        (tmp_path / pkg / "templates" / "card.html").write_text(pkg + ": {{ translations.greeting }} {{ show_header }}")
+    monkeypatch.syspath_prepend(str(tmp_path))
 
     instances = []
-    data = [
-        (env1, {"greeting": "Hello"}, "mirrordash_a"),
-        (env2, {"greeting": "Hej"}, "mirrordash_b")
-    ]
-
-    def make_render_template(bound_env, bound_instance, bound_pkg):
-        def render_template(template_name: str, **context) -> str:
-            if "translations" not in context and hasattr(bound_instance, "translations"):
-                context["translations"] = bound_instance.translations
-            if "show_header" not in context:
-                context["show_header"] = bound_instance.config.get("show_header", True)
-            return bound_env.get_template(template_name).render(**context)
-        return render_template
-
-    for env, trans, pkg in data:
-        instance = MagicMock()
-        instance.translations = trans
-        instance.config = {"show_header": True}
-        instance.render_template = make_render_template(env, instance, pkg)
+    for pkg in ("md_test_a", "md_test_b"):
+        instance = type("Plugin", (), {})()
+        _inject_module_helpers(instance, pkg, load_translations(pkg, "sv"), pkg, {"show_header": False})
         instances.append(instance)
 
-    # Render template on each instance and verify they output correct templates and contexts
-    res0 = instances[0].render_template("test.html", greeting="Bonjour")
-    res1 = instances[1].render_template("test.html", greeting="Hallå")
+    a, b = instances
+    assert (a.translate("greeting"), b.translate("greeting")) == ("Hej", "Hallå")
+    assert a.translate("bye") == "Bye" and a.translate("missing") == "missing" and a.translate("missing", "x") == "x"
+    assert a.render_template("card.html") == "md_test_a: Hej False"
+    assert b.render_template("card.html") == "md_test_b: Hallå False"
+    assert load_translations("md_test_a", "en") == {"greeting": "Hello", "bye": "Bye"}
 
-    assert res0 == "A: Bonjour Hello"
-    assert res1 == "B: Hallå Hej"
-
-@pytest.mark.asyncio
-async def test_config_fallback_priority():
-    # Priority: Instance config -> Globals config -> Default
-    # Case 1: Key exists in instance config
-    config = {
-        "format": "12h",
-        "globals": {"time_format": "24h"}
-    }
-    time_format = config.get("format") or config.get("globals", {}).get("time_format", "24h")
-    assert time_format == "12h"
-
-    # Case 2: Key missing in instance, exists in globals
-    config = {
-        "format": None,
-        "globals": {"time_format": "24h"}
-    }
-    time_format = config.get("format") or config.get("globals", {}).get("time_format", "24h")
-    assert time_format == "24h"
-
-    # Case 3: Missing entirely, falls back to default
-    config = {
-        "globals": {}
-    }
-    time_format = config.get("format") or config.get("globals", {}).get("time_format", "24h")
-    assert time_format == "24h"
 
 @pytest.mark.asyncio
 async def test_module_loader_async_crash_recovery():
