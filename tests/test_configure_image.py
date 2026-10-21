@@ -219,8 +219,8 @@ def test_nmcli_runs_as_pi_through_polkit():
     NetworkManager lets pi through polkit, which the image must therefore have. Without sudo the
     Wi-Fi password (an nmcli argument) never reaches sudo's log either."""
     assert "nmcli" not in unit("/etc/sudoers.d/mirrordash")
-    assert '"sudo", "-n", "nmcli"' not in (ROOT / "mirrordash_core/features/wifi/network.py").read_text()
-    rule = unit("/etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules")
+    app_path = re.search(r'NM_POLKIT_RULE = "(.*?)"', (ROOT / "mirrordash_core/features/wifi/network.py").read_text())[1]
+    rule = unit(app_path)  # the path the app looks for to skip sudo
     assert 'subject.user == "pi"' in rule and '"org.freedesktop.NetworkManager."' in rule
     assert re.search(r"^\s+polkitd \\$", SETUP, re.M)
 

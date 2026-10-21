@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from mirrordash_core import host
 from mirrordash_core.features.hardware.display import (
     get_available_resolutions,
     set_screen_power,
@@ -155,12 +156,30 @@ async def test_apply_system_password_hash(mock_subproc):
     res = await apply_system_password_hash("somehash")
     assert res is True
     mock_subproc.assert_called_once_with(
-        "sudo", "-n", "/usr/local/bin/mirrordash-pi-password",
+        "sudo", "-n", host.PI_PASSWORD_HELPER,
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
     mock_proc.communicate.assert_called_once_with(input=b"somehash\n")
+
+
+@pytest.mark.asyncio
+@patch("asyncio.create_subprocess_exec")
+async def test_older_images_still_get_pi_password_and_wifi_through_sudo(mock_subproc, monkeypatch, tmp_path):
+    """App updates reach mirrors on older images, which have no password helper and no polkit rule:
+    there the app uses the sudo rules those images have (chpasswd -e, sudo nmcli)."""
+    from mirrordash_core.features.wifi import network
+    monkeypatch.setattr(host, "PI_PASSWORD_HELPER", str(tmp_path / "missing"))
+    monkeypatch.setattr(network, "NM_POLKIT_RULE", str(tmp_path / "missing"))
+    mock_proc = AsyncMock(returncode=0)
+    mock_proc.communicate.return_value = (b"", b"")
+    mock_subproc.return_value = mock_proc
+
+    assert await host.apply_system_password_hash("$6$s$h") is True
+    assert mock_subproc.call_args.args == ("sudo", "-n", "chpasswd", "-e")
+    mock_proc.communicate.assert_called_once_with(input=b"pi:$6$s$h\n")
+    assert network.nmcli() == ["sudo", "-n", "nmcli"]
 
 
 

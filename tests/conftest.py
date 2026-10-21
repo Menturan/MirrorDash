@@ -36,6 +36,16 @@ def _not_on_a_mirror(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _on_the_current_image(monkeypatch):
+    """As on a mirror with the current OS image: its NetworkManager polkit rule and pi password helper are
+    there (any existing file will do). Tests of an older image point them at a missing path."""
+    from mirrordash_core import host
+    from mirrordash_core.features.wifi import network
+    monkeypatch.setattr(network, "NM_POLKIT_RULE", __file__)
+    monkeypatch.setattr(host, "PI_PASSWORD_HELPER", __file__)
+
+
+@pytest.fixture(autouse=True)
 def _never_restart_the_test_run(monkeypatch):
     """run_restart() SIGTERMs its own process; a test that reaches it must not end the run."""
     real_kill = os.kill

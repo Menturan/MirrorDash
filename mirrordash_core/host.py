@@ -129,9 +129,12 @@ async def apply_system_password_hash(pwd_hash: str) -> bool:
     """Apply a crypt hash (openssl passwd -6) as the password of user 'pi'."""
     logger.info("Applying system password hash...")
     try:
-        chpasswd_input = f"{pwd_hash}\n".encode()
+        if os.path.exists(PI_PASSWORD_HELPER):
+            command, chpasswd_input = [PI_PASSWORD_HELPER], f"{pwd_hash}\n".encode()
+        else:  # ponytail: images before the helper allow only chpasswd itself; drop once none is left
+            command, chpasswd_input = ["chpasswd", "-e"], f"pi:{pwd_hash}\n".encode()
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", PI_PASSWORD_HELPER,
+            "sudo", "-n", *command,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
