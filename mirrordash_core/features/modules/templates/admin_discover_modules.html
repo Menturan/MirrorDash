@@ -11,13 +11,15 @@
         </button>
     </div>
 
+    <p class="discover-warning"><i class="fas fa-shield-alt" aria-hidden="true"></i> A module runs with full access to the mirror and your home network. Install only modules from people you trust; <strong>Official</strong> ones are made by MirrorDash.</p>
+
     <div id="discover-modules-container" class="module-list">
         {% for m in discoverable_modules %}
             <details class="discover-row" data-search="{{ (m.title ~ ' ' ~ m.name ~ ' ' ~ m.description)|lower }}">
                 <summary class="module-row">
                     <span class="module-row-icon" aria-hidden="true"><i class="fas fa-chevron-right"></i></span>
                     <span class="module-row-main">
-                        <span class="module-row-title">{{ m.title }}</span>
+                        <span class="module-row-title">{{ m.title }}{% if m.official %} <span class="status-badge up-to-date">Official</span>{% endif %}</span>
                         <span class="module-row-status">{{ m.description }}</span>
                     </span>
                     <span class="module-row-actions">
@@ -25,7 +27,7 @@
                                 hx-post="/admin/panels/modules/install"
                                 hx-vals='{"package_name": "{{ m.install_name }}"}'
                                 hx-target="#global-status"
-                                hx-confirm="Install {{ m.title }}? The mirror restarts afterwards."
+                                hx-confirm="{% if m.official %}Install {{ m.title }}? The mirror restarts afterwards.{% else %}Install {{ m.title }} by {{ m.author or 'an unknown author' }}? It isn't made by MirrorDash and gets full access to the mirror. The mirror restarts afterwards.{% endif %}"
                                 hx-disabled-elt="this">
                             <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
                             <span class="htmx-normal">Install</span>

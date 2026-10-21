@@ -2232,6 +2232,9 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
 
 /* Add modules: a row opens to the module's screenshot and facts */
 .discover-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; color: var(--text-muted); font-size: 0.82rem; }
+.discover-warning { display: flex; gap: 8px; margin: 12px 0 4px; color: var(--text-secondary); font-size: 0.82rem; }
+.discover-warning i { margin-top: 2px; color: var(--warning-color); }
+.discover-row .status-badge { margin-left: 6px; padding: 1px 6px; font-size: 0.65rem; vertical-align: middle; }
 .discover-row > summary { list-style: none; cursor: pointer; }
 .discover-row > summary::-webkit-details-marker { display: none; }
 .discover-row > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }

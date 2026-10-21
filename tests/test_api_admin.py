@@ -919,6 +919,41 @@ def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, cli
 
 
 @patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
+@patch("mirrordash_core.features.modules.service.load_config")
+def test_scan_marks_official_modules_and_no_pypi_package_takes_their_name(mock_load, mock_urlopen, client):
+    """Official means GitHub's owner field says Menturan; a PyPI package claiming that repository isn't,
+    and one with an official module's name is replaced by the official module (what Install installs)."""
+    mock_load.return_value = MOCK_CONFIG
+    search = {"items": [
+        {"name": "mirrordash-weather", "owner": {"login": "Menturan"}, "html_url": "https://github.com/Menturan/mirrordash-weather"},
+        {"name": "mirrordash-tides", "owner": {"login": "someone"}, "html_url": "https://github.com/someone/mirrordash-tides"},
+    ]}
+    pypi_meta = {"info": {"summary": "x", "project_urls": {"Source": "https://github.com/Menturan/mirrordash-fake"}}}
+
+    def urlopen(req, *args, **kwargs):
+        url = req.full_url if hasattr(req, "full_url") else req
+        resp = MagicMock()
+        resp.__enter__.return_value = resp
+        resp.info.return_value.get.return_value = None
+        if "api.github.com" in url:
+            resp.read.return_value = json.dumps(search).encode()
+        elif url.endswith("/simple/"):
+            resp.read.return_value = b'<a href="/simple/mirrordash-weather/"></a><a href="/simple/mirrordash-fake/"></a>'
+        else:
+            resp.read.return_value = json.dumps(pypi_meta).encode()
+        return resp
+
+    mock_urlopen.side_effect = urlopen
+    headers = {"X-API-Key": "secret"}
+    assert client.post("/admin/community-modules/scan", headers=headers).status_code == 200
+    modules = {m["name"]: m for m in client.get("/admin/community-modules", headers=headers).json()}
+
+    assert set(modules) == {"mirrordash-weather", "mirrordash-fake", "mirrordash-tides"}
+    assert modules["mirrordash-weather"]["official"] and modules["mirrordash-weather"]["source"] == "github"
+    assert not modules["mirrordash-fake"]["official"] and not modules["mirrordash-tides"]["official"]
+
+
+@patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.features.modules.service.run_restart", new_callable=AsyncMock)

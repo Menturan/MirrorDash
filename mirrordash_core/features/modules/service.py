@@ -36,6 +36,9 @@ LOCAL_MODULE_DIRS = ("/opt/MirrorDash/modules", "/home/pi/mirrordash/modules")
 
 
 NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-* packages the community scan skips
+# Modules from this GitHub account are marked Official. Only GitHub's own owner field counts:
+# a PyPI package can name any repository in its metadata.
+OFFICIAL_OWNER = "menturan"
 
 
 GITHUB_REPO = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
@@ -66,13 +69,15 @@ def _installed_repo(dist) -> str | None:
 def github_module(item: dict) -> dict:
     """A discoverable module from one GitHub search result; everything comes from that one response."""
     repo = github_repo(item["html_url"])
+    author = (item.get("owner") or {}).get("login")
     return {
         "name": item["name"],
         "install_name": f"git+{item['html_url']}.git",
         "title": item["name"].replace("mirrordash-", "").replace("-", " ").title(),
         "description": item.get("description") or "No description available.",
         "source": "github",
-        "author": (item.get("owner") or {}).get("login"),
+        "official": (author or "").lower() == OFFICIAL_OWNER,
+        "author": author,
         "stars": item.get("stargazers_count", 0),
         "license": spdx if (spdx := (item.get("license") or {}).get("spdx_id")) != "NOASSERTION" else None,
         "updated": (item.get("pushed_at") or "")[:10] or None,
@@ -333,6 +338,7 @@ async def scan_community_modules_now():
                 "title": name.replace("mirrordash-", "").replace("mirrordash_", "").replace("-", " ").title(),
                 "description": info.get("summary") or "No description available.",
                 "source": "pypi",
+                "official": False,
                 "author": info.get("author") or None,
                 "license": info.get("license_expression") or None,  # `license` is often the whole licence text
                 "updated": ((meta.get("urls") or [{}])[0].get("upload_time") or "")[:10] or None,
@@ -361,9 +367,15 @@ async def scan_community_modules_now():
         raise
     for item in github_data.get("items", []):
         repo_name = item.get("name", "")
-        if not repo_name.startswith("mirrordash-") or repo_name in scanned_names or repo_name in NOT_MODULES:
+        if not repo_name.startswith("mirrordash-") or repo_name in NOT_MODULES:
             continue
-        scanned_modules.append(github_module(item))
+        module = github_module(item)
+        if repo_name in scanned_names:
+            if not module["official"]:
+                continue
+            # A PyPI package can't take an official module's name: the official one is listed and installed
+            scanned_modules = [m for m in scanned_modules if m["name"] != repo_name]
+        scanned_modules.append(module)
         scanned_names.add(repo_name)
 
     if scanned_modules:

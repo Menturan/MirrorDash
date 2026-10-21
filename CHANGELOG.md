@@ -12,6 +12,7 @@ There are two kinds of releases:
 - MirrorDash runs on FastAPI 0.158 and uvicorn 0.54, and from now on gets their bug fixes by itself, without a new MirrorDash version for each.
 - Every MirrorDash update also brings the newest bug-fix version of its Python (3.14.x).
 - Matter: add the mirror to Apple Home, Google Home, Alexa, SmartThings or Home Assistant and turn its screen on and off from there. Turn it on under *Settings* → *Matter* and scan the code (from the next OS image on).
+- *Add modules* marks the modules made by MirrorDash as *Official*, and says before installing any other that it gets full access to the mirror. A package on PyPI can no longer take the name of an official module.
 
 ### OS image
 
