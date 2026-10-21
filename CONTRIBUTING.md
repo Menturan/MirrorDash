@@ -30,6 +30,8 @@ MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main
 | `mirrordash_core/templates/admin.html` | The admin page's shell; its CSS and JS are in `static/admin/` |
 | `mirrordash_core/static/` | The mirror's screen (`index.html`, `js/kiosk/`, `style.css`), and `modules.css` with `/design`, the component library |
 | `scripts/` | The OS image build and `release.py` |
+| `scripts/image/rootfs/` | Every file the OS image installs as it is (scripts, systemd units, sudo rules), at its path on the mirror |
+| `matter/` | The Matter node (Node.js, matter.js) the image runs beside the app |
 
 ## Tests
 

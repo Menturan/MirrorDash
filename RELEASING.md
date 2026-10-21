@@ -46,8 +46,8 @@ $ python3 scripts/release.py
 What do you want to do?
   1. Test version of the app (only test mirrors get it)
   2. Release the app for everyone
-  3. Build a test OS image to flash
-  4. Release the tested OS image
+  3. Test version of the OS (only test mirrors get it)
+  4. Release the tested OS for everyone
 Choice: 1
 
 Current version: 0.4.0. Test version:
@@ -178,7 +178,7 @@ release.py 4       ──► that same pre-release becomes the vX.Y.Z-osN releas
 
 | Workflow (`.github/workflows/`) | Started by | What it does | Result |
 | :--- | :--- | :--- | :--- |
-| `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
+| `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, `ruff check`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
 | `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
 | `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min), and with a tag (option 3 gives one) the result becomes that test version, a pre-release. One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
 

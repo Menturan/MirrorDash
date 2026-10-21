@@ -78,7 +78,7 @@ uv run pytest tests/test_visual_admin.py                  # browser tests (once:
 
 ## Building a Test OS Image
 
-Use `python3 scripts/release.py`, option 3: it starts the build, waits, downloads and checks the image and writes `build_workspace/test-image/run.json` (option 4 releases from it). If you start or follow the build yourself, download the artifact with `download_artifact()` in `scripts/release.py`, never `gh run download`: the artifact is close to 2 GB (image and OS update bundle), and `download_artifact()` fetches it over 16 parallel connections (aria2c), resumes a broken download, and shows progress, where `gh run download` uses one connection and shows nothing. Then write `run.json` as `build_test_image()` does.
+Use `python3 scripts/release.py`, option 3: GitHub Actions builds the image and the OS update bundle and publishes them as a test version (the GitHub pre-release `vX.Y.Z-osN`); the script waits, writes `build_workspace/test-image/run.json` (option 4 releases from it) and, if you answer yes, downloads and checks the image to flash a card. If you start or follow the build yourself, download the artifact with `download_artifact()` in `scripts/release.py`, never `gh run download`: the artifact is close to 2 GB (image and OS update bundle), and `download_artifact()` fetches it over 16 parallel connections (aria2c), resumes a broken download, and shows progress, where `gh run download` uses one connection and shows nothing. Then write `run.json` as `build_test_image()` does.
 
 ## Other Documents
 
@@ -88,4 +88,7 @@ Use `python3 scripts/release.py`, option 3: it starts the build, waits, download
 | `DESIGN.md` | The look and its rules (mirror and admin page) |
 | `CONTRIBUTING.md` | The same start for people |
 | `RELEASING.md` | The OS image and how releases are made |
+| `USER_GUIDE.md` | What a mirror owner needs that the admin page can't say |
+| `CHANGELOG.md` | What changed, for mirror owners: an entry under `[Unreleased]` with every change they notice |
+| `.claude/skills/` | `new-module` (a new module with the local SDK) and `release` (app, OS image, module, SDK) |
 

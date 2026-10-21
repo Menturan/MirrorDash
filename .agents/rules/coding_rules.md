@@ -20,11 +20,11 @@
    plugin_instance.translate = make_translate(plugin_instance)
    ```
 
-2. **Never write files to arbitrary OS paths.** The OS root is read-only in production (OverlayFS). All persistent configuration and data MUST be written to `~/.mirrordash/data/` (which is mapped to a persistent partition). Use `self.data_dir` for persistent module files and `self.cache_dir` for temporary RAM-based files. Writing to `/etc`, `/var`, or other root paths will result in data loss upon reboot.
+2. **Never write files to arbitrary OS paths.** The OS root is read-only in production (OverlayFS). All persistent configuration and data MUST be written to `~/.mirrordash/data/` (which is mapped to a persistent partition). Use `self.data_dir` for persistent module files and `self.cache_dir` for files that can be downloaded again (also on `/storage`, kept across reboots, left out of backups). Writing to `/etc`, `/var`, or other root paths will result in data loss upon reboot.
 
 3. **Strict Sudo Allow-List.** Debian Trixie disables passwordless sudo by default. All `sudo` subprocess calls made by the application are strictly regulated via an explicit allow-list in `/etc/sudoers.d/mirrordash` (the file `scripts/image/rootfs/etc/sudoers.d/mirrordash`). Never add a new `sudo` command to the codebase without also adding it there.
 
-4. **All HTTP network requests inside modules must be non-blocking.** Use `asyncio.to_thread(sync_func)` to wrap synchronous I/O (like `urllib.request`) or use an async HTTP library.
+4. **Modules fetch with `self.fetch_json` / `self.fetch`,** never their own HTTP client (`mirrordash-sdk validate` warns about one). The rules for modules are in the SDK's `MODULE_AGENTS.md`.
 
 5. **Modules must handle `asyncio.CancelledError` cleanly.** Always re-raise `CancelledError` after cleanup to allow graceful shutdown.
    ```python
@@ -47,7 +47,7 @@
 
 8d. **Every password field has Show/Hide.** Wrap it as `<div class="pw-field"><input type="password" id="x" …><button type="button" class="pw-reveal" data-reveal="x" aria-controls="x" aria-pressed="false">Show</button></div>`; the handler in `admin.html` is delegated, so fields HTMX loads later work too. Never a bare `type="password"`: `tests/test_admin_passwords.py` fails on one.
 
-9. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `index.html`.
+9. **All JSON received over WebSocket must be parsed with try/catch.** See the existing `socket.onmessage` handler in `static/js/kiosk/core.js`.
 
 10. **Vector Iconography.** On the mirror and in modules, Lucide outline icons via the `data-lucide` markup attribute (e.g., `<i data-lucide="sun"></i>`); in the admin page, the bundled Font Awesome (`<i class="fas fa-…">`), as `DESIGN.md` says. Never colored or multi-color emojis.
 
@@ -64,7 +64,7 @@
 15. **Conventional commits:** `<type>(<scope>): <what changes for the mirror or the reader>`.
     - **Types:** `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore`.
     - **Scopes** say where the change is, so `git log` can be read by area:
-      - a feature folder: `api`, `auth`, `backup`, `dashboard`, `hardware`, `homeassistant`, `kiosk`, `logs`, `modules`, `power`, `settings`, `updates`, `wifi` (e.g., `fix(wifi): …`);
+      - a feature folder: `api`, `auth`, `backup`, `dashboard`, `hardware`, `kiosk`, `logs`, `matter`, `modules`, `power`, `settings`, `updates`, `video`, `wifi` (e.g., `fix(wifi): …`);
       - the shared core and the pages: `core`, `config`, `admin` (the admin page), `mirror` (the mirror's own page), `design`;
       - the OS image and releasing: `image` (anything that ends up in the OS image), `release`, `ci`;
       - documentation: `docs(<file or area>)`, e.g. `docs(agents)`, `docs(changelog)`.

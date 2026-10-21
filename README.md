@@ -55,7 +55,7 @@ No keyboard, no terminal, no config files, now or later.
 
 ## Modules
 
-The clock comes with the mirror. Install the others in the admin page under **Modules → Discover New Modules**.
+The clock comes with the mirror. Install the others in the admin page under **Modules → Add modules**.
 
 | Module | Shows |
 |---|---|
@@ -88,7 +88,7 @@ This creates a module with example data and starts a mirror on your computer tha
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
 * [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.
-* [Releasing](RELEASING.md): how the OS image is built and released.
+* [Releasing](RELEASING.md): how the app and the OS image are released.
 
 ## License
 

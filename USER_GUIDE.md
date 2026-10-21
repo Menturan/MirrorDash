@@ -1,6 +1,6 @@
 # MirrorDash User Guide
 
-The admin page explains most settings where you change them. This guide covers what it can't: setting the mirror up before the admin page is reachable, wiring, the rules for when the screen is on, recovery, and Home Assistant.
+The admin page explains most settings where you change them. This guide covers what it can't: setting the mirror up before the admin page is reachable, wiring, the rules for when the screen is on, recovery, Matter and Home Assistant.
 
 - [1. Reaching the mirror](#1-reaching-the-mirror)
 - [2. First start: Wi-Fi setup](#2-first-start-wi-fi-setup)
@@ -8,7 +8,7 @@ The admin page explains most settings where you change them. This guide covers w
 - [4. When the screen is on](#4-when-the-screen-is-on)
 - [5. Connecting hardware](#5-connecting-hardware)
 - [6. Updates, backups and recovery](#6-updates-backups-and-recovery)
-- [7. The API: scripts and Home Assistant](#7-the-api-scripts-and-home-assistant)
+- [7. Smart home: Matter, the API and Home Assistant](#7-smart-home-matter-the-api-and-home-assistant)
 - [8. When something is wrong](#8-when-something-is-wrong)
 - [9. How the SD card is protected](#9-how-the-sd-card-is-protected)
 
@@ -79,7 +79,7 @@ The screen has nine areas: top, middle and bottom, each left, center and right. 
 
 The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside the schedule, and in *Off until woken*, the screen can still be woken for a while:
 
-*   What wakes it: someone in front of the mirror (with a motion or presence sensor, if *Wake when someone is in front of the mirror* is on), a button press set to *Wake the screen*, **Turn Screen ON**, or Home Assistant (see [7](#7-home-assistant)).
+*   What wakes it: someone in front of the mirror (with a motion or presence sensor, if *Wake when someone is in front of the mirror* is on), a button press set to *Wake the screen*, **Turn Screen ON**, a home app over Matter, or Home Assistant (see [7](#7-smart-home-matter-the-api-and-home-assistant)).
 *   *From the last activity* keeps it on while someone is still there; *A fixed time* turns it off after exactly that time, for example for a doorbell.
 *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 *   While the screen is off, the modules don't fetch new data (saving API calls). When it comes back on, those whose update was due fetch it right away.
