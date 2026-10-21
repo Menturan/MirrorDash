@@ -186,6 +186,7 @@ umount "$PIECES_DIR/mnt"
 # The root is read-only on the mirror (overlayroot), so it ships compressed: about a quarter of the
 # ext4 size, which leaves room for a second root (A/B OS updates) on an 8 GB card.
 # boot/firmware stays in it as an empty mount point; the boot files are in their own partitions.
+cp "$MOUNT_DIR/usr/share/mirrordash/packages.txt" "${FINAL_IMAGE%.img}.packages.txt"
 echo -e "\e[34m[INFO] Packing the root as squashfs...\e[0m"
 umount "$MOUNT_DIR/boot/firmware"
 mksquashfs "$MOUNT_DIR" "$PIECES_DIR/root.sqfs" -comp zstd -noappend -quiet

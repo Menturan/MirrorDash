@@ -11,6 +11,10 @@ There are two kinds of releases:
 
 - Creating or uploading a backup works on a new or reset mirror. Before, it failed with an error until the mirror had a backups folder, which only older mirrors had.
 
+### OS image
+
+- Each OS image comes with a list of the versions of all its packages (`mirrordash-os-*.packages.txt` with the release, `/usr/share/mirrordash/packages.txt` on the mirror), to compare builds when something breaks.
+
 ## [0.8.0-os1] - 2026-10-21
 
 OS image with MirrorDash 0.8.0.

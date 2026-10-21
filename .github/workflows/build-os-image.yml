@@ -85,6 +85,7 @@ jobs:
             build_workspace/mirrordash-os-*.img.xz
             build_workspace/mirrordash-os-*.img.xz.sha256
             build_workspace/mirrordash-os-*.raucb
+            build_workspace/mirrordash-os-*.packages.txt
           if-no-files-found: error
           compression-level: 0 # The image is already xz, the bundle a squashfs
           retention-days: 14
@@ -104,5 +105,5 @@ jobs:
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$TAG"
           gh release create "$TAG" build_workspace/mirrordash-os-*.img.xz build_workspace/mirrordash-os-*.img.xz.sha256 \
-            build_workspace/mirrordash-os-*.raucb --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+            build_workspace/mirrordash-os-*.raucb build_workspace/mirrordash-os-*.packages.txt --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
             --title "$TAG" --notes "$NOTES"

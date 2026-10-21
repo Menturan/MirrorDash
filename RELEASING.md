@@ -106,6 +106,9 @@ image and the signed update bundle (about 30 minutes); the script waits and down
 `build_workspace/test-image/<run>/` (`mirrordash-os-vX.Y.Z.img.xz` and `mirrordash-os-vX.Y.Z-<build>.raucb`). The image is about 750 MB: the script
 downloads it over 16 connections at once (with `aria2c` if it's installed), shows how far it has come,
 the speed and the time left, and asks to try again if the download breaks (without building again).
+The build also gives `mirrordash-os-vX.Y.Z.packages.txt`, the version of every apt and Python package in
+the image (on a mirror: `/usr/share/mirrordash/packages.txt`), attached to the release. To see what
+changed between two releases: `gh release download <tag> -p '*.packages.txt'` for each, then `diff`.
 
 **2. Test it.** Flash it with Raspberry Pi Imager and go through this checklist:
 

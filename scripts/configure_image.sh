@@ -847,6 +847,14 @@ step_system_cleanup() {
   find /var/log -type f -exec truncate -s 0 {} \; 2>/dev/null || true
   journalctl --vacuum-time=1s 2>/dev/null || true
 
+  # What the image has, to look at when something breaks and diff against an older build;
+  # build_image.sh ships it next to the image (mirrordash-os-*.packages.txt).
+  echo "Writing the package list..."
+  mkdir -p /usr/share/mirrordash
+  { echo "# apt"; dpkg-query -W -f='${Package} ${Version}\n'
+    echo "# python"; uv pip freeze --python "$PI_HOME/mirrordash/base_venv"
+  } > /usr/share/mirrordash/packages.txt
+
   echo "Clearing bash and execution histories..."
   rm -f /root/.bash_history /home/pi/.bash_history
   history -c 2>/dev/null || true
