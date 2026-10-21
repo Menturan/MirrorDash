@@ -87,30 +87,11 @@ image and the signed update bundle (about 30 minutes) and publishes both as the 
 to be copied to a mirror by hand. At the end the script asks whether to download the image as well, to
 flash a card (over 16 connections at once, with `aria2c` if it's installed, into
 `build_workspace/test-image/<run>/`).
-
-**2. Test it.** On your test mirror's admin page: **Settings → Test versions** on, then **Check for
-Updates**, and install. Only mirrors with Test versions on are offered it. If something is wrong, fix it
-on master and choose **1** again: it suggests the next test version (`0.5.0rc2`).
-
-**3. Release it for everyone.** Run the script again and choose **2**. It suggests the version without
-`rc` (`0.5.0`), moves the `[Unreleased]` entries in `CHANGELOG.md` into a `[0.5.0]` section (the
-`### OS image` part stays for the next image), and publishes it with that section as release notes.
-Every mirror is now offered the update.
-
-## Release an OS image
-
-The image contains the app version on master, so release the app first if it changed.
-
-**1. Build a test image.** Run the script and choose **3**. GitHub Actions runs the tests and builds the
-image and the signed update bundle (about 30 minutes); the script waits and downloads them to
-`build_workspace/test-image/<run>/` (`mirrordash-os-vX.Y.Z.img.xz` and `mirrordash-os-vX.Y.Z-<build>.raucb`). The image is about 750 MB: the script
-downloads it over 16 connections at once (with `aria2c` if it's installed), shows how far it has come,
-the speed and the time left, and asks to try again if the download breaks (without building again).
 The build also gives `mirrordash-os-vX.Y.Z.packages.txt`, the version of every apt and Python package in
 the image (on a mirror: `/usr/share/mirrordash/packages.txt`), attached to the release. To see what
 changed between two releases: `gh release download <tag> -p '*.packages.txt'` for each, then `diff`.
 
-**2. Test it.** Flash it with Raspberry Pi Imager and go through this checklist:
+**2. Test it.** Flash the downloaded image with Raspberry Pi Imager and go through this checklist:
 
 1. **Boot**: the MirrorDash start screen shows, no system messages or login prompt, no mouse cursor.
 2. **Wi-Fi setup**: with no network, the `MirrorDash-Setup` hotspot appears within about a minute and
