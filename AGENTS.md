@@ -78,7 +78,7 @@ uv run pytest tests/test_visual_admin.py                  # browser tests (once:
 
 ## Building a Test OS Image
 
-Use `python3 scripts/release.py`, option 3: GitHub Actions builds the image and the OS update bundle and publishes them as a test version (the GitHub pre-release `vX.Y.Z-osN`); the script waits, writes `build_workspace/test-image/run.json` (option 4 releases from it) and, if you answer yes, downloads and checks the image to flash a card. If you start or follow the build yourself, download the artifact with `download_artifact()` in `scripts/release.py`, never `gh run download`: the artifact is close to 2 GB (image and OS update bundle), and `download_artifact()` fetches it over 16 parallel connections (aria2c), resumes a broken download, and shows progress, where `gh run download` uses one connection and shows nothing. Then write `run.json` as `build_test_image()` does.
+Use `python3 scripts/release.py`, option 3: GitHub Actions builds the image and the OS update bundle and publishes them as a test version (the GitHub pre-release `vX.Y.Z-osN`); the script waits, writes `build_workspace/test-image/run.json` (option 4 releases from it) and, if you answer yes, downloads and checks the image to flash a card. If you start or follow the build yourself, download the image with `download_image()` in `scripts/release.py`: it takes only the image and its checksum from the release (about 1 GB; the Actions artifact also holds the OS update bundle, twice the size, behind an address that runs out mid-download) over 16 parallel connections (aria2c), resumes a broken download, and shows progress. Then write `run.json` as `build_test_image()` does.
 
 ## Other Documents
 

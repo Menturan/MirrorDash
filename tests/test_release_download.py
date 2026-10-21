@@ -75,3 +75,15 @@ def test_fetch_downloads_by_itself_without_aria2c(tmp_path, monkeypatch):
     monkeypatch.setattr(release, "download", lambda url, path: used.append((url, path)))
     release.fetch("https://storage.example/image.zip", tmp_path / "image.zip")
     assert used == [("https://storage.example/image.zip", tmp_path / "image.zip")]
+
+
+def test_download_image_takes_only_the_image_and_checksum_from_the_release(tmp_path, monkeypatch):
+    """Not the OS update bundle (as big as the image) or the package list: only what flashing a card needs."""
+    assets = [{"name": n, "size": s, "url": f"https://github.com/o/r/releases/download/v1-os1/{n}"}
+              for n, s in (("os.raucb", 900), ("os.img.xz", 950), ("os.img.xz.sha256", 1), ("os.packages.txt", 2))]
+    monkeypatch.setattr(release, "run", lambda *cmd, **kw: release.json.dumps({"assets": assets}))
+    fetched = []
+    monkeypatch.setattr(release, "fetch", lambda url, path: fetched.append((url.rsplit("/", 1)[1], path)))
+    release.download_image("v1-os1", tmp_path / "img")
+    assert fetched == [("os.img.xz.sha256", tmp_path / "img" / "os.img.xz.sha256"),
+                       ("os.img.xz", tmp_path / "img" / "os.img.xz")]

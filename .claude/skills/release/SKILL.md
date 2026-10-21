@@ -39,7 +39,7 @@ The script is interactive; feed the answers on stdin, one per line:
    Patch for fixes, minor for new features.
 3. `y` for `Go ahead?`.
 4. Option 3 only, at the end: `Download the image too?`, `n` unless the user wants to flash a card (`y` downloads
-   with `download_artifact()`; never `gh run download`).
+   only the image and its checksum, from the release, with `download_image()`).
 
 ```bash
 printf '1\n2\ny\n' | python3 scripts/release.py --dry-run   # check the printed version and commands

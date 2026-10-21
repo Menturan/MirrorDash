@@ -22,9 +22,7 @@ import sys
 import threading
 import time
 import tomllib
-import urllib.error
 import urllib.request
-import zipfile
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -334,46 +332,24 @@ def download(url, path, parts=16, chunk=1 << 20):
         raise OSError(f"got {done[0]} of {total} bytes")
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None  # hand the redirect back: its Location is the download address
-
-
-def download_artifact(run_id, name, target):
-    """Download and unpack an Actions artifact into target, with progress (gh run download shows none)."""
-    repo = run("gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner")
-    artifacts = json.loads(run("gh", "api", f"repos/{repo}/actions/runs/{run_id}/artifacts"))["artifacts"]
-    artifact = next((a for a in artifacts if a["name"] == name), None)
-    if not artifact:
-        die(f"run {run_id} has no artifact called {name}.")
-    token = run("gh", "auth", "token")
-
-    def address():
-        """The API answers with a redirect to a short-lived address on GitHub's storage (needs no token)."""
-        request = urllib.request.Request(
-            f"https://api.github.com/repos/{repo}/actions/artifacts/{artifact['id']}/zip",
-            headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
-        try:
-            urllib.request.build_opener(_NoRedirect).open(request, timeout=60)
-        except urllib.error.HTTPError as e:
-            if e.code in (301, 302, 303, 307, 308):
-                return e.headers["Location"]
-            die(f"GitHub refused the download ({e.code}); is gh logged in to this repository?")
-        die("GitHub didn't give a download address for the image.")
-
+def download_image(tag, target):
+    """Download a test version's image and its checksum from its GitHub release into target. Not the Actions
+    artifact: that holds the OS update bundle too (twice the size), behind an address that ran out mid-download.
+    The release's address stays the same, so a retry (or aria2c's resume) picks up where it broke."""
+    assets = json.loads(run("gh", "release", "view", tag, "--json", "assets"))["assets"]
+    wanted = sorted((a for a in assets if a["name"].endswith((".img.xz", ".img.xz.sha256"))), key=lambda a: a["size"])
+    if len(wanted) != 2:
+        die(f"the release {tag} has no image and checksum to download.")
     target.mkdir(parents=True, exist_ok=True)
-    archive = target / f"{name}.zip"
-    print(f"\n  Downloading the image ({artifact['size_in_bytes'] / 1e6:,.0f} MB):")
-    while True:  # a broken download only needs another try, not another 30-minute build
-        try:
-            fetch(address(), archive)
-            break
-        except Exception as e:
-            if ask(f"\n  The download failed ({e}). Try again? [Y/n] ").lower() == "n":
-                die(f"no image downloaded. The build is kept for 14 days: gh run download {run_id} -n {name}")
-    with zipfile.ZipFile(archive) as z:
-        z.extractall(target)
-    archive.unlink()
+    for asset in wanted:  # the checksum first: it's tiny
+        print(f"\n  Downloading {asset['name']} ({asset['size'] / 1e6:,.0f} MB):")
+        while True:  # a broken download only needs another try, not another 30-minute build
+            try:
+                fetch(asset["url"], target / asset["name"])
+                break
+            except Exception as e:
+                if ask(f"\n  The download failed ({e}). Try again? [Y/n] ").lower() == "n":
+                    die(f"no image downloaded. It stays on the release: gh release download {tag} -p '*.img.xz*'")
 
 
 # --- The four steps -------------------------------------------------------------------------
@@ -446,7 +422,7 @@ def build_test_image():
     print("  On a mirror with Test versions on: Settings → Check for Updates → Install System Update.")
     if ask("  Download the image too, to flash a card? [y/N] ").lower() == "y":
         target = TEST_IMAGE_DIR / run_id
-        download_artifact(run_id, "mirrordash-os-image", target)
+        download_image(tag, target)
         image = next(target.glob("*.img.xz"))
         if subprocess.run(["sha256sum", "--check", "--quiet", f"{image.name}.sha256"], cwd=target).returncode != 0:
             die("the downloaded image doesn't match its checksum; download it again from the release.")

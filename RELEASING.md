@@ -85,7 +85,7 @@ image and the signed update bundle (about 30 minutes) and publishes both as the 
 `vX.Y.Z-osN`: a pre-release on GitHub. Mirrors with *Test versions* on are offered it under
 **Settings → Check for Updates**, in the *System* part, just like a test version of the app; nothing has
 to be copied to a mirror by hand. At the end the script asks whether to download the image as well, to
-flash a card (over 16 connections at once, with `aria2c` if it's installed, into
+flash a card: only the image and its checksum, from the release (over 16 connections at once, with `aria2c` if it's installed), into
 `build_workspace/test-image/<run>/`).
 The build also gives `mirrordash-os-vX.Y.Z.packages.txt`, the version of every apt and Python package in
 the image (on a mirror: `/usr/share/mirrordash/packages.txt`), attached to the release. To see what
