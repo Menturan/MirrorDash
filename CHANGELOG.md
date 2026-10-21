@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.8.0-os1] - 2026-10-21
+
+OS image with MirrorDash 0.8.0.
 
 - The mirror can play sound and video for modules (radio, TV, a doorbell camera), with the Pi's own video decoder. It adds about 15 MB to the system.
 
