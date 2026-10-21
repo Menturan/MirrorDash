@@ -98,6 +98,7 @@ def installed_modules(venv_dir: Path | None = None) -> list[dict]:
 
 def temp_upload() -> str:
     """Where the backup being restored waits (uploaded, or copied from the saved ones)."""
+    os.makedirs(BACKUPS_DIR, exist_ok=True)  # a new mirror's storage has no backups folder yet
     return os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
 
 
@@ -158,6 +159,7 @@ async def create_backup(password: str | None = None) -> dict:
     logger.info(f"Creating backup: {backup_filename} (password protected: {bool(password)})")
 
     # We will build the archive inside a secure temporary directory
+    os.makedirs(BACKUPS_DIR, exist_ok=True)  # a new mirror's storage has no backups folder yet
     with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as temp_dir_path:
         temp_dir = Path(temp_dir_path)
 

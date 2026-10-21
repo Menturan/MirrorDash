@@ -38,9 +38,8 @@ def mock_load_save_config():
 
 @pytest.fixture
 def mock_backup_dirs(tmp_path):
-    backups_dir = tmp_path / "backups"
+    backups_dir = tmp_path / "backups"  # not made: a new mirror's storage has no backups folder yet
     data_dir = tmp_path / "data"
-    backups_dir.mkdir()
     data_dir.mkdir()
     
     with patch("mirrordash_core.features.backup.service.BACKUPS_DIR", str(backups_dir)), \
@@ -63,6 +62,7 @@ def test_backup_list_authorized_empty(mock_backup_dirs, client):
 
 def test_backup_list_with_files(mock_backup_dirs, client):
     backups_dir, _ = mock_backup_dirs
+    backups_dir.mkdir()  # a mirror with saved backups
     
     # Create a mock zip backup file
     backup_file = backups_dir / "test_backup.mirror"
@@ -118,6 +118,7 @@ def test_download_backup_not_found(mock_backup_dirs, client):
 
 def test_delete_backup_success(mock_backup_dirs, client):
     backups_dir, _ = mock_backup_dirs
+    backups_dir.mkdir()
     
     # Create file
     backup_file = backups_dir / "test_backup.mirror"
@@ -145,6 +146,7 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
     backups_dir, data_dir = mock_backup_dirs
+    backups_dir.mkdir()
     
     # Create the tmp_upload.mirror file that restore expects to find
     tmp_upload = backups_dir / "tmp_upload.mirror"

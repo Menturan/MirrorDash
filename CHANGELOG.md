@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Creating or uploading a backup works on a new or reset mirror. Before, it failed with an error until the mirror had a backups folder, which only older mirrors had.
+
 ## [0.8.0-os1] - 2026-10-21
 
 OS image with MirrorDash 0.8.0.
