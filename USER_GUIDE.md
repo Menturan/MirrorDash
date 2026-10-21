@@ -11,6 +11,7 @@ The admin page explains most settings where you change them. This guide covers w
 - [7. Smart home: Matter, the API and Home Assistant](#7-smart-home-matter-the-api-and-home-assistant)
 - [8. When something is wrong](#8-when-something-is-wrong)
 - [9. How the SD card is protected](#9-how-the-sd-card-is-protected)
+- [10. Security at home](#10-security-at-home)
 
 ---
 
@@ -245,3 +246,10 @@ template:
 ## 9. How the SD card is protected
 
 The system part of the SD card is read-only: everything written there during use is gone at the next start, so the system can't wear out or slowly break. There are two copies of it: a system update is written to the one that isn't running, and the mirror keeps the old one until the new one has started properly. Your settings, modules and Wi-Fi are kept on a separate storage partition. That is the part a sudden power cut can damage, which is why you should use **Shut Down** before unplugging. The system log stays in memory, so nothing is written to the card all day; only a failed update leaves a log behind, unless *Developer logging* is on.
+
+## 10. Security at home
+
+- **The admin page uses plain HTTP**, like most devices at home (printers, routers). On your own Wi-Fi that is fine, but someone who can listen in on that network could see the admin password. Don't use the same password anywhere else, and don't make the mirror reachable from the internet (no port forwarding to it).
+- **A module gets full access to the mirror.** It is a small program that runs on the mirror and can reach everything the mirror can, your home network included. Under *Modules → Add modules*, the ones made by MirrorDash are marked **Official**; install others only from people you trust, and read their README first.
+- **A guest network is the safest place** for the mirror if your router has one: the mirror only needs the internet, and then a module can't reach your computers.
+- **SSH is off** unless you turn it on under *Settings*, with a password of your own.
