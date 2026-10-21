@@ -29,6 +29,13 @@ def _fresh_logins(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _not_on_a_mirror(monkeypatch):
+    """UV_PYTHON_INSTALL_DIR means "on a mirror" to the updates (a Python patch upgrade first); CI's
+    setup-uv sets it too. Tests of the mirror's path set it themselves."""
+    monkeypatch.delenv("UV_PYTHON_INSTALL_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _never_restart_the_test_run(monkeypatch):
     """run_restart() SIGTERMs its own process; a test that reaches it must not end the run."""
     real_kill = os.kill
