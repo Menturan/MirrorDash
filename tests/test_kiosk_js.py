@@ -33,6 +33,10 @@ def test_static_js_files_served(client):
     assert resp.status_code == 200
     assert 'lucide' in resp.text
 
+def test_health_is_readable_from_the_start_page(client):
+    """loading.html runs from file:// and fetches /health: without this header it never leaves."""
+    assert client.get('/health').headers['access-control-allow-origin'] == '*'
+
 def test_every_component_on_the_design_page_works_inside_a_module():
     """/design is the component library for modules: every class in its copy-paste code must be in
     modules.css (the only stylesheet besides the tokens that reaches a module's shadow root).

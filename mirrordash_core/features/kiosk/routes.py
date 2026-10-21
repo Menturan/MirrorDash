@@ -7,7 +7,7 @@ import os
 import time
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 
 from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
@@ -55,11 +55,14 @@ async def get_design() -> FileResponse:
 
 
 @router.get("/health")
-async def health() -> dict:
+async def health(response: Response) -> dict:
     from mirrordash_core.admin import BOOT_ID
     from mirrordash_core.features.power.display_power import display_power_manager
     # None while the screen is off: there is nothing to watch then
     screen_seen = round(time.monotonic() - manager.screen_seen) if display_power_manager.is_on else None
+    # The kiosk's start page (file://, origin "null") reads this; without it WebKit blocks the answer and
+    # the screen stays on "MirrorDash didn't start". Nothing here is secret and no credentials ride along.
+    response.headers["Access-Control-Allow-Origin"] = "*"
     return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
             "boot_id": BOOT_ID, "screen_seen_seconds_ago": screen_seen}
 

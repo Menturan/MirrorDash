@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- The mirror starts again: in 0.8.0 it stayed on "MirrorDash didn't start" after every start, while MirrorDash was running fine underneath.
 - Creating or uploading a backup works on a new or reset mirror. Before, it failed with an error until the mirror had a backups folder, which only older mirrors had.
 
 ### OS image

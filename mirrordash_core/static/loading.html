@@ -108,7 +108,8 @@
             'safe_mode': 'Starting in safe mode…',
         };
 
-        const startedAt = Date.now();
+        // performance.now(), not Date.now(): the clock jumps hours forward when NTP syncs after a power cut
+        const startedAt = performance.now();
         const messageEl = document.getElementById('message');
 
         function show(html) {
@@ -133,7 +134,7 @@
             }
 
             // Keep asking even after showing the error: if the app comes up after all, carry on.
-            const waited = Date.now() - startedAt;
+            const waited = performance.now() - startedAt;
             if (waited > FAILED_AFTER) {
                 document.body.classList.add('failed');
                 // This page can't tell a trial boot of a new system version (A/B update) from a normal
