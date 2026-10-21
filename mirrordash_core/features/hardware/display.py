@@ -85,16 +85,11 @@ async def _set_backlight(brightness: int) -> bool:
         with open(max_backlight_paths[0]) as f:
             max_val = int(f.read().strip())
         target_val = int((brightness / 100.0) * max_val)
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "tee", backlight_paths[0],
-            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        await proc.communicate(input=f"{target_val}\n".encode())
+        # Writable for the video group (udev: 90-mirrordash-backlight.rules), so no sudo
+        with open(backlight_paths[0], "w") as f:
+            f.write(f"{target_val}\n")
     except Exception as e:
-        logger.warning(f"Failed to write to backlight device: {e}")
-        return False
-    if proc.returncode != 0:
-        logger.warning(f"Failed to write to backlight device {backlight_paths[0]}")
+        logger.warning(f"Failed to write to backlight device {backlight_paths[0]}: {e}")
         return False
     logger.info(f"Applied hardware brightness {target_val}/{max_val} via {backlight_paths[0]}")
     return True

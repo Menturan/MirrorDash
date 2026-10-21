@@ -135,12 +135,12 @@ async def test_apply_system_password_hash(mock_subproc):
     res = await apply_system_password_hash("somehash")
     assert res is True
     mock_subproc.assert_called_once_with(
-        "sudo", "-n", "chpasswd", "-e",
+        "sudo", "-n", "/usr/local/bin/mirrordash-pi-password",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    mock_proc.communicate.assert_called_once_with(input=b"pi:somehash\n")
+    mock_proc.communicate.assert_called_once_with(input=b"somehash\n")
 
 
 

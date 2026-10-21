@@ -7,6 +7,7 @@ import os
 from fastapi import HTTPException
 
 from mirrordash_core.config import write_atomic
+from mirrordash_core.host import apply_system_password_hash
 
 logger = logging.getLogger("mirrordash.core.settings")
 
@@ -53,23 +54,19 @@ PASSWORD_HASH_FILE = "/home/pi/.mirrordash/data/pi_password.hash"
 
 
 async def _set_pi_password(password: str) -> None:
-    """chpasswd now, and remember the hash for the next boot. HTTPException when it fails."""
-    proc = await asyncio.create_subprocess_exec("sudo", "-n", "chpasswd", stdin=asyncio.subprocess.PIPE,
-                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    _, err = await proc.communicate(input=f"pi:{password}\n".encode())
-    if proc.returncode != 0:
-        err = err.decode(errors="replace").strip()
-        logger.error(f"chpasswd failed: {err}")
-        raise HTTPException(status_code=500, detail=f"Failed to update system password: {err}")
-    logger.info("Password for user 'pi' updated successfully.")
+    """Hash it, apply the hash now and remember it for the next boot. HTTPException when it fails."""
     proc = await asyncio.create_subprocess_exec("openssl", "passwd", "-6", "-stdin", stdin=asyncio.subprocess.PIPE,
                                                 stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     out, err = await proc.communicate(input=password.encode())
     if proc.returncode != 0:
         logger.error(f"openssl hash failed: {err.decode(errors='replace').strip()}")
         raise HTTPException(status_code=500, detail="Failed to hash system password.")
+    pwd_hash = out.decode().strip()
+    if not await apply_system_password_hash(pwd_hash):
+        raise HTTPException(status_code=500, detail="Failed to update system password.")
+    logger.info("Password for user 'pi' updated successfully.")
     try:
-        write_atomic(PASSWORD_HASH_FILE, out.decode().strip(), 0o600)
+        write_atomic(PASSWORD_HASH_FILE, pwd_hash, 0o600)
     except OSError as e:
         logger.error(f"Failed to write password hash to disk: {e}")
 

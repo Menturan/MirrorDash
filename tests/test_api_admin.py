@@ -470,16 +470,16 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
     mock_save, mock_load, client
 ):
-    """Enabling SSH with a valid password must call chpasswd and enable SSH."""
+    """Enabling SSH with a valid password hashes it, applies the hash for pi and enables SSH."""
     mock_get_ssh.return_value = False
     mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True, "pi_password": "SecurePass1!"}
 
-    # Mock subprocesses success (first chpasswd, then openssl)
+    # Mock subprocesses success (first openssl, then the pi password helper)
     mock_process = MagicMock()
     mock_process.returncode = 0
-    mock_process.communicate = AsyncMock(side_effect=[(b"", b""), (b"hashed_pass\n", b"")])
+    mock_process.communicate = AsyncMock(side_effect=[(b"$6$salt$hash\n", b""), (b"", b"")])
     mock_subproc.return_value = mock_process
 
     with patch("builtins.open", mock_open()):
@@ -487,10 +487,10 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
         assert response.status_code == 200
         assert response.json()["status"] == "success"
 
-    # Verify both chpasswd and openssl were called
+    # Verify both openssl and the helper were called
     assert mock_subproc.call_count == 2
     mock_subproc.assert_any_call(
-        "sudo", "-n", "chpasswd",
+        "sudo", "-n", "/usr/local/bin/mirrordash-pi-password",
         stdin=asyncio.subprocess.PIPE,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -503,7 +503,7 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     )
     # Verify both communicates were called
     assert mock_process.communicate.call_count == 2
-    mock_process.communicate.assert_any_call(input=b"pi:SecurePass1!\n")
+    mock_process.communicate.assert_any_call(input=b"$6$salt$hash\n")
     mock_process.communicate.assert_any_call(input=b"SecurePass1!")
 
 

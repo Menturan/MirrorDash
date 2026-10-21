@@ -388,6 +388,10 @@ step_passwordless_sudo() {
   put 0440 /etc/sudoers.d/mirrordash
   # Settings → Reset mirror (the sudo rule above allows exactly this, with --yes)
   put 0755 /usr/local/bin/mirrordash-factory-reset
+  # Settings → SSH sets pi's password through this, never through chpasswd itself
+  put 0755 /usr/local/bin/mirrordash-pi-password
+  # The screen brightness is a file the video group may write, not a sudo rule
+  put 0644 /etc/udev/rules.d/90-mirrordash-backlight.rules
   visudo -cf /etc/sudoers.d/mirrordash
 }
 

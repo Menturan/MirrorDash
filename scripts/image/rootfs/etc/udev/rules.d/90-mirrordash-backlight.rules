@@ -1,0 +1,2 @@
+# A DSI screen's brightness, writable for the video group (pi is in it): the app sets it without sudo
+SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys%p/brightness", RUN+="/bin/chmod g+w /sys%p/brightness"

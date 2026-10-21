@@ -202,3 +202,34 @@ def test_factory_reset_leaves_only_the_logs(tmp_path):
     assert [p.name for p in storage.iterdir()] == ["logs"] and (storage / "logs" / "os-trial-1.log").exists()
     assert (tmp_path / "systemctl").read_text() == "reboot\n"
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes" in unit("/etc/sudoers.d/mirrordash")
+
+
+def test_sudo_rules_give_no_way_to_root():
+    """The app's sudo rules are fixed commands: a `*` mid-line matches spaces too, so
+    `tee /sys/class/backlight/*/brightness` once let the app write any file as root, and a bare
+    `chpasswd` let it set root's password. A `*` only ends a rule, and neither command is allowed."""
+    for f in sorted((ROOTFS / "etc" / "sudoers.d").iterdir()):
+        for line in f.read_text().splitlines():
+            if "NOPASSWD:" not in line:
+                continue
+            command = line.split("NOPASSWD:", 1)[1].strip()
+            assert "*" not in command[:-1], f"{f.name}: {line}"
+            assert command.split()[0] not in ("/usr/sbin/chpasswd", "/usr/bin/tee"), f"{f.name}: {line}"
+    assert 'NOPASSWD: /usr/local/bin/mirrordash-pi-password ""' in unit("/etc/sudoers.d/mirrordash")
+
+
+def test_pi_password_helper_sets_only_pi(tmp_path):
+    """mirrordash-pi-password takes one crypt hash on stdin and hands chpasswd `pi:<hash>` and nothing
+    else: no plain password, no colon (another user), and only the first line."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "chpasswd").write_text(f'#!/bin/bash\nprintf "%s\\n" "$*" >> {tmp_path}/args\ncat >> {tmp_path}/input\n')
+    (bin_dir / "chpasswd").chmod(0o755)
+    script = tmp_path / "helper"
+    script.write_text(unit("/usr/local/bin/mirrordash-pi-password"))
+    run = lambda stdin: subprocess.run(["bash", str(script)], input=stdin, env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+                                       capture_output=True, text=True).returncode
+    for bad in ("", "plain password\n", "$6$salt$hash:root\n", "root:$6$x$y\n"):
+        assert run(bad) == 2 and not (tmp_path / "input").exists(), repr(bad)
+    assert run("$6$salt$hash\nroot:$6$x$y\n") == 0
+    assert (tmp_path / "args").read_text() == "-e\n" and (tmp_path / "input").read_text() == "pi:$6$salt$hash\n"

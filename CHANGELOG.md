@@ -18,6 +18,7 @@ There are two kinds of releases:
 - Node.js and the Matter node (matter.js), off until Matter is turned on in the admin page (about 90 MB on the card).
 - The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
 - uv, which installs MirrorDash and the modules, is the newest 0.13.x, and its bug fixes come with each image.
+- Safer: the app can no longer get full control of the system through its own few admin rights. It sets only the pi user's password, and the screen brightness without admin rights at all.
 
 ## [0.8.1-os1] - 2026-10-21
 

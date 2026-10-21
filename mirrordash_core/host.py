@@ -121,13 +121,17 @@ async def apply_wifi_country(country: str | None) -> bool:
     return True
 
 
+# chpasswd -e for the pi user only: sudo allows this helper, never chpasswd itself
+PI_PASSWORD_HELPER = "/usr/local/bin/mirrordash-pi-password"
+
+
 async def apply_system_password_hash(pwd_hash: str) -> bool:
-    """Apply system password hash for user 'pi' using chpasswd -e."""
+    """Apply a crypt hash (openssl passwd -6) as the password of user 'pi'."""
     logger.info("Applying system password hash...")
     try:
-        chpasswd_input = f"pi:{pwd_hash}\n".encode()
+        chpasswd_input = f"{pwd_hash}\n".encode()
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "chpasswd", "-e",
+            "sudo", "-n", PI_PASSWORD_HELPER,
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
