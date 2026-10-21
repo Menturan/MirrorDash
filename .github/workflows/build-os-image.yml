@@ -73,9 +73,10 @@ jobs:
       - name: Build OS image and update bundle
         env:
           RAUC_KEY: ${{ secrets.RAUC_KEY }}
+          OS_TAG: ${{ inputs.tag }}
         run: |
           if [ -z "$RAUC_KEY" ]; then echo "::error::The RAUC_KEY secret is missing (see RELEASING.md)"; exit 1; fi
-          sudo --preserve-env=RAUC_KEY bash scripts/build_image.sh
+          sudo --preserve-env=RAUC_KEY,OS_TAG bash scripts/build_image.sh
 
       - name: Save Image as Workflow Artifact
         uses: actions/upload-artifact@v7

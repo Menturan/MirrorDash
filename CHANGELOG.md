@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
+
 ## [0.8.1-os1] - 2026-10-21
 
 OS image with MirrorDash 0.8.1.

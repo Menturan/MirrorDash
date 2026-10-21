@@ -31,7 +31,11 @@ from mirrordash_core.features.settings.schema import (
     validate_config,
 )
 from mirrordash_core.features.settings.ssh import get_ssh_status
-from mirrordash_core.features.updates.service import format_build, installed_os_build
+from mirrordash_core.features.updates.service import (
+    format_build,
+    installed_os_build,
+    installed_os_version,
+)
 from mirrordash_core.forms import cast_values_by_schema, read_form
 
 logger = logging.getLogger("mirrordash.core.settings")
@@ -62,6 +66,7 @@ async def get_panel_config(request: Request):
             "ssh": await get_ssh_status(),
             # None where there are no system updates (an image from before A/B, a development machine)
             "os_build": format_build(build) if (build := installed_os_build()) else None,
+            "os_version": installed_os_version(),
             **dev_logging_context(),
         }
     )

@@ -243,6 +243,8 @@ async def rebuild_venv() -> dict:
 # /etc/mirrordash-os-build in the image, and ends the bundle's file name with the same stamp,
 # e.g. mirrordash-os-v0.7.0-20261018-1915.raucb. A higher stamp is a newer OS.
 OS_BUILD_FILE = Path("/etc/mirrordash-os-build")
+# The release tag (v0.8.1-os1) of a build CI made for a release, only to show; the stamp decides.
+OS_VERSION_FILE = Path("/etc/mirrordash-os-version")
 # The download, and the build an update was started for (to tell afterwards whether it stuck).
 # /storage/mirrordash belongs to the app's user; the sudoers rule allows installing exactly this file.
 OS_BUNDLE_FILE = Path("/storage/mirrordash/os-update.raucb")
@@ -265,6 +267,14 @@ def installed_os_build() -> str | None:
     A/B, a Pi set up by hand, a development machine)."""
     try:
         return OS_BUILD_FILE.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def installed_os_version() -> str | None:
+    """The release tag of the running OS, or None (an image built without one, or before it was written)."""
+    try:
+        return OS_VERSION_FILE.read_text().strip() or None
     except OSError:
         return None
 

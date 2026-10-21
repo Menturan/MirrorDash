@@ -353,5 +353,9 @@ def test_the_os_update_interface_stays_the_same():
         "e92e17fba0cf758cca576825f1a92dc3e755163bec394bcd3f2d15b569f1a9f4"
     assert 'BUNDLE="mirrordash-os-v${VERSION}-${OS_BUILD}.raucb"' in build
     assert "OS_BUILD=$(date -u +%Y%m%d-%H%M)" in build
+    # The release tag goes from CI's input through sudo into the image, for the admin page
+    workflow = (root / ".github" / "workflows" / "build-os-image.yml").read_text()
+    assert "OS_TAG: ${{ inputs.tag }}" in workflow and "--preserve-env=RAUC_KEY,OS_TAG" in workflow
+    assert f'"$MOUNT_DIR{service.OS_VERSION_FILE}"' in build
     assert service.BUNDLE_NAME.match("mirrordash-os-v0.7.0-os2-20261019-1024.raucb").group(1) == "20261019-1024"
     assert service.RELEASES_URL.startswith("https://api.github.com/repos/Menturan/MirrorDash/releases")

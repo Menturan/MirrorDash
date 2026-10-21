@@ -45,7 +45,7 @@
                 Linux, drivers and settings underneath MirrorDash. Takes 10–30 minutes; the mirror restarts, and goes
                 back to the current system by itself if the new one doesn't work.</p>
             <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
-            <span id="os-current-build" style="font-weight: 600; color: white;">build {{ os_build }}</span>
+            <span id="os-current-build" style="font-weight: 600; color: white;">{% if os_version %}{{ os_version }} (build {{ os_build }}){% else %}build {{ os_build }}{% endif %}</span>
             <div id="os-update-result"><!-- filled by Check for Updates --></div>
         </div>
         {% endif %}

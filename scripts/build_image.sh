@@ -134,6 +134,8 @@ fi
 # file name ends in the same stamp) to offer an OS update. UTC date and time, so newer sorts higher.
 OS_BUILD=$(date -u +%Y%m%d-%H%M)
 echo "$OS_BUILD" > "$MOUNT_DIR/etc/mirrordash-os-build"
+# The release CI builds it as (vX.Y.Z-osN, scripts/release.py option 3), for people: the admin page shows it.
+if [ -n "${OS_TAG:-}" ]; then echo "$OS_TAG" > "$MOUNT_DIR/etc/mirrordash-os-version"; fi
 
 # --- The pieces of the A/B card (see step_ab_updates in configure_image.sh) ---
 # Every piece is made as a file first, then written into its place in the new image below.
