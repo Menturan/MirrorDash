@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.8.1-os1] - 2026-10-21
+
+OS image with MirrorDash 0.8.1.
 
 - Each OS image comes with a list of the versions of all its packages (`mirrordash-os-*.packages.txt` with the release, `/usr/share/mirrordash/packages.txt` on the mirror), to compare builds when something breaks.
 - Every OS image gets the newest system packages, certificates and uv when it is built, and a test version of the app the newest Python packages. This also brings the fix for the compromised eMudhra certificates (2026-10-20).
