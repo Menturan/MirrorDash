@@ -5,7 +5,9 @@ import contextlib
 import functools
 import hashlib
 import importlib.metadata
+import importlib.resources
 import importlib.util
+import inspect
 import json
 import logging
 import os
@@ -34,30 +36,15 @@ MODULE_RESTART_DELAY = 5
 
 
 def load_translations(package_name: str, lang: str) -> dict:
-    import json
-    from importlib.resources import files
-
+    """The module's en.json, with the configured language's file over it."""
     translations = {}
-
-    # 1. Try loading base 'en.json'
-    try:
-        en_path = files(package_name) / "translations" / "en.json"
-        if en_path.exists():
-            with en_path.open("r", encoding="utf-8") as f:
-                translations.update(json.load(f))
-    except Exception as e:
-        logger.debug(f"Could not load base English translations for {package_name}: {e}")
-
-    # 2. Try loading configured language (if not English)
-    if lang and lang != "en":
+    for code in dict.fromkeys(["en", lang or "en"]):
         try:
-            lang_path = files(package_name) / "translations" / f"{lang}.json"
-            if lang_path.exists():
-                with lang_path.open("r", encoding="utf-8") as f:
-                    translations.update(json.load(f))
+            path = importlib.resources.files(package_name) / "translations" / f"{code}.json"
+            if path.is_file():
+                translations.update(json.loads(path.read_text(encoding="utf-8")))
         except Exception as e:
-            logger.debug(f"Could not load translations for {package_name} in language '{lang}': {e}")
-
+            logger.debug(f"Could not load translations for {package_name} in language '{code}': {e}")
     return translations
 
 
@@ -402,7 +389,6 @@ class ModuleLoader:
 
     def _start_module_task(self, instance_id: str, plugin_instance, broadcast_fn) -> None:
         """Create and register an asyncio task for a module, with auto-restart on crash."""
-        import inspect
         loop = asyncio.get_running_loop()
         is_async = inspect.iscoroutinefunction(plugin_instance.run_loop)
 

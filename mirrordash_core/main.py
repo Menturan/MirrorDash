@@ -9,24 +9,17 @@ import uvicorn
 
 from mirrordash_core.config import get_base_dir
 
-# Pre-create logs directory and configure file logging in addition to console
-log_dir = os.path.join(get_base_dir(), "logs")
+# Logging is set up on import, not in main(): with MIRRORDASH_DEV=1 uvicorn's reload runs the app in a
+# spawned process, which re-runs this module's top level but never main().
+handlers: list[logging.Handler] = [logging.StreamHandler()]
+file_error = None
 try:
+    log_dir = os.path.join(get_base_dir(), "logs")
     os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, "mirrordash.log")
-except Exception:
-    log_file = None
-
-handlers = []
-console_handler = logging.StreamHandler()
-handlers.append(console_handler)
-
-if log_file:
-    try:
-        file_handler = RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8")
-        handlers.append(file_handler)
-    except Exception:
-        pass
+    handlers.append(RotatingFileHandler(os.path.join(log_dir, "mirrordash.log"),
+                                        maxBytes=2 * 1024 * 1024, backupCount=2, encoding="utf-8"))
+except OSError as e:
+    file_error = e  # console only; said below, once logging works
 
 # Every log time is UTC in ISO 8601 (2026-10-19T08:15:02.123Z), like the system log shown with --utc and
 # the saved logs: lines from different logs line up without a time zone or summer time to think of.
@@ -38,6 +31,8 @@ logging.basicConfig(
     datefmt="%Y-%m-%dT%H:%M:%S",
     handlers=handlers
 )
+if file_error:
+    logging.warning(f"Logging to the console only, the log file can't be written: {file_error}")
 
 def main() -> None:
     # Run uvicorn server targeting the FastAPI app in app.py
