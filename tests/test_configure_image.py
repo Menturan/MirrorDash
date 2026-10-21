@@ -63,10 +63,6 @@ def test_swap_is_zram_only():
     assert unit("/etc/rpi/swap.conf.d/mirrordash.conf") == "[Main]\nMechanism=zram"
 
 
-def test_sudo_doesnt_log_the_wifi_password():
-    assert "Defaults!/usr/bin/nmcli !log_allowed" in unit("/etc/sudoers.d/mirrordash")
-
-
 def test_no_hobbyist_patterns_in_the_build():
     """AGENTS rules (DevOps): no polling, no scraping human-readable output, no commands that don't
     exist hidden behind `|| true`."""
@@ -216,6 +212,17 @@ def test_sudo_rules_give_no_way_to_root():
             assert "*" not in command[:-1], f"{f.name}: {line}"
             assert command.split()[0] not in ("/usr/sbin/chpasswd", "/usr/bin/tee"), f"{f.name}: {line}"
     assert 'NOPASSWD: /usr/local/bin/mirrordash-pi-password ""' in unit("/etc/sudoers.d/mirrordash")
+
+
+def test_nmcli_runs_as_pi_through_polkit():
+    """nmcli as root could read any file (an import, a certificate path); the app runs it as pi and
+    NetworkManager lets pi through polkit, which the image must therefore have. Without sudo the
+    Wi-Fi password (an nmcli argument) never reaches sudo's log either."""
+    assert "nmcli" not in unit("/etc/sudoers.d/mirrordash")
+    assert '"sudo", "-n", "nmcli"' not in (ROOT / "mirrordash_core/features/wifi/network.py").read_text()
+    rule = unit("/etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules")
+    assert 'subject.user == "pi"' in rule and '"org.freedesktop.NetworkManager."' in rule
+    assert re.search(r"^\s+polkitd \\$", SETUP, re.M)
 
 
 def test_pi_password_helper_sets_only_pi(tmp_path):

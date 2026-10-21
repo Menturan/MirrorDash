@@ -99,7 +99,7 @@ def test_restore_captive_ap_starts_the_same_profile(mock_exec):
     proc.communicate.return_value = (b"", b"")
     mock_exec.return_value = proc
     assert asyncio.run(restore_captive_ap()) is True
-    assert mock_exec.call_args.args == ("sudo", "-n", "nmcli", "connection", "up", "MirrorDash-Setup")
+    assert mock_exec.call_args.args == ("nmcli", "connection", "up", "MirrorDash-Setup")
 
 def test_wifi_setup_missing_ssid(client):
     response = client.post("/api/wifi/setup", json={"password": "wrong"})
@@ -201,7 +201,7 @@ def test_teardown_keeps_the_hotspot_profile(mock_exec):
     mock_exec.return_value.returncode = 0
     asyncio.run(_teardown_captive_ap())
     commands = [call.args for call in mock_exec.call_args_list]
-    assert commands == [("sudo", "-n", "nmcli", "connection", "down", "MirrorDash-Setup")]
+    assert commands == [("nmcli", "connection", "down", "MirrorDash-Setup")]
 
 @patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_index_serves_admin_prompt_when_setup_required(mock_hotspot, client):

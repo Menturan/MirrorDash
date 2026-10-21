@@ -73,7 +73,7 @@ async def _scan_live() -> list[str]:
     logger.info("Scanning for WiFi networks...")
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
+            "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
@@ -129,7 +129,8 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
     except Exception as e:
         logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
 
-    cmd = ["sudo", "-n", "nmcli", "dev", "wifi", "connect", ssid]
+    # ponytail: the password shows in `ps` while nmcli runs (local only); passwd-file would close that.
+    cmd = ["nmcli", "dev", "wifi", "connect", ssid]
     if password:
         cmd.extend(["password", password])
 
@@ -159,9 +160,9 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
 
 
 async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
-    """`sudo nmcli <args>`: (returncode, output or error); (1, reason) when it can't run."""
+    """`nmcli <args>`: (returncode, output or error); (1, reason) when it can't run."""
     try:
-        proc = await asyncio.create_subprocess_exec("sudo", "-n", "nmcli", *args, stdout=asyncio.subprocess.PIPE,
+        proc = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
                                                     stderr=asyncio.subprocess.PIPE)
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except Exception as e:
@@ -219,28 +220,20 @@ async def is_wifi_hotspot_active() -> bool:
     if _hotspot_active_cached is not None and time.monotonic() - _hotspot_checked_at < HOTSPOT_CACHE_TTL:
         return _hotspot_active_cached
 
-    # Fast path: read active connections without sudo (no TTY needed)
-    for cmd in (
-        ["nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
-        ["sudo", "-n", "nmcli", "-t", "-f", "NAME", "connection", "show", "--active"],
-    ):
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-            if proc.returncode == 0:
-                lines = stdout.decode("utf-8", errors="ignore").splitlines()
-                active = HOTSPOT_SSID in lines
-                _hotspot_active_cached = active
-                _hotspot_checked_at = time.monotonic()
-                return active
-        except TimeoutError:
-            continue
-        except Exception:
-            continue
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "nmcli", "-t", "-f", "NAME", "connection", "show", "--active",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        if proc.returncode == 0:
+            active = HOTSPOT_SSID in stdout.decode("utf-8", errors="ignore").splitlines()
+            _hotspot_active_cached = active
+            _hotspot_checked_at = time.monotonic()
+            return active
+    except Exception:
+        pass
     logger.error("Timed out or failed checking WiFi hotspot status")
     return False
 
@@ -249,7 +242,7 @@ async def get_hotspot_password() -> str:
     """The setup hotspot's password, read from its NetworkManager profile; "" if it can't be read."""
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
+            "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -267,7 +260,7 @@ async def restore_captive_ap() -> bool:
     global _hotspot_active_cached, _hotspot_checked_at
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "nmcli", "connection", "up", HOTSPOT_SSID,
+            "nmcli", "connection", "up", HOTSPOT_SSID,
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
         )
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
@@ -291,7 +284,7 @@ async def _teardown_captive_ap() -> None:
     global _hotspot_active_cached, _hotspot_checked_at
     _hotspot_active_cached = False
     _hotspot_checked_at = time.monotonic()
-    cmd = ["sudo", "-n", "nmcli", "connection", "down", HOTSPOT_SSID]
+    cmd = ["nmcli", "connection", "down", HOTSPOT_SSID]
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,

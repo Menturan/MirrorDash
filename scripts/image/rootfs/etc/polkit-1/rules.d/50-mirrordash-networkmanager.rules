@@ -1,0 +1,7 @@
+// The app (user pi) scans, joins Wi-Fi and runs the setup hotspot with nmcli as itself:
+// NetworkManager asks polkit, and this says yes. Nothing else is allowed, and no sudo is needed.
+polkit.addRule(function (action, subject) {
+    if (subject.user == "pi" && action.id.indexOf("org.freedesktop.NetworkManager.") == 0) {
+        return polkit.Result.YES;
+    }
+});

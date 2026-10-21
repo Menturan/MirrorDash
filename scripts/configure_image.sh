@@ -157,6 +157,7 @@ step_installing_packages() {
       systemd-timesyncd \
       initramfs-tools \
       network-manager \
+      polkitd \
       dnsmasq-base \
       nginx \
       parted \
@@ -392,6 +393,8 @@ step_passwordless_sudo() {
   put 0755 /usr/local/bin/mirrordash-pi-password
   # The screen brightness is a file the video group may write, not a sudo rule
   put 0644 /etc/udev/rules.d/90-mirrordash-backlight.rules
+  # Wi-Fi and the setup hotspot: NetworkManager lets pi through polkit, not a sudo rule
+  put 0644 /etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules
   visudo -cf /etc/sudoers.d/mirrordash
 }
 
