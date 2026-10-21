@@ -200,6 +200,36 @@ def test_factory_reset_leaves_only_the_logs(tmp_path):
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes" in unit("/etc/sudoers.d/mirrordash")
 
 
+def test_a_cable_takes_the_setup_hotspot_down(tmp_path):
+    """Plugged in while the hotspot runs, a cable gives the mirror a network: the hotspot goes and the app
+    hears of it. Wi-Fi coming up, or a cable with no hotspot running, changes nothing."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "log"
+    fake = {
+        "nmcli": f'echo "nmcli $*" >> {log}\ncase "$*" in\n  *"device show eth0") echo ethernet ;;\n'
+                 f'  *"device show wlan0") echo wifi ;;\n  *"--active") cat {tmp_path}/active ;;\nesac',
+        "curl": f'echo "curl $*" >> {log}',
+        "logger": "true",
+    }
+    for name, body in fake.items():
+        (bin_dir / name).write_text(f"#!/bin/sh\n{body}\n")
+        (bin_dir / name).chmod(0o755)
+    script = tmp_path / "cable"
+    script.write_text(unit("/etc/NetworkManager/dispatcher.d/40-mirrordash-cable"))
+
+    def run(iface, active):
+        log.write_text("")
+        (tmp_path / "active").write_text(active)
+        subprocess.run(["sh", str(script), iface, "up"], env={"PATH": f"{bin_dir}:/usr/bin:/bin"}, check=True)
+        return log.read_text()
+
+    assert "connection down MirrorDash-Setup" in run("eth0", "MirrorDash-Setup\n")
+    assert "/api/wifi/changed" in log.read_text()
+    assert "down" not in run("eth0", "Wired connection 1\n")
+    assert "down" not in run("wlan0", "MirrorDash-Setup\n")
+
+
 def test_sudo_rules_give_no_way_to_root():
     """The app's sudo rules are fixed commands: a `*` mid-line matches spaces too, so
     `tee /sys/class/backlight/*/brightness` once let the app write any file as root, and a bare

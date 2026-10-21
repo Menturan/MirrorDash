@@ -245,6 +245,8 @@ step_setting_hostname() {
   # stays mirrordash-2.local until restarted, so mirrordash.local/admin breaks right after setup.
   mkdir -p /etc/NetworkManager/dispatcher.d
   put 0755 /etc/NetworkManager/dispatcher.d/50-mirrordash-avahi
+  # A cable plugged in while the setup hotspot runs takes the hotspot down
+  put 0755 /etc/NetworkManager/dispatcher.d/40-mirrordash-cable
 }
 
 step_configuring_nginx() {

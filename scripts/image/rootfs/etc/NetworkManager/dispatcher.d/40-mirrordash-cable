@@ -1,0 +1,10 @@
+#!/bin/sh
+# A cable came up while the setup hotspot runs: the mirror has a network, so the hotspot goes and the
+# admin page is reachable at once (at boot a cable already keeps the hotspot off: mirrordash-wifi-check).
+[ "$2" = up ] || exit 0
+[ "$(nmcli -g GENERAL.TYPE device show "$1" 2>/dev/null)" = ethernet ] || exit 0
+nmcli -t -f NAME connection show --active | grep -qxF MirrorDash-Setup || exit 0
+logger -t mirrordash-wifi "A cable is connected: stopping the setup hotspot."
+nmcli connection down MirrorDash-Setup || true
+curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+exit 0

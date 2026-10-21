@@ -22,6 +22,7 @@ There are two kinds of releases:
 - uv, which installs MirrorDash and the modules, is the newest 0.13.x, and its bug fixes come with each image.
 - Safer: the app can no longer get full control of the system through its own few admin rights. It sets only the pi user's password, and the screen brightness and Wi-Fi without admin rights at all.
 - The pi user has no default password any more (it was `raspberry`); turning SSH on sets yours.
+- A network cable plugged in during the Wi-Fi setup stops the setup network at once, so the admin page opens without setting up Wi-Fi or restarting.
 
 ## [0.8.1-os1] - 2026-10-21
 

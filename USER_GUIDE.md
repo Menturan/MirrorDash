@@ -45,6 +45,8 @@ Then you need the mirror itself. Your settings stay; only the admin password is 
 
 ## 2. First start: Wi-Fi setup
 
+With a network cable plugged in there is no Wi-Fi setup: open `http://mirrordash.local/admin` right away. A cable plugged in later stops the setup network within seconds.
+
 A new mirror (or one that can't find its Wi-Fi) starts its own network for the setup:
 
 1. **Join `MirrorDash-Setup`** on your phone. The mirror shows its password with a QR code: point the camera at it, or type the password. It stays the same until the SD card is flashed again.
