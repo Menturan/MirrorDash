@@ -114,13 +114,33 @@ async def test_get_ssh_status(mock_subproc):
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
-async def test_set_ssh_status(mock_subproc):
-    mock_proc = AsyncMock()
-    mock_subproc.return_value = mock_proc
-    
-    res = await set_ssh_status(True)
-    assert res is True
-    assert mock_subproc.call_count == 2
+async def test_set_ssh_status_only_starts_ssh_with_the_owners_password(mock_subproc, tmp_path, monkeypatch):
+    """A stray `ssh: true` (once saved by any settings change) must not start SSH while pi has no password
+    of the owner's: SSH starts only once its hash is on /storage."""
+    from mirrordash_core.features.settings import ssh
+    monkeypatch.setattr(ssh, "PASSWORD_HASH_FILE", str(tmp_path / "pi_password.hash"))
+    mock_subproc.return_value = AsyncMock()
+    actions = lambda: [c.args[3] for c in mock_subproc.call_args_list]
+
+    assert await set_ssh_status(True) is True
+    assert actions() == ["disable", "stop"]
+
+    mock_subproc.reset_mock()
+    (tmp_path / "pi_password.hash").write_text("$6$salt$hash")
+    assert await set_ssh_status(True) is True
+    assert actions() == ["enable", "start"]
+
+
+def test_saving_another_setting_doesnt_turn_ssh_on():
+    """Home Assistant's brightness or the Power tab sends only its own setting; the rest are filled in
+    from the defaults, and SSH's must be off."""
+    from mirrordash_core import system_settings
+    saved = {}
+    with patch.object(system_settings, "load_config", return_value={"system": {}}), \
+         patch.object(system_settings, "save_config", side_effect=saved.update), \
+         patch.object(system_settings, "apply_ssh", new_callable=AsyncMock) as apply_ssh:
+        asyncio.run(system_settings.update_system_settings(settings={"display_control": {"mode": "manual"}}))
+    assert saved["system"]["ssh"] is False and not apply_ssh.called
 
 
 @pytest.mark.asyncio

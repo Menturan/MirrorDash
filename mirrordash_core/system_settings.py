@@ -50,7 +50,7 @@ async def get_system_settings() -> dict:
 
 
 # What a setting is when the config doesn't have it yet
-DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": True, "prerelease": False,
+DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": False, "prerelease": False,
             "auto_update": True}
 HHMM = re.compile(r"^\d{2}:\d{2}$")
 

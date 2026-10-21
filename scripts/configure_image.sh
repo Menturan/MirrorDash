@@ -261,10 +261,12 @@ step_configuring_console_login() {
   echo "Setting system to graphical target..."
   ln -fs /lib/systemd/system/graphical.target /etc/systemd/system/default.target
 
-  echo "Setting up user 'pi' (password 'raspberry')..."
+  echo "Setting up user 'pi' (password locked until the owner sets one)..."
   # Done here, not by Pi OS's userconf.txt on the first boot: the image's root is read-only from that
   # boot on (squashfs), so a user set up then would be gone at the next one.
-  usermod -s /bin/bash -p "$(echo 'raspberry' | openssl passwd -6 -stdin)" pi
+  # No password everyone knows: pi logs in by itself (the kiosk), and turning SSH on in the admin page
+  # sets the owner's own (features/settings/ssh.py).
+  usermod -s /bin/bash -p '!' pi
   systemctl --root=/ disable userconfig.service
   # The rest of what Pi OS does once the user is set up (cancel-rename): its "SSH may not work" banner
   rm -f /etc/ssh/sshd_config.d/rename_user.conf

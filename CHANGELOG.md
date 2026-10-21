@@ -12,6 +12,7 @@ There are two kinds of releases:
 - MirrorDash runs on FastAPI 0.158 and uvicorn 0.54, and from now on gets their bug fixes by itself, without a new MirrorDash version for each.
 - Every MirrorDash update also brings the newest bug-fix version of its Python (3.14.x).
 - Matter: add the mirror to Apple Home, Google Home, Alexa, SmartThings or Home Assistant and turn its screen on and off from there. Turn it on under *Settings* → *Matter* and scan the code (from the next OS image on).
+- Fixed: changing a setting from Home Assistant or the *Power* tab could turn SSH on at the next restart, with the system's default password. SSH now only ever starts after you set your own password for it under *Settings*.
 - *Add modules* marks the modules made by MirrorDash as *Official*, and says before installing any other that it gets full access to the mirror. A package on PyPI can no longer take the name of an official module.
 
 ### OS image
@@ -20,6 +21,7 @@ There are two kinds of releases:
 - The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
 - uv, which installs MirrorDash and the modules, is the newest 0.13.x, and its bug fixes come with each image.
 - Safer: the app can no longer get full control of the system through its own few admin rights. It sets only the pi user's password, and the screen brightness and Wi-Fi without admin rights at all.
+- The pi user has no default password any more (it was `raspberry`); turning SSH on sets yours.
 
 ## [0.8.1-os1] - 2026-10-21
 

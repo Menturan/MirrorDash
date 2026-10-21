@@ -27,7 +27,11 @@ async def get_ssh_status() -> bool:
 
 
 async def set_ssh_status(enabled: bool) -> bool:
-    """Enable/start or disable/stop the SSH service."""
+    """Enable/start or disable/stop the SSH service. Never starts it without the owner's own pi password
+    (its hash on /storage): a stray `ssh: true` in the config once started it with the image's password."""
+    if enabled and not os.path.exists(PASSWORD_HASH_FILE):
+        logger.warning("Not starting SSH: no password for pi has been set (Settings → SSH)")
+        enabled = False
     try:
         action = "enable" if enabled else "disable"
         proc1 = await asyncio.create_subprocess_exec(
