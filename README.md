@@ -33,7 +33,7 @@ No keyboard, no terminal, no config files, now or later.
 | Changing things | Edit a file over SSH | Your phone, in the admin page |
 | An update goes wrong | A black screen, and an evening of debugging | It goes back to the last version by itself |
 | The SD card | Wears out from constant writing | The system part is read-only |
-| The screen | On all night | On when someone's there, on a schedule, or from Home Assistant |
+| The screen | On all night | On when someone's there, on a schedule, or from Apple Home, Google Home and Home Assistant (Matter) |
 | New widgets | Copy code into the project | Tap *Install* in the admin page |
 
 ![The mirror's screen](https://raw.githubusercontent.com/Menturan/MirrorDash/master/screenshot.png)
@@ -84,7 +84,7 @@ This creates a module with example data and starts a mirror on your computer tha
 
 ## Documentation
 
-* [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, the API and Home Assistant.
+* [User guide](USER_GUIDE.md): setting up, wiring, the screen's rules, recovery, Matter, the API and Home Assistant.
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
 * [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.

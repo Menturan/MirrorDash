@@ -1,17 +1,20 @@
 #!/usr/bin/env node
 // Licensed under the PolyForm Noncommercial License 1.0.0.
-// The mirror as a Matter device: the screen is a dimmable light (on/off = screen, level = brightness).
-// It only talks to MirrorDash's /api/v1, with its own token. Phase 0 spike: pairing with Apple Home and
-// Google Home without Bluetooth (the mirror is already on Wi-Fi, so it is found over the network).
-//   MIRRORDASH_TOKEN=<token> node index.mjs        (MIRRORDASH_URL, MATTER_STORAGE_PATH optional)
+// The mirror as a Matter device: the screen is an on/off light. It only talks to MirrorDash's /api/v1,
+// with its own token. Paired over the network (the mirror is already on Wi-Fi), no Bluetooth.
+// Run by mirrordash-matter.service, which the core starts and stops (Settings > Matter, ARCHITECTURE #35):
+//   MIRRORDASH_TOKEN=<token> MATTER_PASSCODE=<n> MATTER_DISCRIMINATOR=<n> node index.mjs
+//   (MIRRORDASH_URL, MATTER_STORAGE_PATH optional)
+import { renameSync, writeFileSync } from "node:fs";
 import { Endpoint, Environment, ServerNode } from "@matter/main";
-import { DimmableLightDevice } from "@matter/main/devices/dimmable-light";
-import { QrCode, VendorId } from "@matter/main/types";
+import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
+import { VendorId } from "@matter/main/types";
 
 const URL_BASE = (process.env.MIRRORDASH_URL ?? "http://127.0.0.1:8000") + "/api/v1";
 const TOKEN = process.env.MIRRORDASH_TOKEN;
-if (!TOKEN) throw new Error("MIRRORDASH_TOKEN is missing: create one under Settings > API");
-Environment.default.vars.set("storage.path", process.env.MATTER_STORAGE_PATH ?? "/storage/mirrordash/matter");
+if (!TOKEN) throw new Error("MIRRORDASH_TOKEN is missing: turn Matter on under Settings > Matter");
+const STORAGE = process.env.MATTER_STORAGE_PATH ?? "/storage/mirrordash/data/matter";
+Environment.default.vars.set("storage.path", STORAGE);
 
 async function call(path, body) {
     const r = await fetch(URL_BASE + path, {
@@ -23,52 +26,51 @@ async function call(path, body) {
     return r.json();
 }
 
-// Matter levels are 1-254, the mirror's brightness 10-100
-const toLevel = brightness => Math.round(brightness * 254 / 100);
-const toBrightness = level => Math.min(100, Math.max(10, Math.round(level * 100 / 254)));
-
 let status = await call("/status");
 const node = await ServerNode.create({
     id: "mirrordash",
     network: { port: 5540 },
-    commissioning: { passcode: 20202021, discriminator: 3840 },  // ponytail: fixed test codes; a random pair per mirror before release
-    productDescription: { name: "MirrorDash", deviceType: DimmableLightDevice.deviceType },
+    // Made by the core when Matter is first turned on, one pair per mirror
+    commissioning: { passcode: Number(process.env.MATTER_PASSCODE ?? 20202021),
+                     discriminator: Number(process.env.MATTER_DISCRIMINATOR ?? 3840) },
+    productDescription: { name: "MirrorDash", deviceType: OnOffLightDevice.deviceType },
     basicInformation: {
         vendorName: "MirrorDash", vendorId: VendorId(0xfff1),  // a CSA test vendor: the device is uncertified
         productName: "MirrorDash", productLabel: "MirrorDash", nodeLabel: "MirrorDash", productId: 0x8000,
         serialNumber: "mirrordash-1", uniqueId: "mirrordash-1",
     },
 });
-const screen = new Endpoint(DimmableLightDevice, {
-    id: "screen",
-    onOff: { onOff: status.screen_on },
-    levelControl: { currentLevel: toLevel(status.brightness), minLevel: toLevel(10), maxLevel: 254 },
-});
+const screen = new Endpoint(OnOffLightDevice, { id: "screen", onOff: { onOff: status.screen_on } });
 await node.add(screen);
 
 // A change from a home app goes to the mirror; one that only mirrors the mirror's own state doesn't go back
 screen.events.onOff.onOff$Changed.on(on => {
     if (on !== status.screen_on) call("/screen", { state: on ? "on" : "off" }).catch(console.error);
 });
-screen.events.levelControl.currentLevel$Changed.on(level => {
-    if (level !== null && toBrightness(level) !== status.brightness)
-        call("/brightness", { value: toBrightness(level) }).catch(console.error);
-});
 
 // ponytail: polls the local API every 2 s, so a change on the mirror reaches the home apps up to 2 s late;
-// a push from the core's event bus would make it instant.
+// a push from the core's event bus would make it instant. unref: on SIGTERM matter.js closes the node, and the
+// poll mustn't keep the process alive after it (systemctl stop would wait 90 s).
 setInterval(async () => {
     try {
         status = await call("/status");
-        await screen.set({ onOff: { onOff: status.screen_on }, levelControl: { currentLevel: toLevel(status.brightness) } });
+        await screen.set({ onOff: { onOff: status.screen_on } });
     } catch (e) {
         console.error(e.message);
     }
-}, 2000);
+}, 2000).unref();
+
+// The admin page's Matter card shows these (features/matter)
+function writePairing() {
+    const { qrPairingCode, manualPairingCode } = node.state.commissioning.pairingCodes;
+    const file = `${STORAGE}/pairing.json`;
+    writeFileSync(file + ".tmp", JSON.stringify({ qr: qrPairingCode, manual: manualPairingCode,
+                                                  commissioned: node.lifecycle.isCommissioned }));
+    renameSync(file + ".tmp", file);
+}
+node.lifecycle.commissioned.on(writePairing);
+node.lifecycle.decommissioned.on(writePairing);
 
 await node.start();
-if (!node.lifecycle.isCommissioned) {
-    const { qrPairingCode, manualPairingCode } = node.state.commissioning.pairingCodes;
-    console.log(QrCode.get(qrPairingCode));
-    console.log(`Manual pairing code: ${manualPairingCode}`);
-}
+writePairing();
+console.log(`Matter is up; manual pairing code ${node.state.commissioning.pairingCodes.manualPairingCode}`);

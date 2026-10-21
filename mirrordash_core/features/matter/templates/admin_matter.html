@@ -1,0 +1,60 @@
+<!-- Matter card (Settings tab): the screen as an on/off light in a home app. Re-rendered after every change,
+     and every few seconds while the node is starting (until it has written its pairing codes). -->
+<section class="card" id="matter-card" style="margin-top: 24px;"
+         {% if enabled and not pairing %}hx-get="/admin/panels/system/matter" hx-trigger="load delay:3s" hx-swap="outerHTML"{% endif %}>
+    <h2><i class="fas fa-house" aria-hidden="true"></i> Matter</h2>
+    <p class="panel-subtitle">Add the mirror to Apple Home, Google Home, Alexa, SmartThings or Home Assistant. The screen shows up as a light: turn it on and off from the app, by voice or in your automations.</p>
+
+    <div class="form-group" style="margin: 0;">
+        <div class="form-label-desc" style="margin-bottom: 8px;">
+            <label for="matter-enabled" style="font-weight: 500; font-size: 0.9rem; color: white;">Matter</label>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Uses about 100 MB of memory while on.</p>
+        </div>
+        <label class="switch">
+            <input type="checkbox" id="matter-enabled" {% if enabled %}checked{% endif %}
+                   hx-post="/admin/panels/system/matter/{{ 'off' if enabled else 'on' }}" hx-trigger="change"
+                   hx-target="#matter-card" hx-swap="outerHTML" hx-disabled-elt="this">
+            <span class="slider round"></span>
+        </label>
+    </div>
+
+    {% if enabled %}
+    {% if pairing.commissioned %}
+    <p style="font-size: 0.85rem; margin: 14px 0 0 0;"><i class="fas fa-circle-check" aria-hidden="true"></i> Paired. Another home app can be added from the first one's settings for the mirror ("Turn on pairing mode").</p>
+    {% elif pairing %}
+    <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: center; margin-top: 14px;">
+        <!-- White quiet zone: phone cameras can't reliably read a light-on-dark QR code -->
+        <div id="matter-qr" role="img" aria-label="Matter pairing QR code"
+             style="width: 180px; height: 180px; border-radius: 0.5rem; overflow: hidden; flex: none;"></div>
+        <div style="flex: 1 1 220px; font-size: 0.85rem;">
+            <p style="margin: 0 0 8px 0;">In your home app, add a device and scan the code, or type:</p>
+            <p style="margin: 0; font-family: var(--mono-family); font-size: 1.2rem; color: white;">{{ pairing.manual[:4] }}-{{ pairing.manual[4:7] }}-{{ pairing.manual[7:] }}</p>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 8px 0 0 0;">The mirror isn't certified, so the app warns about it: choose to add it anyway. Google Home needs a one-time step first, see the user guide.</p>
+        </div>
+    </div>
+    <script>
+        (() => {
+            const qr = qrcode(0, 'M');
+            qr.addData({{ pairing.qr | tojson }});
+            qr.make();
+            const box = document.getElementById('matter-qr');
+            box.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 12, scalable: true });
+            box.firstElementChild.style.cssText = 'display: block; width: 100%; height: 100%;';
+        })();
+    </script>
+    {% else %}
+    <p style="font-size: 0.85rem; margin: 14px 0 0 0;"><i class="fas fa-spinner fa-spin" aria-hidden="true"></i> Starting…</p>
+    {% endif %}
+
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;">
+        <button type="button" class="btn danger" hx-post="/admin/panels/system/matter/reset"
+                hx-target="#matter-card" hx-swap="outerHTML" hx-disabled-elt="this"
+                hx-confirm="Reset pairing? Every home app loses the mirror until you add it again.">
+            <i class="fas fa-rotate-left" aria-hidden="true"></i> Reset Pairing
+        </button>
+    </div>
+    {% endif %}
+    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 12px 0 0 0;">
+        Step by step for each home app in the <a href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md#smart-home-matter" target="_blank" rel="noopener">user guide</a>.
+    </p>
+</section>

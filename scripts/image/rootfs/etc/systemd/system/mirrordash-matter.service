@@ -1,0 +1,17 @@
+[Unit]
+Description=MirrorDash Matter node (the screen as an on/off light)
+# Not enabled: the core starts it when Settings > Matter is on (features/matter, ARCHITECTURE #35)
+After=mirrordash.service network-online.target
+Requires=mirrordash.service
+
+[Service]
+Type=simple
+User=pi
+# The token and pairing codes, written by the core on every start
+EnvironmentFile=/storage/mirrordash/data/matter.env
+ExecStart=/usr/bin/node /opt/mirrordash-matter/index.mjs
+# Its first call can come before the core answers: it exits and is started again
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal

@@ -173,9 +173,11 @@ def token_hash(token: str) -> str:
 
 async def require_api_token(bearer: Annotated[HTTPAuthorizationCredentials | None, Depends(HTTPBearer(auto_error=False))]) -> None:
     """FastAPI dependency for /api/v1: `Authorization: Bearer <token>` with the token from the
-    API card. The admin password is not accepted here. HTTPBearer puts the Authorize button in /api/v1/docs."""
-    stored = load_config().get("api_token", {}).get("hash")
-    if not stored or not bearer or not secrets.compare_digest(token_hash(bearer.credentials.strip()), stored):
+    API card, or the Matter node's own (features/matter), so a new API token doesn't cut Matter off. The admin
+    password is not accepted here. HTTPBearer puts the Authorize button in /api/v1/docs."""
+    config = load_config()
+    stored = [h for h in (config.get("api_token", {}).get("hash"), config.get("matter", {}).get("token_hash")) if h]
+    if not bearer or not any(secrets.compare_digest(token_hash(bearer.credentials.strip()), h) for h in stored):
         raise HTTPException(status_code=401, detail="Missing or wrong API token. Create one under Settings > API.",
                             headers={"WWW-Authenticate": "Bearer"})
 

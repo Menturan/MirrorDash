@@ -111,7 +111,23 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 
 ---
 
-## 7. The API: scripts and Home Assistant
+## 7. Smart home: Matter, the API and Home Assistant
+
+### Smart home (Matter)
+
+With Matter, the mirror's screen shows up as a light in Apple Home, Google Home, Alexa, SmartThings or Home Assistant: turn it on and off from the app, by voice, or in your automations. Turning it on wakes the screen for the screen timeout, just like someone walking by.
+
+1. In the admin page, *Settings* → *Matter*, turn **Matter** on. After a few seconds the card shows a QR code and an 11-digit code.
+2. In your home app, add a device (Apple Home: *+* → *Add Accessory*) and scan the QR code, or type the code. The phone has to be on the same network as the mirror; no Bluetooth is needed.
+3. The app warns that the device isn't certified (certification costs far more than a hobby project has). Choose **Add Anyway**.
+
+**Google Home** only adds uncertified devices it has been told about, once: in the [Google Home Developer Console](https://console.home.google.com), create a project, add a Matter integration with vendor ID `0xFFF1` and product ID `0x8000`, and use the same Google account in the Home app.
+
+**More than one home app:** pair the mirror with the first one, then turn on pairing mode for it there (Apple Home: the light's settings → *Turn On Pairing Mode*) and use that new code in the next app.
+
+**Starting over:** *Reset Pairing* on the card removes the mirror from every home app and shows a code again. Turning Matter off keeps the pairing for when you turn it on again; it costs about 100 MB of memory while on.
+
+### The API
 
 Other systems can read the mirror's status and sensors, turn its screen on and off and set its brightness. They need a token: in the admin page, *Settings* → *API* → **Create Token**. Every call is described, and can be tried with your token, at `http://mirrordash.local/api/v1/docs`.
 

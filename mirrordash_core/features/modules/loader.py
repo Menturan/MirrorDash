@@ -276,6 +276,11 @@ class ModuleLoader:
                 from mirrordash_core.features.settings.ssh import set_ssh_status
                 asyncio.create_task(set_ssh_status(ssh_enabled))
 
+            # Matter: the core starts the node, /etc forgets `systemctl enable` (features/matter)
+            if config.get("matter", {}).get("enabled"):
+                from mirrordash_core.features.matter.routes import start_matter
+                asyncio.create_task(start_matter())
+
             # Apply persistent system password hash if present
             hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
             if os.path.exists(hash_path):

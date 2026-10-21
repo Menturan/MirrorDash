@@ -79,6 +79,9 @@
         </form>
     </section>
 
+    <!-- Matter: loaded on its own, re-rendered after every change -->
+    <div hx-get="/admin/panels/system/matter" hx-trigger="load" hx-swap="outerHTML"></div>
+
     <!-- API: loaded on its own, re-rendered after every change -->
     <div hx-get="/admin/panels/system/api-access" hx-trigger="load" hx-swap="outerHTML"></div>
 

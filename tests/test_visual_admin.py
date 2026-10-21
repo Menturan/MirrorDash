@@ -697,6 +697,26 @@ def test_logging_in_with_the_form_keeps_the_page_logged_in(page, server_url):
     assert page.evaluate("() => localStorage.getItem('mirrordash_api_key')") is None
 
 
+def test_turning_matter_on_shows_the_pairing_code(page, server_url, tmp_path):
+    from mirrordash_core.features.matter import routes as matter
+
+    async def node_starts(action):  # the node writes its codes once it is up
+        (tmp_path / "pairing.json").write_text('{"qr": "MT:Y.K90Q12122UVH7SR00", "manual": "11403521097", "commissioned": false}')
+        return True
+    config = {"system": {}}
+    with patch.object(matter, "MATTER_DIR", tmp_path), patch.object(matter, "ENV_FILE", tmp_path / "env"), \
+         patch.object(matter, "load_config", return_value=config), patch.object(matter, "save_config"), \
+         patch.object(matter, "_systemctl", node_starts):
+        navigate_authenticated(page, server_url)
+        page.click("#page-tab-config")
+        page.wait_for_selector("#matter-card")
+        assert page.locator("#matter-qr").count() == 0
+        page.locator("#matter-card .switch").click()
+        page.wait_for_selector("#matter-qr svg")
+        assert "1140-352-1097" in page.locator("#matter-card").text_content()
+        assert config["matter"]["enabled"] is True
+
+
 @pytest.mark.only_browser("webkit")
 def test_while_a_video_plays_the_page_holds_still(page):
     """ARCHITECTURE #33: modules see video_is_playing on their host and as an event, their animations

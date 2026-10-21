@@ -206,6 +206,24 @@ step_media() {
       || { echo "GStreamer's Python bindings don't load"; exit 1; }
 }
 
+# Matter (ARCHITECTURE #35): matter.js is the one library that can be a Matter device and pair over Wi-Fi.
+# Pure JavaScript (no native code), from matter/package-lock.json; npm is only needed to install it.
+step_matter() {
+  apt-get install -y --no-install-recommends nodejs npm
+  local dir=/opt/mirrordash-matter f
+  mkdir -p "$dir"
+  for f in index.mjs package.json package-lock.json; do
+    if [ -f "/opt/MirrorDash/matter/$f" ]; then cp "/opt/MirrorDash/matter/$f" "$dir/"; else curl -sSLf "$GITHUB_RAW/matter/$f" -o "$dir/$f"; fi
+  done
+  (cd "$dir" && npm ci --omit=dev --no-audit --no-fund)
+  # Only the ES modules run: source maps, types, sources and the CommonJS copy are 124 of its 144 MB
+  find "$dir/node_modules" \( -name '*.map' -o -name '*.d.ts' -o -name '*.d.cts' -o -name '*.d.mts' \) -delete
+  find "$dir/node_modules" -type d \( -path '*/@matter/*/src' -o -path '*/@matter/*/dist/cjs' -o -path '*/@noble/*/src' \) -prune -exec rm -rf {} +
+  apt-get purge -y npm && apt-get autoremove -y --purge
+  node -e 'import("/opt/mirrordash-matter/node_modules/@matter/main/dist/esm/index.js")'  # stop the build here, not on a mirror
+  put 0644 /etc/systemd/system/mirrordash-matter.service
+}
+
 step_setting_hostname() {
   echo "mirrordash" > /etc/hostname
   sed -i 's/127\.0\.1\.1.*/127.0.1.1\tmirrordash/' /etc/hosts
@@ -875,6 +893,7 @@ START_TIME_TOTAL=$SECONDS
 run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent Storage" step_expanding_partition
 run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
 run_step "2b" "media" "Installing the Media Stack (GStreamer)" step_media
+run_step "2c" "matter" "Installing the Matter Node" step_matter
 run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
 run_step "4" "configuring_nginx" "Configuring nginx Reverse Proxy" step_configuring_nginx
 run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_configuring_console_login

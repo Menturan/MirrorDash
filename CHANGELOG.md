@@ -11,9 +11,11 @@ There are two kinds of releases:
 
 - MirrorDash runs on FastAPI 0.158 and uvicorn 0.54, and from now on gets their bug fixes by itself, without a new MirrorDash version for each.
 - Every MirrorDash update also brings the newest bug-fix version of its Python (3.14.x).
+- Matter: add the mirror to Apple Home, Google Home, Alexa, SmartThings or Home Assistant and turn its screen on and off from there. Turn it on under *Settings* → *Matter* and scan the code (from the next OS image on).
 
 ### OS image
 
+- Node.js and the Matter node (matter.js), off until Matter is turned on in the admin page (about 90 MB on the card).
 - The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
 - uv, which installs MirrorDash and the modules, is the newest 0.13.x, and its bug fixes come with each image.
 
