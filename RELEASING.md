@@ -209,14 +209,16 @@ too.
 
 Pinned so that the same commit always builds the same image and runs the same tools. Bump them on
 purpose, one at a time, and build a test image (option 3) afterwards. Not pinned: the apt packages
-(the build upgrades all of them) and uv (the newest release), so security fixes come with every build;
-the image's `*.packages.txt` shows what each build got.
+(the build upgrades all of them), so security fixes come with every build. Series, not versions (their
+bug fixes come by themselves): the app's dependencies (`~=` in `pyproject.toml`), Python (3.14.x, mirrors
+upgrade the patch with every app update) and uv. The image's `*.packages.txt` shows what each build got.
 
 | What | Where | Next value |
 | :--- | :--- | :--- |
 | Raspberry Pi OS base image and its SHA-256 | `TARGET_URL`, `TARGET_SHA256` in `scripts/build_image.sh` | `curl -sLI -o /dev/null -w '%{url_effective}' https://downloads.raspberrypi.org/raspios_lite_arm64_latest`; the checksum is that URL + `.sha256`. |
-| Python dependencies (app and image) | `uv.lock` | Option 1 (test version) runs `uv lock --upgrade` before the tests and commits it. The image installs these exact versions. |
+| Python dependencies (app and image) | `uv.lock` | Option 1 (test version) runs `uv lock --upgrade` before the tests and commits it. The image installs these exact versions. A new series: change its `~=` in `pyproject.toml`, `uv lock`, run the tests. |
 | Clock module in the image | `CLOCK_REF` in `scripts/configure_image.sh` | A tag in `Menturan/mirrordash-clock` (`git ls-remote --tags https://github.com/Menturan/mirrordash-clock.git`). |
+| uv series in the image | `UV_SERIES` in `scripts/configure_image.sh` | The next minor (`0.14`), after reading its breaking changes. The build takes the newest patch of it. |
 | Python of `base_venv` (Safe mode) | `--python 3.14` in `scripts/configure_image.sh` | Mirrors keep their own Python on `/storage` (ARCHITECTURE #16), so this only changes Safe mode. Not in the first image that moves the app's Python to `/storage`: that image copies this one. |
 | Python the app needs | `requires-python` in `pyproject.toml`, and `.python-version` (what the tests and CI run, so the same as the mirrors) | Raising the minor makes every mirror install that Python with the update and try each module with it first (ARCHITECTURE #16). Bump both together; try it on a test version first. |
 | Actions from outside GitHub | Commit SHA after `uses:`, version in the comment | `git ls-remote --tags https://github.com/<owner>/<action>.git`, take the commit of the newest tag. GitHub's own `actions/*` use version tags. |

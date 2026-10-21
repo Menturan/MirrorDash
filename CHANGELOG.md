@@ -9,9 +9,13 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- MirrorDash runs on FastAPI 0.158 and uvicorn 0.54, and from now on gets their bug fixes by itself, without a new MirrorDash version for each.
+- Every MirrorDash update also brings the newest bug-fix version of its Python (3.14.x).
+
 ### OS image
 
 - The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
+- uv, which installs MirrorDash and the modules, is the newest 0.13.x, and its bug fixes come with each image.
 
 ## [0.8.1-os1] - 2026-10-21
 

@@ -61,6 +61,7 @@ put() {
 }
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
+UV_SERIES="0.13"  # uv is 0.x: a new minor can break (0.13 changed the default Python); its patches come by themselves
 CLOCK_REF="v1.1.1"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
@@ -307,7 +308,13 @@ EOF
 step_installing_app() {
   # Install uv globally (standalone binary) securely via release artifact
   echo "Downloading uv binary securely to /usr/local/bin..."
-  curl -sSLf "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  # The newest $UV_SERIES.x release, from PyPI (uv's versions there are its GitHub tags; no API rate limit)
+  local uv_version
+  uv_version=$(curl -sSLf https://pypi.org/pypi/uv/json | python3 -c 'import json, sys
+s = sys.argv[1] + "."
+v = [k for k, files in json.load(sys.stdin)["releases"].items() if k.startswith(s) and k[len(s):].isdigit() and files]
+print(max(v, key=lambda k: int(k[len(s):])))' "$UV_SERIES")
+  curl -sSLf "https://github.com/astral-sh/uv/releases/download/${uv_version}/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
   chmod +x /usr/local/bin/uv
 
   # Create app directory

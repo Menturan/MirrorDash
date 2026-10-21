@@ -16,7 +16,7 @@ from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
 from mirrordash_core.host import reboot_system, run_restart
-from mirrordash_core.venv import get_venv_paths, run, uv_pip, venv_swap
+from mirrordash_core.venv import get_venv_paths, run, running_python, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -163,6 +163,13 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
     if info.get("needs_python") and info["update_available"]:
         return await _update_to_new_python(info["needs_python"], info["latest_version"], skip)
     current_version = get_core_version()
+    if os.environ.get("UV_PYTHON_INSTALL_DIR"):  # only on a mirror, never a developer's own uv Pythons
+        # The newest patch of this Python (3.14.x): the venvs use uv's minor link, so all of them follow.
+        # ponytail: patches come with an app update (the nightly one too); give it its own step in
+        # auto_update() if they are ever needed without one.
+        code, _, err = await run("uv", "python", "upgrade", running_python(), timeout=900)
+        if code != 0:
+            logger.warning(f"Python {running_python()} patch upgrade failed, keeping {sys.version.split()[0]}: {err.strip()}")
     logger.info(f"Upgrading mirrordash (current version: {current_version})")
     try:
         async with venv_swap() as python:

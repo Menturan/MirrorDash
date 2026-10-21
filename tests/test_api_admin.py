@@ -1476,6 +1476,42 @@ def test_needed_python_reads_requires_python():
     assert needed_python(f">= 3.{now + 1}, <4") == f"3.{now + 1}"
 
 
+@pytest.mark.parametrize("on_mirror", [True, False])
+@patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
+@patch("mirrordash_core.features.updates.service.asyncio.create_task")
+def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_task, mock_restart, on_mirror, monkeypatch):
+    from contextlib import asynccontextmanager
+
+    from mirrordash_core.features.updates import service
+    calls = []
+
+    async def fake_run(*cmd, timeout=None):
+        calls.append(cmd)
+        return 0, "99.0.0", ""  # also the version the venv reports afterwards
+
+    async def fake_uv_pip(python, command, *args, timeout=None):
+        calls.append(("uv", "pip", command))
+        return 0, "", ""
+
+    @asynccontextmanager
+    async def fake_swap(**kwargs):
+        yield "/storage/mirrordash/venv_b/bin/python"
+
+    if on_mirror:
+        monkeypatch.setenv("UV_PYTHON_INSTALL_DIR", "/storage/mirrordash/python")
+    else:
+        monkeypatch.delenv("UV_PYTHON_INSTALL_DIR", raising=False)
+    with patch.object(service, "check_core_update", AsyncMock(return_value={"update_available": True})), \
+         patch.object(service, "run", side_effect=fake_run), patch.object(service, "uv_pip", side_effect=fake_uv_pip), \
+         patch.object(service, "venv_swap", fake_swap):
+        asyncio.run(service.update_core())
+    upgrade = ("uv", "python", "upgrade", service.running_python())
+    if on_mirror:
+        assert calls.index(upgrade) < calls.index(("uv", "pip", "install"))
+    else:
+        assert upgrade not in calls
+
+
 @pytest.mark.parametrize("case", ["all work", "one doesn't", "install anyway"])
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_task")
