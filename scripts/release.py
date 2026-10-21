@@ -180,8 +180,9 @@ def os_image_notes():
 
 # --- Safety checks --------------------------------------------------------------------------
 
-def check_ready(tag, tests=True):
-    """Stop unless this is a clean master equal to origin, gh works and the tag is free."""
+def check_ready(tag, tests=True, upgrade=False):
+    """Stop unless this is a clean master equal to origin, gh works and the tag is free.
+    upgrade: move uv.lock to the newest packages first, so the tests run on them."""
     if not shutil.which("gh"):
         die("the GitHub CLI isn't installed: `sudo apt install gh`, then `gh auth login`.")
     if subprocess.run(["gh", "auth", "status"], cwd=ROOT, capture_output=True).returncode != 0:
@@ -195,6 +196,9 @@ def check_ready(tag, tests=True):
         die("master isn't the same as origin/master; pull or push first.")
     if tag and run("git", "rev-parse", "--quiet", "--verify", f"refs/tags/{tag}", check=False):
         die(f"the tag {tag} already exists.")
+    if upgrade:
+        run("uv", "lock", "--upgrade", change=True)
+        run("uv", "sync", "--extra", "dev", "--inexact", change=True)
     if tests:
         print("\n  Running the tests...")
         # python -m pytest, not .venv/bin/pytest: the scripts' shebangs keep the path the venv
@@ -387,7 +391,7 @@ def release_app(test):
         version = pick_version(f"Current version: {current}. Release:", candidates, r"\d+\.\d+\.\d+", current)
     tag = f"v{version}"
 
-    check_ready(tag)
+    check_ready(tag, upgrade=test)
     confirm(f"This sets the version to {version}, " + ("" if test else "moves the CHANGELOG entries, ")
             + f"pushes to master and publishes {tag} on GitHub and PyPI"
             + (" as a test version (only mirrors with Test versions on get it)." if test else " for every mirror."))
@@ -397,7 +401,7 @@ def release_app(test):
     set_version(version)
     if not test:
         move_changelog(version, keep_os_image=True)
-    commit_and_push(f"chore: {'test version' if test else 'release'} {tag}", "pyproject.toml", "CHANGELOG.md")
+    commit_and_push(f"chore: {'test version' if test else 'release'} {tag}", "pyproject.toml", "CHANGELOG.md", "uv.lock")
     sha = run("git", "rev-parse", "HEAD")
     notes = (f"Test version of MirrorDash {version}, for mirrors with Test versions turned on.\n\n"
              + unreleased_notes().split("### OS image")[0].strip()) if test else changelog_section(version)

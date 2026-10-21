@@ -61,7 +61,6 @@ put() {
 }
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
-UV_VERSION="0.12.23"
 CLOCK_REF="v1.1.1"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
@@ -142,6 +141,8 @@ step_installing_packages() {
   ln -sf /bin/true /usr/sbin/update-initramfs
 
   apt-get update
+  # The base image is weeks old: bring every preinstalled package (ca-certificates, openssl, ...) up to date
+  apt-get full-upgrade -y
   apt-get install -y --no-install-recommends \
       labwc \
       seatd \
@@ -306,7 +307,7 @@ EOF
 step_installing_app() {
   # Install uv globally (standalone binary) securely via release artifact
   echo "Downloading uv binary securely to /usr/local/bin..."
-  curl -sSLf "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  curl -sSLf "https://github.com/astral-sh/uv/releases/latest/download/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
   chmod +x /usr/local/bin/uv
 
   # Create app directory
@@ -852,6 +853,7 @@ step_system_cleanup() {
   echo "Writing the package list..."
   mkdir -p /usr/share/mirrordash
   { echo "# apt"; dpkg-query -W -f='${Package} ${Version}\n'
+    echo "# uv"; uv --version
     echo "# python"; uv pip freeze --python "$PI_HOME/mirrordash/base_venv"
   } > /usr/share/mirrordash/packages.txt
 
