@@ -19,7 +19,9 @@ DRIVER="$SYS/bus/platform/drivers/dwc_otg"
 # The controller: 3f980000.usb on a Pi 2 and 3, 20980000.usb on a Pi 1 and Zero
 DEV=""
 if grep -qaE '^Raspberry Pi (Model|[123] |Zero)' "$MODEL_FILE" 2>/dev/null; then
-  DEV=$(ls "$SYS/bus/platform/devices" 2>/dev/null | grep -m1 '980000\.usb$' || true)
+  for dev in "$SYS"/bus/platform/devices/*980000.usb; do
+    if [ -e "$dev" ]; then DEV=${dev##*/}; fi
+  done
 fi
 
 bound() { [ -e "$DRIVER/$DEV" ]; }
