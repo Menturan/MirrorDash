@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.9.0-os1] - 2026-10-23
+
+OS image with MirrorDash 0.9.0.
 
 - Node.js and the Matter node (matter.js), off until Matter is turned on in the admin page (about 90 MB on the card).
 - The admin page shows the system's release (e.g. v0.8.2-os1) next to its build date, from the next OS image on.
