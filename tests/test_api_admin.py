@@ -1440,6 +1440,25 @@ def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
         assert run.call_args.args == ("off",) and "Delete saved system log (1 MB)" in page.text
 
 
+def test_the_usb_switch(client):
+    """Shown only where it works; off goes through sudo, and a refusal (Ethernet) comes back as the message."""
+    from fastapi import HTTPException
+
+    from mirrordash_core.features.power import usb
+    key ={"X-API-Key": "secret"}
+    with patch.object(usb, "usb_status", AsyncMock(return_value=None)):
+        assert 'id="usb"' not in client.get("/admin/panels/power", headers=key).text
+    with patch("mirrordash_core.features.power.routes.usb_status", AsyncMock(return_value="on")):
+        assert 'id="sys-usb" name="on" value="true" checked' in client.get("/admin/panels/power", headers=key).text
+    with patch.object(usb, "_run", AsyncMock(return_value="")) as run, \
+         patch("mirrordash_core.features.power.routes.usb_status", AsyncMock(return_value="off")):
+        page = client.post("/admin/panels/power/usb", data={"on": "false"}, headers=key)
+        assert run.call_args.args == ("sudo", "-n", usb.HELPER, "off") and 'id="usb"' in page.text and "checked" not in page.text
+    with patch.object(usb, "_run", AsyncMock(side_effect=HTTPException(400, "The mirror is connected by Ethernet"))):
+        page = client.post("/admin/panels/power/usb", data={"on": "false"}, headers=key)
+        assert page.status_code == 400 and "Ethernet" in page.json()["detail"]
+
+
 def test_update_check_shows_mirrordash_and_the_system_apart(client):
     """One check, two sections; with an update for both, the system goes first and MirrorDash's button waits."""
     app = {"current_version": "0.6.2", "latest_version": "0.6.3", "update_available": True}

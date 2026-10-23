@@ -1,0 +1,21 @@
+<!-- USB on or off (usb.py): replaced as a whole after every change; not there on a Pi 4 or 5 -->
+<section id="usb" class="card" style="margin-top: 24px;">
+    <h2><i class="fab fa-usb" aria-hidden="true"></i> USB</h2>
+    <form hx-post="/admin/panels/power/usb" hx-target="#usb" hx-swap="outerHTML" hx-trigger="change"
+          hx-on::response-error="this.reset()">
+        <div class="form-group" style="margin-top: 15px;">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <label for="sys-usb" style="font-weight: 500; font-size: 0.9rem; color: white;">USB ports</label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
+                    Even with nothing plugged in, the USB ports keep the processor busy thousands of times a second and
+                    draw power. Turned off, the mirror runs a little cooler; the Ethernet port is off too, so the mirror
+                    needs Wi-Fi. Sensors and buttons on the pins keep working.</p>
+            </div>
+            <label class="switch">
+                <input type="hidden" name="on" value="false">
+                <input type="checkbox" id="sys-usb" name="on" value="true" {% if usb == "on" %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+        </div>
+    </form>
+</section>

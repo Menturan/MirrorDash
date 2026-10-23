@@ -1,0 +1,11 @@
+[Unit]
+Description=MirrorDash USB: off at boot when turned off on the admin page (Power)
+After=mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/mirrordash-usb apply
+
+[Install]
+WantedBy=multi-user.target

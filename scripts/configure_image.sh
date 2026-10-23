@@ -409,6 +409,15 @@ step_gpio_helper() {
   put 0755 /usr/local/bin/mirrordash-gpio-overlays
 }
 
+step_usb() {
+  # Power → USB: on a Pi 1, 2, 3 and Zero the admin page can turn the USB ports off (and a Pi 3's
+  # Ethernet with them), which stops ~8000 interrupts a second and the hub's power draw. The setting
+  # is a file on /storage; this service applies it at every boot (the sudo rule allows on and off).
+  put 0755 /usr/local/bin/mirrordash-usb
+  put 0644 /etc/systemd/system/mirrordash-usb.service
+  systemctl --root=/ enable mirrordash-usb.service
+}
+
 step_watchdog_boot_optimization() {
   # The hardware watchdog is already on: Raspberry Pi OS ships RuntimeWatchdogSec=1m as a drop-in
   # (/usr/lib/systemd/system.conf.d/40-rpi-enable-watchdog.conf).
@@ -912,6 +921,7 @@ run_step "6" "setting_up_wayland" "Setting up Wayland Auto-launch & Kiosk Config
 run_step "7" "installing_app" "Installing uv & MirrorDash App" step_installing_app
 run_step "8" "passwordless_sudo" "Setting up Passwordless Sudo" step_passwordless_sudo
 run_step "8b" "gpio_helper" "Installing GPIO Overlay Helper" step_gpio_helper
+run_step "8c" "usb" "Installing the USB Switch" step_usb
 run_step "9" "watchdog_boot_optimization" "Enabling Watchdog & Optimizing Boot" step_watchdog_boot_optimization
 run_step "10" "plymouth_splash" "Configuring Plymouth Splash Screen" step_plymouth_splash
 run_step "11" "time_wait_sync" "Enabling systemd-time-wait-sync" step_time_wait_sync

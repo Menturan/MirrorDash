@@ -6,8 +6,17 @@ import logging
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from mirrordash_core.admin import BOOT_ID, notify, require_api_key, templates, ui_events
+from mirrordash_core.admin import (
+    BOOT_ID,
+    events_header,
+    notify,
+    require_api_key,
+    templates,
+    ui_events,
+)
 from mirrordash_core.config import load_config
+from mirrordash_core.features.power.usb import set_usb, usb_status
+from mirrordash_core.forms import read_form
 from mirrordash_core.host import poweroff_system, reboot_system, sudo_allowed
 from mirrordash_core.system_settings import get_system_settings
 
@@ -92,9 +101,18 @@ async def get_panel_power(request: Request):
             "end_m": end_m,
             "end_ampm": end_ampm,
             "hours_list": hours_list,
-            "minutes_list": minutes_list
+            "minutes_list": minutes_list,
+            "usb": await usb_status(),
         }
     )
+
+
+@router.post("/panels/power/usb", dependencies=[Depends(require_api_key)])
+async def post_panel_usb(request: Request):
+    on = (await read_form(request)).get("on") in (True, "true")
+    await set_usb(on)
+    return templates.TemplateResponse(request=request, name="admin_power_usb.html", context={"usb": await usb_status()},
+                                      headers=events_header(**{"md-notify": {"message": f"USB is {'on' if on else 'off'}.", "kind": "success"}}))
 
 
 @router.post("/panels/power/screen", dependencies=[Depends(require_api_key)])

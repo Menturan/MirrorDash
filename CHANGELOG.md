@@ -12,6 +12,7 @@ There are two kinds of releases:
 ### OS image
 
 - Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
+- *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
 
 ## [0.9.0-os1] - 2026-10-23
 

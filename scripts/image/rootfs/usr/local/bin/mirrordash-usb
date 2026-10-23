@@ -1,0 +1,72 @@
+#!/bin/bash
+# Usage: mirrordash-usb on|off|apply|status
+#   off     turn the USB ports off (on a Pi 3 the Ethernet port with them), now and at every boot
+#   on      turn them on again
+#   apply   bring the system in line with the setting: at every boot
+#   status  print on, off or unsupported
+# On a Pi 1, 2, 3 and Zero the USB controller (dwc_otg) interrupts the CPU about 8000 times a second
+# even with nothing plugged in, and a Pi 3's USB hub and Ethernet chip draw power all the time.
+# Off unbinds the controller's driver, which stops both. A Pi 4 and 5 have their USB on PCIe: unsupported.
+set -euo pipefail
+
+# Overridable so tests/test_usb.py can run this against a temporary folder
+STORAGE=${MIRRORDASH_STORAGE:-/storage/mirrordash}
+SYS=${MIRRORDASH_SYS:-/sys}
+MODEL_FILE=${MIRRORDASH_MODEL_FILE:-/proc/device-tree/model}
+FLAG="$STORAGE/usb-off"   # there = off
+DRIVER="$SYS/bus/platform/drivers/dwc_otg"
+
+# The controller: 3f980000.usb on a Pi 2 and 3, 20980000.usb on a Pi 1 and Zero
+DEV=""
+if grep -qaE '^Raspberry Pi (Model|[123] |Zero)' "$MODEL_FILE" 2>/dev/null; then
+  DEV=$(ls "$SYS/bus/platform/devices" 2>/dev/null | grep -m1 '980000\.usb$' || true)
+fi
+
+bound() { [ -e "$DRIVER/$DEV" ]; }
+
+# A network port on this controller that is up (the Pi 3's Ethernet with a cable in)
+ethernet_in_use() {
+  local net
+  for net in "$SYS"/class/net/*; do
+    [ -e "$net/device" ] || continue
+    case "$(readlink -f "$net/device")" in
+      */"$DEV"/*) [ "$(cat "$net/operstate" 2>/dev/null)" = up ] && return 0 ;;
+    esac
+  done
+  return 1
+}
+
+apply() {
+  if [ -f "$FLAG" ]; then
+    if bound; then echo "$DEV" > "$DRIVER/unbind"; fi
+  else
+    if ! bound; then echo "$DEV" > "$DRIVER/bind"; fi
+  fi
+}
+
+if [ -z "$DEV" ]; then
+  case "${1:-}" in
+    status) echo unsupported; exit 0 ;;
+    apply) exit 0 ;;
+    *) echo "USB can only be turned off on a Raspberry Pi 1, 2, 3 or Zero." >&2; exit 1 ;;
+  esac
+fi
+
+case "${1:-}" in
+  off)
+    if ethernet_in_use; then
+      echo "The mirror is connected by Ethernet, which goes through USB: connect it by Wi-Fi first." >&2; exit 1
+    fi
+    mkdir -p "$STORAGE"
+    touch "$FLAG"
+    apply ;;
+  on)
+    rm -f "$FLAG"
+    apply ;;
+  apply)
+    apply ;;
+  status)
+    if [ -f "$FLAG" ]; then echo off; else echo on; fi ;;
+  *)
+    echo "Usage: mirrordash-usb on|off|apply|status" >&2; exit 2 ;;
+esac

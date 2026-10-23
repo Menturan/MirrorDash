@@ -169,6 +169,8 @@
         </div>
     </section>
 
+    {% if usb %}{% include "admin_power_usb.html" %}{% endif %}
+
     <!-- Restart / shut down the whole mirror -->
     <section class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-power-off" aria-hidden="true"></i> Restart &amp; Shut Down</h2>
