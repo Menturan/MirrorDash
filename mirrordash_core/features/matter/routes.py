@@ -48,11 +48,14 @@ async def start_matter() -> bool:
         while (passcode := secrets.randbelow(99999998) + 1) in FORBIDDEN_PASSCODES:
             pass
         matter.update(passcode=passcode, discriminator=secrets.randbelow(4096))
+    # The node's serial number and UniqueID: two mirrors in one home must not look like one device
+    matter.setdefault("unique_id", f"mirrordash-{secrets.token_hex(4)}")
     matter.update(enabled=True, token_hash=token_hash(token))
     save_config(config)
     MATTER_DIR.mkdir(parents=True, exist_ok=True)
     write_atomic(ENV_FILE, f"MIRRORDASH_TOKEN={token}\nMATTER_PASSCODE={matter['passcode']}\n"
-                           f"MATTER_DISCRIMINATOR={matter['discriminator']}\nMATTER_STORAGE_PATH={MATTER_DIR}\n", 0o600)
+                           f"MATTER_DISCRIMINATOR={matter['discriminator']}\nMATTER_UNIQUE_ID={matter['unique_id']}\n"
+                           f"MATTER_STORAGE_PATH={MATTER_DIR}\n", 0o600)
     return await _systemctl("restart")  # restart: a running node picks up the new token
 
 
@@ -101,6 +104,9 @@ async def matter_reset(request: Request):
     """Forget every home the mirror is paired with, and offer it for pairing again."""
     await _systemctl("stop")
     shutil.rmtree(MATTER_DIR, ignore_errors=True)
+    config = load_config()
+    config.setdefault("matter", {}).pop("unique_id", None)  # the spec asks for a new UniqueID after a factory reset
+    save_config(config)
     if await start_matter():
         return _matter_card(request, "Pairing reset. Add the mirror again in your home app.")
     return _matter_card(request, "Matter didn't start. The Logs tab has the details.", "error")

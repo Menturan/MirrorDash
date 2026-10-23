@@ -34,10 +34,15 @@ def test_turning_matter_on_and_off(tmp_path):
             assert client.get("/api/v1/status", headers={"Authorization": "Bearer wrong"}).status_code == 401
 
             # Codes are kept across starts; the token is new each time
-            passcode = config["matter"]["passcode"]
+            passcode, unique_id = config["matter"]["passcode"], env["MATTER_UNIQUE_ID"]
+            assert unique_id == config["matter"]["unique_id"] and len(unique_id) <= 32  # the spec's limit
             client.post("/admin/panels/system/matter/on")
-            assert config["matter"]["passcode"] == passcode
+            assert config["matter"]["passcode"] == passcode and config["matter"]["unique_id"] == unique_id
             assert client.get("/api/v1/status", headers=auth).status_code == 401
+
+            # A reset makes the mirror a new device to the home apps
+            client.post("/admin/panels/system/matter/reset")
+            assert config["matter"]["unique_id"] != unique_id and config["matter"]["passcode"] == passcode
 
             (tmp_path / "matter/pairing.json").write_text('{"qr": "MT:Y.K90AFN00KA0648G00", "manual": "34970112332", "commissioned": false}')
             card = client.get("/admin/panels/system/matter").text

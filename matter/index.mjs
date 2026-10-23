@@ -4,7 +4,7 @@
 // with its own token. Paired over the network (the mirror is already on Wi-Fi), no Bluetooth.
 // Run by mirrordash-matter.service, which the core starts and stops (Settings > Matter, ARCHITECTURE #35):
 //   MIRRORDASH_TOKEN=<token> MATTER_PASSCODE=<n> MATTER_DISCRIMINATOR=<n> node index.mjs
-//   (MIRRORDASH_URL, MATTER_STORAGE_PATH optional)
+//   (MIRRORDASH_URL, MATTER_UNIQUE_ID, MATTER_STORAGE_PATH optional)
 import { renameSync, writeFileSync } from "node:fs";
 import { Endpoint, Environment, ServerNode } from "@matter/main";
 import { OnOffLightDevice } from "@matter/main/devices/on-off-light";
@@ -13,6 +13,8 @@ import { VendorId } from "@matter/main/types";
 const URL_BASE = (process.env.MIRRORDASH_URL ?? "http://127.0.0.1:8000") + "/api/v1";
 const TOKEN = process.env.MIRRORDASH_TOKEN;
 if (!TOKEN) throw new Error("MIRRORDASH_TOKEN is missing: turn Matter on under Settings > Matter");
+// One per mirror, made by the core (a new one when the pairing is reset): two mirrors aren't one device
+const UNIQUE_ID = process.env.MATTER_UNIQUE_ID ?? "mirrordash-1";
 const STORAGE = process.env.MATTER_STORAGE_PATH ?? "/storage/mirrordash/data/matter";
 Environment.default.vars.set("storage.path", STORAGE);
 
@@ -37,7 +39,7 @@ const node = await ServerNode.create({
     basicInformation: {
         vendorName: "MirrorDash", vendorId: VendorId(0xfff1),  // a CSA test vendor: the device is uncertified
         productName: "MirrorDash", productLabel: "MirrorDash", nodeLabel: "MirrorDash", productId: 0x8000,
-        serialNumber: "mirrordash-1", uniqueId: "mirrordash-1",
+        serialNumber: UNIQUE_ID, uniqueId: UNIQUE_ID,
     },
 });
 const screen = new Endpoint(OnOffLightDevice, { id: "screen", onOff: { onOff: status.screen_on } });

@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
+
 ## [0.9.0-os1] - 2026-10-23
 
 OS image with MirrorDash 0.9.0.
