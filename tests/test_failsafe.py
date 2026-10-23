@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
-from mirrordash_core.features.modules.service import update_module
+from mirrordash_core.features.modules.service import update_modules
 
 mock_salt = "0123456789abcdef"
 mock_hash = hash_password("secret", mock_salt)
@@ -53,7 +53,7 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check, mock_proc_clean]
     
     # Call the endpoint
-    response = call(update_module, "mirrordash")
+    response = call(update_modules, "mirrordash")
     
     assert response.status_code == 200
     assert response.json()["status"] == "success"
@@ -81,7 +81,7 @@ def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
     mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check]
     
     # Call the endpoint
-    response = call(update_module, "mirrordash")
+    response = call(update_modules, "mirrordash")
     
     assert response.status_code == 500
     assert "Verification failed. Rolled back successfully. Error: ImportError: Broken module" in response.json()["detail"]

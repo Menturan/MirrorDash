@@ -1,0 +1,21 @@
+{# The modules' answer to Settings → Updates → Check for Updates (routes.get_system_update_check), into
+   #modules-update-result out of band. updates: modules.service.module_updates(); versions come from PyPI or a
+   GitHub release, so they are only ever text here. #}
+{% if error %}
+<div class="alert alert--error update-result">Failed to check for module updates: {{ error }}</div>
+{% elif not updates %}
+<p class="muted update-result">Every module is up-to-date.</p>
+{% else %}
+<div class="alert alert--success update-result">
+    <p><strong>{{ updates | length }} module update{{ "s" if updates | length > 1 }} available</strong></p>
+    <ul>
+        {% for u in updates %}<li>{{ u.package_name }}: v{{ u.current_version }} → v{{ u.latest_version }}</li>{% endfor %}
+    </ul>
+    <button type="button" class="btn primary btn-sm"
+            hx-post="/admin/panels/modules/upgrade-all"
+            hx-target="#global-status" hx-swap="innerHTML" hx-disabled-elt="this"
+            hx-confirm="Update {{ updates | map(attribute='package_name') | join(', ') }}? MirrorDash restarts afterwards.">
+        <i class="fas fa-arrow-alt-circle-up" aria-hidden="true"></i> Update All Modules
+    </button>
+</div>
+{% endif %}

@@ -1,7 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import itertools
-import json
 import logging
 import re
 
@@ -19,16 +18,17 @@ from mirrordash_core.config import (
     find_module_config,
     load_config,
     save_config,
-    version_key,
 )
 from mirrordash_core.features.modules.loader import find_entry_point, module_loader
 from mirrordash_core.features.modules.service import (
+    check_module_update,
     install_module,
     list_community_modules,
     list_modules,
+    module_updates,
     screen_layout,
     uninstall_module,
-    update_module,
+    update_modules,
 )
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.features.updates.service import get_disk_usage
@@ -200,65 +200,10 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
 
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
 async def check_module_update_route(module_name: str):
-
-    ep = find_entry_point(module_name)
-    if not ep:
+    update = await check_module_update(module_name)
+    if not (update and update["latest_version"]):
         return HTMLResponse(content="")
-
-    package_name = ep.dist.name if ep.dist else module_name
-    current_version = ep.dist.version if ep.dist else "0.0.0"
-
-    # Check PEP 610 direct_url.json for GitHub installation metadata
-    direct_url_info = None
-    if ep.dist:
-        try:
-            url_data = ep.dist.read_text('direct_url.json')
-            if url_data:
-                direct_url_info = json.loads(url_data)
-        except Exception:
-            pass
-
-    if direct_url_info and "vcs_info" in direct_url_info:
-        vcs_info = direct_url_info["vcs_info"]
-        url = direct_url_info.get("url", "")
-        vcs = vcs_info.get("vcs", "")
-        if vcs == "git" and "github.com" in url:
-            parts = url.rstrip("/").split("github.com/")[-1].split("/")
-            if len(parts) >= 2:
-                owner = parts[0]
-                repo = parts[1].replace(".git", "")
-                
-                release_data = await fetch_json_cached(
-                    f"https://api.github.com/repos/{owner}/{repo}/releases/latest",
-                    headers={"Accept": "application/vnd.github.v3+json"},
-                )
-                if release_data and release_data.get("tag_name"):
-                    tag_name = release_data["tag_name"]
-                    latest_version = tag_name.lstrip("v")
-
-                    # Installed from exactly this release (upgrades install git+url@tag): up to date,
-                    # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
-                    on_latest = vcs_info.get("requested_revision") == tag_name
-                    is_newer = not on_latest and version_key(latest_version) > version_key(current_version)
-                    if is_newer:
-                        return _update_html(module_name, package_name, latest_version, f"git+{url}@{tag_name}", notes=False)
-        return HTMLResponse(content="")
-
-    pypi_data = await fetch_json_cached(f"https://pypi.org/pypi/{package_name}/json")
-    if not pypi_data:
-        return HTMLResponse(content="")
-
-    latest_version = pypi_data.get("info", {}).get("version", current_version)
-    is_newer = version_key(latest_version) > version_key(current_version)
-
-    if is_newer:
-        return _update_html(module_name, package_name, latest_version, package_name, notes=True)
-    return HTMLResponse(content="")
-
-
-def _update_html(module_name: str, package_name: str, latest_version: str, target: str, notes: bool) -> HTMLResponse:
-    return HTMLResponse(content=templates.get_template("module_update.html").render(
-        module_name=module_name, package_name=package_name, latest_version=latest_version, target=target, notes=notes))
+    return HTMLResponse(content=templates.get_template("module_update.html").render(**update))
 
 
 @router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
@@ -307,7 +252,19 @@ async def uninstall_panel_module(package_name: str = Form(...)):
 
 @router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
 async def upgrade_panel_module(package_name: str = Form(...)):
-    job_id = start_job(lambda: update_module(package_name=package_name))
+    job_id = start_job(lambda: update_modules(package_name))
     shown = _shown_name(package_name)
     return job_response(job_id, "Upgrading Module", f"Upgrading {shown}. This can take a few minutes...",
                         f"Upgraded {shown}.", "modules")
+
+
+@router.post("/panels/modules/upgrade-all", dependencies=[Depends(require_api_key)])
+async def upgrade_all_modules():
+    # Asked again here rather than taken from the page: only what GitHub or PyPI offers right now is installed
+    updates, _ = await module_updates()
+    if not updates:
+        return notify("Every module is up to date.")
+    names = ", ".join(u["package_name"] for u in updates)
+    job_id = start_job(lambda: update_modules(*(u["target"] for u in updates)))
+    return job_response(job_id, "Updating Modules", f"Updating {names}. This can take a few minutes...",
+                        f"Updated {names}.", "config")

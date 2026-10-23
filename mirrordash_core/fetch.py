@@ -15,13 +15,13 @@ logger = logging.getLogger("mirrordash.core.fetch")
 REMOTE_JSON_TTL = 600.0
 
 
-_remote_json_cache: dict[str, tuple[float, object]] = {}
+_remote_json_cache: dict[str, tuple[float, object, float]] = {}  # url: (monotonic, data, wall-clock time)
 
 
-async def fetch_json_cached(url: str, headers: dict | None = None) -> object | None:
-    """GET a JSON document (PyPI/GitHub update checks), cached for REMOTE_JSON_TTL. None on error."""
+async def fetch_json_cached(url: str, headers: dict | None = None, max_age: float = REMOTE_JSON_TTL) -> object | None:
+    """GET a JSON document (PyPI/GitHub update checks), cached for max_age seconds. None on error."""
     hit = _remote_json_cache.get(url)
-    if hit and time.monotonic() - hit[0] < REMOTE_JSON_TTL:
+    if hit and time.monotonic() - hit[0] < max_age:
         return hit[1]
 
     def _get():
@@ -33,5 +33,11 @@ async def fetch_json_cached(url: str, headers: dict | None = None) -> object | N
         data = await asyncio.to_thread(_get)
     except Exception:
         data = None
-    _remote_json_cache[url] = (time.monotonic(), data)
+    _remote_json_cache[url] = (time.monotonic(), data, time.time())
     return data
+
+
+def answered_at(url: str) -> float | None:
+    """When fetch_json_cached last asked for url (seconds since 1970), or None if it never did."""
+    hit = _remote_json_cache.get(url)
+    return hit[2] if hit else None

@@ -17,7 +17,8 @@
     <section class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-sync-alt" aria-hidden="true"></i> Updates</h2>
         <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 16px;">
-            <p class="panel-subtitle" style="margin: 0;">Check for a newer MirrorDash{% if os_build %} and a newer system{% endif %}, and install them.</p>
+            <p class="panel-subtitle" style="margin: 0;">Check for new versions of MirrorDash{% if os_build %}, the system{% endif %} and the modules, and install them.
+                <span id="update-checked-at" style="display: block; font-size: 0.75rem; color: var(--text-muted);"></span></p>
             <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;"
                     hx-get="/admin/panels/system/update-check"
                     hx-target="#core-update-result"
@@ -36,6 +37,13 @@
             <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
             <span id="core-current-version" style="font-weight: 600; color: white;">{{ current_version }}</span>
             <div id="core-update-result"><!-- filled by Check for Updates --></div>
+        </div>
+
+        <div class="update-section" style="margin-top: 20px;">
+            <h3 style="margin: 0; font-size: 1rem; color: white;">Modules</h3>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 6px 0;">
+                The panels on the mirror. All are updated together; MirrorDash restarts once.</p>
+            <div id="modules-update-result"><!-- filled by Check for Updates --></div>
         </div>
 
         {% if os_build %}

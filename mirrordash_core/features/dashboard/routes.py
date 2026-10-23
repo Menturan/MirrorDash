@@ -77,9 +77,9 @@ async def get_dashboard_updates(request: Request):
     try:
         updates = await check_all_updates()
     except Exception:
-        updates = {"core": {"update_available": False}}
-        
-    has_updates = updates["core"]["update_available"]
+        updates = {"core": {"update_available": False}, "modules": []}
+
+    has_updates = updates["core"]["update_available"] or bool(updates.get("modules"))
     
     return templates.TemplateResponse(
         request=request,

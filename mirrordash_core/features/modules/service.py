@@ -13,9 +13,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 
 from mirrordash_core.admin import require_api_key
-from mirrordash_core.config import load_config, save_config
+from mirrordash_core.config import load_config, save_config, version_key
 from mirrordash_core.features.modules.loader import find_entry_point
 from mirrordash_core.features.settings.schema import get_module_schema
+from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_restart
 from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
 
@@ -193,24 +194,88 @@ async def install_module(package_name: str) -> dict:
     return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
-async def update_module(package_name: str) -> dict:
-    check_package_name(package_name)
-    # A git URL's package is named after the repository (mirrordash-calendar)
-    name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
-    variants = (name, name.replace("-", "_"), name.replace("_", "-"))
+async def update_modules(*package_names: str) -> dict:
+    """Upgrade one or more modules in one venv swap, so MirrorDash restarts once (Settings → Updates → Update All)."""
+    variants = []
+    for package_name in package_names:
+        check_package_name(package_name)
+        # A git URL's package is named after the repository (mirrordash-calendar)
+        name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
+        variants += [name, name.replace("-", "_"), name.replace("_", "-")]
 
     async def loads_in_new_venv(python):
-        """The upgraded module must still import, or the swap is undone."""
+        """The upgraded modules must still import, or the swap is undone."""
         code, _, err = await run(python, "-c",
             "from importlib.metadata import entry_points; import mirrordash_core.app; "
-            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in {variants!r}]")
+            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in {tuple(variants)!r}]")
         if code != 0:
-            logger.warning(f"Upgrade check failed for {package_name}: {err}. Initiating rollback...")
+            logger.warning(f"Upgrade check failed for {', '.join(package_names)}: {err}. Initiating rollback...")
             raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
 
-    logger.info(f"Upgrading package: {package_name}")
-    await _change_packages("Upgrade", ["install", "--upgrade", _local_target(package_name)], verify=loads_in_new_venv)
-    return {"status": "success", "message": f"Upgraded {package_name}. Restarting..."}
+    logger.info(f"Upgrading packages: {', '.join(package_names)}")
+    await _change_packages("Upgrade", ["install", "--upgrade", *map(_local_target, package_names)], verify=loads_in_new_venv)
+    return {"status": "success", "message": f"Upgraded {', '.join(package_names)}. Restarting..."}
+
+
+async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL) -> dict | None:
+    """An installed module (entry point name) against its latest release: GitHub's when it was installed from
+    there (PEP 610 direct_url.json), else PyPI's. None when it isn't installed, else {"module_name", "package_name",
+    "current_version", "latest_version" (None when up to date or nobody answered), "target" (what update_modules installs),
+    "notes" (PyPI has release notes), "checked_at" (when the answer was fetched, seconds since 1970)}."""
+    ep = find_entry_point(module_name)
+    if not ep:
+        return None
+    package_name = ep.dist.name if ep.dist else module_name
+    current_version = ep.dist.version if ep.dist else "0.0.0"
+    result = {"module_name": module_name, "package_name": package_name, "current_version": current_version,
+              "latest_version": None, "target": package_name, "notes": True, "checked_at": None}
+
+    direct_url_info = None
+    if ep.dist:
+        try:
+            url_data = ep.dist.read_text('direct_url.json')
+            if url_data:
+                direct_url_info = json.loads(url_data)
+        except Exception:
+            pass
+
+    if direct_url_info and "vcs_info" in direct_url_info:
+        vcs_info = direct_url_info["vcs_info"]
+        url = direct_url_info.get("url", "")
+        if vcs_info.get("vcs", "") == "git" and "github.com" in url:
+            parts = url.rstrip("/").split("github.com/")[-1].split("/")
+            if len(parts) >= 2:
+                api_url = f"https://api.github.com/repos/{parts[0]}/{parts[1].replace('.git', '')}/releases/latest"
+                release_data = await fetch_json_cached(api_url, headers={"Accept": "application/vnd.github.v3+json"},
+                                                       max_age=max_age)
+                result["checked_at"] = answered_at(api_url)
+                if release_data and release_data.get("tag_name"):
+                    tag_name = release_data["tag_name"]
+                    latest_version = tag_name.lstrip("v")
+                    # Installed from exactly this release (upgrades install git+url@tag): up to date,
+                    # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
+                    on_latest = vcs_info.get("requested_revision") == tag_name
+                    if not on_latest and version_key(latest_version) > version_key(current_version):
+                        result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False)
+        return result
+
+    pypi_url = f"https://pypi.org/pypi/{package_name}/json"
+    pypi_data = await fetch_json_cached(pypi_url, max_age=max_age)
+    result["checked_at"] = answered_at(pypi_url)
+    if pypi_data:
+        latest_version = pypi_data.get("info", {}).get("version", current_version)
+        if version_key(latest_version) > version_key(current_version):
+            result["latest_version"] = latest_version
+    return result
+
+
+async def module_updates(max_age: float = REMOTE_JSON_TTL) -> tuple[list[dict], float | None]:
+    """Every installed module with a newer release (check_module_update's dicts), and when the oldest
+    answer was fetched: the honest "checked at" for all of them."""
+    names = sorted({ep.name for ep in importlib.metadata.entry_points(group='mirrordash.modules')})
+    checked = [c for c in await asyncio.gather(*(check_module_update(n, max_age) for n in names)) if c]
+    times = [c["checked_at"] for c in checked if c["checked_at"]]
+    return [c for c in checked if c["latest_version"]], min(times, default=None)
 
 
 async def uninstall_module(package_name: str) -> dict:

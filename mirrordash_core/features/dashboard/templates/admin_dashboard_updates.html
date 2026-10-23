@@ -73,5 +73,20 @@
     </div>
     {% endif %}
 
+    {% if updates.modules %}
+    <div class="update-banner" onclick="document.getElementById('page-tab-config').click()">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-arrow-alt-circle-up"></i>
+            <div>
+                <h4>{{ updates.modules | length }} Module Update{{ "s" if updates.modules | length > 1 }} Available</h4>
+                <p>{{ updates.modules | join(", ") }}</p>
+            </div>
+        </div>
+        <div class="action-text">
+            Go to Settings <i class="fas fa-arrow-right"></i>
+        </div>
+    </div>
+    {% endif %}
+
 </div>
 {% endif %}

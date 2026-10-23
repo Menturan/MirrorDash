@@ -174,11 +174,16 @@ async def get_undervoltage_detected() -> bool:
 
 
 async def check_all_updates() -> dict:
-    """Core update for the dashboard banner. Module updates are checked per module card in the
-    Modules tab (they come from GitHub releases, not PyPI)."""
+    """MirrorDash's and the modules' updates, for the dashboard banner."""
     updates = {
         "core": {"update_available": False, "latest_version": get_core_version(), "current_version": get_core_version()},
+        "modules": [],
     }
+    try:
+        from mirrordash_core.features.modules.service import module_updates
+        updates["modules"] = [u["package_name"] for u in (await module_updates())[0]]
+    except Exception:
+        pass
     try:
         from mirrordash_core.features.updates.service import check_core_update
         core_res = await check_core_update()

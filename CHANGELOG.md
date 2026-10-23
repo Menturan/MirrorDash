@@ -9,6 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- *Settings* → *Updates* → *Check for Updates* also checks every module, lists the ones with a new version and updates them all at once with *Update All Modules* (MirrorDash restarts once). It says when it last checked.
+- The *Dashboard* says when modules have new versions, not only MirrorDash.
+
 ### OS image
 
 - Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.

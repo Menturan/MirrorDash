@@ -379,10 +379,10 @@ def test_module_upgrade_shows_progress(page, server_url):
     dist.read_text.return_value = json.dumps({"url": "https://github.com/Menturan/mirrordash-clock.git",
                                               "vcs_info": {"vcs": "git", "commit_id": "abc", "requested_revision": "v1.0.0"}})
     ep = MagicMock(dist=dist)
-    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=ep), \
-         patch("mirrordash_core.features.modules.routes.fetch_json_cached", new_callable=AsyncMock,
+    with patch("mirrordash_core.features.modules.service.find_entry_point", return_value=ep), \
+         patch("mirrordash_core.features.modules.service.fetch_json_cached", new_callable=AsyncMock,
                return_value={"tag_name": "v1.0.1", "body": "Fixes"}), \
-         patch("mirrordash_core.features.modules.routes.update_module", new_callable=AsyncMock):
+         patch("mirrordash_core.features.modules.routes.update_modules", new_callable=AsyncMock):
         navigate_authenticated(page, server_url)
         page.wait_for_selector("h1")
         # The card's placeholders, filled by the update check exactly as on the Modules tab
@@ -402,6 +402,24 @@ def test_module_upgrade_shows_progress(page, server_url):
         page.wait_for_function("getComputedStyle(document.getElementById('restart-overlay')).opacity === '1'", timeout=2000)
         if os.environ.get("UPGRADE_SHOT"):
             page.screenshot(path=os.environ["UPGRADE_SHOT"])
+
+
+def test_update_check_fills_the_modules_and_when(page, server_url):
+    """Settings → Updates → Check for Updates: the modules section lists what's new, and the card says when."""
+    news = {"module_name": "mirrordash_news", "package_name": "mirrordash-news", "current_version": "1.2.0",
+            "latest_version": "1.2.1", "target": "mirrordash-news", "notes": True}
+    with patch("mirrordash_core.features.updates.routes.module_updates", new_callable=AsyncMock,
+               return_value=([news], time.time())), \
+         patch("mirrordash_core.features.updates.routes.check_core_update", new_callable=AsyncMock,
+               return_value={"current_version": "0.9.0", "latest_version": "0.9.0", "update_available": False}):
+        navigate_authenticated(page, server_url)
+        page.click("#page-tab-config")
+        page.click("#core-check-btn")
+        page.locator("#modules-update-result", has_text="mirrordash-news: v1.2.0 → v1.2.1").wait_for()
+        assert page.locator("#modules-update-result button", has_text="Update All Modules").is_visible()
+        assert page.locator("#update-checked-at").text_content().startswith("Last checked ")
+        if os.environ.get("UPDATES_SHOT"):
+            page.locator("#core-check-btn").locator("xpath=ancestor::section").screenshot(path=os.environ["UPDATES_SHOT"])
 
 
 def test_add_to_mirror(page, server_url):

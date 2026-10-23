@@ -1323,12 +1323,14 @@ def test_get_dashboard_updates_available(mock_check, client):
     headers = {"X-API-Key": "secret"}
     mock_check.return_value = {
         "core": {"update_available": True, "latest_version": "0.3.5", "current_version": "0.3.4"},
+        "modules": ["mirrordash-news", "mirrordash-weather"],
     }
     response = client.get("/admin/panels/dashboard/updates", headers=headers)
     assert response.status_code == 200
     assert "Update Available: MirrorDash Core" in response.text
     assert "v0.3.5" in response.text
     assert "page-tab-config" in response.text and "Go to Settings" in response.text  # core updates live in Settings
+    assert "2 Module Updates Available" in response.text and "mirrordash-news, mirrordash-weather" in response.text
 
 
 @patch("mirrordash_core.features.dashboard.telemetry.check_all_updates")
@@ -1459,8 +1461,39 @@ def test_the_usb_switch(client):
         assert page.status_code == 400 and "Ethernet" in page.json()["detail"]
 
 
-def test_update_check_shows_mirrordash_and_the_system_apart(client):
+def test_update_check_lists_module_updates_and_when_it_checked(client, monkeypatch):
+    """The same check asks about every module (fresh within a minute) and says when; Update All asks again
+    itself and installs every update in one go, so MirrorDash restarts once."""
+    from datetime import datetime
+
+    from mirrordash_core.features.modules import routes as module_routes
+    from mirrordash_core.features.updates import routes
+    news = {"module_name": "mirrordash_news", "package_name": "mirrordash-news", "current_version": "1.2.0",
+            "latest_version": "1.2.1", "target": "git+https://github.com/Menturan/mirrordash-news@v1.2.1", "notes": False}
+    checked = datetime.now().replace(hour=0, minute=5).timestamp()  # earlier today: the oldest answer counts
+    module_updates = AsyncMock(return_value=([news], checked))
+    monkeypatch.setattr(routes, "module_updates", module_updates)
+    monkeypatch.setattr(routes, "check_core_update", AsyncMock(return_value={"current_version": "0.9.0", "latest_version": "0.9.0", "update_available": False}))
+    monkeypatch.setattr(routes, "check_os_update", AsyncMock(return_value={"supported": False}))
+    key = {"X-API-Key": "secret"}
+
+    page = client.get("/admin/panels/system/update-check", headers=key).text
+    assert module_updates.call_args.kwargs == {"max_age": 60}
+    assert "mirrordash-news: v1.2.0 → v1.2.1" in page and "Update All Modules" in page
+    assert '<span id="update-checked-at" hx-swap-oob="innerHTML">Last checked 00:05</span>' in page
+
+    monkeypatch.setattr(module_routes, "module_updates", AsyncMock(return_value=([news], checked)))
+    update_modules = AsyncMock()
+    monkeypatch.setattr(module_routes, "update_modules", update_modules)
+    with patch.object(module_routes, "start_job", return_value="job1") as start:
+        assert client.post("/admin/panels/modules/upgrade-all", headers=key).status_code == 200
+    asyncio.run(start.call_args.args[0]())
+    update_modules.assert_awaited_once_with(news["target"])
+
+
+def test_update_check_shows_mirrordash_and_the_system_apart(client, monkeypatch):
     """One check, two sections; with an update for both, the system goes first and MirrorDash's button waits."""
+    monkeypatch.setattr("mirrordash_core.features.updates.routes.module_updates", AsyncMock(return_value=([], None)))
     app = {"current_version": "0.6.2", "latest_version": "0.6.3", "update_available": True}
     system = {"supported": True, "installed_build": "20261001-0800", "failed_build": None, "update_available": True,
               "bundle": {"tag": "v0.6.3-os1", "build": "20261018-2237", "url": "https://example.com/b.raucb", "size": 880_000_000}}
@@ -1643,13 +1676,15 @@ def test_the_update_card_offers_install_anyway_after_modules_stopped_it():
 def test_a_packages_own_text_is_never_markup_in_the_admin_page():
     """Release notes, summary and version come from PyPI or a GitHub release, i.e. from anyone who
     publishes a mirrordash-* package: they must not be able to run script in the admin page."""
-    from mirrordash_core.features.modules import routes
+    from mirrordash_core.features.modules import routes, service
     evil = '</textarea><script>alert(1)</script>"\''
     ep = SimpleNamespace(name="mirrordash_x", dist=SimpleNamespace(name="mirrordash-x", version="0.1.0",
                                                                    read_text=lambda name: None))
     pypi = {"info": {"summary": evil, "description": evil, "version": "9.9.9"}}
     with patch.object(routes, "find_entry_point", return_value=ep), \
-         patch.object(routes, "fetch_json_cached", AsyncMock(return_value=pypi)):
+         patch.object(routes, "fetch_json_cached", AsyncMock(return_value=pypi)), \
+         patch.object(service, "find_entry_point", return_value=ep), \
+         patch.object(service, "fetch_json_cached", AsyncMock(return_value=pypi)):
         notes = asyncio.run(routes.get_module_notes("mirrordash_x")).body.decode()
         badge = asyncio.run(routes.check_module_update_route("mirrordash_x")).body.decode()
     for page in (notes, badge):
