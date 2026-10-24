@@ -53,6 +53,7 @@ async def get_system_settings() -> dict:
 DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": False, "prerelease": False,
             "auto_update": True}
 HHMM = re.compile(r"^\d{2}:\d{2}$")
+RESOLUTION = re.compile(r"^[\w.@-]+$")  # auto, 1920x1080 ...: a word, nothing a command line could read as more
 
 
 def _int_in(value, low: int, high: int) -> bool:
@@ -64,7 +65,11 @@ def _check(new: dict) -> None:
     dc = new["display_control"]
     wake = dc.get("wake", {})
     interval = dc.get("interval", {})
+    if not isinstance(wake, dict) or not isinstance(interval, dict):
+        raise HTTPException(status_code=400, detail="Invalid display power settings")
     checks = [
+        (isinstance(new["ssh"], bool), "SSH must be on or off"),
+        (isinstance(new["resolution"], str) and RESOLUTION.match(new["resolution"]), "Invalid resolution"),
         (new["rotation"] in ("normal", "left", "right", "inverted"), "Invalid rotation value"),
         (_int_in(new["brightness"], 10, 100), "Brightness must be between 10 and 100"),
         (_int_in(new["volume"], 0, 100), "Volume must be between 0 and 100"),
@@ -84,13 +89,14 @@ def _check(new: dict) -> None:
 @router.post("/system", dependencies=[Depends(require_api_key)])
 async def update_system_settings(settings: dict = Body(...)) -> dict:
     """Save the settings that were sent (the rest stay as they are) and apply them."""
-    config = load_config()
-    system_cfg = config.setdefault("system", {})
+    system_cfg = load_config().get("system", {})
     new = {key: settings.get(key, system_cfg.get(key, default)) for key, default in DEFAULTS.items()}
     # display_control is merged per part: the Power tab sends only what it shows
     dc = dict(system_cfg.get("display_control", {"mode": "manual", "interval": {"start": "07:00", "end": "22:00"},
                                                  "wake": dict(DEFAULT_WAKE)}))
     incoming = settings.get("display_control") or {}
+    if not isinstance(incoming, dict) or not all(isinstance(incoming.get(p, {}), dict) for p in ("interval", "wake")):
+        raise HTTPException(status_code=400, detail="Invalid display power settings")
     if "mode" in incoming:
         dc["mode"] = incoming["mode"]
     for part in ("interval", "wake"):
@@ -98,13 +104,15 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
             dc[part] = {**dc.get(part, {}), **incoming[part]}
     new["display_control"] = dc
     _check(new)
-    system_cfg.update(new)
 
     # Only touch SSH when this request is about it: the Power tab saves just the display
     # schedule, and re-checking SSH there failed whenever the service state differed.
     if "ssh" in settings:
         await apply_ssh(new["ssh"], settings.get("pi_password"))
-    # Saved only now: a refused SSH password must not leave "ssh: on" in the config
+    # Saved only now: a refused SSH password must not leave "ssh: on" in the config. The config is read
+    # again here: SSH is slow, and anything saved meanwhile must not be written over.
+    config = load_config()
+    config.setdefault("system", {}).update(new)
     save_config(config)
 
     # Re-applying an unchanged rotation/resolution can make the screen flicker: only what was sent
@@ -144,13 +152,16 @@ async def save_system_settings_route(request: Request):
              for end in ("start", "end") if f"{end}_h" in picked and f"{end}_m" in picked}
     if times:
         dc["interval"] = times
+    for key in ("prerelease", "auto_update", "ssh"):  # a lone "false" (an unchecked box) stays text in read_form
+        if key in parsed:
+            parsed[key] = parsed[key] in (True, "true")
     _as_int(parsed, "brightness", "Brightness must be an integer")
     _as_int(parsed, "volume", "Volume must be an integer")
     if "wake" in dc:
         dc["wake"].setdefault("timeout_minutes", 5)
         _as_int(dc["wake"], "timeout_minutes", "The screen timeout must be a whole number of minutes")
         for key in ("extend", "presence"):
-            if key in dc["wake"]:  # read_form already turns "true"/"false" (and checkbox pairs) into bools
+            if key in dc["wake"]:
                 dc["wake"][key] = dc["wake"][key] in (True, "true")
 
     await update_system_settings(settings=parsed)

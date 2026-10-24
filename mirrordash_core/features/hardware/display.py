@@ -242,7 +242,7 @@ async def set_screen_power(on: bool) -> bool:
                 )
                 await proc_w.wait()
                 logger.info(f"Set wlr-randr output {display} to {action}")
-                return True
+                return proc_w.returncode == 0
     except Exception as e:
         logger.debug(f"wlr-randr power control failed or skipped: {e}")
 

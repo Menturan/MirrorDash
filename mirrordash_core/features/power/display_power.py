@@ -44,7 +44,7 @@ class DisplayPowerManager:
 
     def __init__(self):
         self.task: asyncio.Task | None = None
-        self.is_on: bool = True
+        self.is_on: bool | None = None  # unknown at start: the first pass always applies the wanted state
         self.wake_until = 0.0        # time.monotonic() until which the screen is woken
         self.forced_off = False      # an explicit "off" wins until a wake or base change
         self.last_base: bool | None = None
@@ -115,7 +115,7 @@ class DisplayPowerManager:
 
     def status(self) -> dict:
         left = max(0.0, self.wake_until - time_mod.monotonic())
-        return {"on": self.is_on, "base_on": bool(self.last_base), "wake_seconds_left": left, "forced_off": self.forced_off}
+        return {"on": bool(self.is_on), "base_on": bool(self.last_base), "wake_seconds_left": left, "forced_off": self.forced_off}
 
     async def _run_loop(self) -> None:
         from mirrordash_core.features.hardware.devices import gpio_inputs

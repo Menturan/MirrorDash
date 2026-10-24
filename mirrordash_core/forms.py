@@ -292,14 +292,13 @@ async def read_form(request) -> dict:
 
 
 def _form_value(value):
-    """"true"/"false" become booleans; a checkbox with its hidden "false" twin becomes one boolean;
-    other repeated values a list without the empty hidden placeholder."""
+    """A checkbox with its hidden "false" twin becomes one boolean; other repeated values a list without
+    the empty hidden placeholder. A lone "true"/"false" stays text (it may be a text field's value);
+    _cast turns it into a boolean where the schema says boolean."""
     if isinstance(value, list):
         if all(isinstance(v, str) and v.lower() in ("true", "false") for v in value):
             return any(v.lower() == "true" for v in value)
         return [v for v in value if v != ""]
-    if isinstance(value, str) and value.lower() in ("true", "false"):
-        return value.lower() == "true"
     return value
 
 

@@ -125,12 +125,13 @@ def note_failure(client: str) -> None:
     _failures.setdefault(client, []).append(time.time())
 
 
-def check_password(password: str, client: str) -> bool:
-    """The admin password, with the throttle: raises 429 while this address is locked out."""
+async def check_password(password: str, client: str) -> bool:
+    """The admin password, with the throttle: raises 429 while this address is locked out.
+    The hashing (PBKDF2) runs in a thread, off the event loop."""
     check_throttle(client)
     auth = load_config().get("admin_auth") or {}
     ok = bool(auth.get("hash") and auth.get("salt")) and secrets.compare_digest(
-        hash_password(password, auth["salt"]), auth["hash"])
+        await asyncio.to_thread(hash_password, password, auth["salt"]), auth["hash"])
     if not ok:
         note_failure(client)
     return ok
@@ -162,7 +163,7 @@ async def require_api_key(request: Request, x_api_key: Annotated[str | None, Hea
         return
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Not logged in")
-    if not check_password(x_api_key, request.client.host if request.client else ""):
+    if not await check_password(x_api_key, request.client.host if request.client else ""):
         raise HTTPException(status_code=401, detail="Invalid password")
 
 

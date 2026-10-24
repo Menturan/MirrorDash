@@ -438,7 +438,7 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
                 row.innerHTML = `
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div style="width: 6px; height: 6px; border-radius: 50%; background-color: ${inst.enabled ? 'var(--success)' : 'var(--text-muted)'}; box-shadow: ${inst.enabled ? '0 0 6px var(--success-glow)' : 'none'};"></div>
-                        <span style="font-size: 0.85rem; font-weight: 500; color: white;">${inst.title || inst.id}</span>
+                        <span class="inst-title" style="font-size: 0.85rem; font-weight: 500; color: white;"></span>
                     </div>
                     <span style="display: inline-flex; align-items: center; gap: 12px;">
                         <span class="status-badge" style="background: rgba(255, 255, 255, 0.04); color: #a1a1aa; border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">
@@ -453,6 +453,7 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
                         <i class="fas fa-pen-to-square" style="color: var(--text-muted); font-size: 0.7rem; opacity: 0.6; transition: opacity 0.2s;"></i>
                     </span>
                 `;
+                row.querySelector('.inst-title').textContent = inst.title || inst.id;
 
                 row.onclick = function() {
                     // Update active states

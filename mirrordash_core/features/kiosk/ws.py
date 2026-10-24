@@ -10,6 +10,8 @@ from mirrordash_core.config import get_core_version
 
 logger = logging.getLogger("mirrordash.core.kiosk")
 
+SEND_TIMEOUT = 5  # seconds a client gets to take a message
+
 
 def on_screen(client) -> bool:
     """Whether a client is the mirror's own screen (a loopback address)."""
@@ -45,9 +47,10 @@ class ConnectionManager:
         # with (an update or a rollback), the page reloads itself (js/kiosk/core.js). "online" sets
         # its Offline badge (internet.py; changes come later as {"type": "internet"}), and
         # "video_is_playing" whether the modules update once a minute (later as {"type": "video_is_playing"}).
+        from mirrordash_core.admin import BOOT_ID
         from mirrordash_core.features.kiosk.internet import internet_monitor
         try:
-            await websocket.send_json({"type": "hello", "version": get_core_version(), "online": internet_monitor.online,
+            await websocket.send_json({"type": "hello", "version": get_core_version(), "boot_id": BOOT_ID, "online": internet_monitor.online,
                                       "video_is_playing": bool(self.video_players)})
         except Exception as e:
             logger.error(f"Error greeting new client: {e}")
@@ -80,16 +83,21 @@ class ConnectionManager:
         await self._send(message)
 
     async def _send(self, message: dict) -> None:
-        dead: list[WebSocket] = []
-        # Iterate over a snapshot to avoid mutation during iteration
-        for connection in list(self.active_connections):
+        # Iterate over a snapshot to avoid mutation during iteration; one stalled client must not delay the rest
+        connections = list(self.active_connections)
+
+        async def send(connection: WebSocket) -> None:
             try:
-                await connection.send_json(message)
+                await asyncio.wait_for(connection.send_json(message), SEND_TIMEOUT)
             except Exception as e:
-                logger.error(f"Error broadcasting to client: {e}. Marking connection as dead.")
-                dead.append(connection)
-        for conn in dead:
-            self.disconnect(conn)
+                logger.error(f"Error broadcasting to client: {e!r}. Dropping connection.")
+                self.disconnect(connection)
+                try:
+                    await asyncio.wait_for(connection.close(), 1)
+                except Exception:
+                    pass
+
+        await asyncio.gather(*(send(c) for c in connections))
 
     async def set_video_playing(self, instance_id: str, playing: bool) -> None:
         """A module starts or stops playing a video. The page hears when the first starts and the last

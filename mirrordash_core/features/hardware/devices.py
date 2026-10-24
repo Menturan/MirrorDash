@@ -319,9 +319,12 @@ class GpioInputs:
         # ponytail: looks for new gpio-keys devices every 5 s; they only appear at boot (the
         # overlays are applied by the firmware), so a udev monitor would gain little.
         while True:
-            for device in find_gpio_key_devices():
-                if device not in self.fds:
-                    self._open(device)
+            try:
+                for device in find_gpio_key_devices():
+                    if device not in self.fds:
+                        self._open(device)
+            except Exception as e:  # one failure must not end the watch
+                logger.warning(f"GPIO input watch failed: {e}")
             await asyncio.sleep(5)
 
     def _open(self, device: str) -> None:
@@ -375,16 +378,19 @@ class GpioInputs:
     async def _publish_sensors(self) -> None:
         events = {"dht11": "hardware.climate", "light": "hardware.light"}
         while True:
-            system_cfg = load_config().get("system", {})
-            for device_type, event in events.items():
-                if find_device(system_cfg, device_type):
-                    reading = await read_sensor(device_type)
-                    if reading:
-                        event_bus.publish(event, dict(reading))
-            if any(find_device(system_cfg, t) for t in FAN_TYPES):
-                fan = read_fan_state()
-                if fan:
-                    event_bus.publish("hardware.fan", fan)
+            try:
+                system_cfg = load_config().get("system", {})
+                for device_type, event in events.items():
+                    if find_device(system_cfg, device_type):
+                        reading = await read_sensor(device_type)
+                        if reading:
+                            event_bus.publish(event, dict(reading))
+                if any(find_device(system_cfg, t) for t in FAN_TYPES):
+                    fan = read_fan_state()
+                    if fan:
+                        event_bus.publish("hardware.fan", fan)
+            except Exception as e:  # one failed reading must not end the sensor events
+                logger.warning(f"Sensor reading failed: {e}")
             await asyncio.sleep(self.SENSOR_INTERVAL)
 
     def _on_button(self, button: str, pressed: bool) -> None:

@@ -7,7 +7,7 @@ import pytest
 from conftest import call
 from fastapi.testclient import TestClient
 
-from mirrordash_core.admin import hash_password
+from mirrordash_core.admin import BOOT_ID, hash_password
 from mirrordash_core.app import app
 from mirrordash_core.features.modules.service import install_module, uninstall_module
 from mirrordash_core.features.settings.schema import get_globals_schema
@@ -327,7 +327,7 @@ def test_mirror_page_hears_the_version_first(client):
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
     with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"), \
          client.websocket_connect("/ws") as ws:
-        assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "online": True,
+        assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "boot_id": BOOT_ID, "online": True,
                                     "video_is_playing": False}
         assert ws.receive_json()["module"] == "clock"  # then the modules, as before
     manager.latest_messages = {}
@@ -1059,6 +1059,7 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
 def test_get_panel_and_discover_modules(mock_urlopen, client):
     import mirrordash_core.features.modules.service as adm_mods
     adm_mods.LAST_SCAN_TIMESTAMP = None
+    adm_mods._LAST_LAZY_SCAN = float("-inf")
     adm_mods.DISCOVERED_COMMUNITY_MODULES = []
     
     headers = {"X-API-Key": "secret"}
@@ -1185,7 +1186,7 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
     assert saved["modules"]["clock-one"]["module"] == "mirrordash-clock"
     assert saved["modules"]["clock-one"]["position"] == "top_right"
     assert saved["modules"]["clock-one"]["enabled"] is True
-    assert saved["modules"]["clock-one"]["show_seconds"] is True
+    assert saved["modules"]["clock-one"]["show_seconds"] == "true"  # no schema here: text stays text
 
 
 @patch("mirrordash_core.features.modules.routes.load_config")

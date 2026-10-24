@@ -119,7 +119,7 @@ async def test_set_ssh_status_only_starts_ssh_with_the_owners_password(mock_subp
     of the owner's: SSH starts only once its hash is on /storage."""
     from mirrordash_core.features.settings import ssh
     monkeypatch.setattr(ssh, "PASSWORD_HASH_FILE", str(tmp_path / "pi_password.hash"))
-    mock_subproc.return_value = AsyncMock()
+    mock_subproc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
     actions = lambda: [c.args[3] for c in mock_subproc.call_args_list]
 
     assert await set_ssh_status(True) is True
@@ -209,4 +209,4 @@ def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
         assert asyncio.run(system_os.apply_wifi_country("S;")) is False
         run.assert_not_awaited()
         assert asyncio.run(system_os.apply_wifi_country("SE")) is True
-    assert run.await_args.args == ("sudo", "-n", "raspi-config", "nonint", "do_wifi_country", "SE")
+    assert run.await_args.args == ("sudo", "-n", "/usr/local/bin/mirrordash-wifi-country", "SE")

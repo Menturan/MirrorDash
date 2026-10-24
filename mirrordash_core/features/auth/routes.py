@@ -4,6 +4,7 @@
 The recovery code is shown once, when the password is set up (and again after each use, as a new
 one). Lost both? Remove `admin_auth` from config.json over SSH or on the SD card (USER_GUIDE §1)."""
 
+import asyncio
 import logging
 import secrets
 
@@ -35,20 +36,20 @@ MIN_PASSWORD = 4
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
-def _hashed(secret: str) -> dict:
+async def _hashed(secret: str) -> dict:
     salt = secrets.token_hex(16)
-    return {"hash": hash_password(secret, salt), "salt": salt}
+    return {"hash": await asyncio.to_thread(hash_password, secret, salt), "salt": salt}
 
 
 def _normalize_code(code: str) -> str:
     return "".join(c for c in code.upper() if c.isalnum())
 
 
-def _new_recovery_code(auth: dict) -> str:
+async def _new_recovery_code(auth: dict) -> str:
     """Put a new recovery code in `auth` (only its hash) and return it formatted, XXXX-XXXX-XXXX.
     12 characters of 31 is ~59 bits behind PBKDF2: guessing it over the network isn't feasible."""
     raw = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
-    auth["recovery"] = _hashed(raw)
+    auth["recovery"] = await _hashed(raw)
     return "-".join(raw[i:i + 4] for i in range(0, 12, 4))
 
 
@@ -90,7 +91,7 @@ def _client(request: Request) -> str:
 @router.post("/auth/login")
 async def login(request: Request, body: dict = Body(...)) -> JSONResponse:
     """The password, once: the answer sets the session cookie the admin page then uses."""
-    if not isinstance(body.get("password"), str) or not check_password(body["password"], _client(request)):
+    if not isinstance(body.get("password"), str) or not await check_password(body["password"], _client(request)):
         raise HTTPException(status_code=401, detail="Invalid password. Please try again.")
     return _logged_in({"status": "success"})
 
@@ -112,8 +113,8 @@ async def setup_auth(body: dict = Body(...)) -> dict:
     if "admin_auth" in config:
         # Even a corrupt entry: this endpoint needs no login, so it must never overwrite one
         raise HTTPException(status_code=400, detail="Password is already set")
-    auth = _hashed(password)
-    code = _new_recovery_code(auth)
+    auth = await _hashed(password)
+    code = await _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
     return _logged_in({"status": "success", "recovery_code": code})
@@ -123,11 +124,11 @@ async def setup_auth(body: dict = Body(...)) -> dict:
 async def change_password(request: Request, body: dict = Body(...)) -> JSONResponse:
     """Change the password. The current one is asked again, so a logged-in page left open can't change
     it. Every other browser is logged out; this one gets a new session. The recovery code stays."""
-    if not isinstance(body.get("current_password"), str) or not check_password(body["current_password"], _client(request)):
+    if not isinstance(body.get("current_password"), str) or not await check_password(body["current_password"], _client(request)):
         raise HTTPException(status_code=401, detail="The current password is wrong.")
     new_password = _check_new_password(body.get("new_password"))
     config = load_config()
-    config["admin_auth"] = {**config["admin_auth"], **_hashed(new_password)}
+    config["admin_auth"] = {**config["admin_auth"], **await _hashed(new_password)}
     save_config(config)
     end_all_sessions()
     return _logged_in({"status": "success"})
@@ -142,11 +143,11 @@ async def recover_auth(request: Request, body: dict = Body(...)) -> JSONResponse
     stored = (config.get("admin_auth") or {}).get("recovery") or {}
     code = _normalize_code(str(body.get("code") or ""))
     if not (stored.get("hash") and stored.get("salt") and code
-            and secrets.compare_digest(hash_password(code, stored["salt"]), stored["hash"])):
+            and secrets.compare_digest(await asyncio.to_thread(hash_password, code, stored["salt"]), stored["hash"])):
         note_failure(_client(request))
         raise HTTPException(status_code=401, detail="Wrong recovery code")
-    auth = _hashed(_check_new_password(body.get("new_password")))
-    new_code = _new_recovery_code(auth)
+    auth = await _hashed(_check_new_password(body.get("new_password")))
+    new_code = await _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
     logger.warning("The admin password was reset with the recovery code")

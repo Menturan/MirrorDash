@@ -124,3 +124,18 @@ def test_module_reload_does_not_duplicate_subscriptions():
     asyncio.run(ModuleLoader().stop_modules())  # what reload_modules() does first
     event_bus.publish("x:test", 1)
     assert calls == []
+
+
+def test_an_event_published_from_a_thread_reaches_an_async_subscriber():
+    """A module that publishes from its own thread (asyncio.to_thread) still reaches async subscribers."""
+    from mirrordash_core.event_bus import EventBus
+
+    async def main():
+        bus, got = EventBus(), asyncio.Event()
+
+        async def on_event(data):
+            got.set()
+        bus.subscribe("x", on_event)
+        await asyncio.to_thread(bus.publish, "x", 1)
+        await asyncio.wait_for(got.wait(), 1)
+    asyncio.run(main())

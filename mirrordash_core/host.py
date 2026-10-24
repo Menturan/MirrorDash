@@ -67,16 +67,24 @@ async def apply_system_timezone(timezone: str) -> bool:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
+        try:
+            _, stderr = await asyncio.wait_for(proc.communicate(), timeout=5)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
         if proc.returncode != 0:
             logger.warning(f"timedatectl failed to set timezone to {timezone}: {stderr.decode().strip()}")
             return False
         logger.info(f"System timezone successfully set to {timezone}")
-        await apply_wifi_country(wifi_country_for(timezone))
-        return True
     except Exception as e:
         logger.warning(f"Failed to set system timezone to {timezone}: {e}")
         return False
+    try:  # its own step: a Wi-Fi country failure is not a time zone failure
+        await apply_wifi_country(wifi_country_for(timezone))
+    except Exception as e:
+        logger.warning(f"Failed to set the Wi-Fi country for {timezone}: {e}")
+    return True
 
 
 ZONE_TAB = "/usr/share/zoneinfo/zone.tab"
@@ -110,10 +118,15 @@ async def apply_wifi_country(country: str | None) -> bool:
     except OSError:
         return False  # not a Pi (development machine)
     proc = await asyncio.create_subprocess_exec(
-        "sudo", "-n", "raspi-config", "nonint", "do_wifi_country", country,
+        "sudo", "-n", "/usr/local/bin/mirrordash-wifi-country", country,
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
     )
-    _, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+    try:
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+    except TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
         logger.warning(f"Setting the Wi-Fi country to {country} failed: {stderr.decode(errors='replace').strip()}")
         return False

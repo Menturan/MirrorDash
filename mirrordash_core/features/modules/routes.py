@@ -161,13 +161,10 @@ async def save_module_config_route(module_name: str, request: Request, instance_
 async def remove_module_config_route(module_name: str, instance_id: str = None):
     config = load_config()
     modules_config = config.get("modules", {})
-    cfg_key = instance_id
-    if not cfg_key:
-        cfg_key, _ = find_module_config(modules_config, module_name)
-
-    if cfg_key in modules_config:
-        del modules_config[cfg_key]
-
+    cfg_key = instance_id or find_module_config(modules_config, module_name)[0]
+    if cfg_key not in modules_config:
+        raise HTTPException(status_code=404, detail="Instance not found")
+    del modules_config[cfg_key]
     save_config(config)
 
     await module_loader.reload_modules()
@@ -179,10 +176,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
 async def toggle_module_instance(module_name: str, instance_id: str = None):
     config = load_config()
     modules_config = config.get("modules", {})
-    cfg_key = instance_id
-    if not cfg_key:
-        cfg_key, _ = find_module_config(modules_config, module_name)
-
+    cfg_key = instance_id or find_module_config(modules_config, module_name)[0]
     if cfg_key in modules_config:
         current_state = modules_config[cfg_key].get("enabled", True)
         new_state = not current_state

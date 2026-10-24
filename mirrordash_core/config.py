@@ -58,11 +58,7 @@ def get_default_globals() -> dict:
         "temperature_unit": "C",
         "distance_unit": "km",
         "latitude": 59.3293,
-        "longitude": 18.0686,
-        "safe_margin_top": "60px",
-        "safe_margin_bottom": "60px",
-        "safe_margin_left": "60px",
-        "safe_margin_right": "60px"
+        "longitude": 18.0686
     }
 
 def migrate_config(data: dict) -> bool:

@@ -177,7 +177,7 @@ async def test_while_a_video_plays_the_other_modules_update_once_a_minute():
             async with tv.video_is_playing():
                 await asyncio.sleep(3600)
         task = asyncio.create_task(play())
-        await asyncio.sleep(0)
+        await asyncio.sleep(0.05)  # told first: a send takes a turn of the loop
         assert manager.video_players == {"tv"}
         task.cancel()
         await asyncio.gather(task, return_exceptions=True)

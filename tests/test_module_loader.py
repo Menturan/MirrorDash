@@ -24,17 +24,6 @@ class DummyPlugin:
         while True:
             await asyncio.sleep(0.01)
 
-class DummySyncPlugin:
-    def __init__(self, config):
-        self.config = config
-        self.name = "dummy_sync"
-        self.run_count = 0
-
-    def run_loop(self, broadcast_fn):
-        self.run_count += 1
-        if self.run_count == 1:
-            raise ValueError("First run sync crash simulation")
-
 def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, monkeypatch):
     """Two modules loaded one after the other keep their own translate() and render_template(): the
     helpers are closures over each instance (a late-binding bug once gave every module the last one's),
@@ -85,21 +74,49 @@ async def test_module_loader_async_crash_recovery():
     await loader.stop_modules()
 
 @pytest.mark.asyncio
-async def test_module_loader_sync_crash_recovery():
-    loader = ModuleLoader()
-    plugin = DummySyncPlugin({})
-    broadcast_mock = AsyncMock()
+async def test_a_sync_run_loop_is_not_started(monkeypatch):
+    """A thread can't be stopped on a reload, so only an async run_loop runs."""
+    class SyncPlugin:
+        def __init__(self, config):
+            pass
 
-    # Start module task
-    loader._start_module_task("dummy_sync", plugin, broadcast_mock)
-    
-    # Wait for the first run to crash and the second to run
-    await asyncio.sleep(0.05)
-    
-    assert plugin.run_count >= 2
-    
-    # Clean up
+        def run_loop(self, broadcast_fn):
+            pass
+
+    class EntryPoint:
+        name = "sync_mod"
+
+        def load(self):
+            return SyncPlugin
+
+    monkeypatch.setattr(mirrordash_core.features.modules.loader, "load_config",
+                        lambda: {"modules": {"sync_mod": {"module": "sync_mod"}}})
+    monkeypatch.setattr(mirrordash_core.features.modules.loader.importlib.metadata, "entry_points",
+                        lambda group: [EntryPoint()])
+    loader = ModuleLoader()
+    await loader.start_modules()
+    assert "sync_mod" in loader.instances and loader.tasks == {}
+
+
+@pytest.mark.asyncio
+async def test_a_run_loop_that_returns_waits_before_it_starts_again():
+    class OncePlugin:
+        run_count = 0
+
+        async def run_loop(self, broadcast_fn):
+            self.run_count += 1
+
+    loader = ModuleLoader()
+    plugin = OncePlugin()
+    with patch("mirrordash_core.features.modules.loader.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        mock_sleep.side_effect = [None, asyncio.CancelledError()]
+        loader._start_module_task("once", plugin, AsyncMock())
+        with pytest.raises(asyncio.CancelledError):
+            await loader.tasks["once"]
+    assert plugin.run_count == 2
+    assert [c.args[0] for c in mock_sleep.call_args_list] == [0.01, 0.02]
     await loader.stop_modules()
+
 
 @pytest.mark.asyncio
 async def test_module_loader_cancel_handling():
@@ -286,3 +303,16 @@ async def test_the_same_module_message_is_sent_once():
     manager.clear_cache()                                          # a reload sends everything again
     await manager.broadcast({**message, "position": "top_right"})
     assert client.send_json.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_a_module_reload_leaves_the_system_settings_alone(monkeypatch):
+    """Saving a module reloads the modules only: re-applying the system settings flickered the screen
+    and restarted the Matter node each time."""
+    monkeypatch.setattr(mirrordash_core.features.modules.loader, "load_config",
+                        lambda: {"matter": {"enabled": True}, "system": {"ssh": True}, "modules": {}})
+    with patch("mirrordash_core.features.matter.routes.start_matter", new_callable=AsyncMock) as matter, \
+         patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock) as ssh:
+        await ModuleLoader().start_modules()
+        await asyncio.sleep(0)
+    assert not matter.called and not ssh.called

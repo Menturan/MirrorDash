@@ -537,8 +537,8 @@ def test_module_script_gets_its_own_shadow_root(page):
 
 @pytest.mark.only_browser("webkit")
 def test_mirror_page_reloads_only_for_a_new_version(page):
-    """After an update the page's own code is new too: it reloads when the server's version changed,
-    not when MirrorDash merely restarted."""
+    """After an update the page's own code is new too: it reloads when the server's version or boot id
+    changed (a restart may have changed the modules), not when the socket merely reconnected."""
     import json
     from pathlib import Path
     static = Path(__file__).parent.parent / "mirrordash_core" / "static"
@@ -557,14 +557,32 @@ def test_mirror_page_reloads_only_for_a_new_version(page):
     page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
     page.goto("http://mirror.test/static/index.html")
     page.wait_for_function("window.__ws")
-    hello = lambda version: page.evaluate("msg => window.__ws.onmessage({ data: msg })",
-                                          json.dumps({"type": "hello", "version": version}))
+    send = lambda msg: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(msg))
+    hello = lambda version, boot="a": send({"type": "hello", "version": version, "boot_id": boot})
+    module = lambda name: send({"module": name, "position": "top_left", "carousel_group": "g", "html": name})
     page.evaluate("window.__loaded = true")
 
+    # A module redrawing keeps the slide that is showing, and the group's timer
+    module("one")
+    module("two")
+    group = "document.querySelector('.carousel-group-container')"
+    page.evaluate(f"{group}.children[0].classList.remove('carousel-active'); {group}.children[1].classList.add('carousel-active')")
+    timer = page.evaluate(f"{group}._carouselTimer")
+    module("two")
+    assert page.evaluate(f"{group}.children[1].classList.contains('carousel-active')")
+    assert page.evaluate(f"{group}._carouselTimer") == timer
+
     hello("1.0.0")  # the version the page was loaded with
-    hello("1.0.0")  # MirrorDash restarted, same version: nothing to do
+    hello("1.0.0")  # the socket reconnected, same version and boot: nothing to do
     assert page.evaluate("window.__loaded") is True
 
+    with page.expect_navigation():
+        hello("1.0.0", "b")  # MirrorDash restarted (module installed, backup restored): fresh content
+    assert page.evaluate("window.__loaded === undefined")
+
+    page.wait_for_function("window.__ws")
+    page.evaluate("window.__loaded = true")
+    hello("1.0.0")
     with page.expect_navigation():
         hello("1.1.0")  # updated: the page loads its new code
     assert page.evaluate("window.__loaded === undefined")
