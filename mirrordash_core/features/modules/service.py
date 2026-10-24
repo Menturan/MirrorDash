@@ -5,6 +5,7 @@ import importlib.metadata
 import json
 import logging
 import re
+import time
 import urllib.error
 import urllib.request
 from datetime import UTC
@@ -280,7 +281,10 @@ async def module_updates(max_age: float = REMOTE_JSON_TTL) -> tuple[list[dict], 
 
 async def uninstall_module(package_name: str) -> dict:
     check_package_name(package_name, allow_git=False)
-    # Its instances go too; a reinstall starts from defaults
+    logger.info(f"Uninstalling package: {package_name}")
+    await _change_packages("Uninstall", ["uninstall", "-y", package_name])
+    # Its instances go too, once it is gone (a failed uninstall keeps them); a reinstall starts from defaults.
+    # _change_packages only schedules the restart, so this is saved before it.
     config = load_config()
     modules_config = config.get("modules", {})
     norm = package_name.replace("-", "_")
@@ -291,8 +295,6 @@ async def uninstall_module(package_name: str) -> dict:
         del modules_config[key]
     if instances:
         save_config(config)
-    logger.info(f"Uninstalling package: {package_name}")
-    await _change_packages("Uninstall", ["uninstall", "-y", package_name])
     return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
 
 
@@ -348,6 +350,7 @@ async def list_modules() -> dict:
 
 
 LAST_SCAN_TIMESTAMP = None
+_LAST_LAZY_SCAN = float("-inf")  # time.monotonic() of the last scan list_community_modules started
 
 
 async def scan_community_modules_now():
@@ -392,9 +395,10 @@ async def scan_community_modules_now():
             except Exception:  # one package's metadata failing must not stop the scan
                 return None
 
-        # Fetch metadata for each discovered package
-        for name in names:
-            meta = await loop.run_in_executor(None, _fetch_meta, name) or {}
+        # Fetch metadata for each discovered package, all at once
+        metas = await asyncio.gather(*(asyncio.to_thread(_fetch_meta, name) for name in names))
+        for name, meta in zip(names, metas, strict=True):
+            meta = meta or {}
             info = meta.get("info") or {}
             repo = next(filter(None, map(github_repo, (info.get("project_urls") or {}).values())), None)
             scanned_modules.append({
@@ -427,8 +431,11 @@ async def scan_community_modules_now():
     try:
         github_data = await loop.run_in_executor(None, _fetch_github_repos)
     except Exception as e:
-        # Keep the list from the last scan; the admin page says the refresh failed
+        # Keep the list from the last scan (or, with none yet, what PyPI gave); the admin page says
+        # the refresh failed
         logger.warning(f"Could not search GitHub for modules: {e}")
+        if not DISCOVERED_COMMUNITY_MODULES:
+            DISCOVERED_COMMUNITY_MODULES = scanned_modules
         raise
     for item in github_data.get("items", []):
         repo_name = item.get("name", "")
@@ -452,8 +459,10 @@ async def scan_community_modules_now():
 @router.get("/community-modules", dependencies=[Depends(require_api_key)])
 async def list_community_modules() -> list[dict]:
     """Return a list of popular discoverable community modules on PyPI."""
-    global DISCOVERED_COMMUNITY_MODULES, LAST_SCAN_TIMESTAMP
-    if LAST_SCAN_TIMESTAMP is None:
+    global _LAST_LAZY_SCAN
+    # Not again on every visit after a failed one: the scan downloads PyPI's whole index
+    if LAST_SCAN_TIMESTAMP is None and time.monotonic() - _LAST_LAZY_SCAN > 600:
+        _LAST_LAZY_SCAN = time.monotonic()
         try:
             await scan_community_modules_now()
         except Exception as e:

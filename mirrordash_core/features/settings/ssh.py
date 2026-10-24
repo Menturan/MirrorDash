@@ -38,15 +38,18 @@ async def set_ssh_status(enabled: bool) -> bool:
             "sudo", "-n", "systemctl", action, "ssh",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        await proc1.wait()
+        rc1 = await proc1.wait()
 
         start_stop = "start" if enabled else "stop"
         proc2 = await asyncio.create_subprocess_exec(
             "sudo", "-n", "systemctl", start_stop, "ssh",
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
-        await proc2.wait()
+        rc2 = await proc2.wait()
 
+        if rc1 != 0 or rc2 != 0:
+            logger.error(f"systemctl {action}/{start_stop} ssh failed (exit {rc1}, {rc2})")
+            return False
         return True
     except Exception as e:
         logger.error(f"Failed to change SSH status: {e}")
@@ -94,4 +97,5 @@ async def apply_ssh(enabled: bool, password: str | None) -> None:
             pass
         except OSError as e:
             logger.error(f"Failed to remove password hash: {e}")
-    await set_ssh_status(enabled)
+    if not await set_ssh_status(enabled):
+        raise HTTPException(status_code=500, detail=f"Could not turn SSH {'on' if enabled else 'off'}. Check the mirror's log.")

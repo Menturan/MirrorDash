@@ -320,6 +320,10 @@ def failed_os_update(installed: str) -> str | None:
             OS_PENDING_FILE.unlink(missing_ok=True)  # it stuck
         return None
     OS_PENDING_FILE.unlink(missing_ok=True)
+    from mirrordash_core.config import save_config
+    config = load_config()  # the nightly auto-update must skip this build too, whoever saw the failure first
+    config.setdefault("system", {})["auto_update_skip_build"] = target
+    save_config(config)
     return target
 
 

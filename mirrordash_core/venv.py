@@ -60,7 +60,9 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
         return None
     venv_link, active_path, next_path = paths
     # A full card mid-install leaves a half-built venv and can stop settings from being saved
-    free = shutil.disk_usage(STORAGE_DIR).free + (_size(next_path) if next_path.exists() else 0)
+    # Copying and deleting a venv takes tens of seconds on a Pi's card: in a thread, so the screen
+    # and the admin page keep their connection meanwhile
+    free = shutil.disk_usage(STORAGE_DIR).free + (await asyncio.to_thread(_size, next_path) if next_path.exists() else 0)
     if free < MIN_FREE_BYTES:
         raise HTTPException(status_code=507, detail=f"Not enough free space on the mirror's storage "
                                                     f"({free // 1048576} MB free, {MIN_FREE_BYTES // 1048576} MB needed). "
@@ -68,9 +70,9 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
     logger.info(f"Preparing A/B swap: Active={active_path.name}, Next={next_path.name}, Clean={force_clean}")
     try:
         if next_path.exists():
-            shutil.rmtree(next_path)
+            await asyncio.to_thread(shutil.rmtree, next_path)
         if active_path.exists() and not force_clean:
-            shutil.copytree(active_path, next_path, symlinks=True)
+            await asyncio.to_thread(shutil.copytree, active_path, next_path, symlinks=True)
         else:
             next_path.parent.mkdir(parents=True, exist_ok=True)
             code, _, err = await run("uv", "venv", "--python", python or running_python(), str(next_path))
@@ -83,7 +85,7 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
         _point_link(venv_link, next_path)
     except Exception as e:
         logger.error(f"Failed to swap symlink: {e}")
-        shutil.rmtree(next_path, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
         raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
     return active_path, next_path
 
@@ -99,12 +101,12 @@ async def commit_venv_next(active_path: Path, next_path: Path) -> None:
     logger.info(f"Committing A/B swap: {next_path.name} is now active.")
     try:
         if venv_old.exists():
-            shutil.rmtree(venv_old)
+            await asyncio.to_thread(shutil.rmtree, venv_old)
         if active_path.exists():
             os.rename(active_path, venv_old)
     except Exception as e:
         logger.warning(f"Failed to move active venv to venv_old: {e}")
-    remove_unused_pythons()
+    await asyncio.to_thread(remove_unused_pythons)
 
 
 def remove_unused_pythons() -> None:
@@ -144,7 +146,7 @@ async def revert_venv_next(active_path: Path, next_path: Path) -> None:
     logger.warning(f"Reverting A/B swap to: {active_path.name}")
     try:
         _point_link(active_path.parent / "venv", active_path)
-        shutil.rmtree(next_path, ignore_errors=True)
+        await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
     except Exception as e:
         logger.error(f"Failed to revert symlink: {e}")
 

@@ -87,7 +87,7 @@ async def get_status() -> dict:
         "version": get_core_version(),
         "uptime_seconds": round(get_uptime_seconds()),
         "cpu_temperature_c": get_cpu_temperature(),
-        "screen_on": display_power_manager.is_on,
+        "screen_on": bool(display_power_manager.is_on),
         "brightness": system_cfg.get("brightness", 100),
         "brightness_supported": display.brightness_supported is not False,
         "modules": sorted(module_loader.tasks),

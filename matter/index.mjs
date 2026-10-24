@@ -46,8 +46,12 @@ const screen = new Endpoint(OnOffLightDevice, { id: "screen", onOff: { onOff: st
 await node.add(screen);
 
 // A change from a home app goes to the mirror; one that only mirrors the mirror's own state doesn't go back
+let lastCommand = 0, sending = 0;  // a poll that started before this answers with the state from before the command
 screen.events.onOff.onOff$Changed.on(on => {
-    if (on !== status.screen_on) call("/screen", { state: on ? "on" : "off" }).catch(console.error);
+    if (on === status.screen_on) return;
+    lastCommand = Date.now();
+    sending++;
+    call("/screen", { state: on ? "on" : "off" }).catch(console.error).finally(() => { sending--; lastCommand = Date.now(); });
 });
 
 // ponytail: polls the local API every 2 s, so a change on the mirror reaches the home apps up to 2 s late;
@@ -55,7 +59,10 @@ screen.events.onOff.onOff$Changed.on(on => {
 // poll mustn't keep the process alive after it (systemctl stop would wait 90 s).
 setInterval(async () => {
     try {
-        status = await call("/status");
+        const started = Date.now();
+        const polled = await call("/status");
+        if (sending || started <= lastCommand) return;
+        status = polled;
         await screen.set({ onOff: { onOff: status.screen_on } });
     } catch (e) {
         console.error(e.message);

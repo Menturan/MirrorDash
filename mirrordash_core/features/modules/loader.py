@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import functools
 import hashlib
+import http.client
 import importlib.metadata
 import importlib.resources
 import importlib.util
@@ -115,7 +116,7 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
             answer = parse(raw)
         except urllib.error.HTTPError as e:
             error = "rejected" if e.code in (401, 403) else f"http {e.code}"
-        except (urllib.error.URLError, OSError):  # includes timeouts
+        except (urllib.error.URLError, OSError, http.client.HTTPException):  # timeouts, cut-off answers
             error = "offline"
         except ValueError:  # fetch_json: not JSON, or not UTF-8
             error = "invalid"
@@ -226,6 +227,47 @@ def find_entry_point(name: str, eps=None):
     return next((ep for ep in eps if ep.name.replace('-', '_') == norm_name), None)
 
 
+def start_system() -> None:
+    """Apply the saved system settings once, at startup (app.py lifespan). A module reload doesn't: each
+    setting's own save applies it, and doing all of them again flickered the screen and restarted Matter."""
+    config = load_config()
+    system_cfg = config.get("system", {})
+    try:
+        if system_cfg:
+            from mirrordash_core.features.hardware.display import apply_system_settings
+            asyncio.create_task(apply_system_settings(
+                system_cfg.get("rotation", "normal"),
+                system_cfg.get("resolution", "auto"),
+                system_cfg.get("brightness", 100),
+                system_cfg.get("volume", 80)
+            ))
+
+        timezone = config.get("globals", {}).get("timezone")
+        if timezone:
+            from mirrordash_core.host import apply_system_timezone
+            asyncio.create_task(apply_system_timezone(timezone))
+
+        if system_cfg.get("ssh") is not None:
+            from mirrordash_core.features.settings.ssh import set_ssh_status
+            asyncio.create_task(set_ssh_status(system_cfg["ssh"]))
+
+        # Matter: the core starts the node, /etc forgets `systemctl enable` (features/matter)
+        if config.get("matter", {}).get("enabled"):
+            from mirrordash_core.features.matter.routes import start_matter
+            asyncio.create_task(start_matter())
+
+        # The pi password lives on /storage; the read-only root forgets it at every boot
+        from mirrordash_core.features.settings.ssh import PASSWORD_HASH_FILE
+        if os.path.exists(PASSWORD_HASH_FILE):
+            with open(PASSWORD_HASH_FILE, encoding="utf-8") as f:
+                pwd_hash = f.read().strip()
+            if pwd_hash:
+                from mirrordash_core.host import apply_system_password_hash
+                asyncio.create_task(apply_system_password_hash(pwd_hash))
+    except Exception as e:
+        logger.warning(f"Failed to apply system settings on startup: {e}")
+
+
 class ModuleLoader:
     def __init__(self):
         self.tasks: dict[str, asyncio.Task] = {}
@@ -233,55 +275,6 @@ class ModuleLoader:
 
     async def start_modules(self) -> None:
         config = load_config()
-
-        # Apply system settings on startup (brightness, rotation, resolution, volume)
-        try:
-            system_cfg = config.get("system", {})
-            global_cfg = config.get("globals", {})
-
-            # Apply display and audio settings
-            if system_cfg:
-                from mirrordash_core.features.hardware.display import (
-                    apply_system_settings,
-                )
-                asyncio.create_task(apply_system_settings(
-                    system_cfg.get("rotation", "normal"),
-                    system_cfg.get("resolution", "auto"),
-                    system_cfg.get("brightness", 100),
-                    system_cfg.get("volume", 80)
-                ))
-
-            # Apply timezone
-            timezone = global_cfg.get("timezone")
-            if timezone:
-                from mirrordash_core.host import apply_system_timezone
-                asyncio.create_task(apply_system_timezone(timezone))
-
-            # Apply SSH status
-            ssh_enabled = system_cfg.get("ssh")
-            if ssh_enabled is not None:
-                from mirrordash_core.features.settings.ssh import set_ssh_status
-                asyncio.create_task(set_ssh_status(ssh_enabled))
-
-            # Matter: the core starts the node, /etc forgets `systemctl enable` (features/matter)
-            if config.get("matter", {}).get("enabled"):
-                from mirrordash_core.features.matter.routes import start_matter
-                asyncio.create_task(start_matter())
-
-            # Apply persistent system password hash if present
-            hash_path = "/home/pi/.mirrordash/data/pi_password.hash"
-            if os.path.exists(hash_path):
-                try:
-                    with open(hash_path, encoding="utf-8") as f:
-                        pwd_hash = f.read().strip()
-                    if pwd_hash:
-                        from mirrordash_core.host import apply_system_password_hash
-                        asyncio.create_task(apply_system_password_hash(pwd_hash))
-                except Exception as pwd_err:
-                    logger.warning(f"Failed to read/apply saved password hash: {pwd_err}")
-
-        except Exception as e:
-            logger.warning(f"Failed to apply system settings on startup: {e}")
 
         modules_config = config.get("modules", {})
 
@@ -348,66 +341,43 @@ class ModuleLoader:
                 _inject_module_helpers(plugin_instance, package_name, translations, instance_id, module_cfg_copy)
 
                 if hasattr(plugin_instance, "run_loop"):
-                    broadcast_fn = self._make_broadcast_func(instance_id, module_name)
+                    if not inspect.iscoroutinefunction(plugin_instance.run_loop):
+                        # A thread can't be stopped on a reload, so it would keep running with old settings
+                        logger.error(f"Module {module_name} (instance: {instance_id}): run_loop must be `async def`; not started.")
+                        continue
+                    broadcast_fn = self._make_broadcast_func(instance_id, module_cfg)
                     self._start_module_task(instance_id, plugin_instance, broadcast_fn)
             except Exception as e:
                 logger.error(f"Failed to load module {module_name} (instance: {instance_id}): {e}", exc_info=True)
 
-    def _make_broadcast_func(self, instance_id: str, module_name: str):
-        """Return a broadcast function that reads position from the cached config."""
+    def _make_broadcast_func(self, instance_id: str, module_cfg: dict):
+        """Return a broadcast function with the module's place on the screen. Every change to it saves
+        the config and reloads the modules, so it is read once here, not copied from the config each time."""
+        message = {
+            "position": module_cfg.get("position", "middle_center"),
+            "module": instance_id,
+            "carousel_group": module_cfg.get("carousel_group"),
+            "carousel_interval": module_cfg.get("carousel_interval", 15),
+            "max_width": module_cfg.get("max_width"),
+            "max_height": module_cfg.get("max_height"),
+            "z_index": module_cfg.get("z_index"),
+            "opacity": module_cfg.get("opacity"),
+        }
+
         async def broadcast_func(module_html_name: str, html: str) -> None:
-            current_config = load_config()  # Returns from cache — no disk I/O
-            modules_cfg = current_config.get("modules", {})
-            module_cfg = modules_cfg.get(instance_id)
-            pos = "middle_center"
-            carousel_group = None
-            carousel_interval = 15
-            max_width = None
-            max_height = None
-            z_index = None
-            opacity = None
-            if module_cfg:
-                pos = module_cfg.get("position", "middle_center")
-                carousel_group = module_cfg.get("carousel_group")
-                carousel_interval = module_cfg.get("carousel_interval", 15)
-                max_width = module_cfg.get("max_width")
-                max_height = module_cfg.get("max_height")
-                z_index = module_cfg.get("z_index")
-                opacity = module_cfg.get("opacity")
-            await manager.broadcast({
-                "position": pos,
-                "html": html,
-                "module": instance_id,
-                "carousel_group": carousel_group,
-                "carousel_interval": carousel_interval,
-                "max_width": max_width,
-                "max_height": max_height,
-                "z_index": z_index,
-                "opacity": opacity,
-            })
+            await manager.broadcast({**message, "html": html})
         return broadcast_func
 
     def _start_module_task(self, instance_id: str, plugin_instance, broadcast_fn) -> None:
-        """Create and register an asyncio task for a module, with auto-restart on crash."""
-        loop = asyncio.get_running_loop()
-        is_async = inspect.iscoroutinefunction(plugin_instance.run_loop)
-
+        """Create and register an asyncio task for a module, restarted after a crash or a return."""
         async def run_with_recovery():
             backoff = MODULE_RESTART_DELAY
             while True:
+                started = time.monotonic()
                 try:
-                    logger.info(f"Starting {'async' if is_async else 'sync'} run_loop for {instance_id}")
-                    if is_async:
-                        await plugin_instance.run_loop(broadcast_fn)
-                    else:
-                        def sync_broadcast(module_html_name: str, html: str) -> None:
-                            asyncio.run_coroutine_threadsafe(
-                                broadcast_fn(module_html_name, html),
-                                loop
-                            )
-                        await loop.run_in_executor(None, plugin_instance.run_loop, sync_broadcast)
-                    # Reset backoff on successful execution
-                    backoff = MODULE_RESTART_DELAY
+                    logger.info(f"Starting run_loop for {instance_id}")
+                    await plugin_instance.run_loop(broadcast_fn)
+                    logger.warning(f"Module '{instance_id}' run_loop returned. Starting it again in {backoff}s...")
                 except asyncio.CancelledError:
                     logger.info(f"Module '{instance_id}' task cancelled.")
                     raise
@@ -417,8 +387,12 @@ class ModuleLoader:
                         f"Restarting in {backoff}s...",
                         exc_info=True
                     )
-                    await asyncio.sleep(backoff)
-                    backoff = min(backoff * 2, 300)  # Double delay, capped at 5 minutes
+                # A loop that ran a while starts over at the short delay; one that keeps ending at once
+                # waits longer each time (capped at 5 minutes) instead of spinning
+                if time.monotonic() - started > 300:
+                    backoff = MODULE_RESTART_DELAY
+                await asyncio.sleep(backoff)
+                backoff = min(backoff * 2, 300)
 
         task = asyncio.create_task(run_with_recovery(), name=f"module-{instance_id}")
         self.tasks[instance_id] = task

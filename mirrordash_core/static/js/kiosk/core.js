@@ -13,6 +13,8 @@ const NOT_RESPONDING_AFTER = 2 * 60 * 1000;
 let lostAt = null;
 // The MirrorDash version this page was loaded with (the server says it on every connect)
 let pageVersion = null;
+let pageBootId = null;
+let hideStatusTimer = null;
 
 function setStatus(state) {
     if (state !== 'connected' && lostAt && Date.now() - lostAt > NOT_RESPONDING_AFTER) state = 'failed';
@@ -48,13 +50,16 @@ function updateCarouselGroup(groupContainer) {
         activeSlide.classList.add('carousel-active');
     }
 
-    if (groupContainer._carouselTimer) {
-        clearInterval(groupContainer._carouselTimer);
-        groupContainer._carouselTimer = null;
-    }
+    // A module updating often must not restart the rotation: only a changed slide count or interval
+    // does, or a video starting or stopping (which hands the stepping to the minute timer and back)
+    const key = `${slides.length}/${carouselInterval(groupContainer)}/${videoIsPlaying}`;
+    if (groupContainer._carouselTimer && groupContainer._carouselKey === key) return;
+    clearInterval(groupContainer._carouselTimer);
+    groupContainer._carouselTimer = null;
 
     // While a video plays, the minute timer (setVideoIsPlaying) steps the carousels instead
     if (slides.length > 1 && !videoIsPlaying) {
+        groupContainer._carouselKey = key;
         groupContainer._carouselTimer = setInterval(() => stepCarousel(groupContainer), carouselInterval(groupContainer));
     }
 }
@@ -116,7 +121,7 @@ function connect() {
         lostAt = null;
         setStatus('connected');
         const statusEl = document.getElementById('ws-status');
-        setTimeout(() => statusEl.classList.add('ws-status--hidden'), 3000);
+        hideStatusTimer = setTimeout(() => statusEl.classList.add('ws-status--hidden'), 3000);
     };
 
     socket.onmessage = (event) => {
@@ -136,12 +141,14 @@ function connect() {
         if (data.type === 'ping') return;
 
         if (data.type === 'hello') {
-            // A new version (update, rollback) brings new page code; a plain restart doesn't reload
-            if (pageVersion && pageVersion !== data.version) {
+            // A new version (update, rollback) brings new page code, and any restart (module install,
+            // backup restore) may change the modules: reload when the version or the boot id differs
+            if ((pageVersion && pageVersion !== data.version) || (pageBootId && pageBootId !== data.boot_id)) {
                 window.location.reload();
                 return;
             }
             pageVersion = data.version;
+            pageBootId = data.boot_id;
             showOffline(data.online === false);
             setVideoIsPlaying(data.video_is_playing === true);
             return;
@@ -212,11 +219,9 @@ function connect() {
             }, { once: true });
         }
 
-        if (data.carousel_group) {
-            moduleDiv.className = 'carousel-slide';
-        } else {
-            moduleDiv.className = '';
-        }
+        // toggle, not className=: a redraw keeps the slide that is showing and its entrance animation
+        moduleDiv.classList.toggle('carousel-slide', !!data.carousel_group);
+        if (!data.carousel_group) moduleDiv.classList.remove('carousel-active');
 
         // Apply standard per-module wrapper properties from config.
         // Any CSS-valid value works (e.g. max_width "400px", opacity 0.5, z_index 10).
@@ -259,6 +264,7 @@ function connect() {
 
     socket.onclose = () => {
         lostAt = lostAt ?? Date.now();
+        clearTimeout(hideStatusTimer);
         setStatus('disconnected');
         const statusEl = document.getElementById('ws-status');
         statusEl.classList.remove('ws-status--hidden');

@@ -40,10 +40,9 @@ async def get_panel_dashboard(request: Request):
     # Get local routing IP address
     local_ip = "127.0.0.1"
     try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        local_ip = s.getsockname()[0]
-        s.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
     except Exception:
         pass
 
