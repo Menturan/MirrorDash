@@ -316,3 +316,31 @@ async def test_a_module_reload_leaves_the_system_settings_alone(monkeypatch):
         await ModuleLoader().start_modules()
         await asyncio.sleep(0)
     assert not matter.called and not ssh.called
+
+
+def test_a_module_serves_its_own_routes_under_its_instance_only():
+    """A module's `router` answers at /api/modules/<instance>/..., HTTPException included; an instance
+    without one, or one not running, is a 404, so the path reaches no route of the core."""
+    from fastapi import APIRouter, HTTPException
+    from fastapi.testclient import TestClient
+
+    from mirrordash_core.app import app
+    from mirrordash_core.features.modules.loader import module_loader
+
+    plugin = type("Plugin", (), {})()
+    plugin.router = APIRouter()
+
+    @plugin.router.post("/relay/{state}")
+    async def relay(state: str):
+        if state not in ("on", "off"):
+            raise HTTPException(status_code=400, detail="on or off")
+        return {"relay": state}
+
+    client = TestClient(app)
+    with patch.dict(module_loader.instances, {"garage": plugin, "clock": object()}):
+        assert client.post("/api/modules/garage/relay/on").json() == {"relay": "on"}
+        assert client.post("/api/modules/garage/relay/up").status_code == 400
+        assert client.post("/api/modules/garage/other").status_code == 404
+        assert client.get("/api/modules/clock/relay/on").status_code == 404
+        assert client.get("/api/modules/gone/relay/on").status_code == 404
+        assert client.get("/api/modules").status_code == 404

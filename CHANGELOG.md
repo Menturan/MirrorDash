@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Modules can offer their own web addresses on the home network (`http://mirrordash.local/api/modules/<module>/...`), for example for a sensor or a phone shortcut to call.
+- MirrorDash no longer answers on port 8000 from the home network, only at `http://mirrordash.local` (port 80) as before.
 - *Settings* → *Updates* → *Check for Updates* also checks every module, lists the ones with a new version and updates them all at once with *Update All Modules* (MirrorDash restarts once). It says when it last checked.
 - The *Dashboard* says when modules have new versions, not only MirrorDash.
 - A backup with a password is now properly encrypted, and also holds the admin password, the SSH password and the saved Wi-Fi networks, so a new mirror can be set up from it in one step. A backup without a password holds none of them. Backups made before this version can't be restored.

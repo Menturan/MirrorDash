@@ -17,6 +17,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from fastapi import APIRouter
 from jinja2 import (
     ChoiceLoader,
     Environment,
@@ -24,6 +25,7 @@ from jinja2 import (
     PackageLoader,
     select_autoescape,
 )
+from starlette.routing import Router, get_route_path
 
 from mirrordash_core.config import get_base_dir, get_core_version, load_config
 from mirrordash_core.event_bus import event_bus
@@ -326,6 +328,9 @@ class ModuleLoader:
                 # Inject event bus for inter-module communication
                 module_cfg_copy["event_bus"] = event_bus
 
+                # Where the module's own routes are served (module_routes), so it can tell its users
+                module_cfg_copy["api_path"] = f"/api/modules/{instance_id}"
+
                 # Inject global configurations
                 module_cfg_copy["globals"] = config.get("globals", {})
 
@@ -422,3 +427,16 @@ class ModuleLoader:
 
 # Singleton instance
 module_loader = ModuleLoader()
+
+_NO_ROUTES = Router()  # answers 404 (or closes a websocket) for an instance without routes
+
+
+async def module_routes(scope, receive, send) -> None:
+    """Mounted at /api/modules: /api/modules/<instance>/... goes to that running instance's `router`
+    (a FastAPI APIRouter) and nowhere else, so a module can't add or shadow a route of the core.
+    No login in front: the module checks its callers itself, like any service on the home network."""
+    instance_id = get_route_path(scope).lstrip("/").split("/")[0]
+    router = getattr(module_loader.instances.get(instance_id), "router", None)
+    if not isinstance(router, APIRouter):
+        router = _NO_ROUTES
+    await router({**scope, "root_path": f"{scope['root_path']}/{instance_id}"}, receive, send)

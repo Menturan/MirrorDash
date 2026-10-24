@@ -59,7 +59,7 @@ def main() -> None:
 
     uvicorn.run(
         "mirrordash_core.app:app",
-        host="0.0.0.0",
+        host="127.0.0.1",  # the home network comes in through nginx on port 80, never around it
         port=8000,
         ws_ping_interval=20,
         ws_ping_timeout=20,

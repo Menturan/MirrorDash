@@ -22,7 +22,11 @@ from mirrordash_core.features.logs import routes as logs
 from mirrordash_core.features.matter import routes as matter
 from mirrordash_core.features.modules import routes as modules
 from mirrordash_core.features.modules import service as modules_service
-from mirrordash_core.features.modules.loader import module_loader, start_system
+from mirrordash_core.features.modules.loader import (
+    module_loader,
+    module_routes,
+    start_system,
+)
 from mirrordash_core.features.power import routes as power
 from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
@@ -62,5 +66,6 @@ for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
                 kiosk, logs, matter, modules, modules_service, power, settings, updates, updates_service, wifi):
     app.include_router(feature.router)
 app.mount("/api/v1", api_v1.api)
+app.mount("/api/modules", module_routes)
 
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")
