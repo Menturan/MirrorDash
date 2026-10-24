@@ -92,16 +92,18 @@ def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
     assert "mirrordash_backup_" in response.json()["filename"]
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
-def test_create_backup_zip_failure(mock_subproc, mock_backup_dirs, client):
-    # Mock subprocess failure
+def test_create_backup_encryption_failure(mock_subproc, mock_backup_dirs, client):
+    """openssl (and nmcli, for the Wi-Fi) failing: an error, and no half-written backup left."""
+    backups_dir, _ = mock_backup_dirs
     mock_process = MagicMock()
     mock_process.returncode = 1
-    mock_process.communicate = AsyncMock(return_value=(b"", b"zip error"))
+    mock_process.communicate = AsyncMock(return_value=(b"", b"openssl error"))
     mock_subproc.return_value = mock_process
-    
-    response = call(create_backup)
+
+    response = call(create_backup, "secret")
     assert response.status_code == 500
     assert "Failed to write backup archive" in response.json()["detail"]
+    assert not list(backups_dir.glob("*.mirror"))
 
 def test_download_backup_path_traversal(mock_backup_dirs, client):
     headers = {"X-API-Key": "secret"}
@@ -283,7 +285,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     real_exec = asyncio.create_subprocess_exec
     uv_calls = []
     async def fake_exec(*cmd, **kwargs):
-        if cmd[0] == "zip":
+        if cmd[0] == "openssl":
             return await real_exec(*cmd, **kwargs)
         uv_calls.append(cmd)
         proc = MagicMock(returncode=0)
@@ -332,21 +334,98 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     mock_restart.assert_not_called()
 
 
-@pytest.mark.skipif(shutil.which("zip") is None, reason="needs the zip tool, like the mirror")
-def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
+@pytest.mark.asyncio
+async def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
+    from mirrordash_core.features.backup.service import (
+        _openssl,
+        is_encrypted,
+        read_manifest,
+    )
+    plain = tmp_path / "plain.mirror"
+    with zipfile.ZipFile(plain, "w") as zf:
+        zf.writestr("backup_manifest.json", '{"backup_version": "2.0"}')
+    locked = str(tmp_path / "locked.mirror")
+    assert await _openssl("my secret", "-salt", "-in", str(plain), "-out", locked)
+    assert is_encrypted(locked) and not is_encrypted(str(plain))
+    assert await read_manifest(locked) is None
+    assert all([await read_manifest(locked, f"wrong{i}") is None for i in range(3)])
+    assert await read_manifest(locked, "my secret") == {"backup_version": "2.0"}
+    assert await read_manifest(str(plain)) == {"backup_version": "2.0"}
+    with pytest.raises(zipfile.BadZipFile):
+        await read_manifest(__file__)  # not a backup at all
+
+
+@pytest.mark.skipif(shutil.which("zip") is None, reason="needs the zip tool to make an old backup")
+@pytest.mark.asyncio
+async def test_an_old_zipcrypto_backup_says_so(tmp_path):
     import subprocess
 
     from mirrordash_core.features.backup.service import read_manifest
     (tmp_path / "backup_manifest.json").write_text('{"backup_version": "1.0"}')
-    subprocess.run(["zip", "-q", "-P", "secret", "locked.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
-    locked = str(tmp_path / "locked.mirror")
-    assert read_manifest(locked) is None
-    # ZIP encryption checks a password against one byte, so about 1 wrong one in 256 gets past it
-    # and fails at the checksum instead: enough tries that some do, every one still "wrong password"
-    assert all(read_manifest(locked, f"wrong{i}") is None for i in range(3000))
-    assert read_manifest(locked, "secret") == {"backup_version": "1.0"}
-    with pytest.raises(zipfile.BadZipFile):
-        read_manifest(str(tmp_path / "backup_manifest.json"))
+    subprocess.run(["zip", "-q", "-P", "secret", "old.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
+    with pytest.raises(ValueError, match="older"):
+        await read_manifest(str(tmp_path / "old.mirror"), "secret")
+
+
+def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, client):
+    """With a password: one encrypted file with the admin password, the pi password and the Wi-Fi;
+    never the login sessions or the config's last good copy. It restores them on a fresh mirror."""
+    backups_dir, data_dir = mock_backup_dirs
+    old_config = {"admin_auth": {"hash": "old-hash", "salt": "old-salt"}, "globals": {"language": "sv"}}
+    for name, text in {"config.json": "{}", "config.json.bak": "old-hash", "sessions.json": "cookie",
+                       "pi_password.hash": "$6$pi"}.items():
+        (data_dir / name).write_text(text)
+    wifi = [{"ssid": "Home", "psk": "wifi pass"}]
+    password = "a pass with spaces"
+
+    with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config), \
+         patch("mirrordash_core.features.backup.service.saved_wifi", new_callable=AsyncMock, return_value=wifi), \
+         patch("mirrordash_core.features.backup.service.installed_modules", return_value=[]):
+        r = call(create_backup, password)
+    assert r.status_code == 200, r.json()
+    archive = backups_dir / r.json()["filename"]
+    raw = archive.read_bytes()
+    assert raw.startswith(b"Salted__") and b"wifi pass" not in raw and b"old-hash" not in raw
+
+    async def contents(pw):
+        from mirrordash_core.features.backup.service import plain_zip
+        async with plain_zip(str(archive), pw) as zip_path:
+            if zip_path is None:
+                return None
+            with zipfile.ZipFile(zip_path) as zf:
+                return {n: zf.read(n) for n in zf.namelist() if not n.endswith("/")}
+    assert asyncio.run(contents("wrong")) is None
+    files = asyncio.run(contents(password))
+    assert json.loads(files["config.json"])["admin_auth"]["hash"] == "old-hash"
+    assert json.loads(files["wifi.json"]) == wifi and files["data/pi_password.hash"] == b"$6$pi"
+    assert not {"data/sessions.json", "data/config.json.bak", "data/config.json"} & set(files)
+
+    # A fresh mirror being set up: no admin password yet
+    shutil.copy(archive, backups_dir / "tmp_upload.mirror")
+    (data_dir / "sessions.json").write_text("new")
+    with patch("mirrordash_core.features.backup.service.load_config", return_value={}), \
+         patch("mirrordash_core.features.backup.service.add_wifi", new_callable=AsyncMock) as mock_wifi, \
+         patch("mirrordash_core.features.backup.service.sync_gpio_overlays", new_callable=AsyncMock,
+               return_value=(False, None)), \
+         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock), \
+         patch("mirrordash_core.features.backup.service.save_config") as mock_save:
+        assert call(restore_backup, "wrong").status_code == 500
+        r = call(restore_backup, password)
+        assert r.status_code == 200, r.json()
+    assert mock_save.call_args[0][0]["admin_auth"]["hash"] == "old-hash"
+    mock_wifi.assert_awaited_once_with(wifi)
+    assert (data_dir / "sessions.json").read_text() == "new"
+
+
+def test_a_backup_cannot_name_a_folder_outside_the_modules(tmp_path):
+    """A local module's folder_name from the manifest is emptied before the copy: never a path."""
+    from mirrordash_core.features.backup.service import _restore_module
+    victim = tmp_path / "victim"
+    victim.mkdir()
+    (tmp_path / "local_modules").mkdir()
+    for folder in (str(victim), "../victim", "..", None):
+        asyncio.run(_restore_module({"type": "local", "package_name": "x", "folder_name": folder}, tmp_path, "python"))
+    assert victim.exists()
 
 
 def test_a_backup_file_can_only_show_text_never_markup():
@@ -355,10 +434,10 @@ def test_a_backup_file_can_only_show_text_never_markup():
     from mirrordash_core.features.backup import routes
     evil = '"><script>alert(1)</script>'
     manifest = {"timestamp": evil, "modules": [{"package_name": evil, "version": evil, "type": "local"}]}
-    with patch.object(routes, "read_manifest", return_value=manifest):
-        page = routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=False, password=evil).body.decode()
+    with patch.object(routes, "read_manifest", new_callable=AsyncMock, return_value=manifest):
+        page = asyncio.run(routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=False, password=evil)).body.decode()
     assert "<script>" not in page and page.count("&lt;script&gt;") == 5  # timestamp, name, version, file name, password
     assert "Local source" in page and 'hx-disabled-elt="find button"' in page
-    with patch.object(routes, "read_manifest", return_value=None):  # encrypted, wrong password
-        page = routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=True, password="nope").body.decode()
+    with patch.object(routes, "read_manifest", new_callable=AsyncMock, return_value=None):  # encrypted, wrong password
+        page = asyncio.run(routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=True, password="nope")).body.decode()
     assert "Invalid backup password." in page and "<script>" not in page and 'name="is_local" value="true"' in page

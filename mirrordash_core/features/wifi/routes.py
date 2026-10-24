@@ -3,13 +3,27 @@
 
 import asyncio
 import logging
-import secrets
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import RedirectResponse
 
-from mirrordash_core.admin import notify, require_api_key, templates
+from mirrordash_core.admin import (
+    check_password,
+    notify,
+    require_api_key,
+    start_job,
+    templates,
+)
 from mirrordash_core.config import load_config
 from mirrordash_core.features.dashboard.telemetry import get_wifi_info
 from mirrordash_core.features.kiosk.ws import manager
@@ -29,25 +43,15 @@ logger = logging.getLogger("mirrordash.core.wifi")
 router = APIRouter()
 
 
-async def check_wifi_auth(x_api_key: Annotated[str | None, Header()] = None) -> None:
-    """Validate X-API-Key if admin password is configured."""
-    config = load_config()
-    auth = config.get("admin_auth")
-    if not auth:
+async def check_wifi_auth(request: Request, x_api_key: Annotated[str | None, Header()] = None) -> None:
+    """Validate X-API-Key if admin password is configured, with the login's lockout after wrong tries."""
+    if not load_config().get("admin_auth"):
         # No admin auth is set up yet (e.g. captive portal on fresh install), allow anyone to configure wifi
         return
 
     if not x_api_key:
         raise HTTPException(status_code=401, detail="Missing password in X-API-Key header")
-
-    expected_hash = auth.get("hash")
-    salt = auth.get("salt")
-    if not expected_hash or not salt:
-        raise HTTPException(status_code=500, detail="Invalid admin auth config")
-
-    from mirrordash_core.admin import hash_password
-    provided_hash = hash_password(x_api_key, salt)
-    if not secrets.compare_digest(provided_hash, expected_hash):
+    if not await check_password(x_api_key, request.client.host if request.client else ""):
         raise HTTPException(status_code=401, detail="Invalid password")
 
 
@@ -123,6 +127,53 @@ async def post_wifi_setup(body: dict) -> dict:
         return {"status": "success", "message": "Connected."}
     else:
         return {"status": "error", "message": message}
+
+
+# Big enough for a backup with local modules and their data; the phone sends it over the hotspot
+RESTORE_MAX_BYTES = 500 * 1024 * 1024
+
+
+@router.post("/api/wifi/restore", dependencies=[Depends(check_wifi_auth)])
+async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(default="")) -> dict:
+    """Set a new mirror up from an encrypted backup: join a Wi-Fi network it carries, then restore it
+    (modules come from GitHub, so the network comes first). Open like the rest of the setup page only
+    while the mirror has no admin password: before that anyone near it could set it up anyway."""
+    from mirrordash_core.features.backup.service import (
+        backup_wifi,
+        read_manifest,
+        restore_backup,
+        temp_upload,
+    )
+    size = 0
+    with open(temp_upload(), "wb") as out:
+        while chunk := await file.read(1024 * 1024):
+            size += len(chunk)
+            if size > RESTORE_MAX_BYTES:
+                raise HTTPException(status_code=413, detail="That file is too big to be a backup.")
+            out.write(chunk)
+    try:
+        manifest = await read_manifest(temp_upload(), password or None)
+    except Exception:
+        raise HTTPException(status_code=400, detail="That file isn't a MirrorDash backup, or it's from an older version.")
+    if manifest is None:
+        raise HTTPException(status_code=400, detail="Wrong password for this backup." if password
+                            else "This backup is protected: enter its password.")
+    networks = await backup_wifi(temp_upload(), password or None)
+    if not networks:
+        raise HTTPException(status_code=400, detail="This backup has no Wi-Fi networks (only a backup with a password "
+                            "has them). Connect the mirror to Wi-Fi first, then restore it on the admin page.")
+
+    async def join_then_restore():
+        await asyncio.sleep(1)  # let the answer reach the phone before the hotspot goes
+        for net in networks:
+            if (await connect_wifi(net["ssid"], net.get("psk") or None))[0]:
+                start_job(lambda: restore_backup(password=password or None))
+                return
+        logger.warning("Could not join any Wi-Fi network from the backup; bringing the setup hotspot back.")
+        if not await restore_captive_ap():
+            await reboot_system(delay_sec=3.0)
+    asyncio.create_task(join_then_restore())
+    return {"status": "success", "networks": [net["ssid"] for net in networks]}
 
 
 # Settings → Wi-Fi: change the mirror's network from the admin page
