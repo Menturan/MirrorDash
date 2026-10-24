@@ -17,7 +17,8 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.config import get_core_version, load_config, save_config
-from mirrordash_core.features.modules.loader import find_entry_point, module_loader
+from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.loader import find_entry_point
 from mirrordash_core.features.settings.dev_logging import (
     clear_saved_journal,
     dev_logging_available,
@@ -119,7 +120,7 @@ async def save_panel_config_visual(request: Request):
 
     if globals_data.get("timezone") and globals_data["timezone"] != old_timezone:
         asyncio.create_task(apply_system_timezone(globals_data["timezone"]))
-    await module_loader.reload_modules()
+    await module_host.reload_modules()
 
     return notify("Saved.")
 
@@ -145,25 +146,26 @@ async def add_array_item_route(
                 config = load_config()
                 inst_cfg = config.get("modules", {}).get(instance_id, {})
                 module_name = inst_cfg.get("module", instance_id)
-            ep = find_entry_point(module_name)
-            if ep:
+            ep = find_entry_point(str(module_name))
+            schema = get_module_schema(ep) if ep else None
+            if schema:
                 try:
-                    plugin_class = ep.load()
-                    schema = get_module_schema(plugin_class)
-                    if schema:
-                        sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
-                except Exception:
+                    sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
+                except AttributeError:  # a schema of the wrong shape
                     pass
 
     from mirrordash_core.forms import render_array_item
-    html = render_array_item(
-        name_prefix=name_prefix,
-        array_key=array_key,
-        sub_properties=sub_properties,
-        index=index,
-        item_val={},
-        item_title=item_title
-    )
+    try:
+        html = render_array_item(
+            name_prefix=name_prefix,
+            array_key=array_key,
+            sub_properties=sub_properties,
+            index=index,
+            item_val={},
+            item_title=item_title
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return HTMLResponse(content=html)
 
 

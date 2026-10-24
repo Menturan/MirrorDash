@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.admin import (
+    from_the_mirrors_os,
     job_response,
     notify,
     require_api_key,
@@ -118,9 +119,9 @@ async def trigger_rebuild_venv():
 
 @router.post("/auto-update")
 async def post_auto_update(request: Request) -> dict:
-    """The OS image's nightly timer (mirrordash-auto-update.timer) calls this. Only from the mirror
-    itself, so it needs no password; what it may do is what Settings → Updates already allows."""
-    if request.client.host not in ("127.0.0.1", "::1"):
+    """The OS image's nightly timer (mirrordash-auto-update.timer) calls this. Only from the mirror's
+    OS (the local token), so it needs no password; what it may do is what Settings → Updates already allows."""
+    if not from_the_mirrors_os(request):
         raise HTTPException(status_code=403, detail="Only from the mirror itself")
     started = await auto_update()
     logger.info(f"Automatic update: {started}")

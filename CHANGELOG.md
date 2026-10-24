@@ -11,6 +11,9 @@ There are two kinds of releases:
 
 - Modules can offer their own web addresses on the home network (`http://mirrordash.local/api/modules/<module>/...`), for example for a sensor or a phone shortcut to call.
 - MirrorDash no longer answers on port 8000 from the home network, only at `http://mirrordash.local` (port 80) as before.
+- Fixed: a module could run code in the admin page, through its icon or the texts of its settings, and so act as you while you were logged in.
+- MirrorDash never runs a module's code to show the admin page or to check an update any more.
+- Saved files of modules from before this version are gone (modules keep them in a folder of their own now). Usually they only remember the last answer they fetched.
 - *Settings* → *Updates* → *Check for Updates* also checks every module, lists the ones with a new version and updates them all at once with *Update All Modules* (MirrorDash restarts once). It says when it last checked.
 - The *Dashboard* says when modules have new versions, not only MirrorDash.
 - A backup with a password is now properly encrypted, and also holds the admin password, the SSH password and the saved Wi-Fi networks, so a new mirror can be set up from it in one step. A backup without a password holds none of them. Backups made before this version can't be restored.
@@ -32,6 +35,9 @@ There are two kinds of releases:
 
 ### OS image
 
+- Modules run apart from MirrorDash, as their own user: they can no longer read MirrorDash's settings, passwords and logins, change the mirror's system or network, or reach the devices on your home network. A module that needs one (like Home Assistant) reaches exactly the address you type in its settings; the admin page says so under that field. Modules can still use the GPIO pins, I²C and SPI.
+- Update the Home Assistant module when its new version is out: until then it can't reach Home Assistant.
+- The mirror's screen can no longer reach devices on your home network either. A module that shows a camera at home needs a version that shows it through its own address.
 - Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
 - Safer: modules can no longer use full admin (root) rights on the mirror; the system's own leftover rule that allowed it is removed. The mirror's logs, developer logging and storage setup can no longer be tricked into overwriting system files, and Wi-Fi rights are limited to what the mirror uses.
 - Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).

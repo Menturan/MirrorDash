@@ -15,3 +15,4 @@ pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-usb on
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-usb off
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes
+pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network

@@ -27,6 +27,15 @@ mkdir -p /storage/mirrordash/data
 mkdir -p /storage/mirrordash/system-connections
 chown pi:pi /storage/mirrordash
 chown pi:pi /storage/mirrordash/data
+# The core's data (every setting and key, the logins, the Matter token) is pi's alone; the modules,
+# as their own user, have a folder of their own (mirrordash-modules.service, ARCHITECTURE #41), which
+# pi reaches through their group (backups)
+chmod 700 /storage/mirrordash/data
+mkdir -p /storage/mirrordash/modules
+if id mirrordash-mod >/dev/null 2>&1; then
+    [ "$(stat -c %U /storage/mirrordash/modules)" = mirrordash-mod ] || chown -R mirrordash-mod:mirrordash-mod /storage/mirrordash/modules
+    chmod 2770 /storage/mirrordash/modules
+fi
 chown root:root /storage/mirrordash/system-connections
 chmod 700 /storage/mirrordash/system-connections
 

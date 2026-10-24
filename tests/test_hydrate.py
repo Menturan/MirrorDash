@@ -31,6 +31,13 @@ def test_first_boot_seeds_venv_a(tmp_path):
     assert (md / "venv_a").is_dir()
 
 
+def test_the_cores_data_is_pis_alone_and_the_modules_have_a_folder_of_their_own(tmp_path):
+    """The module host (another user) can't read the core's data dir: config.json holds every key."""
+    md = run_hydrate(tmp_path)
+    assert (md / "data").stat().st_mode & 0o777 == 0o700
+    assert (md / "modules").is_dir()
+
+
 def test_reboot_keeps_ab_update(tmp_path):
     # State after commit_venv_next(): venv_a renamed to venv_old, link -> venv_b
     md = tmp_path / "storage" / "mirrordash"

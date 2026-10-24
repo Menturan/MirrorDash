@@ -145,8 +145,8 @@ def patch_all_system():
         # Specific service level mocks
         stack.enter_context(patch("mirrordash_core.features.power.display_power.display_power_manager.start", new_callable=AsyncMock))
         stack.enter_context(patch("mirrordash_core.features.power.display_power.display_power_manager.stop", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.features.modules.loader.module_loader.start_modules", new_callable=AsyncMock))
-        stack.enter_context(patch("mirrordash_core.features.modules.loader.module_loader.stop_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.modules.client.module_host.start_modules", new_callable=AsyncMock))
+        stack.enter_context(patch("mirrordash_core.features.modules.client.module_host.stop_modules", new_callable=AsyncMock))
         stack.enter_context(patch("mirrordash_core.features.logs.routes.get_logs", return_value={"logs": "MOCK LOG LINE 1\nMOCK LOG LINE 2"}))
         stack.enter_context(patch("mirrordash_core.features.backup.routes.list_backups", return_value=MOCK_BACKUPS))
         stack.enter_context(patch("mirrordash_core.features.backup.routes.create_backup", return_value={"filename": "backup_2026-06-29.mirror", "status": "success"}))

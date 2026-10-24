@@ -1,7 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
 import asyncio
-import importlib.metadata
 import json
 import logging
 import re
@@ -15,7 +14,11 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
-from mirrordash_core.features.modules.loader import find_entry_point
+from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.loader import (
+    find_entry_point,
+    module_entry_points,
+)
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_restart
@@ -88,10 +91,16 @@ def github_module(item: dict) -> dict:
     }
 
 
+SVG_ICON = re.compile(r"^data:image/svg\+xml;base64,[A-Za-z0-9+/=]+$")
+FA_ICON = re.compile(r"^fa-[a-z0-9-]{1,40}$")
+
+
 def module_icon(name: str, schema: dict | None) -> str:
-    """The module's Font Awesome class (or inline <svg>) from its schema, else a guess from its name."""
-    if schema and schema.get("icon"):
-        return schema["icon"]
+    """The module's Font Awesome class, or its icon.svg as a data: URL (get_module_schema), from its schema,
+    else a guess from its name. Anything else from a schema is ignored: it lands in the admin page."""
+    icon = str((schema or {}).get("icon") or "")
+    if SVG_ICON.match(icon) or FA_ICON.match(icon):
+        return icon
     # ponytail: the bundled modules declare no icon; any other module gets the puzzle piece
     guesses = {"clock": "fa-clock", "calendar": "fa-calendar-days", "weather": "fa-cloud-sun", "news": "fa-newspaper",
                "homeassistant": "fa-house", "namnsdag": "fa-calendar-check", "krisinformation": "fa-triangle-exclamation"}
@@ -101,17 +110,13 @@ def module_icon(name: str, schema: dict | None) -> str:
 def screen_layout() -> dict[str, list[dict]]:
     """Which instances sit at each screen position. Read from the config, so turned-off instances show
     too, and so does an instance whose module is no longer installed (module is None)."""
-    eps = list(importlib.metadata.entry_points(group="mirrordash.modules"))
+    eps = module_entry_points()
     layout = {}
     for inst_id, cfg in load_config().get("modules", {}).items():
         if not isinstance(cfg, dict):
             continue
         ep = find_entry_point(cfg.get("module", inst_id), eps)
-        schema = None
-        try:
-            schema = get_module_schema(ep.load()) if ep else None
-        except Exception as e:
-            logger.warning(f"Could not load schema for '{inst_id}': {e}")
+        schema = get_module_schema(ep) if ep else None
         base = re.sub(r"-\d+$", "", inst_id)
         name = (schema or {}).get("title") or re.sub(r"^mirrordash[-_]", "", base).replace("_", " ").replace("-", " ").title()
         if base != inst_id:
@@ -205,10 +210,11 @@ async def update_modules(*package_names: str) -> dict:
         variants += [name, name.replace("-", "_"), name.replace("_", "-")]
 
     async def loads_in_new_venv(python):
-        """The upgraded modules must still import, or the swap is undone."""
-        code, _, err = await run(python, "-c",
-            "from importlib.metadata import entry_points; import mirrordash_core.app; "
-            f"[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in {tuple(variants)!r}]")
+        """The core and the upgraded modules must still import, or the swap is undone. The modules are
+        imported by the module host, in its sandbox: their code never runs as the core's user."""
+        code, _, err = await run(python, "-I", "-c", "import mirrordash_core.app")
+        if code == 0:
+            code, err = await module_host.check_venv(python, variants)
         if code != 0:
             logger.warning(f"Upgrade check failed for {', '.join(package_names)}: {err}. Initiating rollback...")
             raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
@@ -273,7 +279,7 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
 async def module_updates(max_age: float = REMOTE_JSON_TTL) -> tuple[list[dict], float | None]:
     """Every installed module with a newer release (check_module_update's dicts), and when the oldest
     answer was fetched: the honest "checked at" for all of them."""
-    names = sorted({ep.name for ep in importlib.metadata.entry_points(group='mirrordash.modules')})
+    names = sorted({ep.name for ep in module_entry_points()})
     checked = [c for c in await asyncio.gather(*(check_module_update(n, max_age) for n in names)) if c]
     times = [c["checked_at"] for c in checked if c["checked_at"]]
     return [c for c in checked if c["latest_version"]], min(times, default=None)
@@ -300,20 +306,14 @@ async def uninstall_module(package_name: str) -> dict:
 
 async def list_modules() -> dict:
     """List all discovered entry-point modules and their config status (for the Modules panels)."""
-    eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
+    eps = module_entry_points()
     config = load_config()
     modules_config = config.get("modules", {})
     result = {}
     for ep in eps:
         name = ep.name
 
-        # Load the configuration schema if defined in the plugin class or next to it
-        schema = None
-        try:
-            plugin_class = ep.load()
-            schema = get_module_schema(plugin_class)
-        except Exception as e:
-            logger.warning(f"Could not load schema for entry point '{name}': {e}")
+        schema = get_module_schema(ep)
 
         # The panels only read title, icon and description; with no description they fall back to the package summary
         if not schema:

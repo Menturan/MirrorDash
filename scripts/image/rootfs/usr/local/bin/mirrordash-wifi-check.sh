@@ -52,7 +52,7 @@ phone_on_hotspot() {
 # The hotspot came or went while MirrorDash runs: its screen reloads into the setup prompt or the
 # mirror. Nothing to tell at boot (MirrorDash starts after this), so a failure here is harmless.
 tell_mirrordash() {
-    curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+    curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $(cat /storage/mirrordash/data/local-token 2>/dev/null)" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
 }
 
 # Does anything actually get through? The router, or failing that 1.1.1.1 (some routers don't answer

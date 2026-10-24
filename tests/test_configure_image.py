@@ -225,7 +225,7 @@ def test_a_cable_takes_the_setup_hotspot_down(tmp_path):
         return log.read_text()
 
     assert "connection down MirrorDash-Setup" in run("eth0", "MirrorDash-Setup\n")
-    assert "/api/wifi/changed" in log.read_text()
+    assert "/api/wifi/changed" in log.read_text() and "X-MirrorDash-Local: " in log.read_text()
     assert "down" not in run("eth0", "Wired connection 1\n")
     assert "down" not in run("wlan0", "MirrorDash-Setup\n")
 
@@ -270,3 +270,39 @@ def test_pi_password_helper_sets_only_pi(tmp_path):
         assert run(bad) == 2 and not (tmp_path / "input").exists(), repr(bad)
     assert run("$6$salt$hash\nroot:$6$x$y\n") == 0
     assert (tmp_path / "args").read_text() == "-e\n" and (tmp_path / "input").read_text() == "pi:$6$salt$hash\n"
+
+
+def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_addresses(tmp_path):
+    """The module host's unit keeps the core's data, the home network and the mirror's own routes away
+    (ARCHITECTURE #41); its helper, run as root by the core, lets through only home-network addresses."""
+    host = unit("/etc/systemd/system/mirrordash-modules.service").splitlines()
+    for line in ("User=mirrordash-mod", "ProtectSystem=strict", "ProtectHome=yes", "NoNewPrivileges=yes",
+                 "CapabilityBoundingSet=", "DevicePolicy=closed", "IPAddressAllow=127.0.0.53",
+                 "ReadWritePaths=/storage/mirrordash/modules",
+                 "IPAddressDeny=localnet link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0"):
+        assert line in host, line
+    assert any(line.startswith("InaccessiblePaths=-/storage/mirrordash/data ") for line in host)
+    assert "IPAddressDeny=localnet link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0" in unit(
+        "/etc/systemd/system/cog-kiosk.service").splitlines()
+    assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
+    assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network" in unit("/etc/sudoers.d/mirrordash")
+    assert "systemd-resolved" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    log = tmp_path / "systemctl.log"
+    (bin_dir / "systemctl").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {log}\n')
+    (bin_dir / "systemctl").chmod(0o755)
+    helper = ROOTFS / "usr" / "local" / "bin" / "mirrordash-module-network"
+
+    def run(*args):
+        return subprocess.run(["python3", str(helper), *args], capture_output=True, text=True,
+                              env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}).returncode
+
+    assert run("192.168.1.20", "fd00::5") == 0
+    assert log.read_text().splitlines() == ["set-property", "--runtime", "mirrordash-modules.service",
+                                            "IPAddressAllow=", "IPAddressAllow=127.0.0.53 192.168.1.20 fd00::5"]
+    assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53"
+    for bad in ("8.8.8.8", "127.0.0.1", "0.0.0.0", "224.0.0.1", "192.168.1.0/24", "--now", "::1"):
+        log.unlink(missing_ok=True)
+        assert run(bad) != 0 and not log.exists(), bad

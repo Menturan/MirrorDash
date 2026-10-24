@@ -18,6 +18,11 @@ def get_base_dir() -> Path:
     """Get the active base directory."""
     return Path(os.path.expanduser("~")) / ".mirrordash"
 
+def get_module_dir() -> Path:
+    """Where modules keep their data_dir and cache_dir: on a mirror the module host's own folder,
+    which it may write and the core's data dir is not (MIRRORDASH_MODULE_DIR, ARCHITECTURE #41)."""
+    return Path(os.environ.get("MIRRORDASH_MODULE_DIR") or get_base_dir() / "module-data")
+
 def get_config_path(for_saving: bool = False) -> Path:
     """Resolve the location of config.json.
 

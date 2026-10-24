@@ -19,6 +19,7 @@ from fastapi.responses import RedirectResponse
 
 from mirrordash_core.admin import (
     check_password,
+    from_the_mirrors_os,
     notify,
     require_api_key,
     start_job,
@@ -27,7 +28,7 @@ from mirrordash_core.admin import (
 from mirrordash_core.config import load_config
 from mirrordash_core.features.dashboard.telemetry import get_wifi_info
 from mirrordash_core.features.kiosk.ws import manager
-from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.wifi.network import (
     connect_wifi,
     failed_switch,
@@ -123,7 +124,7 @@ async def post_wifi_setup(body: dict) -> dict:
 
         # No restart needed: the mirror's screen notices the hotspot is gone and reloads, the clock and
         # mirrordash.local follow the new network by themselves. Modules start over to fetch data now.
-        asyncio.create_task(module_loader.reload_modules())
+        asyncio.create_task(module_host.reload_modules())
         return {"status": "success", "message": "Connected."}
     else:
         return {"status": "error", "message": message}
@@ -210,8 +211,8 @@ async def post_wifi_connect(request: Request):
 @router.post("/api/wifi/changed")
 async def post_wifi_changed(request: Request) -> dict:
     """The OS image's Wi-Fi watch calls this after it turned the hotspot on or off, so the mirror's
-    screen reloads into the setup prompt or the mirror. Only from the mirror itself."""
-    if request.client.host not in ("127.0.0.1", "::1"):
+    screen reloads into the setup prompt or the mirror. Only from the mirror's OS (the local token)."""
+    if not from_the_mirrors_os(request):
         raise HTTPException(status_code=403, detail="Only from the mirror itself")
     forget_hotspot_state()
     await manager.broadcast({"action": "reload"})

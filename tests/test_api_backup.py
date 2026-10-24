@@ -43,7 +43,8 @@ def mock_backup_dirs(tmp_path):
     data_dir.mkdir()
     
     with patch("mirrordash_core.features.backup.service.BACKUPS_DIR", str(backups_dir)), \
-         patch("mirrordash_core.features.backup.service.DATA_DIR", str(data_dir)):
+         patch("mirrordash_core.features.backup.service.DATA_DIR", str(data_dir)), \
+         patch.dict("os.environ", {"MIRRORDASH_MODULE_DIR": str(tmp_path / "modules")}):
         yield backups_dir, data_dir
 
 @pytest.fixture
@@ -267,10 +268,11 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
                    "gpio_overlays": ["button:17"]},
         "modules": {"mirrordash-weather": {"module": "mirrordash-weather", "position": "top_right"}},
     }
-    # The old mirror: the live config.json sits in the data dir next to module data
+    # The old mirror: the live config.json in the core's data dir, module data in the module host's
     (data_dir / "config.json").write_text(json.dumps(old_config))
-    (data_dir / "mirrordash-weather").mkdir()
-    (data_dir / "mirrordash-weather" / "state.json").write_text('{"city": "Oslo"}')
+    module_data = data_dir.parent / "modules" / "data"
+    (module_data / "mirrordash-weather").mkdir(parents=True)
+    (module_data / "mirrordash-weather" / "state.json").write_text('{"city": "Oslo"}')
 
     commit = "a" * 40
     dist = MagicMock(version="1.2.0")
@@ -307,6 +309,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
 
         # A freshly flashed mirror: only the new admin password is set up
         shutil.rmtree(data_dir)
+        shutil.rmtree(module_data)
         data_dir.mkdir()
         fresh_config = json.dumps({"admin_auth": MOCK_CONFIG["admin_auth"]})
         (data_dir / "config.json").write_text(fresh_config)
@@ -327,7 +330,9 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     assert restored["modules"]["mirrordash-weather"]["position"] == "top_right"
     # The data copy must not put the old credentials back over the saved config
     assert (data_dir / "config.json").read_text() == fresh_config
-    assert (data_dir / "mirrordash-weather" / "state.json").read_text() == '{"city": "Oslo"}'
+    state = module_data / "mirrordash-weather" / "state.json"
+    assert state.read_text() == '{"city": "Oslo"}'
+    assert state.stat().st_mode & 0o060 == 0o060  # the module host (the group) can write what pi put back
     assert any(source in cmd for cmd in uv_calls)
     mock_gpio.assert_awaited_once_with(["button:17"])
     mock_reboot.assert_called_once()

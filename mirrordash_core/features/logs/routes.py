@@ -14,7 +14,7 @@ from mirrordash_core.features.logs.saved import (
     saved_log_file,
     saved_logs,
 )
-from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.client import module_host
 
 logger = logging.getLogger("mirrordash.core.logs")
 router = APIRouter(prefix="/admin")
@@ -103,7 +103,7 @@ async def get_panel_logs(request: Request):
     logs_content = log_data.get("logs", "No logs found.")
 
     modules_list = []
-    for name in module_loader.instances:
+    for name in module_host.running:
         modules_list.append(name)
 
     return templates.TemplateResponse(

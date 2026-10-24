@@ -1,0 +1,24 @@
+#!/usr/bin/python3 -I
+# Usage: mirrordash-module-network [address ...]
+# Lets the module host (mirrordash-modules.service) reach exactly these home-network addresses, besides
+# systemd-resolved's stub: the "lan-url" settings the owner typed (features/modules/client.py,
+# ARCHITECTURE #41). No address: the home network is closed again. The core runs it through sudo, so
+# only home-network addresses pass, at most 32; it lasts until the next boot, and the core sets it at
+# every start.
+import ipaddress
+import subprocess
+import sys
+
+addresses = sys.argv[1:]
+if len(addresses) > 32:
+    sys.exit("at most 32 addresses")
+for address in addresses:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        sys.exit(f"not an address: {address}")
+    if not ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+        sys.exit(f"not a home-network address: {address}")
+allow = " ".join(["127.0.0.53", *addresses])
+sys.exit(subprocess.run(["systemctl", "set-property", "--runtime", "mirrordash-modules.service",
+                         "IPAddressAllow=", f"IPAddressAllow={allow}"]).returncode)

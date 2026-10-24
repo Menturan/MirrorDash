@@ -1,6 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import importlib.metadata
+import base64
 import json
 import logging
 import os
@@ -13,30 +13,15 @@ logger = logging.getLogger("mirrordash.core.settings")
 VALID_POSITIONS = set(POSITIONS)
 
 
-def get_module_schema(plugin_class) -> dict | None:
-    """Resolve module config schema from the plugin class variable or a standalone json file next to it."""
-    import sys
-
-    # Try to find the directory where the plugin file is located
-    plugin_dir = None
-    try:
-        module_name = plugin_class.__module__
-        module_obj = sys.modules.get(module_name)
-        if module_obj and getattr(module_obj, "__file__", None):
-            plugin_dir = os.path.dirname(os.path.abspath(module_obj.__file__))
-    except Exception:
-        pass
+def get_module_schema(ep) -> dict | None:
+    """A module's config_schema.json (or schema.json) next to its plugin file, with its icon.svg as
+    "icon" (a data: URL, shown as a mask so its scripts never run). Read as files: the core never
+    imports a module (ARCHITECTURE #41)."""
+    from mirrordash_core.features.modules.loader import package_dir
+    plugin_dir = package_dir(ep) if ep else None
 
     schema = None
-    # 1. Check for class variable config_schema
-    class_schema = getattr(plugin_class, "config_schema", None)
-    if callable(class_schema):
-        class_schema = class_schema()
-    if class_schema and isinstance(class_schema, dict):
-        schema = class_schema.copy()
-
-    # 2. Check for standalone config_schema.json or schema.json next to the module file
-    if not schema and plugin_dir:
+    if plugin_dir:
         for filename in ("config_schema.json", "schema.json"):
             filepath = os.path.join(plugin_dir, filename)
             if os.path.isfile(filepath):
@@ -54,10 +39,10 @@ def get_module_schema(plugin_class) -> dict | None:
         svg_path = os.path.join(plugin_dir, "icon.svg")
         if os.path.isfile(svg_path):
             try:
-                with open(svg_path, encoding="utf-8") as svg_f:
+                with open(svg_path, "rb") as svg_f:
                     svg_content = svg_f.read().strip()
-                    if svg_content.startswith("<svg"):
-                        schema["icon"] = svg_content
+                    if svg_content.startswith(b"<svg"):
+                        schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
             except Exception as svg_err:
                 logger.warning(f"Error loading icon.svg next to schema: {svg_err}")
 
@@ -75,13 +60,11 @@ TYPE_CHECKS = {
 
 def _installed_module_schemas() -> dict:
     """config_schema of every installed module, keyed by its name with '-' as '_'."""
+    from mirrordash_core.features.modules.loader import module_entry_points
     schemas = {}
-    for ep in importlib.metadata.entry_points(group="mirrordash.modules"):
-        try:
-            schema = get_module_schema(ep.load())
-        except Exception:
-            continue
-        if schema and "properties" in schema:
+    for ep in module_entry_points():
+        schema = get_module_schema(ep)
+        if schema and isinstance(schema.get("properties"), dict):
             schemas[ep.name.replace("-", "_")] = schema
     return schemas
 
@@ -109,8 +92,11 @@ def validate_config(config: dict) -> None:
         return
     if not isinstance(modules, dict):
         raise ValueError("'modules' must be a JSON object.")
+    from mirrordash_core.features.modules.loader import SAFE_NAME
     schemas = _installed_module_schemas()
     for name, cfg in modules.items():
+        if not isinstance(name, str) or not SAFE_NAME.match(name):
+            raise ValueError(f"Module instance name {name!r} may only hold letters, digits, - and _ (at most 64).")
         if not isinstance(cfg, dict):
             raise ValueError(f"Module '{name}' config must be a JSON object.")
         pos = cfg.get("position")

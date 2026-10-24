@@ -157,6 +157,8 @@ class DisplayPowerManager:
         if success:
             self.is_on = on
             self.awake.set() if on else self.awake.clear()
+            from mirrordash_core.features.modules.client import module_host
+            module_host.set_awake(on)  # the modules' fetches, in the module host, wait for it too
         return bool(success)
 
     def _is_time_in_range(self, start_str: str, end_str: str, current_time: time) -> bool:

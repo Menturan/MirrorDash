@@ -341,15 +341,14 @@ def test_reload_screen_button(client):
     assert client.post("/admin/panels/system/reload-screen").status_code == 401
 
 
-@patch("mirrordash_core.features.kiosk.routes.module_loader")
-def test_public_active_modules_endpoint(mock_loader, client):
-    # Setup mock active modules
-    mock_module_instance = MagicMock()
-    mock_module_instance.config = {"position": "top_right"}
-    mock_module_instance.translate = lambda key, default: "Clock Module Title" if key == "title" else default
-    
-    mock_loader.instances = {"mirrordash_clock": mock_module_instance}
-    
+@patch("mirrordash_core.features.kiosk.routes.load_translations", return_value={"title": "Clock Module Title"})
+@patch("mirrordash_core.features.kiosk.routes.find_entry_point", return_value=SimpleNamespace(module="mirrordash_clock.plugin"))
+@patch("mirrordash_core.features.kiosk.routes.load_config", return_value={"modules": {"mirrordash_clock": {"position": "top_right"}}})
+@patch("mirrordash_core.features.kiosk.routes.module_host")
+def test_public_active_modules_endpoint(mock_host, mock_config, mock_ep, mock_translations, client):
+    """The title comes from the module's translations, read as files (the core runs no module code)."""
+    mock_host.running = ["mirrordash_clock"]
+
     r = client.get("/api/active-modules")
     assert r.status_code == 200
     data = r.json()
@@ -1161,7 +1160,7 @@ def test_config_migration():
 
 @patch("mirrordash_core.features.modules.routes.load_config")
 @patch("mirrordash_core.features.modules.routes.save_config")
-@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
 def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1191,7 +1190,7 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
 
 @patch("mirrordash_core.features.modules.routes.load_config")
 @patch("mirrordash_core.features.modules.routes.save_config")
-@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
 def test_remove_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1214,7 +1213,7 @@ def test_remove_module_instance_config(mock_reload, mock_save, mock_load, client
 
 @patch("mirrordash_core.features.modules.routes.load_config")
 @patch("mirrordash_core.features.modules.routes.save_config")
-@patch("mirrordash_core.features.modules.routes.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
 def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
@@ -1252,7 +1251,7 @@ def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client
 @patch("mirrordash_core.features.dashboard.telemetry.get_ram_usage")
 @patch("mirrordash_core.features.dashboard.telemetry.get_uptime_string")
 @patch("mirrordash_core.features.updates.service.get_disk_usage")
-@patch("mirrordash_core.features.dashboard.routes.module_loader")
+@patch("mirrordash_core.features.dashboard.routes.module_host")
 def test_get_panel_dashboard(
     mock_loader, mock_disk_usage, mock_uptime, mock_ram, mock_ntp, mock_wifi, mock_under, client
 ):
@@ -1274,10 +1273,7 @@ def test_get_panel_dashboard(
     mock_wifi.return_value = {"ssid": "Home-WiFi", "signal": 85, "type": "wifi"}
     mock_under.return_value = True
     
-    mock_inst = MagicMock()
-    mock_inst.config = {"module": "mirrordash-clock", "position": "top_left"}
-    mock_loader.instances = {"clock-one": mock_inst}
-    mock_loader.tasks = {"clock-one": MagicMock()}
+    mock_loader.running = ["clock-one"]
 
     cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
                        "mirrordash-clock-2": {"module": "mirrordash-clock", "position": "bottom_right", "enabled": False},
@@ -1373,13 +1369,11 @@ def test_module_settings_are_checked_against_the_module_schema():
 
 
 def test_module_config_drawer_shows_standard_then_own_settings(client):
-    class Clock:
-        config_schema = {"properties": {"format": {"type": "string", "enum": ["24h", "12h"], "title": "Format"},
-                                        "position": {"type": "string"}}}  # a standard field it shouldn't declare
-    ep = MagicMock()
-    ep.load.return_value = Clock
+    schema = {"properties": {"format": {"type": "string", "enum": ["24h", "12h"], "title": "Format"},
+                             "position": {"type": "string"}}}  # a standard field it shouldn't declare
     cfg = {"modules": {"mirrordash-clock": {"module": "mirrordash-clock", "position": "top_left"}}}
-    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=ep), \
+    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=MagicMock()), \
+         patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=schema), \
          patch("mirrordash_core.features.modules.routes.load_config", return_value=cfg):
         html = client.get("/admin/panels/modules/config/mirrordash-clock?instance_id=mirrordash-clock",
                           headers={"X-API-Key": "secret"}).text
@@ -1627,12 +1621,17 @@ def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock
     async def fake_uv_pip(python, command, *args, timeout=None):
         return await fake_run("uv", "pip", command, *args)
 
+    async def fake_check(python, names):  # the module host loads each module in the new venv
+        code, _, err = await fake_run(python, "check", *names)
+        return code, err
+
     check = {"update_available": True, "needs_python": "3.15", "latest_version": "1.0.0"}
     skip = ("mirrordash_news",) if case == "install anyway" else ()
     service.incompatible.clear()
     with patch.object(service, "check_core_update", AsyncMock(return_value=check)), \
          patch.object(service, "run", side_effect=fake_run), patch.object(service, "uv_pip", side_effect=fake_uv_pip), \
-         patch.object(service, "load_config", return_value=config), patch("mirrordash_core.config.save_config") as save:
+         patch.object(service, "load_config", return_value=config), patch("mirrordash_core.config.save_config") as save, \
+         patch("mirrordash_core.features.modules.client.module_host.check_venv", side_effect=fake_check):
         response = call(lambda: service.update_core(skip))
     assert calls[0] == ("uv", "python", "install", "3.15")
     mock_prepare.assert_awaited_once_with(force_clean=True, python="3.15")
@@ -1741,8 +1740,12 @@ def test_a_failed_system_build_is_remembered_for_the_nights_to_come():
 def test_only_the_mirror_itself_can_start_the_nightly_update(client):
     with patch("mirrordash_core.features.updates.routes.auto_update", AsyncMock(return_value="up to date")) as run:
         assert client.post("/admin/auto-update").status_code == 403  # TestClient's address is "testclient"
-        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()):
-            assert client.post("/admin/auto-update").json() == {"started": "up to date"}
+        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()), \
+             patch("mirrordash_core.admin._local_token", "t0ken"):
+            # From loopback isn't enough: a module's card on the screen is loopback too
+            assert client.post("/admin/auto-update").status_code == 403
+            assert client.post("/admin/auto-update", headers={"X-MirrorDash-Local": "wrong"}).status_code == 403
+            assert client.post("/admin/auto-update", headers={"X-MirrorDash-Local": "t0ken"}).json() == {"started": "up to date"}
     run.assert_awaited_once()
 
 

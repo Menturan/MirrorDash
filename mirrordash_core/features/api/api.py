@@ -70,7 +70,7 @@ async def get_status() -> dict:
         read_fan_state,
         read_sensor,
     )
-    from mirrordash_core.features.modules.loader import module_loader
+    from mirrordash_core.features.modules.client import module_host
     from mirrordash_core.features.power.display_power import display_power_manager
 
     system_cfg = load_config().get("system", {})
@@ -90,7 +90,7 @@ async def get_status() -> dict:
         "screen_on": bool(display_power_manager.is_on),
         "brightness": system_cfg.get("brightness", 100),
         "brightness_supported": display.brightness_supported is not False,
-        "modules": sorted(module_loader.tasks),
+        "modules": sorted(module_host.running),
         "sensors": sensors,
     }
 

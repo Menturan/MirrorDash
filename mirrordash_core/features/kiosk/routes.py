@@ -4,6 +4,7 @@
 import json
 import logging
 import os
+import re
 import time
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
@@ -13,7 +14,12 @@ from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.auth.routes import auth_state
 from mirrordash_core.features.kiosk.ws import manager, on_screen
-from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.loader import (
+    find_entry_point,
+    load_translations,
+    package_dir,
+)
 from mirrordash_core.features.wifi.network import (
     HOTSPOT_SSID,
     get_hotspot_password,
@@ -25,28 +31,38 @@ logger = logging.getLogger("mirrordash.core.kiosk")
 router = APIRouter()
 
 
+def screen_csp(host: str) -> str:
+    """The screen's Content-Security-Policy (ARCHITECTURE #41). The modules' cards run their inline
+    scripts and show pictures and video from anywhere, but their JS talks only to this server (fetch,
+    its WebSocket), and nothing frames the page, submits a form or embeds a plugin."""
+    ws = f" ws://{host}" if re.fullmatch(r"[A-Za-z0-9.:\[\]-]{1,255}", host) else ""
+    return ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+            f"img-src * data: blob:; media-src * data: blob:; font-src 'self' data:; connect-src 'self'{ws}; "
+            "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+
+
 # HTML pages routes
 @router.get("/")
 async def get_index(request: Request):
     host = request.headers.get("host", "")
     if host.split(":")[0] in SETUP_HOSTS or request.query_params.get("captive") == "true":
         return RedirectResponse(url="/wifi-setup")
-    
+
     if await is_wifi_hotspot_active():
         # The password goes to the mirror's own screen only: a phone on the hotspot can send any
         # Host header (the captive-portal redirect trusts "localhost"), but not a loopback address.
         on_mirror = request.client.host in ("127.0.0.1", "::1")
-        return templates.TemplateResponse(request=request, name="wifi_prompt.html", context={
+        page = templates.TemplateResponse(request=request, name="wifi_prompt.html", context={
             "ssid": HOTSPOT_SSID,
             "password": await get_hotspot_password() if on_mirror else "",
         })
-
-    setup_required, auth_corrupt = auth_state(load_config())
-    if setup_required or auth_corrupt:
-        return templates.TemplateResponse(request=request, name="admin_prompt.html",
-                                          context={"auth_corrupt": auth_corrupt})
-
-    return FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
+    elif any(setup := auth_state(load_config())):  # no admin password yet, or a broken one
+        page = templates.TemplateResponse(request=request, name="admin_prompt.html",
+                                          context={"auth_corrupt": setup[1]})
+    else:
+        page = FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
+    page.headers["Content-Security-Policy"] = screen_csp(host)
+    return page
 
 
 @router.get("/design")
@@ -63,25 +79,24 @@ async def health(response: Response) -> dict:
     # The kiosk's start page (file://, origin "null") reads this; without it WebKit blocks the answer and
     # the screen stays on "MirrorDash didn't start". Nothing here is secret and no credentials ride along.
     response.headers["Access-Control-Allow-Origin"] = "*"
-    return {"status": "ok", "modules": list(module_loader.tasks.keys()), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
+    return {"status": "ok", "modules": list(module_host.running), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
             "boot_id": BOOT_ID, "screen_seen_seconds_ago": screen_seen}
 
 
 @router.get("/api/active-modules")
 async def get_active_modules() -> dict:
+    cfg = load_config()
+    modules_config = cfg.get("modules", {})
+    lang = cfg.get("globals", {}).get("language", "en")
     modules_list = []
-    for name, instance in module_loader.instances.items():
-        config = getattr(instance, "config", {})
+    for name in module_host.running:
+        config = modules_config.get(name, {})
         position = config.get("position", "middle_center")
 
         module_type = config.get("module", name)
         default_title = module_type.replace("mirrordash_", "").replace("_", " ").title()
-        if hasattr(instance, "translate"):
-            title = instance.translate("title", default_title)
-        elif hasattr(instance, "translations"):
-            title = instance.translations.get("title", default_title)
-        else:
-            title = default_title
+        ep = find_entry_point(module_type)  # its translations are read as files: the core runs no module code
+        title = load_translations(package_dir(ep), lang).get("title", default_title) if ep else default_title
 
         modules_list.append({
             "name": name,
@@ -92,9 +107,6 @@ async def get_active_modules() -> dict:
         })
     # Read boot status from environment
     boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")
-    
-    from mirrordash_core.config import load_config
-    cfg = load_config()
     globals_cfg = cfg.get("globals", {})
     
     safe_margin_cfg = globals_cfg.get("safe_margin", {})

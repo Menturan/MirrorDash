@@ -6,5 +6,5 @@
 nmcli -t -f NAME connection show --active | grep -qxF MirrorDash-Setup || exit 0
 logger -t mirrordash-wifi "A cable is connected: stopping the setup hotspot."
 nmcli connection down MirrorDash-Setup || true
-curl -fsS -m 5 -X POST http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $(cat /storage/mirrordash/data/local-token 2>/dev/null)" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
 exit 0

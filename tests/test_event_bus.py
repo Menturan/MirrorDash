@@ -121,7 +121,7 @@ def test_module_reload_does_not_duplicate_subscriptions():
 
     calls = []
     event_bus.subscribe("x:test", lambda data: calls.append(data))
-    asyncio.run(ModuleLoader().stop_modules())  # what reload_modules() does first
+    asyncio.run(ModuleLoader(None).stop_modules())  # what the module host does before each start
     event_bus.publish("x:test", 1)
     assert calls == []
 

@@ -6,4 +6,5 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 # The app decides what to install and runs it as its own job; this only asks
-ExecStart=/usr/bin/curl -fsS -m 60 -o /dev/null -X POST http://127.0.0.1:8000/admin/auto-update
+# The core's local token proves the call comes from here, not from a page on the screen ($$: systemd's $)
+ExecStart=/bin/sh -c 'exec /usr/bin/curl -fsS -m 60 -o /dev/null -X POST -H "X-MirrorDash-Local: $$(cat /storage/mirrordash/data/local-token)" http://127.0.0.1:8000/admin/auto-update'

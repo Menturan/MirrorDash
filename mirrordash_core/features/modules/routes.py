@@ -19,7 +19,8 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
-from mirrordash_core.features.modules.loader import find_entry_point, module_loader
+from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.loader import SAFE_NAME, find_entry_point
 from mirrordash_core.features.modules.service import (
     check_module_update,
     install_module,
@@ -81,11 +82,9 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
-    try:
-        schema = get_module_schema(ep.load()) or {}
-    except Exception as e:
-        logger.warning(f"Could not load schema for '{module_name}': {e}")
-        schema = {}
+    if instance_id is not None and not SAFE_NAME.match(instance_id):
+        raise HTTPException(status_code=400, detail="Invalid instance name")
+    schema = get_module_schema(ep) or {}
     # The core's standard fields are shown separately, even if a module declared them too
     own = {k: v for k, v in schema.get("properties", {}).items() if k not in STANDARD_FIELDS}
     modules_config = load_config().get("modules", {})
@@ -123,13 +122,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
     module_cfg = modules_dict.get(cfg_key, {})
 
     ep = find_entry_point(module_name)
-    schema = None
-    if ep:
-        try:
-            plugin_class = ep.load()
-            schema = get_module_schema(plugin_class)
-        except Exception:
-            pass
+    schema = get_module_schema(ep) if ep else None
 
     if schema:
         module_cfg = cast_values_by_schema(module_cfg, schema)
@@ -152,7 +145,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
 
     save_config(config)
 
-    await module_loader.reload_modules()
+    await module_host.reload_modules()
 
     return notify("Module configuration saved successfully.", refreshModules=True)
 
@@ -167,7 +160,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     del modules_config[cfg_key]
     save_config(config)
 
-    await module_loader.reload_modules()
+    await module_host.reload_modules()
 
     return notify("Module removed from mirror display.", refreshModules=True)
 
@@ -184,7 +177,7 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
 
         save_config(config)
 
-        await module_loader.reload_modules()
+        await module_host.reload_modules()
 
         # No refreshModules here: it closes the settings sheet the toggle lives in
         return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")

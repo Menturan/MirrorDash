@@ -1,5 +1,5 @@
 import asyncio
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -8,6 +8,17 @@ from mirrordash_core.features.modules.loader import ModuleLoader
 
 # Set recovery delay to 0.01s for fast tests
 mirrordash_core.features.modules.loader.MODULE_RESTART_DELAY = 0.01
+
+
+class FakeLink:
+    """host.py's HostLink without a core: what the modules' helpers call."""
+    def __init__(self):
+        self.awake = asyncio.Event()
+        self.awake.set()
+        self.html = AsyncMock()
+        self.video_playing = AsyncMock()
+        self.video_window = MagicMock()
+
 
 class DummyPlugin:
     def __init__(self, config):
@@ -23,6 +34,7 @@ class DummyPlugin:
         # Keep running
         while True:
             await asyncio.sleep(0.01)
+
 
 def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, monkeypatch):
     """Two modules loaded one after the other keep their own translate() and render_template(): the
@@ -45,7 +57,7 @@ def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, m
     instances = []
     for pkg in ("md_test_a", "md_test_b"):
         instance = type("Plugin", (), {})()
-        _inject_module_helpers(instance, pkg, load_translations(pkg, "sv"), pkg, {"show_header": False})
+        _inject_module_helpers(instance, pkg, load_translations(tmp_path / pkg, "sv"), pkg, {"show_header": False}, FakeLink())
         instances.append(instance)
 
     a, b = instances
@@ -53,25 +65,75 @@ def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, m
     assert a.translate("bye") == "Bye" and a.translate("missing") == "missing" and a.translate("missing", "x") == "x"
     assert a.render_template("card.html") == "md_test_a: Hej False"
     assert b.render_template("card.html") == "md_test_b: Hallå False"
-    assert load_translations("md_test_a", "en") == {"greeting": "Hello", "bye": "Bye"}
+    assert load_translations(tmp_path / "md_test_a", "en") == {"greeting": "Hello", "bye": "Bye"}
+
+
+def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monkeypatch):
+    """package_dir, get_module_schema and load_translations read files: a module whose __init__ raises
+    (it would, if imported) still has its schema, icon and title, and stays unimported."""
+    import sys
+
+    from mirrordash_core.features.modules.loader import load_translations, package_dir
+    from mirrordash_core.features.settings.schema import get_module_schema
+
+    pkg = tmp_path / "md_untouched"
+    (pkg / "translations").mkdir(parents=True)
+    (pkg / "__init__.py").write_text("raise RuntimeError('imported')")
+    (pkg / "plugin.py").write_text("raise RuntimeError('imported')")
+    (pkg / "config_schema.json").write_text('{"title": "Untouched", "properties": {"url": {"type": "string"}}}')
+    (pkg / "icon.svg").write_text('<svg onload="alert(1)"></svg>')
+    (pkg / "translations" / "en.json").write_text('{"title": "Untouched"}')
+    monkeypatch.syspath_prepend(str(tmp_path))
+    ep = type("EP", (), {"name": "md_untouched", "module": "md_untouched.plugin"})()
+
+    assert package_dir(ep) == pkg
+    schema = get_module_schema(ep)
+    assert schema["title"] == "Untouched" and schema["icon"].startswith("data:image/svg+xml;base64,")
+    assert load_translations(package_dir(ep), "sv") == {"title": "Untouched"}
+    assert "md_untouched" not in sys.modules
+
+
+def test_admin_forms_escape_what_a_module_schema_says():
+    """A module's schema is the module author's text: it lands escaped, and keys that would reach
+    onclick/hx-vals JS are left out."""
+    from mirrordash_core.features.modules.service import module_icon
+    from mirrordash_core.forms import render_array_item, render_schema_form
+
+    evil = '"><img src=x onerror=alert(1)>'
+    schema = {"properties": {
+        "url": {"type": "string", "title": evil, "description": evil},
+        "mode": {"type": "string", "enum": ["a", evil], "enum_titles": [evil, "b"]},
+        "list": {"type": "array", "items": {"type": "object", "title": evil, "properties": {"x": {"type": "string"}}}},
+        "level": {"type": "integer", "minimum": evil, "maximum": 3},
+        "x'onclick='alert(1)": {"type": "string"},
+    }}
+    html = render_schema_form(schema, {}, "modules[clock]", "mirrordash_clock")
+    assert "<img" not in html and "&lt;img src=x onerror=alert(1)&gt;" in html
+    assert "modules[clock][x" not in html and 'name="modules[clock][url]"' in html  # the bad key's field is left out
+    assert "<img" not in render_array_item("modules[clock]", "list", {"x": {"type": "string", "title": evil}}, 0, {}, evil)
+    with pytest.raises(ValueError):
+        render_array_item("modules[clock]\"onmouseover=\"x", "list", {}, 0, {}, "Item")
+    assert module_icon("clock", {"icon": '<svg onload="alert(1)">'}) == "fa-clock"
+    assert module_icon("x", {"icon": "fa-house"}) == "fa-house"
 
 
 @pytest.mark.asyncio
 async def test_module_loader_async_crash_recovery():
-    loader = ModuleLoader()
+    loader = ModuleLoader(FakeLink())
     plugin = DummyPlugin({"translations": {}})
     broadcast_mock = AsyncMock()
 
     # Start module task
     loader._start_module_task("dummy", plugin, broadcast_mock)
-    
+
     # Wait for the first run to crash and the second to start
     await asyncio.sleep(0.05)
-    
+
     assert plugin.run_count >= 2
-    
+
     # Clean up
     await loader.stop_modules()
+
 
 @pytest.mark.asyncio
 async def test_a_sync_run_loop_is_not_started(monkeypatch):
@@ -85,17 +147,16 @@ async def test_a_sync_run_loop_is_not_started(monkeypatch):
 
     class EntryPoint:
         name = "sync_mod"
+        module = "md_missing.plugin"
 
         def load(self):
             return SyncPlugin
 
-    monkeypatch.setattr(mirrordash_core.features.modules.loader, "load_config",
-                        lambda: {"modules": {"sync_mod": {"module": "sync_mod"}}})
-    monkeypatch.setattr(mirrordash_core.features.modules.loader.importlib.metadata, "entry_points",
-                        lambda group: [EntryPoint()])
-    loader = ModuleLoader()
-    await loader.start_modules()
-    assert "sync_mod" in loader.instances and loader.tasks == {}
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", "/tmp/mirrordash-test-modules")
+    monkeypatch.setattr(mirrordash_core.features.modules.loader, "module_entry_points", lambda: [EntryPoint()])
+    loader = ModuleLoader(FakeLink())
+    await loader.start_modules({"sync_mod": {"module": "sync_mod"}, "../escape": {"module": "sync_mod"}}, {})
+    assert list(loader.instances) == ["sync_mod"] and loader.tasks == {}
 
 
 @pytest.mark.asyncio
@@ -106,7 +167,7 @@ async def test_a_run_loop_that_returns_waits_before_it_starts_again():
         async def run_loop(self, broadcast_fn):
             self.run_count += 1
 
-    loader = ModuleLoader()
+    loader = ModuleLoader(FakeLink())
     plugin = OncePlugin()
     with patch("mirrordash_core.features.modules.loader.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         mock_sleep.side_effect = [None, asyncio.CancelledError()]
@@ -120,24 +181,23 @@ async def test_a_run_loop_that_returns_waits_before_it_starts_again():
 
 @pytest.mark.asyncio
 async def test_module_loader_cancel_handling():
-    loader = ModuleLoader()
+    loader = ModuleLoader(FakeLink())
     plugin = DummyPlugin({})
     broadcast_mock = AsyncMock()
 
     loader._start_module_task("dummy", plugin, broadcast_mock)
-    
+
     # Let it run for a bit
     await asyncio.sleep(0.02)
-    
+
     task = loader.tasks["dummy"]
     assert not task.done()
-    
+
     # Cancel task
     task.cancel()
-    
+
     with pytest.raises(asyncio.CancelledError):
         await task
-
 
 
 @pytest.mark.asyncio
@@ -153,7 +213,7 @@ async def test_module_loader_backoff():
             self.run_count += 1
             raise ValueError("Always crash")
 
-    loader = ModuleLoader()
+    loader = ModuleLoader(FakeLink())
     plugin = CrashingPlugin()
     broadcast_mock = AsyncMock()
 
@@ -170,7 +230,7 @@ async def test_module_loader_backoff():
 
         # Start task
         loader._start_module_task("crashing", plugin, broadcast_mock)
-        
+
         try:
             # Let it run under patched sleep
             await loader.tasks["crashing"]
@@ -215,7 +275,7 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
     base = f"http://127.0.0.1:{server.server_port}"
 
     plugin = DummyPlugin({})
-    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(tmp_path)})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(tmp_path)}, FakeLink())
     key = {"X-Api-Key": "secret-key-123"}
 
     assert await plugin.fetch_json(f"{base}/ok", headers=key, params={"q": "Oslo"}) == ({"temp": 21}, None)
@@ -244,23 +304,21 @@ async def test_fetch_json_answers_errors_and_falls_back_to_the_last_answer(tmp_p
 async def test_fetch_json_sleeps_while_the_screen_is_off(tmp_path):
     """Screen off: a fetch waits and goes out once on waking; a keep_running module is never held."""
     from mirrordash_core.features.modules.loader import _inject_module_helpers
-    from mirrordash_core.features.power.display_power import display_power_manager
 
     url = (tmp_path / "data.json").as_uri()
     (tmp_path / "data.json").write_text('{"n": 1}')
     sleeper, logger_ = DummyPlugin({}), DummyPlugin({})
     logger_.keep_running = True
-    _inject_module_helpers(sleeper, "dummy", {}, "dummy", {})
-    _inject_module_helpers(logger_, "dummy", {}, "logger", {})
+    link = FakeLink()
+    _inject_module_helpers(sleeper, "dummy", {}, "dummy", {}, link)
+    _inject_module_helpers(logger_, "dummy", {}, "logger", {}, link)
 
-    display_power_manager.awake.clear()
-    try:
-        waiting = asyncio.create_task(sleeper.fetch_json(url))
-        assert await logger_.fetch_json(url) == ({"n": 1}, None)
-        await asyncio.sleep(0.05)
-        assert not waiting.done()
-    finally:
-        display_power_manager.awake.set()
+    link.awake.clear()
+    waiting = asyncio.create_task(sleeper.fetch_json(url))
+    assert await logger_.fetch_json(url) == ({"n": 1}, None)
+    await asyncio.sleep(0.05)
+    assert not waiting.done()
+    link.awake.set()
     assert await asyncio.wait_for(waiting, 1) == ({"n": 1}, None)
 
 
@@ -276,7 +334,7 @@ async def test_fetch_max_age_uses_the_saved_answer_until_it_is_old(tmp_path):
     cache = tmp_path / "cache"
     cache.mkdir()
     plugin = DummyPlugin({})
-    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(cache)})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(cache)}, FakeLink())
 
     assert await plugin.fetch_json(source.as_uri(), max_age=60) == ({"n": 1}, None)
     source.write_text('{"n": 2}')
@@ -306,41 +364,149 @@ async def test_the_same_module_message_is_sent_once():
 
 
 @pytest.mark.asyncio
-async def test_a_module_reload_leaves_the_system_settings_alone(monkeypatch):
+async def test_a_module_reload_leaves_the_system_settings_alone():
     """Saving a module reloads the modules only: re-applying the system settings flickered the screen
     and restarted the Matter node each time."""
-    monkeypatch.setattr(mirrordash_core.features.modules.loader, "load_config",
-                        lambda: {"matter": {"enabled": True}, "system": {"ssh": True}, "modules": {}})
+    from mirrordash_core.features.modules.client import ModuleHost
     with patch("mirrordash_core.features.matter.routes.start_matter", new_callable=AsyncMock) as matter, \
-         patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock) as ssh:
-        await ModuleLoader().start_modules()
+         patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock) as ssh, \
+         patch("mirrordash_core.features.modules.client.manager") as manager:
+        manager.broadcast = AsyncMock()
+        await ModuleHost().reload_modules()
         await asyncio.sleep(0)
     assert not matter.called and not ssh.called
+    manager.broadcast.assert_awaited_once_with({"action": "reload"})
 
 
-def test_a_module_serves_its_own_routes_under_its_instance_only():
-    """A module's `router` answers at /api/modules/<instance>/..., HTTPException included; an instance
-    without one, or one not running, is a 404, so the path reaches no route of the core."""
-    from fastapi import APIRouter, HTTPException
-    from fastapi.testclient import TestClient
+@pytest.mark.asyncio
+async def test_lan_access_is_what_the_owner_typed_on_the_home_network():
+    """Only "format": "lan-url" settings count, only home-network addresses come out of them."""
+    from mirrordash_core.features.modules.client import lan_addresses, lan_hosts
 
-    from mirrordash_core.app import app
-    from mirrordash_core.features.modules.loader import module_loader
+    schemas = {"md_ha": {"properties": {"url": {"type": "string", "format": "lan-url"}, "other": {"type": "string"}}}}
+    modules = {"ha": {"module": "md_ha", "url": "http://192.168.1.20:8123", "other": "http://10.0.0.1"},
+               "ha-2": {"module": "md_ha", "url": "homeassistant.local", "enabled": False},
+               "ha-3": {"module": "md_ha"}}
+    with patch("mirrordash_core.features.settings.schema._installed_module_schemas", return_value=schemas):
+        assert lan_hosts(modules) == {"192.168.1.20"}
+    assert await lan_addresses({"192.168.1.20", "8.8.8.8", "127.0.0.1", "fd00::5"}) == ["192.168.1.20", "fd00::5"]
 
-    plugin = type("Plugin", (), {})()
-    plugin.router = APIRouter()
 
-    @plugin.router.post("/relay/{state}")
-    async def relay(state: str):
-        if state not in ("on", "off"):
-            raise HTTPException(status_code=400, detail="on or off")
-        return {"relay": state}
+async def _until(check, timeout=5.0):
+    for _ in range(int(timeout / 0.02)):
+        if check():
+            return
+        await asyncio.sleep(0.02)
+    raise AssertionError("timed out")
 
-    client = TestClient(app)
-    with patch.dict(module_loader.instances, {"garage": plugin, "clock": object()}):
-        assert client.post("/api/modules/garage/relay/on").json() == {"relay": "on"}
-        assert client.post("/api/modules/garage/relay/up").status_code == 400
-        assert client.post("/api/modules/garage/other").status_code == 404
-        assert client.get("/api/modules/clock/relay/on").status_code == 404
-        assert client.get("/api/modules/gone/relay/on").status_code == 404
-        assert client.get("/api/modules").status_code == 404
+
+async def _call(path: str, method: str = "GET", headers=()) -> tuple[int, dict, bytes]:
+    """One HTTP call straight into the core's /api/modules mount."""
+    from mirrordash_core.features.modules.client import module_routes
+    scope = {"type": "http", "method": method, "path": "/api/modules" + path, "root_path": "/api/modules",
+             "query_string": b"", "headers": [(k.encode(), v.encode()) for k, v in headers],
+             "client": ("192.168.1.5", 1234)}
+    events = []
+
+    async def receive():
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(event):
+        events.append(event)
+
+    await module_routes(scope, receive, send)
+    start = next(e for e in events if e["type"] == "http.response.start")
+    headers_out = {}
+    for k, v in start["headers"]:
+        headers_out.setdefault(k.decode(), []).append(v.decode())
+    return start["status"], headers_out, b"".join(e.get("body", b"") for e in events if e["type"] == "http.response.body")
+
+
+@pytest.mark.asyncio
+async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it(tmp_path, monkeypatch):
+    """The core's client and a real module host over a unix socket: the module's card lands in its place,
+    its routes answer under its instance without the owner's cookie and can't set one, and what the host
+    sends for an instance the config hasn't (or for an old start) is dropped."""
+    import json as json_
+
+    from fastapi import APIRouter, HTTPException, Request
+    from fastapi.responses import JSONResponse
+
+    from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.features.modules import host as host_module
+
+    class GaragePlugin:
+        def __init__(self, config):
+            self.router = APIRouter()
+
+            @self.router.post("/door/{state}")
+            async def door(state: str, request: Request):
+                if state not in ("open", "closed"):
+                    raise HTTPException(status_code=400, detail="open or closed")
+                return JSONResponse({"door": state, "cookie": request.headers.get("cookie"),
+                                     "api_path": config["api_path"], "client": request.client.host},
+                                    headers={"Set-Cookie": "mirrordash_session=evil", "X-Garage": "1"})
+
+        async def run_loop(self, broadcast_fn):
+            await broadcast_fn("garage", "<p>closed</p>")
+            await asyncio.Event().wait()
+
+    class EntryPoint:
+        name = "md_garage"
+        module = "md_garage.plugin"
+
+        def load(self):
+            return GaragePlugin
+
+    socket_path = str(tmp_path / "host.sock")
+    monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
+    monkeypatch.setattr(mirrordash_core.features.modules.loader, "module_entry_points", lambda: [EntryPoint()])
+    monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)  # one process: no loop back
+    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    config = {"modules": {"garage": {"module": "md_garage", "position": "top_left"}}, "globals": {"language": "en"},
+              "admin_auth": {"hash": "secret"}}
+    monkeypatch.setattr(client_module, "load_config", lambda: config)
+    manager = MagicMock()
+    manager.broadcast = AsyncMock()
+    monkeypatch.setattr(client_module, "manager", manager)
+    monkeypatch.setattr(client_module, "module_host", client_module.ModuleHost())
+    core = client_module.module_host
+
+    server = asyncio.create_task(host_module.serve(socket_path))
+    await _until(lambda: (tmp_path / "host.sock").exists())
+    sent = []
+    real_send = core._send
+
+    async def spy(message):
+        sent.append(message)
+        await real_send(message)
+    monkeypatch.setattr(core, "_send", spy)
+    await core.start_modules()
+    try:
+        await _until(lambda: core.running == ["garage"])
+        assert "admin_auth" not in json_.dumps(sent[0])  # the host gets the modules' settings, not the core's
+        await _until(lambda: manager.broadcast.await_count >= 1)
+        assert manager.broadcast.await_args.args[0] == {
+            "position": "top_left", "module": "garage", "carousel_group": None, "carousel_interval": 15,
+            "max_width": None, "max_height": None, "z_index": None, "opacity": None, "html": "<p>closed</p>"}
+        assert (tmp_path / "modules" / "data" / "garage").is_dir()
+
+        status, headers, body = await _call("/garage/door/open", "POST", [("cookie", "mirrordash_session=owner")])
+        assert status == 200
+        assert json_.loads(body) == {"door": "open", "cookie": None, "api_path": "/api/modules/garage", "client": "192.168.1.5"}
+        assert "set-cookie" not in headers and headers["x-garage"] == ["1"]
+        assert headers["content-security-policy"] == ["sandbox"]
+        assert (await _call("/garage/door/ajar", "POST"))[0] == 400
+        assert (await _call("/garage/elsewhere"))[0] == 404
+        assert (await _call("/gone/door/open", "POST"))[0] == 404
+        assert (await _call(""))[0] == 404
+
+        manager.broadcast.reset_mock()
+        await core._handle({"t": "html", "gen": core._gen, "instance": "not-in-config", "html": "<p>x</p>"})
+        await core._handle({"t": "html", "gen": core._gen - 1, "instance": "garage", "html": "<p>old</p>"})
+        await core._handle({"t": "log", "name": "mirrordash.core.auth", "level": 40, "text": "forged"})
+        assert not manager.broadcast.called
+    finally:
+        await core.stop_modules()
+        await asyncio.wait_for(server, 5)

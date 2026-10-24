@@ -1,0 +1,71 @@
+[Unit]
+Description=MirrorDash modules (apart from the core, as their own user, ARCHITECTURE #41)
+After=mirrordash-storage-init.service systemd-resolved.service network.target
+Requires=mirrordash-storage-init.service
+# It exits whenever the core restarts: never give up starting it again
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=mirrordash-mod
+Group=mirrordash-mod
+# The core connects here (MIRRORDASH_MODULE_SOCKET in mirrordash.service): pi is in the group
+RuntimeDirectory=mirrordash-modules
+RuntimeDirectoryMode=0750
+UMask=0007
+Environment="HOME=/storage/mirrordash/modules"
+Environment="MIRRORDASH_MODULE_DIR=/storage/mirrordash/modules"
+# pycache_prefix: the venv is read-only for this user, so compiled modules are kept in its own folder
+ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache -m mirrordash_core.features.modules.host /run/mirrordash-modules/host.sock
+# It exits when the core goes (a restart, an update) and starts again with the venv there is now
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+# Files: the system read-only, its own folder writable; the core's data (every setting and key, the
+# logins, the Matter token), its logs and the keys of SSH and Wi-Fi out of sight
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/storage/mirrordash/modules
+InaccessiblePaths=-/storage/mirrordash/data -/storage/mirrordash/logs -/storage/mirrordash/ssh -/storage/mirrordash/system-connections -/storage/rauc -/run/dbus
+PrivateTmp=yes
+ProtectProc=invisible
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Devices: GPIO, I2C and SPI (the user is in gpio, i2c and spi), nothing else: no camera, screen or sound.
+# The pins the core's overlays hold (buttons, PIR) stay busy in the kernel.
+DevicePolicy=closed
+DeviceAllow=char-gpiochip rw
+DeviceAllow=char-bcm2835-gpiomem rw
+DeviceAllow=char-rpi-gpiomem rw
+DeviceAllow=char-i2c rw
+DeviceAllow=char-spi rw
+
+# Network: the internet. Not the mirror itself (the core's routes), the home network, or IPv6 (a device
+# at home can have a global address). Names through systemd-resolved's stub. The core adds the addresses
+# of the "lan-url" settings at run time (mirrordash-module-network).
+IPAddressDeny=localnet link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0
+IPAddressAllow=127.0.0.53
+
+# A runaway module must not take the core and the screen with it.
+# ponytail: guessed limits; raise MemoryMax if a module is killed with "oom-kill" in the journal.
+MemoryMax=40%
+CPUWeight=50
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

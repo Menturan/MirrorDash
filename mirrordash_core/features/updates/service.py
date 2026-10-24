@@ -88,11 +88,6 @@ def needed_python(requires_python: str | None) -> str | None:
 # a restart forgets it, and the next attempt finds the same again.
 incompatible: dict = {}
 
-# Loads one module (sys.argv[1], its entry point name) the way the core does, in the venv being built
-PROBE = ("import importlib.metadata as m, sys; "
-         "[ep.load() for ep in m.entry_points(group='mirrordash.modules') if ep.name == sys.argv[1]]")
-
-
 def module_target(mod: dict) -> list[str]:
     """What `uv pip install` takes to reinstall a module from where it came (installed_modules)."""
     from mirrordash_core.features.backup.service import find_local_module_dir
@@ -106,6 +101,7 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
     once in it. Only when all of them work, or the admin chose to turn the ones that don't off (skip),
     is it switched in; otherwise nothing has changed."""
     from mirrordash_core.features.backup.service import installed_modules
+    from mirrordash_core.features.modules.client import module_host
     code, _, err = await run("uv", "python", "install", python, timeout=900)
     if code != 0:
         raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
@@ -123,8 +119,8 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
                 if code != 0 and mod["type"] == "pypi":
                     # Its newest version may have been made for the new Python already
                     code, _, err = await uv_pip(py, "install", mod["package_name"], timeout=600)
-                if code == 0:
-                    code, _, err = await run(py, "-c", PROBE, mod["name"], timeout=120)
+                if code == 0:  # loaded by the module host, in its sandbox: never as the core (ARCHITECTURE #41)
+                    code, err = await module_host.check_venv(str(py), [mod["name"]])
                 if code != 0:
                     failed[mod["name"]] = (err.strip().splitlines() or ["unknown error"])[-1]
             if failed:

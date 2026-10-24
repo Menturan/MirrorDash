@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Request
 
 from mirrordash_core.admin import require_api_key, templates
 from mirrordash_core.config import load_config
-from mirrordash_core.features.modules.loader import module_loader
+from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.service import screen_layout
 
 logger = logging.getLogger("mirrordash.core.dashboard")
@@ -58,7 +58,7 @@ async def get_panel_dashboard(request: Request):
             "cpu_temp": cpu_temp,
             "cpu_load": get_cpu_load(),
             "local_ip": local_ip,
-            "active_count": len(module_loader.tasks),
+            "active_count": len(module_host.running),
             "uptime_str": uptime_str,
             "ram_usage": ram_usage,
             "ntp_synchronized": ntp_synchronized,

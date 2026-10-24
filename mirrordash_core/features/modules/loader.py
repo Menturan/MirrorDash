@@ -1,4 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""Runs the modules. ModuleLoader lives in the module host process (host.py), as its own user, never in
+the core's: the core reads a module's files (schema, icon, translations) with the helpers at the top of
+this file, which import nothing of the module (ARCHITECTURE #41)."""
 
 import asyncio
 import contextlib
@@ -6,18 +9,18 @@ import functools
 import hashlib
 import http.client
 import importlib.metadata
-import importlib.resources
 import importlib.util
 import inspect
 import json
 import logging
 import os
+import re
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
-from fastapi import APIRouter
 from jinja2 import (
     ChoiceLoader,
     Environment,
@@ -25,41 +28,69 @@ from jinja2 import (
     PackageLoader,
     select_autoescape,
 )
-from starlette.routing import Router, get_route_path
 
-from mirrordash_core.config import get_base_dir, get_core_version, load_config
+from mirrordash_core.config import get_core_version, get_module_dir, load_config
 from mirrordash_core.event_bus import event_bus
-from mirrordash_core.features.kiosk.ws import manager
 
 logger = logging.getLogger("mirrordash.core.modules")
 
 
 # Restart delay before retrying a crashed module (seconds)
 MODULE_RESTART_DELAY = 5
+# A module or instance name: it ends up in HTML ids, JS strings, URLs and folder names
+SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-def load_translations(package_name: str, lang: str) -> dict:
-    """The module's en.json, with the configured language's file over it."""
+def module_entry_points() -> list:
+    """The installed modules' entry points; one whose name isn't SAFE_NAME is left out (a package
+    chooses its own entry point names)."""
+    return [ep for ep in importlib.metadata.entry_points(group="mirrordash.modules") if SAFE_NAME.match(ep.name)]
+
+
+def find_entry_point(name: str, eps=None):
+    """Find a module's entry point by name, treating '-' and '_' as equal (config ids use either)."""
+    norm_name = name.replace('-', '_')
+    eps = module_entry_points() if eps is None else eps
+    return next((ep for ep in eps if ep.name.replace('-', '_') == norm_name), None)
+
+
+def package_dir(ep) -> Path | None:
+    """The folder of a module's plugin file, found without importing anything of it: find_spec of a
+    top-level name runs no package code, a submodule's would run its parent's __init__."""
+    try:
+        top, *rest = ep.module.split(".")
+        spec = importlib.util.find_spec(top)
+    except (AttributeError, TypeError, ImportError, ValueError):  # not a real entry point, or a bad name
+        return None
+    if not spec:
+        return None
+    if spec.submodule_search_locations:
+        return Path(list(spec.submodule_search_locations)[0], *rest[:-1])
+    return Path(spec.origin).parent if spec.origin else None
+
+
+def load_translations(pkg_dir: Path | None, lang: str) -> dict:
+    """The module's translations/en.json, with the configured language's file over it."""
     translations = {}
     for code in dict.fromkeys(["en", lang or "en"]):
         try:
-            path = importlib.resources.files(package_name) / "translations" / f"{code}.json"
+            path = pkg_dir / "translations" / f"{code}.json"
             if path.is_file():
                 translations.update(json.loads(path.read_text(encoding="utf-8")))
         except Exception as e:
-            logger.debug(f"Could not load translations for {package_name} in language '{code}': {e}")
+            logger.debug(f"Could not load translations from {pkg_dir} in language '{code}': {e}")
     return translations
 
 
-def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = False):
+def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False):
     """A module's `self.fetch` and `self.fetch_json` -> (answer, error).
 
     `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
     raw bytes (RSS, ICS, XML); `self.fetch_json(...)` takes the same arguments and gives the parsed JSON.
     params go in the query; json= is sent as a JSON body, data= as a form (dict) or as is (bytes).
 
-    While the screen is off it waits until the screen is back on (unless keep_running), so a sleeping
-    mirror calls no APIs and a fetch that fell due in the dark happens once, on waking.
+    While the screen is off (awake cleared) it waits until the screen is back on (unless keep_running), so
+    a sleeping mirror calls no APIs and a fetch that fell due in the dark happens once, on waking.
     ponytail: only fetches through here sleep; a module with its own HTTP client keeps polling.
 
     error is None, "rejected" (401/403: usually the API key), "offline" (no answer), "http <code>" or
@@ -99,10 +130,7 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
             except (OSError, ValueError):  # nothing saved yet, or a broken file: fetch
                 pass
         if not keep_running:
-            from mirrordash_core.features.power.display_power import (
-                display_power_manager,
-            )
-            await display_power_manager.awake.wait()
+            await awake.wait()
 
         def get() -> bytes:
             request = urllib.request.Request(url, data=body, method=method, headers={
@@ -143,8 +171,9 @@ def _make_fetch(cache_dir: str | None, module_name: str, keep_running: bool = Fa
             functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
 
 
-def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict) -> None:
-    """Inject translation, data fetching and template rendering helpers into the plugin instance if missing."""
+def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict, link) -> None:
+    """Inject translation, data fetching and template rendering helpers into the plugin instance if missing.
+    link is the way to the core (host.py's HostLink): the screen's state, video playing and its window."""
     plugin_instance.translations = translations
 
     if not hasattr(plugin_instance, "translate"):
@@ -155,7 +184,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
             return default if default is not None else key
         plugin_instance.translate = translate
 
-    fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, getattr(plugin_instance, "keep_running", False))
+    fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, link.awake, getattr(plugin_instance, "keep_running", False))
     if not hasattr(plugin_instance, "fetch"):
         plugin_instance.fetch = fetch
     if not hasattr(plugin_instance, "fetch_json"):
@@ -166,18 +195,17 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         # minute (ws.py, ARCHITECTURE #33). ponytail: async only; a sync run_loop can't hold it.
         @contextlib.asynccontextmanager
         async def video_is_playing():
-            await manager.set_video_playing(module_name, True)
+            await link.video_playing(module_name, True)
             try:
                 yield
             finally:
-                await manager.set_video_playing(module_name, False)
+                await link.video_playing(module_name, False)
         plugin_instance.video_is_playing = video_is_playing
 
     if not hasattr(plugin_instance, "video_window"):
         # `async with self.video_window(fullscreen=False, hz=None) as window:` around the module's own
         # player, whose window has window.app_id: it lands over the card's data-video-window element
-        from mirrordash_core.features.video.window import video_window
-        plugin_instance.video_window = functools.partial(video_window, module_name)
+        plugin_instance.video_window = functools.partial(link.video_window, module_name)
 
     if not hasattr(plugin_instance, "render_template"):
         try:
@@ -222,13 +250,6 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
             logger.warning(f"Could not auto-inject render_template helper for '{module_name}': {e}")
 
 
-def find_entry_point(name: str, eps=None):
-    """Find a module's entry point by name, treating '-' and '_' as equal (config ids use either)."""
-    norm_name = name.replace('-', '_')
-    eps = importlib.metadata.entry_points(group='mirrordash.modules') if eps is None else eps
-    return next((ep for ep in eps if ep.name.replace('-', '_') == norm_name), None)
-
-
 def start_system() -> None:
     """Apply the saved system settings once, at startup (app.py lifespan). A module reload doesn't: each
     setting's own save applies it, and doing all of them again flickered the screen and restarted Matter."""
@@ -271,22 +292,21 @@ def start_system() -> None:
 
 
 class ModuleLoader:
-    def __init__(self):
+    """The running module instances, in the module host process. link: the way to the core (HostLink)."""
+
+    def __init__(self, link):
+        self.link = link
         self.tasks: dict[str, asyncio.Task] = {}
         self.instances: dict = {}
 
-    async def start_modules(self) -> None:
-        config = load_config()
-
-        modules_config = config.get("modules", {})
-
-        # Discover modules via entry points
-        eps = list(importlib.metadata.entry_points(group='mirrordash.modules'))
-
+    async def start_modules(self, modules_config: dict, globals_config: dict) -> None:
+        """Start an instance for each enabled entry of modules_config (the core's config["modules"])."""
+        eps = module_entry_points()
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
+        lang = globals_config.get("language", "en")
 
         for instance_id, module_cfg in modules_config.items():
-            if not isinstance(module_cfg, dict):
+            if not isinstance(module_cfg, dict) or not SAFE_NAME.match(instance_id):
                 continue
 
             module_name = module_cfg.get("module")
@@ -311,66 +331,46 @@ class ModuleLoader:
 
                 # Pre-create and inject writeable data and cache directory paths
                 module_cfg_copy = module_cfg.copy()
-                base_dir = get_base_dir()
-                data_dir = os.path.join(base_dir, "data", instance_id)
-                cache_dir = os.path.join(base_dir, "cache", instance_id)
-                try:
-                    os.makedirs(data_dir, exist_ok=True)
-                    module_cfg_copy["data_dir"] = data_dir
-                except Exception as e:
-                    logger.warning(f"Could not create writeable data directory '{data_dir}' for '{instance_id}': {e}")
-                try:
-                    os.makedirs(cache_dir, exist_ok=True)
-                    module_cfg_copy["cache_dir"] = cache_dir
-                except Exception as e:
-                    logger.warning(f"Could not create writeable cache directory '{cache_dir}' for '{instance_id}': {e}")
+                for kind in ("data", "cache"):
+                    path = os.path.join(get_module_dir(), kind, instance_id)
+                    try:
+                        os.makedirs(path, exist_ok=True)
+                        module_cfg_copy[f"{kind}_dir"] = path
+                    except Exception as e:
+                        logger.warning(f"Could not create writeable {kind} directory '{path}' for '{instance_id}': {e}")
 
                 # Inject event bus for inter-module communication
                 module_cfg_copy["event_bus"] = event_bus
 
-                # Where the module's own routes are served (module_routes), so it can tell its users
+                # Where the module's own routes are served (host.py), so it can tell its users
                 module_cfg_copy["api_path"] = f"/api/modules/{instance_id}"
 
                 # Inject global configurations
-                module_cfg_copy["globals"] = config.get("globals", {})
+                module_cfg_copy["globals"] = globals_config
 
                 # Load translations
                 package_name = plugin_class.__module__.split('.')[0]
-                lang = config.get("globals", {}).get("language", "en")
-                translations = load_translations(package_name, lang)
+                translations = load_translations(package_dir(ep), lang)
                 module_cfg_copy["translations"] = translations
 
                 plugin_instance = plugin_class(module_cfg_copy)
                 self.instances[instance_id] = plugin_instance
 
-                _inject_module_helpers(plugin_instance, package_name, translations, instance_id, module_cfg_copy)
+                _inject_module_helpers(plugin_instance, package_name, translations, instance_id, module_cfg_copy, self.link)
 
                 if hasattr(plugin_instance, "run_loop"):
                     if not inspect.iscoroutinefunction(plugin_instance.run_loop):
                         # A thread can't be stopped on a reload, so it would keep running with old settings
                         logger.error(f"Module {module_name} (instance: {instance_id}): run_loop must be `async def`; not started.")
                         continue
-                    broadcast_fn = self._make_broadcast_func(instance_id, module_cfg)
-                    self._start_module_task(instance_id, plugin_instance, broadcast_fn)
+                    self._start_module_task(instance_id, plugin_instance, self._make_broadcast_func(instance_id))
             except Exception as e:
                 logger.error(f"Failed to load module {module_name} (instance: {instance_id}): {e}", exc_info=True)
 
-    def _make_broadcast_func(self, instance_id: str, module_cfg: dict):
-        """Return a broadcast function with the module's place on the screen. Every change to it saves
-        the config and reloads the modules, so it is read once here, not copied from the config each time."""
-        message = {
-            "position": module_cfg.get("position", "middle_center"),
-            "module": instance_id,
-            "carousel_group": module_cfg.get("carousel_group"),
-            "carousel_interval": module_cfg.get("carousel_interval", 15),
-            "max_width": module_cfg.get("max_width"),
-            "max_height": module_cfg.get("max_height"),
-            "z_index": module_cfg.get("z_index"),
-            "opacity": module_cfg.get("opacity"),
-        }
-
+    def _make_broadcast_func(self, instance_id: str):
+        """The module's broadcast_func: its HTML goes to the core, which puts it in the instance's place."""
         async def broadcast_func(module_html_name: str, html: str) -> None:
-            await manager.broadcast({**message, "html": html})
+            await self.link.html(instance_id, html)
         return broadcast_func
 
     def _start_module_task(self, instance_id: str, plugin_instance, broadcast_fn) -> None:
@@ -414,29 +414,4 @@ class ModuleLoader:
         # Subscribers are module instances; a reload creates new ones, so the old callbacks
         # must go or every reload would add another copy of each subscription.
         event_bus.clear()
-        manager.clear_cache()
         logger.info("All module tasks stopped.")
-
-    async def reload_modules(self) -> None:
-        """Stop all modules, tell clients to reload, and restart modules."""
-        logger.info("Reloading all modules...")
-        await self.stop_modules()
-        await manager.broadcast({"action": "reload"})
-        await self.start_modules()
-
-
-# Singleton instance
-module_loader = ModuleLoader()
-
-_NO_ROUTES = Router()  # answers 404 (or closes a websocket) for an instance without routes
-
-
-async def module_routes(scope, receive, send) -> None:
-    """Mounted at /api/modules: /api/modules/<instance>/... goes to that running instance's `router`
-    (a FastAPI APIRouter) and nowhere else, so a module can't add or shadow a route of the core.
-    No login in front: the module checks its callers itself, like any service on the home network."""
-    instance_id = get_route_path(scope).lstrip("/").split("/")[0]
-    router = getattr(module_loader.instances.get(instance_id), "router", None)
-    if not isinstance(router, APIRouter):
-        router = _NO_ROUTES
-    await router({**scope, "root_path": f"{scope['root_path']}/{instance_id}"}, receive, send)

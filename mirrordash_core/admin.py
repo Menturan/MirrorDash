@@ -21,6 +21,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.templating import Jinja2Templates
 
 from mirrordash_core.config import (
+    get_base_dir,
     get_config_path,
     get_core_version,
     load_config,
@@ -185,6 +186,30 @@ async def require_api_token(bearer: Annotated[HTTPAuthorizationCredentials | Non
 
 # Changes on every process start, so clients can tell for certain that a restart finished.
 BOOT_ID = uuid.uuid4().hex
+
+# The OS's own calls to the core (the nightly update, the Wi-Fi and cable watches) send this, read as
+# root from the core's data dir. A page on the screen (a module's card runs JS there, on this server's
+# own address) or a module can't read it (ARCHITECTURE #41). New at every start.
+LOCAL_TOKEN_FILE = get_base_dir() / "local-token"  # /storage/mirrordash/data/local-token on a mirror
+_local_token = ""
+
+
+def write_local_token() -> None:
+    global _local_token
+    token = secrets.token_hex(32)
+    try:
+        LOCAL_TOKEN_FILE.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(LOCAL_TOKEN_FILE, token + "\n", mode=0o600)
+        _local_token = token
+    except OSError as e:
+        logger.error(f"Could not write {LOCAL_TOKEN_FILE}: the nightly update and the Wi-Fi watch can't reach the core: {e}")
+
+
+def from_the_mirrors_os(request: Request) -> bool:
+    """Whether a request is the mirror's OS calling: from loopback and with the local token."""
+    token = request.headers.get("x-mirrordash-local", "")
+    return bool(_local_token) and bool(request.client) and request.client.host in ("127.0.0.1", "::1") \
+        and secrets.compare_digest(token.encode(), _local_token.encode())
 
 
 # Package operations (venv copy + uv install) take minutes on a Pi 3, longer than nginx's

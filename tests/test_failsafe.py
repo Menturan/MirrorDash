@@ -28,10 +28,11 @@ def mock_admin_shared_load_config():
         yield
 
 
+@patch("mirrordash_core.features.modules.service.module_host.check_venv", new_callable=AsyncMock, return_value=(0, ""))
 @patch("mirrordash_core.features.modules.service.load_config")
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
-def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
+def test_failsafe_update_success(mock_version, mock_exec, mock_load, mock_check, client):
     mock_load.return_value = MOCK_CONFIG
     mock_version.return_value = "0.2.1"
     
@@ -58,13 +59,17 @@ def test_failsafe_update_success(mock_version, mock_exec, mock_load, client):
     assert response.status_code == 200
     assert response.json()["status"] == "success"
     
-    # Verify all three commands were run
+    # Verify all three commands were run, and the modules were imported by the module host, not as the core
     assert mock_exec.call_count == 3
+    assert mock_exec.call_args_list[1].args[-1] == "import mirrordash_core.app"
+    mock_check.assert_awaited_once()
 
+@patch("mirrordash_core.features.modules.service.module_host.check_venv", new_callable=AsyncMock,
+       return_value=(1, "ImportError: Broken module"))
 @patch("mirrordash_core.features.modules.service.load_config")
 @patch("asyncio.create_subprocess_exec")
 @patch("importlib.metadata.version")
-def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
+def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, mock_check, client):
     mock_load.return_value = MOCK_CONFIG
     mock_version.return_value = "0.2.1"
     
@@ -73,10 +78,10 @@ def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, client):
     mock_proc_upgrade.returncode = 0
     mock_proc_upgrade.communicate = AsyncMock(return_value=(b"Successfully upgraded", b""))
     
-    # 2. Check process mock (fails)
+    # 2. The core still imports; the module host's check of the modules fails
     mock_proc_check = MagicMock()
-    mock_proc_check.returncode = 1
-    mock_proc_check.communicate = AsyncMock(return_value=(b"", b"ImportError: Broken module"))
+    mock_proc_check.returncode = 0
+    mock_proc_check.communicate = AsyncMock(return_value=(b"", b""))
     
     mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check]
     

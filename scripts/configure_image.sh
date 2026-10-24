@@ -801,6 +801,32 @@ step_ab_updates() {
   visudo -cf /etc/sudoers.d/mirrordash-rauc
 }
 
+# The modules run apart from the core, as their own user, in their own sandbox (ARCHITECTURE #41)
+step_module_host() {
+  echo "Creating the modules' user..."
+  # A fixed id: /storage keeps the modules' folder across OS updates, and the next image's user must own it
+  getent group mirrordash-mod >/dev/null || groupadd --system --gid 960 mirrordash-mod
+  id mirrordash-mod >/dev/null 2>&1 || useradd --system --uid 960 --gid mirrordash-mod \
+    --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin mirrordash-mod
+  # Modules may use GPIO, I2C and SPI (the unit allows only those devices); pi (the core) reaches the
+  # host's socket and the modules' folder (backups) through the modules' group
+  for group in gpio i2c spi; do
+    if getent group "$group" >/dev/null; then usermod -aG "$group" mirrordash-mod; fi
+  done
+  usermod -aG mirrordash-mod pi
+  put 0644 /etc/systemd/system/mirrordash-modules.service
+  systemctl --root=/ enable mirrordash-modules.service
+  put 0755 /usr/local/bin/mirrordash-module-network
+
+  # The host may not reach the home network, the router (usually the DNS server) included: names go
+  # through systemd-resolved's stub on 127.0.0.53, which it may reach. The last apt package with a
+  # download: installing it points /etc/resolv.conf at that stub, which doesn't answer in this build.
+  echo "Installing systemd-resolved..."
+  apt-get install -y --no-install-recommends systemd-resolved
+  put 0644 /etc/systemd/resolved.conf.d/mirrordash.conf
+  systemctl --root=/ enable systemd-resolved.service
+}
+
 step_first_boot_lock() {
   # On the locked root, / is an overlay that can't be remounted: systemd-remount-fs fails, and is
   # retried (and fails) every time a unit starts. Nothing to remount there, so skip it.
@@ -936,6 +962,7 @@ run_step "15" "repart_service" "Creating MBR Repart Service" step_repart_service
 run_step "16" "storage_hydration" "Creating First-Boot Storage Hydration Service" step_storage_hydration
 run_step "16a" "dev_logging" "Setting up Developer Logging" step_dev_logging
 run_step "16b" "ab_updates" "Setting up A/B OS Updates (RAUC)" step_ab_updates
+run_step "16c" "module_host" "Setting up the Module Host and Its Sandbox" step_module_host
 run_step "17" "first_boot_lock" "Locking the Root (OverlayFS)" step_first_boot_lock
 run_step "18" "system_cleanup" "Performing System Cleanup" step_system_cleanup
 

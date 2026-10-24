@@ -12,6 +12,8 @@ class EventBus:
     def __init__(self):
         self._subscribers: dict[str, list[Callable]] = {}
         self._loop: asyncio.AbstractEventLoop | None = None  # the app's, for a publish from a thread
+        # In the core: every event also goes to the module host (client.py), where the modules subscribe
+        self.forward: Callable[[str, Any], None] | None = None
 
     def subscribe(self, event_type: str, callback: Callable[[Any], Any]) -> None:
         """Subscribe to a specific type of event."""
@@ -41,6 +43,8 @@ class EventBus:
         the app's event loop (also from a module's own thread). If it's a sync function, it is called
         directly, in the publisher's thread.
         """
+        if self.forward:
+            self.forward(event_type, data)
         try:
             running = asyncio.get_running_loop()
         except RuntimeError:

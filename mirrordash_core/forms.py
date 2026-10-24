@@ -3,6 +3,7 @@
 posted form read back into nested data. One small render function per kind of field."""
 
 import itertools
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -71,14 +72,35 @@ def cast_standard_fields(module_cfg: dict) -> dict:
     return result
 
 
+# A schema key or a form name prefix: they end up in ids, names and JS strings in onclick, where HTML
+# escaping doesn't help (the browser decodes it before the JS runs), so only these characters pass
+SAFE_KEY = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+SAFE_PREFIX = re.compile(r"^[A-Za-z0-9_\[\]-]{0,256}$")
+
+
 def _dom_id(*parts) -> str:
-    return "-".join(str(p) for p in parts).replace("[", "-").replace("]", "-").replace("_", "-")
+    return escape("-".join(str(p) for p in parts).replace("[", "-").replace("]", "-").replace("_", "-"), quote=True)
+
+
+def _js(value) -> str:
+    """A value as a JS string literal inside an HTML attribute."""
+    return escape(json.dumps(str(value)), quote=True)
+
+
+def _safe_properties(properties) -> dict:
+    """The schema's properties whose keys are SAFE_KEY; others are left out of the form."""
+    if not isinstance(properties, dict):
+        return {}
+    bad = [k for k in properties if not SAFE_KEY.match(str(k)) or not isinstance(properties[k], dict)]
+    if bad:
+        logger.warning(f"Schema properties left out of the form (keys may hold only letters, digits, - and _): {bad}")
+    return {k: v for k, v in properties.items() if k not in bad}
 
 
 @dataclass
 class Field:
-    """One schema property, ready to render. `value` is escaped for HTML; title and description
-    come from the module's author and may hold markup."""
+    """One schema property, ready to render. Everything from a schema comes from a module's author and
+    is escaped: `value`, `title` and `description` here, the rest where it is used."""
     key: str
     prop: dict
     raw: object
@@ -93,11 +115,11 @@ class Field:
 
     @property
     def title(self) -> str:
-        return self.prop.get("title", self.key)
+        return escape(str(self.prop.get("title", self.key)), quote=True)
 
     @property
     def description(self) -> str:
-        return self.prop.get("description", "")
+        return escape(str(self.prop.get("description", "")), quote=True)
 
 
 def _label(f: Field, with_for: bool = True) -> str:
@@ -110,7 +132,7 @@ def _options(prop: dict, current) -> str:
     titles = prop.get("enum_titles") or prop.get("enumNames")
     return "\n".join(
         f'<option value="{escape(str(opt), quote=True)}"{" selected" if current == opt else ""}>'
-        f'{titles[i] if titles and i < len(titles) else str(opt).replace("_", " ").upper()}</option>'
+        f'{escape(str(titles[i] if titles and i < len(titles) else str(opt).replace("_", " ").upper()))}</option>'
         for i, opt in enumerate(prop["enum"]))
 
 
@@ -130,7 +152,7 @@ def _checkboxes(f: Field) -> str:
     chosen = f.raw if isinstance(f.raw, list) else []
     boxes = "\n".join(
         f'<label class="checkbox-inline"><input type="checkbox" id="{_dom_id(f.id, opt)}" name="{f.name}" '
-        f'value="{escape(opt, quote=True)}"{" checked" if opt in chosen else ""}><span>{opt.replace("_", " ").upper()}</span></label>'
+        f'value="{escape(str(opt), quote=True)}"{" checked" if opt in chosen else ""}><span>{escape(str(opt).replace("_", " ").upper())}</span></label>'
         for opt in f.prop["items"]["enum"])
     return f'''<div class="form-group schema-group">{_label(f, with_for=False)}
         <div class="schema-checkboxes"><input type="hidden" name="{f.name}" value="">{boxes}</div></div>'''
@@ -138,7 +160,7 @@ def _checkboxes(f: Field) -> str:
 
 def _array(f: Field) -> str:
     items_schema = f.prop.get("items", {})
-    item_title = items_schema.get("title", "Item")
+    item_title = str(items_schema.get("title", "Item"))
     items = f.raw if isinstance(f.raw, list) else []
     cards = "\n".join(render_array_item(f.prefix, f.key, items_schema.get("properties", {}), i, item, item_title)
                       for i, item in enumerate(items))
@@ -146,8 +168,8 @@ def _array(f: Field) -> str:
     return f'''<div class="form-group schema-group">{_label(f, with_for=False)}
         <div class="array-items-container" id="{box}">{cards}</div>
         <button type="button" class="btn secondary btn-sm" hx-get="/admin/panels/config/add-array-item"
-                hx-vals='js:{{index: document.querySelectorAll("#{box} .array-item-card").length, name_prefix: "{f.prefix}", array_key: "{f.key}", item_title: "{item_title}", module_name: "{f.module_name}"}}'
-                hx-target="#{box}" hx-swap="beforeend"><i class="fas fa-plus"></i> Add {item_title}</button></div>'''
+                hx-vals='js:{{index: document.querySelectorAll("#{box} .array-item-card").length, name_prefix: {_js(f.prefix)}, array_key: {_js(f.key)}, item_title: {_js(item_title)}, module_name: {_js(f.module_name)}}}'
+                hx-target="#{box}" hx-swap="beforeend"><i class="fas fa-plus"></i> Add {escape(item_title)}</button></div>'''
 
 
 def _object(f: Field) -> str:
@@ -158,9 +180,10 @@ def _object(f: Field) -> str:
 
 
 def _range(f: Field) -> str:
-    step = f.prop.get("step", "1" if f.prop["type"] == "integer" else "any")
+    step = escape(str(f.prop.get("step", "1" if f.prop["type"] == "integer" else "any")), quote=True)
+    low, high = (escape(str(f.prop[k]), quote=True) for k in ("minimum", "maximum"))
     return f'''<div class="form-group schema-field">{_label(f)}
-        <div class="range-row"><input type="range" min="{f.prop["minimum"]}" max="{f.prop["maximum"]}" step="{step}" id="{f.id}" name="{f.name}" value="{f.value}" class="form-control-range" oninput="this.nextElementSibling.value = this.value">
+        <div class="range-row"><input type="range" min="{low}" max="{high}" step="{step}" id="{f.id}" name="{f.name}" value="{f.value}" class="form-control-range" oninput="this.nextElementSibling.value = this.value">
         <output>{f.value}</output></div></div>'''
 
 
@@ -191,6 +214,13 @@ def _text(f: Field) -> str:
         <input type="text" id="{f.id}" name="{f.name}" value="{f.value}" class="form-control"></div>'''
 
 
+def _lan_url(f: Field) -> str:
+    """An address at home the module may reach (client.py lets the module host through to it)."""
+    return f'''<div class="form-group schema-field">{_label(f)}
+        <input type="text" id="{f.id}" name="{f.name}" value="{f.value}" class="form-control">
+        <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
+
+
 def _items(prop: dict) -> dict:
     return prop.get("items", {})
 
@@ -207,6 +237,7 @@ WIDGET_RULES = [
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "color" or key == "color"), _color),
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "password" or key in SECRET_KEYS), _password),
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), _textarea),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", _lan_url),
 ]
 
 
@@ -216,7 +247,9 @@ def _widget(key: str, prop: dict):
 
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "") -> str:
     """The form for a schema's properties: the core's standard fields first, then the module's own."""
-    properties = schema.get("properties", {})
+    if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
+        raise ValueError("Unsafe form name prefix or module name")
+    properties = _safe_properties(schema.get("properties", {}))
     keys = [k for k in STANDARD_FIELDS if k in properties] + [k for k in properties if k not in STANDARD_FIELDS]
     parts = []
     for key in keys:
@@ -259,8 +292,11 @@ def _sub_text(f: Field) -> str:
 
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str) -> str:
     """One card in a list setting (e.g. a calendar), with move up/down and remove."""
+    if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key):
+        raise ValueError("Unsafe form name prefix or list name")
+    item_title = escape(str(item_title), quote=True)
     fields = []
-    for key, prop in sub_properties.items():
+    for key, prop in _safe_properties(sub_properties).items():
         value = item_val.get(key)
         f = Field(key, prop, prop.get("default", "") if value is None else value,
                   _dom_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",

@@ -38,7 +38,7 @@
                          data-repo="{{ meta.repo or '' }}"
                          data-instances="{{ meta.instances | tojson | forceescape }}">
                         <span class="module-card-icon-container module-row-icon" aria-hidden="true">
-                            {% if icon_class.startswith('<svg') %}{{ icon_class | safe }}{% else %}<i class="fas {{ icon_class }}"></i>{% endif %}
+                            {% if icon_class.startswith('data:') %}<span class="module-svg-icon" style="--icon: url('{{ icon_class }}')"></span>{% else %}<i class="fas {{ icon_class }}"></i>{% endif %}
                         </span>
                         <div class="module-row-main">
                             <h3 class="module-row-title">{{ title }} <span class="module-row-version">{{ meta.version }}</span></h3>
@@ -59,7 +59,7 @@
                             <button class="btn secondary btn-sm" id="config-btn-{{ name }}"
                                     hx-get="/admin/panels/modules/config/{{ name }}{% if first_id %}?instance_id={{ first_id }}{% endif %}"
                                     hx-target="#config-fields-global"
-                                    onclick="openConfigureModule('{{ name }}', '{{ meta.package_name }}', '{{ first_id }}')">
+                                    onclick='openConfigureModule({{ name | tojson }}, {{ meta.package_name | tojson }}, {{ (first_id or "") | tojson }})'>
                                 {% if meta.instances %}Settings{% else %}Add to Mirror{% endif %}
                             </button>
                         </div>

@@ -1352,9 +1352,22 @@ input:checked + .slider:before {
     margin-top: 4px;
 }
 
-/* Inline SVG custom module icons scaling */
-.module-card-icon-container svg,
 .profile-icon svg {
+    width: 24px;
+    height: 24px;
+    display: block;
+}
+/* A module's own icon.svg, drawn as a mask in the text colour: an SVG used this way runs none of its
+   scripts, inline it could act as the admin page (ARCHITECTURE #41) */
+.module-svg-icon {
+    display: inline-block;
+    width: 1em;
+    height: 1em;
+    background-color: currentColor;
+    -webkit-mask: var(--icon) center / contain no-repeat;
+    mask: var(--icon) center / contain no-repeat;
+}
+.module-card-icon-container .module-svg-icon {
     width: 24px;
     height: 24px;
     display: block;

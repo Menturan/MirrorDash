@@ -1,7 +1,7 @@
 {# What is on the mirror, as its three bands (top, middle, bottom), each with left, center and right.
    Heights follow the content, so a busy position never squeezes the others. Needs screen_layout; with
    interactive set, a module opens its settings and has a switch that turns it on or off. #}
-{% macro icon(m) %}{% if m.icon.startswith('<svg') %}{{ m.icon | safe }}{% else %}<i class="fas {{ m.icon }}" aria-hidden="true"></i>{% endif %}{% endmacro %}
+{% macro icon(m) %}{% if m.icon.startswith('data:') %}<span class="module-svg-icon" style="--icon: url('{{ m.icon }}')" aria-hidden="true"></span>{% else %}<i class="fas {{ m.icon }}" aria-hidden="true"></i>{% endif %}{% endmacro %}
 <div class="mirror-pane">
     {% for row in ['top', 'middle', 'bottom'] %}
         <div class="mirror-band">
@@ -42,7 +42,7 @@
                                             aria-label="{{ m.name }} settings, {{ row }} {{ col }}"
                                             hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
                                             hx-target="#config-fields-global"
-                                            onclick="openConfigureModule('{{ m.module }}', '{{ m.package }}', '{{ m.id }}')">{{ m.name }}</button>
+                                            onclick='openConfigureModule({{ m.module | tojson }}, {{ m.package | tojson }}, {{ m.id | tojson }})'>{{ m.name }}</button>
                                 </div>
                             {% else %}
                                 <div class="mirror-tile{% if not m.enabled %} off{% endif %}">

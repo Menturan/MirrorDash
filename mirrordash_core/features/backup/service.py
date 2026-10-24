@@ -17,6 +17,7 @@ from fastapi import HTTPException
 from mirrordash_core.config import (
     get_base_dir,
     get_core_version,
+    get_module_dir,
     load_config,
     save_config,
 )
@@ -227,9 +228,9 @@ async def create_backup(password: str | None = None) -> dict:
 
         # 2. Copy data_dir files (excluding cache_dir)
         temp_data_dir = content / "data"
+        skip = shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm')
         if os.path.exists(DATA_DIR):
             try:
-                skip = shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm')
                 top = shutil.ignore_patterns(*NEVER_BACKED_UP, *(() if password else SECRET_FILES))
                 def ignore(directory, names):
                     ignored = skip(directory, names)
@@ -240,6 +241,14 @@ async def create_backup(password: str | None = None) -> dict:
                 raise HTTPException(status_code=500, detail=f"Failed to package data files: {e}")
         else:
             temp_data_dir.mkdir(parents=True, exist_ok=True)
+        # The modules' own data_dirs, in the module host's folder (ARCHITECTURE #41); never their caches
+        module_data = get_module_dir() / "data"
+        if module_data.is_dir():
+            try:
+                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data", ignore=skip)
+            except Exception as e:
+                logger.error(f"Failed to copy the modules' data: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to package the modules' data: {e}")
 
         # 3. Discover and process modules; a local module's source code goes in the archive
         try:
@@ -357,6 +366,23 @@ def _restore_data(src_data_dir: Path) -> None:
     logger.info("Module persistent data files restored successfully.")
 
 
+def _restore_module_data(src: Path) -> None:
+    """Each instance's data_dir back into the module host's folder, replacing what's there, writable for
+    the module host through its group (the core writes them as pi)."""
+    from mirrordash_core.features.modules.loader import SAFE_NAME
+    dest_root = get_module_dir() / "data"
+    for item in (src.iterdir() if src.is_dir() else []):
+        if not item.is_dir() or not SAFE_NAME.match(item.name):
+            continue
+        dest = dest_root / item.name
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(item, dest)
+        for path in [dest, *dest.rglob("*")]:
+            if not path.is_symlink():
+                path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))
+
+
 async def restore_backup(password: str | None = None) -> dict:
     """Restore the backup waiting in temp_upload(): modules (into the next A/B venv), settings,
     saved Wi-Fi networks and module data, then restart (or reboot, for new GPIO overlays)."""
@@ -385,6 +411,7 @@ async def restore_backup(password: str | None = None) -> dict:
                     await _restore_module(mod, extract_dir, python)
             reboot_needed = await _restore_config(extract_dir)
             await asyncio.to_thread(_restore_data, extract_dir / "data")
+            await asyncio.to_thread(_restore_module_data, extract_dir / "module_data")
             if (extract_dir / "wifi.json").exists():
                 await add_wifi(json.loads((extract_dir / "wifi.json").read_text(encoding="utf-8")))
         os.remove(upload)

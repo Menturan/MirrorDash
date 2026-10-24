@@ -42,7 +42,7 @@ def test_wifi_scan(mock_scan, client):
     assert response.json() == {"networks": ["MyHomeWiFi", "CoffeeShopWiFi"]}
     mock_scan.assert_called_once()
 
-@patch("mirrordash_core.features.modules.loader.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.client.module_host.reload_modules", new_callable=AsyncMock)
 @patch("mirrordash_core.features.wifi.routes.connect_wifi", new_callable=AsyncMock)
 @patch("mirrordash_core.features.wifi.routes.reboot_system", new_callable=AsyncMock)
 def test_wifi_setup_success_needs_no_restart(mock_reboot, mock_connect, mock_reload, client):
@@ -157,7 +157,7 @@ def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
     assert result == []
 
 
-@patch("mirrordash_core.features.modules.loader.module_loader.reload_modules", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.client.module_host.reload_modules", new_callable=AsyncMock)
 @patch("mirrordash_core.features.wifi.network._teardown_captive_ap", new_callable=AsyncMock)
 @patch("mirrordash_core.features.wifi.routes.reboot_system", new_callable=AsyncMock)
 @patch("mirrordash_core.features.wifi.routes.connect_wifi")
@@ -220,6 +220,11 @@ def test_index_serves_dashboard_when_configured(mock_load, mock_hotspot, client)
     assert "MirrorDash" in response.text
     assert "Connect the mirror to Wi-Fi" not in response.text
     assert "Welcome to MirrorDash" not in response.text
+    # The modules' cards run here: their JS may talk to this server only (ARCHITECTURE #41)
+    csp = response.headers["content-security-policy"]
+    assert "connect-src 'self' ws://localhost:8000;" in csp and "frame-ancestors 'none'" in csp
+    evil = client.get("/", headers={"host": "x; connect-src *"}).headers["content-security-policy"]
+    assert "connect-src 'self';" in evil and "*;" not in evil.replace("img-src *", "")
 
 @patch("mirrordash_core.features.wifi.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
 def test_captive_portal_redirects_remote_client(mock_hotspot, client):
@@ -410,8 +415,10 @@ def test_the_watch_starts_the_hotspot_when_the_wifi_is_gone_for_good(tmp_path):
 def test_only_the_mirror_itself_can_say_the_hotspot_changed(client):
     with patch("mirrordash_core.features.wifi.routes.manager.broadcast", AsyncMock()) as broadcast:
         assert client.post("/api/wifi/changed").status_code == 403  # TestClient's address is "testclient"
-        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()):
-            assert client.post("/api/wifi/changed").status_code == 200
+        with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()), \
+             patch("mirrordash_core.admin._local_token", "t0ken"):
+            assert client.post("/api/wifi/changed").status_code == 403  # a page on the screen has no token
+            assert client.post("/api/wifi/changed", headers={"X-MirrorDash-Local": "t0ken"}).status_code == 200
     broadcast.assert_called_once_with({"action": "reload"})
 
 

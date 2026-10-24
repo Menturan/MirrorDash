@@ -2,6 +2,8 @@
 Description=MirrorDash Core App Backend
 After=network.target mirrordash-storage-init.service
 Requires=mirrordash-storage-init.service
+# The modules run there (ARCHITECTURE #41); the core connects when it's up
+Wants=mirrordash-modules.service
 
 [Service]
 Type=simple
@@ -13,6 +15,8 @@ Environment="VIRTUAL_ENV=/home/pi/mirrordash/.venv"
 Environment="UV_PYTHON_INSTALL_DIR=/storage/mirrordash/python"
 Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"
+Environment="MIRRORDASH_MODULE_DIR=/storage/mirrordash/modules"
 ExecStart=/home/pi/mirrordash/launch.sh
 # The app restarts itself via SIGTERM (exit 143); that is not a failure
 SuccessExitStatus=143
