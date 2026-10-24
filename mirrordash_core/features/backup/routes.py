@@ -71,10 +71,13 @@ async def delete_panel_backup_route(filename: str):
     return HTMLResponse(content="")
 
 
-def _summary_or_password_prompt(filename: str, is_local: bool, password: str | None = None) -> HTMLResponse:
+async def _summary_or_password_prompt(filename: str, is_local: bool, password: str | None = None) -> HTMLResponse:
     """What the backup in temp_upload() holds, or a password prompt when it's encrypted."""
     try:
-        manifest = read_manifest(temp_upload(), password)
+        manifest = await read_manifest(temp_upload(), password)
+    except ValueError as e:  # a backup in the old format, or a file that isn't one
+        logger.error(f"Not a readable backup: {e}")
+        return _error(str(e) if "older" in str(e) else "Invalid or corrupt backup archive.")
     except Exception as e:
         logger.error(f"Not a backup file: {e}")
         return _error("Invalid or corrupt backup archive.")
@@ -91,7 +94,7 @@ async def upload_panel_backup(file: UploadFile = File(...)):
         return _error("Invalid file type. File must have .mirror extension.")
     with open(temp_upload(), "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
-    return _summary_or_password_prompt(file.filename, is_local=False)
+    return await _summary_or_password_prompt(file.filename, is_local=False)
 
 
 @router.post("/panels/backup/validate-local", dependencies=[Depends(require_api_key)])
@@ -100,14 +103,14 @@ async def validate_panel_backup_local(filename: str = Form(...)):
         shutil.copy(backup_file(filename), temp_upload())
     except HTTPException as e:
         return _error(f"{e.detail}.")
-    return _summary_or_password_prompt(filename, is_local=True)
+    return await _summary_or_password_prompt(filename, is_local=True)
 
 
 @router.post("/panels/backup/validate-password", dependencies=[Depends(require_api_key)])
 async def validate_panel_backup_password(filename: str = Form(...), password: str = Form(...), is_local: bool = Form(...)):
     if not os.path.exists(temp_upload()):
         return _error("No uploaded backup found to validate.")
-    return _summary_or_password_prompt(filename, is_local, password)
+    return await _summary_or_password_prompt(filename, is_local, password)
 
 
 @router.post("/panels/backup/restore", dependencies=[Depends(require_api_key)])

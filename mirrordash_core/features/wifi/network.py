@@ -130,7 +130,8 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
         logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
 
     # ponytail: the password shows in `ps` while nmcli runs (local only); passwd-file would close that.
-    cmd = ["nmcli", "dev", "wifi", "connect", ssid]
+    # nmcli gives up by itself before our timeout, so a slow join isn't cut off while it still runs
+    cmd = ["nmcli", "--wait", "30", "dev", "wifi", "connect", ssid]
     if password:
         cmd.extend(["password", password])
 
@@ -140,7 +141,12 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE
         )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=40)
+        except TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
 
         if proc.returncode == 0:
             msg = stdout.decode().strip()
@@ -153,7 +159,7 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
 
     except TimeoutError:
         logger.error("WiFi connection timed out.")
-        return False, "Connection timed out after 30 seconds."
+        return False, "Connection timed out after 40 seconds."
     except Exception as e:
         logger.error(f"WiFi connection error: {e}")
         return False, str(e)
@@ -175,6 +181,38 @@ async def _wifi_profiles(*flags: str) -> list[str]:
     _, out = await _nmcli("-t", "-f", "NAME,TYPE", "connection", "show", *flags)
     names = [line.rpartition(":") for line in out.splitlines()]
     return [name.replace("\\:", ":") for name, _, kind in names if kind == "802-11-wireless" and name != HOTSPOT_SSID]
+
+
+def _unescape(value: str) -> str:
+    """A value from `nmcli -g`, which escapes ':' and '\\'."""
+    return value.replace("\\:", ":").replace("\\\\", "\\")
+
+
+async def saved_wifi() -> list[dict]:
+    """The saved Wi-Fi networks with their passwords, for an encrypted backup: [{"ssid", "psk"}]
+    (psk "" for an open one). -s shows the secrets: polkit's settings.modify.system allows pi that."""
+    networks = []
+    for name in await _wifi_profiles():
+        code, out = await _nmcli("-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk",
+                                 "connection", "show", "id", name)
+        if code == 0 and out:
+            ssid, _, psk = out.partition("\n")
+            networks.append({"ssid": _unescape(ssid), "psk": _unescape(psk)})
+    return networks
+
+
+async def add_wifi(networks: list[dict]) -> None:
+    """Save Wi-Fi networks (from a backup) without joining them; one already saved is left alone.
+    ponytail: the password shows in `ps` while nmcli runs, as in connect_wifi."""
+    saved = await _wifi_profiles()
+    for net in networks:
+        ssid, psk = str(net.get("ssid") or ""), str(net.get("psk") or "")
+        if not ssid or ssid in saved or ssid == HOTSPOT_SSID:
+            continue
+        security = ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", psk] if psk else []
+        code, out = await _nmcli("connection", "add", "type", "wifi", "con-name", ssid, "ssid", ssid, *security)
+        if code != 0:
+            logger.warning(f"Could not save the Wi-Fi network '{ssid}' from the backup: {out}")
 
 
 # The last change from the admin page that failed, shown on the Wi-Fi card until the next one
