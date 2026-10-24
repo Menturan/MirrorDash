@@ -36,6 +36,8 @@ join_saved_wifi() {
     local name
     nmcli -t -f SSID device wifi list --rescan yes >/dev/null 2>&1
     while IFS= read -r name; do
+        # The service is killed at 150 s (mirrordash-wifi-watch.service): with many saved Wi-Fi, stop trying in time
+        [ "$SECONDS" -lt 90 ] || break
         nmcli --wait 45 connection up id "$name" && return 0
     done < <(saved_wifi)
     return 1

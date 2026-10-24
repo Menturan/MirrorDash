@@ -390,11 +390,16 @@ EOF
 }
 
 step_passwordless_sudo() {
+  # The stock Pi OS image gives pi unrestricted sudo; every module runs as pi, so only the scoped rules below may stay
+  rm -f /etc/sudoers.d/010_pi-nopasswd
+  gpasswd -d pi sudo || true
   put 0440 /etc/sudoers.d/mirrordash
   # Settings → Reset mirror (the sudo rule above allows exactly this, with --yes)
   put 0755 /usr/local/bin/mirrordash-factory-reset
   # Settings → SSH sets pi's password through this, never through chpasswd itself
   put 0755 /usr/local/bin/mirrordash-pi-password
+  # Time zone → Wi-Fi country: sudo allows this wrapper (which checks the code), never raspi-config itself
+  put 0755 /usr/local/bin/mirrordash-wifi-country
   # The screen brightness is a file the video group may write, not a sudo rule
   put 0644 /etc/udev/rules.d/90-mirrordash-backlight.rules
   # Wi-Fi and the setup hotspot: NetworkManager lets pi through polkit, not a sudo rule

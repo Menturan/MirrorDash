@@ -1,0 +1,6 @@
+#!/bin/bash
+# Usage: mirrordash-wifi-country SE
+#   Sets the Wi-Fi country (applies at the next start). Run by pi through sudo, so the code is checked here.
+set -euo pipefail
+[[ "${1:-}" =~ ^[A-Z]{2}$ ]] || { echo "mirrordash-wifi-country: invalid country code" >&2; exit 2; }
+exec /usr/bin/raspi-config nonint do_wifi_country "$1"

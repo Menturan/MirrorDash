@@ -104,11 +104,13 @@ case "${1:-}" in
     if [ "$boot" != "$(primary_partition)" ]; then
       # The slot RAUC just installed: make its boot partition ready (p2 -> root p5, p3 -> root p6)
       mount_dir=$(mktemp -d)
+      trap 'mountpoint -q "$mount_dir" && umount "$mount_dir"; rmdir "$mount_dir"' EXIT
       mount "/dev/mmcblk0p$boot" "$mount_dir"
       prepare_boot "$mount_dir" $(( boot + 3 ))
       sync
       umount "$mount_dir"
       rmdir "$mount_dir"
+      trap - EXIT
       # Firmware call "set reboot flags" (tag 0x00038064, a 4-byte value, flag 1 = tryboot).
       # The next restart boots the [tryboot] partition, once.
       "$VCMAILBOX" 0x00038064 4 0 1 > /dev/null
