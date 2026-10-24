@@ -1,6 +1,8 @@
 server {
     listen 80 default_server;
     server_name mirrordash.local _;
+    # A backup upload (admin page, setup page) is far over nginx's 1 MB default; the app caps it
+    client_max_body_size 500m;
 
     # WebSocket endpoint — must upgrade the connection
     location /ws {
@@ -9,12 +11,16 @@ server {
         proxy_set_header   Upgrade    $http_upgrade;
         proxy_set_header   Connection "upgrade";
         proxy_set_header   Host       $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
         proxy_read_timeout 86400;
     }
 
     # All other requests
     location / {
         proxy_pass         http://127.0.0.1:8000;
+        # Straight through to the app: buffered, an upload would sit in RAM (the root's overlay is tmpfs)
+        proxy_request_buffering off;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;
         proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;

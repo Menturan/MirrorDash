@@ -1,7 +1,16 @@
 // The app (user pi) scans, joins Wi-Fi and runs the setup hotspot with nmcli as itself:
-// NetworkManager asks polkit, and this says yes. Nothing else is allowed, and no sudo is needed.
+// NetworkManager asks polkit, and this says yes to exactly these actions. Nothing else is allowed, and no sudo is needed.
+var allowed = [
+    "org.freedesktop.NetworkManager.network-control",          // connect, disconnect, bring a connection up or down
+    "org.freedesktop.NetworkManager.wifi.scan",                // list Wi-Fi networks
+    "org.freedesktop.NetworkManager.enable-disable-wifi",      // the radio on/off
+    "org.freedesktop.NetworkManager.settings.modify.system",   // add, change, delete connections; read Wi-Fi passwords (nmcli -s)
+    "org.freedesktop.NetworkManager.settings.modify.own",      // the same for connections of pi's own
+    "org.freedesktop.NetworkManager.wifi.share.protected",     // the setup hotspot (WPA)
+    "org.freedesktop.NetworkManager.wifi.share.open"           // the hotspot as an open network
+];
 polkit.addRule(function (action, subject) {
-    if (subject.user == "pi" && action.id.indexOf("org.freedesktop.NetworkManager.") == 0) {
+    if (subject.user == "pi" && allowed.indexOf(action.id) >= 0) {
         return polkit.Result.YES;
     }
 });

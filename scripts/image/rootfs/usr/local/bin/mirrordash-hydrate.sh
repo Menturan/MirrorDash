@@ -84,7 +84,7 @@ for venv in "$VENVS"/venv_a "$VENVS"/venv_b "$VENVS"/venv_old "$VENVS"/venv_fail
     done
 done
 [ -d "$PY_STORAGE" ] && chown -R pi:pi "$PY_STORAGE"
-chown pi:pi /storage/mirrordash /storage/mirrordash/venv
+chown -h pi:pi /storage/mirrordash /storage/mirrordash/venv  # -h: pi controls the venv link
 
 # SSH host keys live here: every mirror boots the same root image, and changes to it are gone at reboot.
 # Only the missing ones are made (the first boot).

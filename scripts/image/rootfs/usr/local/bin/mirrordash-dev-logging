@@ -57,6 +57,7 @@ apply() {
 case "${1:-}" in
   on)
     mkdir -p "$STORAGE"
+    rm -f "$FLAG"  # root writing into a pi-owned dir: never follow a symlink planted there
     echo $(( $(date +%s) + DAYS * 86400 )) > "$FLAG"
     apply ;;
   off)

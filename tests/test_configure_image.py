@@ -251,7 +251,7 @@ def test_nmcli_runs_as_pi_through_polkit():
     assert "nmcli" not in unit("/etc/sudoers.d/mirrordash")
     assert '"sudo", "-n", "nmcli"' not in (ROOT / "mirrordash_core/features/wifi/network.py").read_text()
     rule = unit("/etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules")
-    assert 'subject.user == "pi"' in rule and '"org.freedesktop.NetworkManager."' in rule
+    assert 'subject.user == "pi"' in rule and '"org.freedesktop.NetworkManager.network-control"' in rule
     assert re.search(r"^\s+polkitd \\$", SETUP, re.M)
 
 
