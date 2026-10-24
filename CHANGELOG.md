@@ -11,10 +11,29 @@ There are two kinds of releases:
 
 - *Settings* → *Updates* → *Check for Updates* also checks every module, lists the ones with a new version and updates them all at once with *Update All Modules* (MirrorDash restarts once). It says when it last checked.
 - The *Dashboard* says when modules have new versions, not only MirrorDash.
+- A backup with a password is now properly encrypted, and also holds the admin password, the SSH password and the saved Wi-Fi networks, so a new mirror can be set up from it in one step. A backup without a password holds none of them. Backups made before this version can't be restored.
+- Set up a new mirror from a backup: on the Wi-Fi setup page, tap *Set up from a backup instead*. The mirror joins a Wi-Fi network from the backup and restores everything else by itself.
+- A backup no longer contains your login sessions, and a crafted backup file can no longer delete folders on the mirror. A restore that fails halfway no longer damages the installed modules.
+- Saving a module's settings no longer flickers the screen or briefly drops the mirror from Home Assistant and other Matter apps.
+- Fixed: the mirror screen no longer jumps back to the first slide, or stops rotating, when a module in a carousel updates often.
+- Fixed: the mirror screen reloads after MirrorDash restarts (a module installed or removed, a backup restored) instead of showing old content.
+- Fixed: removing a module whose uninstall fails keeps its settings.
+- Fixed: the admin page and the mirror screen stay responsive while a password is checked or a module is installed, and one stuck browser no longer delays the screen.
+- Fixed: the Wi-Fi API now locks out after wrong passwords, like the login.
+- Fixed: turning SSH on or off says so when it fails, and a setting saved meanwhile is no longer lost.
+- Fixed: a text setting can be "true" or "false", and wrong values for system settings give a clear error.
+- Fixed: the "Reconnecting" badge no longer hides while the connection is still down.
+- Fixed: after MirrorDash restarts with the screen off, the screen follows its schedule again; a screen on/off command that fails is no longer reported as done.
+- Fixed: a system update that didn't start is no longer installed again every night.
+- Fixed: sensor readings keep updating after one failed reading, and the Offline badge no longer shows on networks that only block the two test addresses.
+- Fixed: the Matter on/off switch no longer flickers back to the old state, and a Wi-Fi country problem no longer reports the time zone change as failed.
 
 ### OS image
 
 - Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
+- Safer: modules can no longer use full admin (root) rights on the mirror; the system's own leftover rule that allowed it is removed. The mirror's logs, developer logging and storage setup can no longer be tricked into overwriting system files, and Wi-Fi rights are limited to what the mirror uses.
+- Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).
+- The mirror no longer gets stuck without Wi-Fi or setup network when several saved networks are out of range.
 - *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
 
 ## [0.9.0-os1] - 2026-10-23
