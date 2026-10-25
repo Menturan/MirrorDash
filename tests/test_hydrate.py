@@ -71,14 +71,19 @@ def test_a_venv_whose_python_doesnt_start_is_kept(tmp_path):
     assert (md / "venv_b").is_dir() and not (md / "venv_a").exists()
 
 
-def run_launch(tmp_path: Path, trial: bool) -> Path:
-    """Runs the real launch.sh with an app that crashes at once, on venv_b with venv_old behind it."""
+def run_launch(tmp_path: Path, trial: bool, pythons: tuple[str, str] = ("3.14", "3.14")) -> Path:
+    """Runs the real launch.sh with an app that crashes at once, on venv_b with venv_old behind it
+    (their Pythons: pythons), and the module site on site_b."""
     md = tmp_path / "storage" / "mirrordash"
-    for name in ("venv_b", "venv_old", "base_venv"):
+    for name, python in (("venv_b", pythons[0]), ("venv_old", pythons[1]), ("base_venv", "3.14")):
         (md / name / "bin").mkdir(parents=True)
+        (md / name / "lib" / f"python{python}").mkdir(parents=True)
         (md / name / "bin" / "python").write_text(f"#!/bin/sh\necho {name} >> {tmp_path}/started\nexit 1\n")
         (md / name / "bin" / "python").chmod(0o755)
     (md / "venv").symlink_to("venv_b")
+    for site in ("site_a", "site_b"):
+        (md / "modules" / site).mkdir(parents=True)
+    (md / "modules" / "site").symlink_to("site_b")
     bootloader = tmp_path / "rauc-bootloader"
     bootloader.write_text(f'#!/bin/sh\n[ "$1" = is-update-trial ] && exit {0 if trial else 1}\n')
     bootloader.chmod(0o755)
@@ -100,3 +105,11 @@ def test_a_crash_on_an_os_trial_boot_leaves_the_app_alone(tmp_path):
     md = run_launch(tmp_path / "normal", trial=False)
     assert os.readlink(md / "venv") == "venv_a" and (md / "venv_failed").is_dir()
     assert (tmp_path / "normal" / "started").read_text() == "venv_b\nvenv_old\n"  # venv_old, now named venv_a
+    assert os.readlink(md / "modules" / "site") == "site_b"  # the same Python: the site wasn't switched
+
+
+def test_a_rollback_from_a_new_python_takes_the_old_module_site_back(tmp_path):
+    """A Python upgrade builds the module site anew beside the old one; going back to venv_old goes back
+    to that one too, or modules with compiled code (built for the new Python) stop."""
+    md = run_launch(tmp_path, trial=False, pythons=("3.15", "3.14"))
+    assert os.readlink(md / "venv") == "venv_a" and os.readlink(md / "modules" / "site") == "site_a"

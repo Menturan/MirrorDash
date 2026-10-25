@@ -56,6 +56,15 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 
         
         echo "Rolling back symlink to: $OLD_DIR..."
         
+        # A Python upgrade switches the module site in with the venv (updates/service.py) and leaves the
+        # old one as it was: switch back to it too, or modules with compiled code stop. Not after an
+        # update on the same Python, which leaves the site alone.
+        SITE="/storage/mirrordash/modules/site"
+        if [ -L "$SITE" ] && [ "$(ls /storage/mirrordash/venv_old/lib 2>/dev/null)" != "$(ls "/storage/mirrordash/$FAILED_DIR/lib" 2>/dev/null)" ]; then
+            if [ "$(readlink "$SITE")" = "site_b" ]; then OLD_SITE="site_a"; else OLD_SITE="site_b"; fi
+            if [ -d "/storage/mirrordash/modules/$OLD_SITE" ]; then ln -sfT "$OLD_SITE" "$SITE"; fi
+        fi
+
         # Clean up failed directory
         if [ -d "/storage/mirrordash/venv_failed" ]; then
             rm -rf /storage/mirrordash/venv_failed

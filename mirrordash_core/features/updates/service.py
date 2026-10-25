@@ -109,8 +109,7 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
     modules = [m for m in installed_modules() if m["name"] not in skip]  # from the running module site
     args = ["--prerelease=allow"] if prerelease_enabled() else []
     try:
-        # ponytail: the site is switched in with the venv, but the launcher's fallback (venv_old) has no site of
-        # its own: a module with compiled code stops there until the update works; pure Python ones run on
+        # The site is switched in with the venv; launch.sh's fallback to venv_old switches back to the old one
         async with venv_swap(force_clean=True, python=python) as py, module_host.packages(py, fresh=True) as site:
             code, _, err = await uv_pip(py, "install", *args, f"mirrordash=={version}")
             if code != 0:

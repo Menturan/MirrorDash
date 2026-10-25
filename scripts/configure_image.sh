@@ -124,11 +124,14 @@ run_step() {
 step_expanding_partition() {
   echo "Configuring persistent storage mount in /etc/fstab..."
   mkdir -p /storage
+  # resgid: ext4's reserve (5 %) is for pi (the core) too, not the modules' user, so a module filling
+  # the card leaves the core room to save settings (ARCHITECTURE #41).
+  # ponytail: 5 % of a 16 GB card is ~800 MB, less than an OS update's download; raise it with tune2fs -m.
   if ! grep -q "LABEL=mirrordash-data" /etc/fstab; then
-    cat << 'EOF' >> /etc/fstab
+    cat << EOF >> /etc/fstab
 
 # --- MirrorDash Persistent Storage ---
-LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,x-systemd.device-timeout=15s  0  2
+LABEL=mirrordash-data  /storage  ext4  defaults,noatime,nofail,resgid=$(id -g pi),x-systemd.device-timeout=15s  0  2
 EOF
   fi
 
@@ -815,6 +818,7 @@ step_module_host() {
     if getent group "$group" >/dev/null; then usermod -aG "$group" mirrordash-mod; fi
   done
   usermod -aG mirrordash-mod pi
+  put 0644 /etc/udev/rules.d/90-mirrordash-i2c.rules
   put 0644 /etc/systemd/system/mirrordash-modules.service
   systemctl --root=/ enable mirrordash-modules.service
   put 0755 /usr/local/bin/mirrordash-module-network

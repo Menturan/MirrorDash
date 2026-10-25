@@ -1,0 +1,4 @@
+# Modules (the i2c group, ARCHITECTURE #41) reach the header's I2C bus only. The others are the screen's
+# DDC/CI (brightness, power: ddcutil runs as root through sudo), the camera's and the HAT EEPROM's.
+# := so Pi OS's 99-com.rules (GROUP="i2c") can't hand them back.
+SUBSYSTEM=="i2c-dev", KERNEL!="i2c-1", GROUP:="root", MODE:="0600"

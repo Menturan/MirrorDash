@@ -254,6 +254,6 @@ The system part of the SD card is read-only: everything written there during use
 ## 10. Security at home
 
 - **The admin page uses plain HTTP**, like most devices at home (printers, routers). On your own Wi-Fi that is fine, but someone who can listen in on that network could see the admin password. Don't use the same password anywhere else, and don't make the mirror reachable from the internet (no port forwarding to it).
-- **A module gets full access to the mirror.** It is a small program that runs on the mirror and can reach everything the mirror can, your home network included. Under *Modules → Add modules*, the ones made by MirrorDash are marked **Official**; install others only from people you trust, and read their README first.
+- **A module is a small program that runs on the mirror.** It runs apart from MirrorDash: it can't read MirrorDash's settings or passwords or reach your home network, except the address you type in its settings (like Home Assistant's). But modules can read each other's settings, so a bad module could take another's keys, the Home Assistant token included. Under *Modules → Add modules*, the ones made by MirrorDash are marked **Official**; install others only from people you trust, and read their README first.
 - **A guest network is the safest place** for the mirror if your router has one: the mirror only needs the internet, and then a module can't reach your computers.
 - **SSH is off** unless you turn it on under *Settings*, with a password of your own.

@@ -285,6 +285,10 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     # No GPIO chip nor gpiomem (every pin, the SD card's too): pins come from the core (features/hardware/gpio.py)
     assert not any("gpio" in line for line in host if line.startswith("DeviceAllow="))
     assert "for group in i2c spi; do" in SETUP
+    # Of the I2C buses only the header's: the screen's DDC/CI one would let a module turn it off
+    assert 'SUBSYSTEM=="i2c-dev", KERNEL!="i2c-1", GROUP:="root", MODE:="0600"' in unit("/etc/udev/rules.d/90-mirrordash-i2c.rules")
+    # A module can't fill /storage for the core: ext4's reserve is pi's too
+    assert re.search(r"LABEL=mirrordash-data .*\bresgid=\$\(id -g pi\)", SETUP)
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network" in unit("/etc/sudoers.d/mirrordash")
     assert "systemd-resolved" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")
