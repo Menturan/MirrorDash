@@ -219,23 +219,31 @@ class PressClassifier:
     """
 
     MULTI_PRESS_WINDOW = 0.4  # next press must start within this time to count as double/triple
+    # A contact that opens and closes again within this is one press: gpio-keys debounces only 5 ms (the
+    # overlay has no setting), and the test mirror's button bounced for ~30 ms
+    BOUNCE = 0.05
 
     def __init__(self, long_press: float = DEFAULT_LONG_PRESS):
         self.long_press = long_press  # held at least this long -> "long"
         self.count = 0
         self.down_at: float | None = None
+        self.last_down = 0.0
         self.last_up = 0.0
         self.long_fired = False
 
     def down(self, t: float) -> None:
-        self.down_at = t
+        if self.count and t - self.last_up < self.BOUNCE:  # the release was a bounce: the same press goes on
+            self.count -= 1
+            self.down_at = self.last_down
+        else:
+            self.down_at = t
         self.long_fired = False
 
     def up(self, t: float) -> str | None:
         if self.down_at is None:
             return None
         held = t - self.down_at
-        self.down_at = None
+        self.last_down, self.down_at = self.down_at, None
         if self.long_fired:
             return None
         if held >= self.long_press:  # poll() didn't run in time; still a long press

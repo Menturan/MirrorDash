@@ -35,6 +35,13 @@ def test_press_classifier():
     c = PressClassifier(1.0)
     c.down(0.0)
     assert c.up(1.5) == "long"  # release after the threshold, even if poll() never ran
+    # The test mirror's button (GPIO 3): it bounced for ~30 ms, past gpio-keys' 5 ms debounce, and a
+    # double press came out as a triple, a long one as presses first
+    assert presses([(0, "down"), (0.019, "up"), (0.029, "down"), (0.164, "up"), (0.45, "down"), (0.64, "up")]) == ["double"]
+    assert presses([(0, "down"), (0.019, "up"), (0.029, "down"), (2.0, "up")]) == ["long"]
+    c = PressClassifier(1.0)
+    c.down(0.0), c.up(0.019), c.down(0.029)
+    assert c.up(0.164) is None and c.poll(0.6) == "single"
 
 
 def test_long_press_time_is_chosen():

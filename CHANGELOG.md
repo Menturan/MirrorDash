@@ -21,6 +21,7 @@ There are two kinds of releases:
 - A backup no longer contains your login sessions, and a crafted backup file can no longer delete folders on the mirror. A restore that fails halfway no longer damages the installed modules.
 - Saving a module's settings no longer flickers the screen or briefly drops the mirror from Home Assistant and other Matter apps.
 - Fixed: updating or adding a module when one was already installed failed with "Operation not permitted".
+- Fixed: a button that bounces no longer turns a double press into a triple, or a long press into short ones first.
 - Fixed: after a restart the cards of an area could show in another order than the one you set (a card that loaded faster came first).
 - Fixed: the mirror screen no longer jumps back to the first slide, or stops rotating, when a module in a carousel updates often.
 - Fixed: the mirror screen reloads after MirrorDash restarts (a module installed or removed, a backup restored) instead of showing old content.
