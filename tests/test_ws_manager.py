@@ -154,7 +154,7 @@ async def test_while_a_video_plays_the_other_modules_update_once_a_minute():
 
     # The module host's link, sent straight on to the manager as the core's client does
     link = type("Link", (), {"awake": asyncio.Event(), "video_playing": staticmethod(manager.set_video_playing),
-                             "video_window": lambda *args, **kwargs: None})()
+                             "video_window": lambda *args, **kwargs: None, "gpio": lambda *args, **kwargs: None})()
     tv = type("Tv", (), {})()
     _inject_module_helpers(tv, "tv", {}, "tv", {}, link)
     async with tv.video_is_playing():

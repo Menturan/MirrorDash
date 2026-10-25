@@ -282,6 +282,9 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
                  'Environment="MIRRORDASH_SANDBOX=1"'):  # the IP filters: test_audit_image
         assert line in host, line
     assert any(line.startswith("InaccessiblePaths=-/storage/mirrordash/data ") for line in host)
+    # No GPIO chip nor gpiomem (every pin, the SD card's too): pins come from the core (features/hardware/gpio.py)
+    assert not any("gpio" in line for line in host if line.startswith("DeviceAllow="))
+    assert "for group in i2c spi; do" in SETUP
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network" in unit("/etc/sudoers.d/mirrordash")
     assert "systemd-resolved" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")

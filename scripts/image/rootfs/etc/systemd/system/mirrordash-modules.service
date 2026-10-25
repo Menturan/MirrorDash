@@ -52,13 +52,10 @@ SystemCallErrorNumber=EPERM
 RemoveIPC=yes
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
-# Devices: GPIO, I2C and SPI (the user is in gpio, i2c and spi), nothing else: no camera, screen or sound.
-# The pins the core's overlays hold (buttons, PIR) stay busy for gpiochip; gpiomem (RPi.GPIO) maps the
-# registers and can set any pin (ARCHITECTURE #41's limits).
+# Devices: I2C and SPI (the user is in i2c and spi), nothing else: no camera, screen or sound. No GPIO chip
+# either: a chip is all its pins (the SD card's, the core's). A module gets the free header pins it asks
+# for from the core, as the kernel's handle to exactly those lines (features/hardware/gpio.py).
 DevicePolicy=closed
-DeviceAllow=char-gpiochip rw
-DeviceAllow=char-bcm2835-gpiomem rw
-DeviceAllow=char-rpi-gpiomem rw
 DeviceAllow=char-i2c rw
 DeviceAllow=char-spi rw
 

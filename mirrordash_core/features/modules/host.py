@@ -15,8 +15,12 @@ connects to the unix socket (client.py) and both send one JSON object per line:
                 status {gen, running}                   the instances whose run_loop runs
                 video_playing {instance, on}
                 video_window {id, instance, fullscreen, hz}, video_window_end {id}
+                gpio {id, instance, pins, output, ...}  lines for a module (features/hardware/gpio.py)
                 log {name, level, text}
                 reply {id, ...}                         the answer to http or check
+
+A GPIO request's answer is a file descriptor, which a stream can't carry: the core sends it over a second
+connection, to <socket>.fds (SOCK_SEQPACKET), as one message per descriptor holding the request's id.
 
 The host serves one connection. When it ends (the core restarted, or was updated), the host stops its
 modules and exits; systemd starts it again, so a new venv's modules load fresh.
@@ -35,13 +39,16 @@ import os
 import shutil
 import site
 import socket
+import struct
 import sys
+import threading
 from pathlib import Path
 from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI
 
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.features.hardware.gpio import GpioLines
 from mirrordash_core.features.modules.loader import SAFE_NAME, ModuleLoader, module_site
 from mirrordash_core.venv import point_link
 
@@ -50,6 +57,7 @@ logger = logging.getLogger("mirrordash.core.modules.host")
 LINE_LIMIT = 16 * 1024 * 1024  # one message; a bigger one ends the connection
 RESPONSE_LIMIT = 4 * 1024 * 1024  # a module route's answer
 REQUEST_TIMEOUT = 30
+GPIO_TIMEOUT = 10
 CHECK_TIMEOUT = 180
 UV_TIMEOUT = 600  # one uv pip run, unless the core asks for another
 VIDEO_WINDOW_TIMEOUT = 30  # the core asks the page (5 s) and switches the refresh rate first
@@ -107,6 +115,7 @@ class HostLink:
         self.awake.set()
         self.gen = 0
         self.pending: dict[int, asyncio.Future] = {}
+        self.gpio_lines: dict[str, list[GpioLines]] = {}  # each instance's, released when its run_loop ends
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
 
@@ -138,6 +147,56 @@ class HostLink:
             self.pending.pop(request, None)
             with contextlib.suppress(Exception):  # the core has gone: the host is about to exit anyway
                 await self.send({"t": "video_window_end", "id": request})
+
+    async def gpio(self, instance_id: str, pins: list[int], **options) -> GpioLines:
+        """`await self.gpio([17], output=True)` in a module: these GPIO lines, requested by the core if they
+        are free (features/hardware/gpio.py). options: output, initial, pull, edge, active_low, debounce_ms."""
+        request = next(self._ids)
+        future = self.pending[request] = asyncio.get_running_loop().create_future()
+        try:
+            await self.send({"t": "gpio", "id": request, "instance": instance_id, "pins": list(pins), **options})
+            reply = await asyncio.wait_for(future, GPIO_TIMEOUT)
+        finally:
+            self.pending.pop(request, None)
+        if "fd" not in reply:
+            raise RuntimeError(f"No GPIO {', '.join(map(str, pins))}: {reply.get('error') or 'the mirror did not answer'}")
+        lines = GpioLines(reply["fd"], pins)
+        self.gpio_lines.setdefault(instance_id, []).append(lines)
+        return lines
+
+    def release_gpio(self, instance_id: str) -> None:
+        """Its run_loop ended (loader.py): its lines go back, whether or not it closed them."""
+        for lines in self.gpio_lines.pop(instance_id, []):
+            lines.close()
+
+    def fd_arrived(self, request: int, fd: int) -> None:
+        """A file descriptor from the core (receive_fds): the answer to that GPIO request."""
+        future = self.pending.get(request)
+        if future and not future.done():
+            future.set_result({"fd": fd})
+        else:
+            os.close(fd)  # its request timed out meanwhile
+
+
+def receive_fds(listener: socket.socket, link: HostLink, loop: asyncio.AbstractEventLoop) -> None:
+    """In a thread: the core's second connection, each message a request id with one file descriptor."""
+    try:
+        conn, _ = listener.accept()
+    except OSError:
+        return
+    with conn:
+        while True:
+            try:
+                data, fds, _, _ = socket.recv_fds(conn, 8, 1)
+            except OSError:
+                return
+            if not data:
+                return
+            for fd in fds:
+                if len(data) == 8:
+                    loop.call_soon_threadsafe(link.fd_arrived, struct.unpack("<Q", data)[0], fd)
+                else:
+                    os.close(fd)
 
 
 class LogForward(logging.Handler):
@@ -321,6 +380,11 @@ async def serve(path: str) -> None:
     """Serve the core's connection on the unix socket at path, and return when it ends."""
     done = asyncio.Event()
     busy = False
+    # Before the main socket: the core connects here right after it (GPIO's file descriptors)
+    Path(path + ".fds").unlink(missing_ok=True)
+    fd_listener = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    fd_listener.bind(path + ".fds")
+    fd_listener.listen(1)
 
     async def connected(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         nonlocal busy
@@ -328,14 +392,22 @@ async def serve(path: str) -> None:
             writer.close()
             return
         busy = True
+        host = Host(reader, writer)
+        threading.Thread(target=receive_fds, args=(fd_listener, host.link, asyncio.get_running_loop()),
+                         daemon=True).start()
         try:
-            await Host(reader, writer).run()
+            await host.run()
         finally:
             done.set()
 
     server = await asyncio.start_unix_server(connected, path=path, limit=LINE_LIMIT)
-    async with server:
-        await done.wait()
+    try:
+        async with server:
+            await done.wait()
+    finally:
+        with contextlib.suppress(OSError):
+            fd_listener.shutdown(socket.SHUT_RDWR)  # wakes the thread's accept, if the core never came
+        fd_listener.close()
 
 
 def main() -> None:

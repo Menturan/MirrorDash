@@ -237,6 +237,11 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         # player, whose window has window.app_id: it lands over the card's data-video-window element
         plugin_instance.video_window = functools.partial(link.video_window, module_name)
 
+    if not hasattr(plugin_instance, "gpio"):
+        # `lines = await self.gpio([17], output=True)`, then lines.set(17, 1): free header pins only, given by
+        # the core (features/hardware/gpio.py); options: output, initial, pull, edge, active_low, debounce_ms
+        plugin_instance.gpio = functools.partial(link.gpio, module_name)
+
     if not hasattr(plugin_instance, "render_template"):
         try:
             loaders = []
@@ -422,6 +427,8 @@ class ModuleLoader:
                         f"Restarting in {backoff}s...",
                         exc_info=True
                     )
+                finally:
+                    self.link.release_gpio(instance_id)  # free for its next start, which asks again
                 # A loop that ran a while starts over at the short delay; one that keeps ending at once
                 # waits longer each time (capped at 5 minutes) instead of spinning
                 if time.monotonic() - started > 300:

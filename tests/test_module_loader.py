@@ -18,6 +18,8 @@ class FakeLink:
         self.html = AsyncMock()
         self.video_playing = AsyncMock()
         self.video_window = MagicMock()
+        self.gpio = AsyncMock()
+        self.release_gpio = MagicMock()
 
 
 class DummyPlugin:

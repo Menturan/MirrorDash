@@ -39,6 +39,7 @@ There are two kinds of releases:
 - Update the Home Assistant module when its new version is out: until then it can't reach Home Assistant. Type your Home Assistant address in its settings: the suggested one is only a hint now and opens nothing until you type it.
 - Modules are installed by the modules' own user, apart from MirrorDash: installing or updating one never runs its code as MirrorDash. Modules installed before this version keep running, but can't be updated or removed: use *Reinstall MirrorDash* (it removes them) and install them again. The admin page logs an error if the modules' limits don't hold on your mirror.
 - *Reinstall MirrorDash* (was *Reinstall MirrorDash and Modules*) reinstalls MirrorDash only; your modules stay as they are.
+- Modules get only the GPIO pins they ask for, and only free ones: never the pins of the devices in the *Hardware* tab, the I²C pins while a light sensor is set up, or the Pi's own (like the SD card's).
 - The mirror's screen can no longer reach devices on your home network either. A module that shows a camera at home needs a version that shows it through its own address.
 - Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
 - Safer: modules can no longer use full admin (root) rights on the mirror; the system's own leftover rule that allowed it is removed. The mirror's logs, developer logging and storage setup can no longer be tricked into overwriting system files, and Wi-Fi rights are limited to what the mirror uses.

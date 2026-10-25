@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import socket
+import struct
 import sys
 import tempfile
 import urllib.parse
@@ -31,6 +32,7 @@ from starlette.websockets import WebSocketClose
 
 from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.features.hardware.gpio import free_pins, header_chip, request_lines
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import SAFE_NAME
 from mirrordash_core.venv import get_venv_paths
@@ -121,6 +123,7 @@ class ModuleHost:
         self.running: list[str] = []
         self.lan: list[str] | None = None  # what the host may reach on the home network, once applied
         self._writer: asyncio.StreamWriter | None = None
+        self._fds: socket.socket | None = None
         self._gen = 0
         self._placement: dict[str, dict] = {}
         self._pending: dict[int, asyncio.Future] = {}
@@ -263,7 +266,15 @@ class ModuleHost:
                 if os.path.exists(path) or self._process.returncode is not None:
                     break
                 await asyncio.sleep(0.1)
-        return await asyncio.open_unix_connection(path, limit=LINE_LIMIT)
+        connection = await asyncio.open_unix_connection(path, limit=LINE_LIMIT)
+        # The second connection, for the file descriptors of GPIO requests (host.py)
+        try:
+            self._fds = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            self._fds.connect(path + ".fds")
+        except OSError as e:
+            logger.warning(f"No GPIO for modules: the module host's {path}.fds: {e}")
+            self._fds = None
+        return connection
 
     async def _run(self) -> None:
         while True:
@@ -291,7 +302,9 @@ class ModuleHost:
     def _disconnected(self) -> None:
         if self._writer:
             self._writer.close()
-        self._writer = None
+        if self._fds:
+            self._fds.close()
+        self._writer = self._fds = None
         self.running = []
         for event in self._windows.values():
             event.set()
@@ -330,6 +343,10 @@ class ModuleHost:
                 asyncio.create_task(self._hold_window(request, instance_id, bool(message.get("fullscreen")), hz))
             elif isinstance(request, int):
                 await self._send_quietly({"t": "reply", "id": request, "window": None})  # the module gets an error
+        elif kind == "gpio":
+            if isinstance(message.get("id"), int) and (error := self._gpio(message)):
+                logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
+                await self._send_quietly({"t": "reply", "id": message["id"], "error": error})
         elif kind == "video_window_end":
             if message.get("id") in self._windows:
                 self._windows[message["id"]].set()
@@ -344,6 +361,37 @@ class ModuleHost:
             # Each further line (a traceback) carries the name too: a line of its own can't pass for the core's
             text = str(message.get("text", ""))[:4000].replace("\r", "").replace("\n", f"\n    {name}: ")
             logging.getLogger(name).log(min(max(level, logging.DEBUG), logging.CRITICAL), text)
+
+    def _gpio(self, message: dict) -> str | None:
+        """A module's GPIO request (features/hardware/gpio.py): its lines' file descriptor sent to the host
+        over the second connection, or why not. Only free header pins, whatever the module asks."""
+        instance_id, pins = message.get("instance"), message.get("pins")
+        options = {k: message[k] for k in ("output", "initial", "pull", "edge", "active_low", "debounce_ms") if k in message}
+        if instance_id not in self._placement:
+            return "not an instance of this mirror"
+        if not isinstance(pins, list) or not pins or len(set(pins)) != len(pins) or any(type(p) is not int for p in pins):
+            return "pins must be a list of GPIO numbers"
+        if any(type(options.get(k, False)) is not bool for k in ("output", "active_low")) \
+                or options.get("initial", 0) not in (0, 1) or type(options.get("debounce_ms", 0)) is not int:
+            return "output and active_low are true or false, initial 0 or 1, debounce_ms a number"
+        if taken := sorted(set(pins) - free_pins(load_config())):
+            return f"GPIO {', '.join(map(str, taken))} isn't free for modules (not on the header, or a device in the Hardware tab uses it)"
+        if not self._fds:
+            return "the mirror can't hand out GPIO right now"
+        if not (chip := header_chip()):
+            return "this machine has no GPIO header"
+        try:
+            fd = request_lines(chip, pins, f"mirrordash:{instance_id}", **options)
+        except (OSError, ValueError) as e:
+            return str(e)
+        try:
+            socket.send_fds(self._fds, [struct.pack("<Q", message["id"])], [fd])
+        except OSError as e:
+            return f"couldn't hand the pins over: {e}"
+        finally:
+            os.close(fd)  # the host's copy holds the lines now
+        logger.info(f"{instance_id} has GPIO {', '.join(map(str, pins))}")
+        return None
 
     async def _hold_window(self, request: int, instance_id: str, fullscreen: bool, hz: int | None) -> None:
         from mirrordash_core.features.video.window import video_window

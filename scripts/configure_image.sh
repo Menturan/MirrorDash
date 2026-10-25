@@ -808,9 +808,10 @@ step_module_host() {
   getent group mirrordash-mod >/dev/null || groupadd --system --gid 960 mirrordash-mod
   id mirrordash-mod >/dev/null 2>&1 || useradd --system --uid 960 --gid mirrordash-mod \
     --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin mirrordash-mod
-  # Modules may use GPIO, I2C and SPI (the unit allows only those devices); pi (the core) reaches the
-  # host's socket and the modules' folder (backups) through the modules' group
-  for group in gpio i2c spi; do
+  # Modules may use I2C and SPI (the unit allows only those devices); GPIO pins they get from the core,
+  # never the gpio group (a whole chip). pi (the core) reaches the host's socket and the modules' folder
+  # (backups) through the modules' group
+  for group in i2c spi; do
     if getent group "$group" >/dev/null; then usermod -aG "$group" mirrordash-mod; fi
   done
   usermod -aG mirrordash-mod pi
