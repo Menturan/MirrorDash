@@ -20,14 +20,14 @@ MODULES=$REPOS/mirrordash-modules  # one folder (and git repo) per module
   (fetching, settings, translations, testing, sharing).
 - Pin down with the user, if the request doesn't say: what it shows, where the data comes from, whether it
   needs an API key, what the user can set. Name: `mirrordash-<name>`, lowercase with hyphens.
-- Template: `api` when it fetches from a web API, `basic` when it works out what to show by itself.
+- The scaffold has every part a module can have, marked `── <part> ──`; plan which parts the module keeps.
 - Look at the closest existing module in `$MODULES` and copy its patterns (`mirrordash-namnsdag`: small,
   no key; `mirrordash-weather`: API with a key; `mirrordash-news`: RSS via `self.fetch`).
 
 ## 2. Scaffold
 
 ```bash
-cd "$MODULES" && uv run --project "$SDK" mirrordash-sdk create-module mirrordash-<name> -t api -d "<one-line description>" -a Menturan
+cd "$MODULES" && uv run --project "$SDK" mirrordash-sdk create-module mirrordash-<name> -d "<one-line description>" -a Menturan
 ```
 
 This makes the package, entry point, `config_schema.json`, `translations/`, tests and `git init`. Never build
@@ -35,7 +35,8 @@ the layout by hand.
 
 ## 3. Build it
 
-Follow `MODULE_AGENTS.md`; the usual misses:
+First delete the parts the module doesn't need, each with its settings, texts and tests (the table in the
+module's README), and the README sections for them. Then follow `MODULE_AGENTS.md`; the usual misses:
 
 - Fetch only with `self.fetch_json` / `self.fetch`, with `max_age=self.interval`; show `data` when there is any
   and a `.module-message` when `error` is set. No render time in the HTML.
