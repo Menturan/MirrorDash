@@ -9,6 +9,22 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- Modules run apart from MirrorDash, as their own user: they can no longer read MirrorDash's settings, passwords and logins, change the mirror's system or network, or reach the devices on your home network. A module that needs one (like Home Assistant) reaches exactly the address you type in its settings; the admin page says so under that field. Modules can still use the GPIO pins, I²C and SPI, but of the I²C buses only the one on the GPIO header: a module can no longer change the screen's brightness or turn it off. A module that fills the SD card no longer keeps MirrorDash from saving its settings. A module that uses too much memory is stopped before it slows down the screen.
+- Update the Home Assistant module when its new version is out: until then it can't reach Home Assistant. Type your Home Assistant address in its settings: the suggested one is only a hint now and opens nothing until you type it.
+- Modules are installed by the modules' own user, apart from MirrorDash: installing or updating one never runs its code as MirrorDash. Modules installed before this version keep running, but can't be updated or removed: use *Reinstall MirrorDash* (it removes them) and install them again. The admin page logs an error if the modules' limits don't hold on your mirror.
+- *Reinstall MirrorDash* (was *Reinstall MirrorDash and Modules*) reinstalls MirrorDash only; your modules stay as they are.
+- Modules get only the GPIO pins they ask for, and only free ones: never the pins of the devices in the *Hardware* tab, the I²C pins while a light sensor is set up, or the Pi's own (like the SD card's).
+- The mirror's screen can no longer reach devices on your home network either. A module that shows a camera at home needs a version that shows it through its own address.
+- Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
+- Safer: modules can no longer use full admin (root) rights on the mirror; the system's own leftover rule that allowed it is removed. The mirror's logs, developer logging and storage setup can no longer be tricked into overwriting system files, and Wi-Fi rights are limited to what the mirror uses.
+- Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).
+- The mirror no longer gets stuck without Wi-Fi or setup network when several saved networks are out of range.
+- *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
+
+## [0.9.1] - 2026-10-25
+
 - Modules can offer their own web addresses on the home network (`http://mirrordash.local/api/modules/<module>/...`), for example for a sensor or a phone shortcut to call.
 - MirrorDash no longer answers on port 8000 from the home network, only at `http://mirrordash.local` (port 80) as before.
 - Fixed: a module could run code in the admin page, through its icon or the texts of its settings, and so act as you while you were logged in.
@@ -36,20 +52,6 @@ There are two kinds of releases:
 - Fixed: a system update that didn't start is no longer installed again every night.
 - Fixed: sensor readings keep updating after one failed reading, and the Offline badge no longer shows on networks that only block the two test addresses.
 - Fixed: the Matter on/off switch no longer flickers back to the old state, and a Wi-Fi country problem no longer reports the time zone change as failed.
-
-### OS image
-
-- Modules run apart from MirrorDash, as their own user: they can no longer read MirrorDash's settings, passwords and logins, change the mirror's system or network, or reach the devices on your home network. A module that needs one (like Home Assistant) reaches exactly the address you type in its settings; the admin page says so under that field. Modules can still use the GPIO pins, I²C and SPI, but of the I²C buses only the one on the GPIO header: a module can no longer change the screen's brightness or turn it off. A module that fills the SD card no longer keeps MirrorDash from saving its settings. A module that uses too much memory is stopped before it slows down the screen.
-- Update the Home Assistant module when its new version is out: until then it can't reach Home Assistant. Type your Home Assistant address in its settings: the suggested one is only a hint now and opens nothing until you type it.
-- Modules are installed by the modules' own user, apart from MirrorDash: installing or updating one never runs its code as MirrorDash. Modules installed before this version keep running, but can't be updated or removed: use *Reinstall MirrorDash* (it removes them) and install them again. The admin page logs an error if the modules' limits don't hold on your mirror.
-- *Reinstall MirrorDash* (was *Reinstall MirrorDash and Modules*) reinstalls MirrorDash only; your modules stay as they are.
-- Modules get only the GPIO pins they ask for, and only free ones: never the pins of the devices in the *Hardware* tab, the I²C pins while a light sensor is set up, or the Pi's own (like the SD card's).
-- The mirror's screen can no longer reach devices on your home network either. A module that shows a camera at home needs a version that shows it through its own address.
-- Two mirrors with Matter in one home are two devices in the home apps, not one. Resetting the pairing makes the mirror a new device.
-- Safer: modules can no longer use full admin (root) rights on the mirror; the system's own leftover rule that allowed it is removed. The mirror's logs, developer logging and storage setup can no longer be tricked into overwriting system files, and Wi-Fi rights are limited to what the mirror uses.
-- Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).
-- The mirror no longer gets stuck without Wi-Fi or setup network when several saved networks are out of range.
-- *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
 
 ## [0.9.0-os1] - 2026-10-23
 
