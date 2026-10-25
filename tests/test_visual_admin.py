@@ -534,17 +534,17 @@ def test_module_script_gets_its_own_shadow_root(page):
 
 @pytest.mark.only_browser("webkit")
 def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
-    """The page connects only once the placeholders are up: a card that renders first (the clock, after a
-    restart) mustn't take the place of one that waits for the network (Home Assistant)."""
+    """After a restart the page can load before the modules run: no placeholders hold the places, and the
+    card that renders first (the clock) mustn't take the place of one that waits for the network (Home
+    Assistant). Each card carries its place in the settings (order)."""
     import json
     from pathlib import Path
     static = Path(__file__).parent.parent / "mirrordash_core" / "static"
-    held = []
 
     def serve(route):
         path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
         if path == "/api/active-modules":
-            return held.append(route)  # answered below, after the socket had its chance
+            return route.fulfill(json={"modules": []})  # the module host hasn't reported yet
         file = static / path.removeprefix("/static/")
         if not file.is_file():
             return route.fulfill(status=404)
@@ -554,15 +554,12 @@ def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
     page.route("http://mirror.test/**", serve)
     page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
     page.goto("http://mirror.test/static/index.html")
-    page.wait_for_timeout(500)
-    assert page.evaluate("window.__ws === undefined") and len(held) == 1
-    held[0].fulfill(json={"modules": [{"name": "ha", "position": "top_left", "title": "HA"},
-                                      {"name": "clock", "position": "top_left", "title": "Clock"}]})
     page.wait_for_function("window.__ws")
-    for name in ("clock", "ha"):
+    for name, order in (("clock", 2), ("ha", 0), ("namnsdag", 1)):
         page.evaluate("msg => window.__ws.onmessage({ data: msg })",
-                      json.dumps({"module": name, "position": "top_left", "html": name}))
-    assert page.evaluate("[...document.querySelectorAll('#top_left [data-module]')].map(e => e.dataset.module)") == ["ha", "clock"]
+                      json.dumps({"module": name, "position": "top_left", "order": order, "html": name}))
+    assert page.evaluate("[...document.querySelectorAll('#top_left [data-module]')].map(e => e.dataset.module)") == \
+        ["ha", "namnsdag", "clock"]
 
 
 @pytest.mark.only_browser("webkit")

@@ -103,7 +103,8 @@ async def get_active_modules() -> dict:
             "position": position,
             "title": title,
             "carousel_group": config.get("carousel_group"),
-            "carousel_interval": config.get("carousel_interval", 15)
+            "carousel_interval": config.get("carousel_interval", 15),
+            "order": module_host._placement.get(name, {}).get("order"),
         })
     # Read boot status from environment
     boot_status = os.environ.get("MIRRORDASH_BOOT_STATUS", "normal")

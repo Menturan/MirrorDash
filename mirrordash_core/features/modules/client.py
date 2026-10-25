@@ -316,7 +316,9 @@ class ModuleHost:
         config = load_config()
         modules = {k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
         self._gen += 1
-        self._placement = {instance_id: placement(cfg, instance_id) for instance_id, cfg in modules.items()}
+        # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
+        self._placement = {instance_id: {**placement(cfg, instance_id), "order": i}
+                           for i, (instance_id, cfg) in enumerate(modules.items())}
         self.running = []
         await self._apply_lan(modules)  # before the modules start, so their first call gets through
         from mirrordash_core.features.power.display_power import display_power_manager

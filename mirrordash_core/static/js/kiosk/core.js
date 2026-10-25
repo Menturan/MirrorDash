@@ -199,7 +199,7 @@ function connect() {
 
         if (moduleDiv) {
             if (moduleDiv.parentElement !== parentContainer) {
-                parentContainer.appendChild(moduleDiv);
+                insertInOrder(parentContainer, moduleDiv, data.order);
             }
             if (moduleDiv.classList.contains('module-loading-placeholder')) {
                 moduleDiv.replaceChildren();  // the pulsing loading content goes, not just hidden behind the module
@@ -213,7 +213,7 @@ function connect() {
             moduleDiv = document.createElement('div');
             moduleDiv.setAttribute('data-module', data.module);
             moduleDiv.classList.add('module-enter');
-            parentContainer.appendChild(moduleDiv);
+            insertInOrder(parentContainer, moduleDiv, data.order);
             moduleDiv.addEventListener('animationend', () => {
                 moduleDiv.classList.remove('module-enter');
             }, { once: true });
@@ -277,6 +277,15 @@ function connect() {
         console.error('WebSocket error:', err);
         socket.close();
     };
+}
+
+// An area's cards in the settings' order (order), whichever arrives first: after a restart the page can
+// load before the modules run, with no placeholders to hold their places (the clock took Home Assistant's)
+function insertInOrder(container, div, order) {
+    if (Number.isInteger(order)) div.dataset.order = order;
+    const mine = Number(div.dataset.order);
+    const next = [...container.children].find(c => c !== div && Number(c.dataset.order) > mine);
+    container.insertBefore(div, next || null);
 }
 
 async function loadActiveModules() {
@@ -355,7 +364,7 @@ async function loadActiveModules() {
                     }
                 }
 
-                parentContainer.appendChild(moduleDiv);
+                insertInOrder(parentContainer, moduleDiv, mod.order);
 
                 if (groupContainer) updateCarouselGroup(groupContainer);
             }
@@ -365,9 +374,7 @@ async function loadActiveModules() {
     }
 }
 
-// The placeholders first, in the settings' order: a card that arrived before them would take its
-// area's first place (after a restart the clock beat Home Assistant to it)
-const placeholders = loadActiveModules();
+loadActiveModules();
 
 // The component library (modules.css, what /design shows) goes into every module's shadow root, so it
 // is loaded once before any module renders. Inline <style>, not a <link>: that would reload on every update.
@@ -375,7 +382,7 @@ let MODULES_CSS = '';
 fetch('/static/modules.css')
     .then(r => (r.ok ? r.text() : ''))
     .catch(() => '')
-    .then(async css => { MODULES_CSS = css; await placeholders; connect(); });
+    .then(css => { MODULES_CSS = css; connect(); });
 
 // Tells the app this page still runs: mirrordash-app-watch restarts the kiosk when it stops (a crashed
 // or frozen WebKit can keep its window, and even its WebSocket, open)
