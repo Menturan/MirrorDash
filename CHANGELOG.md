@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.9.3-os1] - 2026-10-25
+
+OS image with MirrorDash 0.9.3.
 
 - Modules have a space of their own on the SD card (a quarter of it, at most 8 GB): one that fills it can no longer fill the card. It's made at the first start of this version, which then takes a little longer.
 - Modules no longer see the mirror's own system details (its processor, memory and kernel settings), only their own processes.
