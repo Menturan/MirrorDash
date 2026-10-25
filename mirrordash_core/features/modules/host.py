@@ -69,7 +69,7 @@ CHECK = ("import site, sys; site.addsitedir(sys.argv[1]); from importlib.metadat
 
 
 SANDBOX_PORTS = (80, 8000)  # the mirror's own site (nginx) and the core behind it
-ROUTES = "/proc/net/route"  # the router: the way into the home network
+ROUTES = "/proc/self/net/route"  # the router, the way into the home network (/proc/net is hidden by ProcSubset=pid)
 # mirrordash-modules.service's InaccessiblePaths and ProtectHome
 SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirrordash/ssh": "the SSH keys",
                  "/storage/mirrordash/system-connections": "the Wi-Fi passwords", "/storage/rauc": "the OS update keys",

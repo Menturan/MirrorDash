@@ -22,6 +22,7 @@ import socket
 import struct
 import sys
 import tempfile
+import time
 import urllib.parse
 from pathlib import Path
 from types import SimpleNamespace
@@ -44,6 +45,10 @@ BODY_LIMIT = 1024 * 1024  # a call to a module's route
 REQUEST_TIMEOUT = 35  # a little over the host's own
 LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; sets the host's IPAddressAllow
 LAN_REFRESH = 600  # seconds between looking up the lan-url hosts again (a DHCP address can change)
+# The host ending this soon after its start, this many times in a row, pauses the modules: one that runs
+# out of memory (MemoryMax, OOMPolicy=stop) or crashes the host would restart it every few seconds forever
+CRASH_WINDOW = 300
+CRASH_LIMIT = 3
 # Headers that never reach a module (the admin session, the admin password) or come back from one
 # (a cookie on the mirror's own site, framing the core's answer, a service worker over the whole site,
 # wiping the site's logins)
@@ -122,6 +127,9 @@ class ModuleHost:
     def __init__(self):
         self.running: list[str] = []
         self.lan: list[str] | None = None  # what the host may reach on the home network, once applied
+        # ponytail: in memory, so a restart of the core tries the modules again (CRASH_LIMIT more crashes)
+        self.paused = False  # the modules crashed the host CRASH_LIMIT times in a row: it runs none (resume)
+        self._crashes = 0
         self._writer: asyncio.StreamWriter | None = None
         self._fds: socket.socket | None = None
         self._gen = 0
@@ -222,6 +230,13 @@ class ModuleHost:
         """The host's sandbox checks and its modules' GPIO lines (host.py's Host._diagnose)."""
         return await self._request({"t": "diagnose"}, 30)
 
+    async def resume(self) -> None:
+        """Start the modules again after they were paused (the Dashboard's button)."""
+        self.paused, self._crashes = False, 0
+        logger.info("Modules started again after the pause")
+        if self._writer:
+            await self._send_start()
+
     def knows(self, instance_id: str) -> bool:
         return self._writer is not None and instance_id in self._placement
 
@@ -289,6 +304,7 @@ class ModuleHost:
                 await asyncio.sleep(2)
                 continue
             logger.info("Connected to the module host")
+            connected_at = time.monotonic()
             try:
                 await self._send_start()
                 while line := await reader.readline():
@@ -301,6 +317,12 @@ class ModuleHost:
             finally:
                 self._disconnected()
             logger.warning("The module host went away; reconnecting")
+            self._crashes = self._crashes + 1 if time.monotonic() - connected_at < CRASH_WINDOW else 1
+            if self._crashes >= CRASH_LIMIT and not self.paused:
+                self.paused = True
+                logger.error(f"The modules stopped the module host {self._crashes} times in a row soon after it started "
+                             "(a module used up its memory, see 'oom-kill' in Logs → Raspberry Pi, or crashed it): "
+                             "no modules run until they are started again on the Dashboard")
             await asyncio.sleep(1)
 
     def _disconnected(self) -> None:
@@ -318,7 +340,8 @@ class ModuleHost:
 
     async def _send_start(self) -> None:
         config = load_config()
-        modules = {k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
+        modules = {} if self.paused else {
+            k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
         self._gen += 1
         # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
         self._placement = {instance_id: {**placement(cfg, instance_id), "order": i}

@@ -5,7 +5,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Request
 
-from mirrordash_core.admin import require_api_key, templates
+from mirrordash_core.admin import notify, require_api_key, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.service import screen_layout
@@ -59,6 +59,7 @@ async def get_panel_dashboard(request: Request):
             "cpu_load": get_cpu_load(),
             "local_ip": local_ip,
             "active_count": len(module_host.running),
+            "modules_paused": module_host.paused,
             "uptime_str": uptime_str,
             "ram_usage": ram_usage,
             "ntp_synchronized": ntp_synchronized,
@@ -68,6 +69,12 @@ async def get_panel_dashboard(request: Request):
                                       for d in load_config().get("system", {}).get("devices", [])),
         }
     )
+
+
+@router.post("/panels/dashboard/resume-modules", dependencies=[Depends(require_api_key)])
+async def resume_modules():
+    await module_host.resume()
+    return notify("Modules are starting again.")
 
 
 @router.get("/panels/dashboard/updates", dependencies=[Depends(require_api_key)])

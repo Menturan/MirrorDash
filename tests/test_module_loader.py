@@ -528,6 +528,37 @@ async def test_the_running_modules_keep_the_settings_order():
 
 
 @pytest.mark.asyncio
+async def test_a_module_host_that_keeps_dying_pauses_the_modules(monkeypatch):
+    """A module that uses up the host's memory gets it killed (OOMPolicy=stop) and restarted, forever: after
+    CRASH_LIMIT quick deaths in a row the core starts it without modules, until the Dashboard's button."""
+    from mirrordash_core.features.modules import client as client_module
+    core = client_module.ModuleHost()
+    starts, fourth = [], asyncio.Event()
+
+    async def connect():
+        if len(starts) == 4:
+            fourth.set()
+            await asyncio.Event().wait()  # the paused host lives on
+        reader = asyncio.StreamReader()
+        reader.feed_eof()  # and dies at once
+        return reader, MagicMock()
+
+    async def send_start():
+        starts.append(core.paused)
+
+    real_sleep = asyncio.sleep
+    monkeypatch.setattr(core, "_connect", connect)
+    monkeypatch.setattr(core, "_send_start", send_start)
+    monkeypatch.setattr(client_module.asyncio, "sleep", lambda seconds: real_sleep(0))
+    task = asyncio.create_task(core._run())
+    await asyncio.wait_for(fourth.wait(), 5)
+    task.cancel()
+    assert starts == [False, False, False, True] and core.paused
+    await core.resume()
+    assert not core.paused and core._crashes == 0
+
+
+@pytest.mark.asyncio
 async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch):
     """uv runs in the module host, into a copy of its site that is switched in only when the change worked
     (ARCHITECTURE #41). The core then finds the module by its files: a package's .pth never runs in it."""

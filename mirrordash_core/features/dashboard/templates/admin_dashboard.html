@@ -29,6 +29,23 @@
         </div>
         {% endif %}
 
+        <!-- The modules crashed the module host again and again (client.py CRASH_LIMIT): none run -->
+        {% if modules_paused %}
+        <div id="modules-paused" style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <i class="fas fa-puzzle-piece" style="font-size: 1.6rem; color: #f87171;" aria-hidden="true"></i>
+            <div style="flex: 1; min-width: 200px;">
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Modules paused</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    The modules stopped three times in a row soon after they started, most likely because one used up
+                    its memory. Turn off the module you added or updated last (Modules tab), then start them again.
+                    Logs → Diagnostics has the details.
+                </p>
+            </div>
+            <button type="button" class="btn primary btn-sm" hx-post="/admin/panels/dashboard/resume-modules"
+                    hx-target="#modules-paused" hx-swap="delete"><i class="fas fa-play"></i> Start Modules Again</button>
+        </div>
+        {% endif %}
+
         <!-- Asynchronous Update Alert Banner -->
         <div style="grid-column: span 12;" hx-get="/admin/panels/dashboard/updates" hx-trigger="load" hx-swap="outerHTML"></div>
 

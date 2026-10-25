@@ -210,6 +210,7 @@ def test_add_and_remove_devices(mock_load, mock_save, client):
         r = client.post("/admin/panels/system/devices/remove", data={"type": "button"})
     assert "removed" in _message(r)
     write.assert_awaited_once_with(["mmwave:22"])
+    assert '<option value="3" selected>' in r.text  # a new button goes on the pin that also starts the mirror
 
 
 @patch("mirrordash_core.features.hardware.routes.save_config")

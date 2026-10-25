@@ -9,8 +9,12 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Modules that keep stopping soon after they start (one using up its memory, most likely) are paused after the third time, instead of starting over every few seconds; the *Dashboard* says so and starts them again with one button.
+- A new push button is suggested on GPIO 3 (pin 5), the pin that also starts the mirror after it was shut down.
+
 ### OS image
 
+- Modules no longer see the mirror's own system details (its processor, memory and kernel settings), only their own processes.
 - Modules run apart from MirrorDash, as their own user: they can no longer read MirrorDash's settings, passwords and logins, change the mirror's system or network, or reach the devices on your home network. A module that needs one (like Home Assistant) reaches exactly the address you type in its settings; the admin page says so under that field. Modules can still use the GPIO pins, I²C and SPI, but of the I²C buses only the one on the GPIO header: a module can no longer change the screen's brightness or turn it off. A module that fills the SD card no longer keeps MirrorDash from saving its settings. A module that uses too much memory is stopped before it slows down the screen.
 - Update the Home Assistant module when its new version is out: until then it can't reach Home Assistant. Type your Home Assistant address in its settings: the suggested one is only a hint now and opens nothing until you type it.
 - Modules are installed by the modules' own user, apart from MirrorDash: installing or updating one never runs its code as MirrorDash. Modules installed before this version keep running, but can't be updated or removed: use *Reinstall MirrorDash* (it removes them) and install them again. The admin page logs an error if the modules' limits don't hold on your mirror.

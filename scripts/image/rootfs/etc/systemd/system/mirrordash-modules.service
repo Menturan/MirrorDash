@@ -33,6 +33,8 @@ ReadWritePaths=/storage/mirrordash/modules
 InaccessiblePaths=-/storage/mirrordash/data -/storage/mirrordash/logs -/storage/mirrordash/ssh -/storage/mirrordash/system-connections -/storage/rauc -/run/dbus
 PrivateTmp=yes
 ProtectProc=invisible
+# Only the processes in /proc, not the machine's (cpuinfo, meminfo, the kernel's settings): no module needs them
+ProcSubset=pid
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
