@@ -44,7 +44,7 @@ if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q "$MODULES"; t
         [ "$size" -gt 8388608 ] && size=8388608
         rm -f "$MODULES_IMG.tmp"
         truncate -s "${size}K" "$MODULES_IMG.tmp"
-        mkfs.ext4 -q -F -m 0 -L mirrordash-modules "$MODULES_IMG.tmp"
+        mkfs.ext4 -q -F -m 0 -L md-modules "$MODULES_IMG.tmp"
         mkdir -p /run/mirrordash-modules-fs
         mount -o loop "$MODULES_IMG.tmp" /run/mirrordash-modules-fs
         cp -a "$MODULES/." /run/mirrordash-modules-fs/
