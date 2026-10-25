@@ -391,6 +391,14 @@ async def test_lan_access_is_what_the_owner_typed_on_the_home_network():
         assert lan_hosts(modules) == {"192.168.1.20"}
     assert await lan_addresses({"192.168.1.20", "8.8.8.8", "127.0.0.1", "fd00::5"}) == ["192.168.1.20", "fd00::5"]
 
+    # The schema's default is a hint in the form, never a value: saving it unchanged opens nothing
+    from mirrordash_core.forms import render_schema_form
+    form = render_schema_form({"properties": {"url": {"type": "string", "format": "lan-url", "default": "192.168.1.1"}}}, {})
+    assert 'value=""' in form and 'placeholder="192.168.1.1"' in form
+    assert 'value="http://192.168.1.20:8123"' in render_schema_form(
+        {"properties": {"url": {"type": "string", "format": "lan-url", "default": "192.168.1.1"}}},
+        {"url": "http://192.168.1.20:8123"})
+
 
 async def _until(check, timeout=5.0):
     for _ in range(int(timeout / 0.02)):
@@ -420,6 +428,94 @@ async def _call(path: str, method: str = "GET", headers=()) -> tuple[int, dict, 
     for k, v in start["headers"]:
         headers_out.setdefault(k.decode(), []).append(v.decode())
     return start["status"], headers_out, b"".join(e.get("body", b"") for e in events if e["type"] == "http.response.body")
+
+
+def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
+    """systemd only warns when the kernel can't filter: the host itself finds a port of the mirror or the
+    core's data within its reach."""
+    import socket
+
+    from mirrordash_core.features.modules import host
+    listener = socket.create_server(("127.0.0.1", 0))
+    try:
+        monkeypatch.setattr(host, "SANDBOX_PORTS", (listener.getsockname()[1],))
+        monkeypatch.setattr(host, "CORE_DATA", str(tmp_path))
+        assert host.sandbox_holes() == [f"the mirror's own port {listener.getsockname()[1]}",
+                                        f"the core's data ({tmp_path})"]
+    finally:
+        listener.close()
+    monkeypatch.setattr(host, "CORE_DATA", str(tmp_path / "out-of-sight"))
+    assert host.sandbox_holes() == []
+
+
+FAKE_UV = '''#!{python}
+import pathlib, sys
+args = sys.argv[1:]
+target = pathlib.Path(args[args.index("--target") + 1])
+if args[-1] != "md_widget":
+    sys.exit("No solution found when resolving: " + args[-1])
+(target / "md_widget").mkdir()
+(target / "md_widget" / "__init__.py").write_text("")
+(target / "md_widget" / "plugin.py").write_text("class Module: pass")
+(target / "md_widget-1.0.dist-info").mkdir()
+(target / "md_widget-1.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\\nName: md-widget\\nVersion: 1.0\\n")
+(target / "md_widget-1.0.dist-info" / "entry_points.txt").write_text("[mirrordash.modules]\\nmd_widget = md_widget.plugin:Module\\n")
+(target / "evil.pth").write_text("import pathlib; pathlib.Path({marker!r}).write_text('ran')")
+'''
+
+
+@pytest.mark.asyncio
+async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch):
+    """uv runs in the module host, into a copy of its site that is switched in only when the change worked
+    (ARCHITECTURE #41). The core then finds the module by its files: a package's .pth never runs in it."""
+    import os
+    import sys
+
+    from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.features.modules import host as host_module
+    from mirrordash_core.features.modules.loader import find_entry_point, package_dir
+
+    marker = tmp_path / "pth-ran"
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "bin" / "uv").write_text(FAKE_UV.format(python=sys.executable, marker=str(marker)))
+    (tmp_path / "bin" / "uv").chmod(0o755)
+    monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+    socket_path = str(tmp_path / "host.sock")
+    monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
+    monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
+    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {}, "globals": {}})
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    core = client_module.ModuleHost()
+    server = asyncio.create_task(host_module.serve(socket_path))
+    await _until(lambda: (tmp_path / "host.sock").exists())
+    await core.start_modules()
+    site_link = tmp_path / "modules" / "site"
+    try:
+        await _until(lambda: core._writer is not None)
+        async with core.packages(sys.executable) as site:
+            assert (await site.pip("install", "md_widget"))[0] == 0
+            code, err = await site.check(["md_widget"])
+            assert code == 0, err
+        assert os.readlink(site_link) == "site_b"
+        marker.unlink()  # the check's own Python ran it: that one is the module host's
+
+        ep = find_entry_point("md_widget")
+        assert ep and package_dir(ep) == site_link / "md_widget"
+        assert not marker.exists() and "md_widget" not in sys.modules
+
+        # A change that fails is dropped: the site stays as it was
+        with pytest.raises(RuntimeError):
+            async with core.packages(sys.executable) as site:
+                code, err = await site.pip("install", "md_missing")
+                assert code != 0 and "md_missing" in err
+                raise RuntimeError(err)
+        assert os.readlink(site_link) == "site_b" and not (tmp_path / "modules" / "site_a").exists()
+        assert find_entry_point("md_widget")
+    finally:
+        await core.stop_modules()
+        await asyncio.wait_for(server, 5)
 
 
 @pytest.mark.asyncio

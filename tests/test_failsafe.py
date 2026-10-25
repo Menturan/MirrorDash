@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from conftest import call
@@ -28,68 +28,23 @@ def mock_admin_shared_load_config():
         yield
 
 
-@patch("mirrordash_core.features.modules.service.module_host.check_venv", new_callable=AsyncMock, return_value=(0, ""))
-@patch("mirrordash_core.features.modules.service.load_config")
-@patch("asyncio.create_subprocess_exec")
-@patch("importlib.metadata.version")
-def test_failsafe_update_success(mock_version, mock_exec, mock_load, mock_check, client):
-    mock_load.return_value = MOCK_CONFIG
-    mock_version.return_value = "0.2.1"
-    
-    # Upgrade process mock
-    mock_proc_upgrade = MagicMock()
-    mock_proc_upgrade.returncode = 0
-    mock_proc_upgrade.communicate = AsyncMock(return_value=(b"Successfully upgraded", b""))
-    
-    # Check process mock
-    mock_proc_check = MagicMock()
-    mock_proc_check.returncode = 0
-    mock_proc_check.communicate = AsyncMock(return_value=(b"Check passed", b""))
-    
-    # Clean process mock
-    mock_proc_clean = MagicMock()
-    mock_proc_clean.returncode = 0
-    mock_proc_clean.communicate = AsyncMock(return_value=(b"", b""))
-    
-    mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check, mock_proc_clean]
-    
-    # Call the endpoint
-    response = call(update_modules, "mirrordash")
-    
+def test_failsafe_update_success(module_site, client):
+    response = call(update_modules, "mirrordash-news")
+
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    
-    # Verify all three commands were run, and the modules were imported by the module host, not as the core
-    assert mock_exec.call_count == 3
-    assert mock_exec.call_args_list[1].args[-1] == "import mirrordash_core.app"
-    mock_check.assert_awaited_once()
 
-@patch("mirrordash_core.features.modules.service.module_host.check_venv", new_callable=AsyncMock,
-       return_value=(1, "ImportError: Broken module"))
-@patch("mirrordash_core.features.modules.service.load_config")
-@patch("asyncio.create_subprocess_exec")
-@patch("importlib.metadata.version")
-def test_failsafe_update_rollback(mock_version, mock_exec, mock_load, mock_check, client):
-    mock_load.return_value = MOCK_CONFIG
-    mock_version.return_value = "0.2.1"
-    
-    # 1. Upgrade process mock (succeeds)
-    mock_proc_upgrade = MagicMock()
-    mock_proc_upgrade.returncode = 0
-    mock_proc_upgrade.communicate = AsyncMock(return_value=(b"Successfully upgraded", b""))
-    
-    # 2. The core still imports; the module host's check of the modules fails
-    mock_proc_check = MagicMock()
-    mock_proc_check.returncode = 0
-    mock_proc_check.communicate = AsyncMock(return_value=(b"", b""))
-    
-    mock_exec.side_effect = [mock_proc_upgrade, mock_proc_check]
-    
-    # Call the endpoint
-    response = call(update_modules, "mirrordash")
-    
+    # Upgraded in a copy of the module site and imported from it by the module host, never as the core
+    assert module_site.calls == [("pip", "install", "--upgrade", "mirrordash-news"),
+                                 ("check", "mirrordash-news", "mirrordash_news", "mirrordash-news")]
+    assert module_site.kept
+
+
+def test_failsafe_update_rollback(module_site, client):
+    module_site.answer = lambda op, args: (1, "ImportError: Broken module") if op == "check" else (0, "")
+
+    response = call(update_modules, "mirrordash-news")
+
     assert response.status_code == 500
     assert "Verification failed. Rolled back successfully. Error: ImportError: Broken module" in response.json()["detail"]
-    
-    # Verify both commands were run
-    assert mock_exec.call_count == 2
+    assert module_site.kept is False

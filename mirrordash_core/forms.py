@@ -215,9 +215,11 @@ def _text(f: Field) -> str:
 
 
 def _lan_url(f: Field) -> str:
-    """An address at home the module may reach (client.py lets the module host through to it)."""
+    """An address at home the module may reach (client.py lets the module host through to it). The schema's
+    default is only a hint, never filled in: saving the form must not open an address the owner didn't type."""
+    hint = escape(str(f.prop.get("default", "")), quote=True)
     return f'''<div class="form-group schema-field">{_label(f)}
-        <input type="text" id="{f.id}" name="{f.name}" value="{f.value}" class="form-control">
+        <input type="text" id="{f.id}" name="{f.name}" value="{f.value}" placeholder="{hint}" class="form-control">
         <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
 
 
@@ -255,7 +257,8 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     for key in keys:
         prop = properties[key]
         value = current_values.get(key)
-        field = Field(key, prop, prop.get("default", "") if value is None else value,
+        default = "" if prop.get("format") == "lan-url" else prop.get("default", "")  # _lan_url: a hint only
+        field = Field(key, prop, default if value is None else value,
                       _dom_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name)
         parts.append(_widget(key, prop)(field))

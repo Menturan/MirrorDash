@@ -42,6 +42,36 @@ def _never_restart_the_test_run(monkeypatch):
     monkeypatch.setattr(os, "kill", lambda pid, sig: None if pid == os.getpid() else real_kill(pid, sig))
 
 
+@pytest.fixture
+def module_site(monkeypatch):
+    """module_host.packages() without a module host: each uv pip change and module check is recorded in
+    `calls` as ("pip", *args) or ("check", *names) and answered by `answer(op, args)` ((code, err),
+    success by default); `kept` tells whether the change was switched in, `fresh` and `python` how it began."""
+    import contextlib
+    from types import SimpleNamespace
+
+    from mirrordash_core.features.modules.client import module_host
+    site = SimpleNamespace(calls=[], kept=None, fresh=None, python=None, answer=lambda op, args: (0, ""))
+
+    async def step(op, *args):
+        site.calls.append((op, *args))
+        return site.answer(op, args)
+
+    @contextlib.asynccontextmanager
+    async def packages(python=None, fresh=False):
+        site.python, site.fresh = python, fresh
+        try:
+            yield SimpleNamespace(pip=lambda *args, timeout=600: step("pip", *args),
+                                  check=lambda names: step("check", *names))
+        except BaseException:
+            site.kept = False
+            raise
+        site.kept = True
+
+    monkeypatch.setattr(module_host, "packages", packages)
+    return site
+
+
 class Answer:
     """What a route would have answered: status_code and json(), from calling the function itself."""
     def __init__(self, status_code, body):

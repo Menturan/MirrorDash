@@ -52,19 +52,22 @@ def fake_venv(root: Path, py: str = "3.15") -> Path:
     return root
 
 
-def test_installed_modules_of_a_venv_that_doesnt_run(tmp_path):
-    """Safe mode (and a new Python) read the modules from a venv's files: its Python can't start here."""
+def test_installed_modules_are_read_from_the_module_site(tmp_path, monkeypatch):
+    """The modules live in the module host's site, never on the core's sys.path: the core reads their
+    files (ARCHITECTURE #41). A venv that doesn't run (Safe mode's) is read from its files too."""
     from mirrordash_core.features.backup.service import (
         installed_modules,
         venv_distributions,
     )
     venv = fake_venv(tmp_path / "venv_b")
-    modules = sorted(installed_modules(venv), key=lambda m: m["name"])
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
+    (tmp_path / "modules").mkdir()
+    (tmp_path / "modules" / "site").symlink_to(venv / "lib" / "python3.15" / "site-packages")
+    modules = sorted(installed_modules(), key=lambda m: m["name"])
     assert [(m["package_name"], m["version"], m.get("source")) for m in modules] == [
         ("mirrordash-calendar", "0.3.0", "git+https://github.com/someone/mirrordash-calendar@abc123"),
         ("mirrordash-news", "1.2.0", None)]
     assert next(iter(venv_distributions(venv, name="mirrordash"))).version == "0.9.0"
-    assert installed_modules(tmp_path / "missing") == []  # never this process's own packages instead
 
 
 def test_pythons_no_startable_venv_uses_are_removed(tmp_path, monkeypatch):

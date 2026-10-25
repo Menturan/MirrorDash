@@ -8,6 +8,7 @@ import contextlib
 import functools
 import hashlib
 import http.client
+import importlib.machinery
 import importlib.metadata
 import importlib.util
 import inspect
@@ -15,6 +16,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -41,10 +43,28 @@ MODULE_RESTART_DELAY = 5
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
+def module_site() -> Path:
+    """Where modules are installed: the module host's own folder, a link it switches between site_a and
+    site_b (host.py). Never on the core's sys.path: the core reads its files only, so a package's .pth or
+    one that shadows the core's own runs nowhere but in the module host (ARCHITECTURE #41)."""
+    return get_module_dir() / "site"
+
+
+def module_search_path() -> list[str]:
+    """The module site, then this process's sys.path (a module installed into a developer's venv)."""
+    return [str(module_site()), *sys.path]
+
+
 def module_entry_points() -> list:
-    """The installed modules' entry points; one whose name isn't SAFE_NAME is left out (a package
-    chooses its own entry point names)."""
-    return [ep for ep in importlib.metadata.entry_points(group="mirrordash.modules") if SAFE_NAME.match(ep.name)]
+    """The installed modules' entry points, each name once; one whose name isn't SAFE_NAME is left out (a
+    package chooses its own entry point names)."""
+    eps, seen = [], set()
+    for dist in importlib.metadata.distributions(path=module_search_path()):
+        for ep in dist.entry_points.select(group="mirrordash.modules"):
+            if SAFE_NAME.match(ep.name) and ep.name not in seen:
+                seen.add(ep.name)
+                eps.append(ep)
+    return eps
 
 
 def find_entry_point(name: str, eps=None):
@@ -55,11 +75,11 @@ def find_entry_point(name: str, eps=None):
 
 
 def package_dir(ep) -> Path | None:
-    """The folder of a module's plugin file, found without importing anything of it: find_spec of a
-    top-level name runs no package code, a submodule's would run its parent's __init__."""
+    """The folder of a module's plugin file, found without importing anything of it: PathFinder of a
+    top-level name runs no package code (a submodule's would run its parent's __init__), nor a .pth."""
     try:
         top, *rest = ep.module.split(".")
-        spec = importlib.util.find_spec(top)
+        spec = importlib.machinery.PathFinder.find_spec(top, module_search_path())
     except (AttributeError, TypeError, ImportError, ValueError):  # not a real entry point, or a bad name
         return None
     if not spec:

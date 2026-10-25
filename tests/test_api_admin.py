@@ -1,7 +1,7 @@
 import asyncio
 import json
 from types import SimpleNamespace
-from unittest.mock import ANY, AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
 import pytest
 from conftest import call
@@ -367,32 +367,22 @@ def test_config_positions_validation():
 
 @patch("mirrordash_core.features.modules.service.load_config")
 @patch("mirrordash_core.features.modules.service.save_config")
-@patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
-def test_uninstall_module_success(mock_subproc, mock_save, mock_load, client):
+def test_uninstall_module_success(mock_save, mock_load, module_site, client):
     config = MOCK_CONFIG.copy()
     config["modules"] = {"mirrordash-clock": {"enabled": True, "position": "top_left"}}
     mock_load.return_value = config
-    
-    # Mock subprocess return
-    mock_process = AsyncMock()
-    mock_process.returncode = 0
-    mock_process.communicate.return_value = (b"output", b"")
-    mock_subproc.return_value = mock_process
-    
+
     response = call(uninstall_module, "mirrordash-clock")
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    
+
     # Assert that config was saved and clock module deleted
     mock_save.assert_called_once()
     saved_config = mock_save.call_args[0][0]
     assert "mirrordash-clock" not in saved_config["modules"]
-    
-    # Assert subprocess executed uninstall
-    mock_subproc.assert_any_call(
-        "uv", "pip", "uninstall", "--python", ANY, "-y", "mirrordash-clock",
-        stdout=-1, stderr=-1, env=ANY
-    )
+
+    # Uninstalled from the module site, by the module host (ARCHITECTURE #41)
+    assert module_site.calls == [("pip", "uninstall", "-y", "mirrordash-clock")] and module_site.kept
 
 @patch("mirrordash_core.features.modules.service.load_config")
 def test_uninstall_module_invalid_name(mock_load, client):
@@ -789,38 +779,29 @@ REBUILD_MODULES = [
 ]
 
 
-@pytest.mark.parametrize("failing", [None, "mirrordash-news==1.2.0"])
-@patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
 @patch("mirrordash_core.features.updates.service.run_restart", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_task", side_effect=lambda coro: coro.close())
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=True)
-def test_rebuild_venv_reinstalls_installed_modules(mock_paths, mock_revert, mock_commit, mock_prepare, mock_version,
-                                                   mock_create_task, mock_restart, mock_modules, failing):
-    """Rebuild reinstalls what is installed (PyPI at its version, GitHub at its commit), not what
-    config names; one module failing undoes the swap instead of losing the module."""
+def test_rebuild_venv_installs_the_core_only(mock_paths, mock_commit, mock_prepare, mock_version,
+                                             mock_create_task, mock_restart, module_site):
+    """The modules aren't in the core's venv (the module site, ARCHITECTURE #41): a rebuild installs
+    MirrorDash alone and leaves them as they are."""
     from pathlib import Path
     mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
     installed = []
 
     async def fake_uv_pip(python, command, *args):
         installed.append(args[-1])
-        return (1, "", "boom") if args[-1] == failing else (0, "", "")
+        return 0, "", ""
 
     with patch("mirrordash_core.features.updates.service.uv_pip", side_effect=fake_uv_pip):
         response = call(rebuild_venv)
-    assert installed[:3] == ["mirrordash==1.0.0", "mirrordash-news==1.2.0",
-                             "git+https://github.com/someone/mirrordash-calendar@abc123"][:len(installed)]
-    if failing:
-        assert response.status_code == 500 and "mirrordash-news" in response.json()["detail"]
-        mock_revert.assert_awaited_once()
-        mock_commit.assert_not_awaited()
-    else:
-        assert response.status_code == 200 and len(installed) == 3
-        mock_commit.assert_awaited_once()
+    assert response.status_code == 200 and installed == ["mirrordash==1.0.0"]
+    assert module_site.calls == [] and module_site.kept is None
+    mock_commit.assert_awaited_once()
 
 
 @patch("mirrordash_core.features.hardware.routes.load_config")
@@ -953,20 +934,8 @@ def test_scan_marks_official_modules_and_no_pypi_package_takes_their_name(mock_l
 
 
 @patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
-@patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.features.modules.service.run_restart", new_callable=AsyncMock)
-@patch("mirrordash_core.features.modules.service.asyncio.create_subprocess_exec")
-def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, mock_prepare, mock_urlopen, client):
-    from pathlib import Path
-    mock_prepare.return_value = (Path("/storage/mirrordash/venv_a"), Path("/storage/mirrordash/venv_b"))
-    
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate.return_value = (b"", b"")
-    mock_proc.wait.return_value = 0
-    mock_exec.return_value = mock_proc
-    
+def test_install_module_enforce_releases(mock_restart, mock_urlopen, module_site, client):
     # Success case: repo has release
     mock_resp_ok = MagicMock()
     mock_resp_ok.__enter__.return_value = mock_resp_ok
@@ -977,7 +946,7 @@ def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, m
     payload_ok = {"package_name": "git+https://github.com/user1/mirrordash-widget-ok.git"}
     r1 = call(install_module, **payload_ok)
     assert r1.status_code == 200
-    assert any(c.args[-1] == "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0" for c in mock_exec.call_args_list)
+    assert module_site.calls == [("pip", "install", "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0")]
 
     from urllib.error import HTTPError
     payload_fail = {"package_name": "git+https://github.com/user2/mirrordash-widget-norelease.git"}
@@ -994,7 +963,7 @@ def test_install_module_enforce_releases(mock_exec, mock_restart, mock_commit, m
 
 
 @patch("mirrordash_core.fetch.urllib.request.urlopen")
-@patch("importlib.metadata.entry_points")
+@patch("mirrordash_core.features.modules.loader.module_entry_points")
 def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     mock_dist = MagicMock()
     direct_url_content = json.dumps({
@@ -1518,16 +1487,13 @@ def test_update_check_shows_mirrordash_and_the_system_apart(client, monkeypatch)
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="0.7.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
-def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit, mock_prepare, mock_version,
-                                                                     mock_create_task, mock_restart, tmp_path, monkeypatch):
-    """Safe mode runs base_venv, which has no modules: the button reads them (and the MirrorDash
-    version) from the venv that didn't start, instead of rebuilding an empty one over it."""
+def test_rebuild_in_safe_mode_reinstalls_the_version_that_didnt_start(mock_commit, mock_prepare, mock_version,
+                                                                      mock_create_task, mock_restart, tmp_path, monkeypatch):
+    """Safe mode runs base_venv (0.7.0 here): the button reads the MirrorDash version from the venv that
+    didn't start, instead of installing the old one over it."""
     import os
 
     from test_venv import fake_venv
-
-    from mirrordash_core.features.backup import service as backup
-    real = backup.installed_modules
     fake_venv(tmp_path / "venv_b")
     os.symlink("venv_b", tmp_path / "venv")
     mock_prepare.return_value = (tmp_path / "venv_b", tmp_path / "venv_a")
@@ -1540,12 +1506,9 @@ def test_rebuild_in_safe_mode_reinstalls_the_modules_safe_mode_lacks(mock_commit
 
     with patch("mirrordash_core.features.updates.service.get_venv_paths",
                return_value=(tmp_path / "venv", tmp_path / "venv_b", tmp_path / "venv_a")), \
-         patch.object(backup, "installed_modules", side_effect=lambda venv_dir=None: [] if venv_dir is None else real(venv_dir)), \
          patch("mirrordash_core.features.updates.service.uv_pip", side_effect=fake_uv_pip):
         response = call(rebuild_venv)
-    assert response.status_code == 200
-    assert installed[0] == "mirrordash==0.9.0"
-    assert sorted(installed[1:]) == ["git+https://github.com/someone/mirrordash-calendar@abc123", "mirrordash-news==1.2.0"]
+    assert response.status_code == 200 and installed == ["mirrordash==0.9.0"]
 
 
 def test_needed_python_reads_requires_python():
@@ -1602,9 +1565,10 @@ def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_ta
 @patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
 def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock_revert, mock_commit, mock_prepare,
-                                                              mock_create_task, mock_restart, case):
-    """A MirrorDash that needs Python 3.15: installed next to 3.14, a new venv gets it and every module,
-    each module is loaded once; only when all work (or the admin turns the others off) is it switched in."""
+                                                              mock_create_task, mock_restart, case, module_site):
+    """A MirrorDash that needs Python 3.15: installed next to 3.14, a new venv gets it, an empty module site
+    every module (by the module host), each module is loaded once; only when all work (or the admin turns
+    the others off) are both switched in."""
     from pathlib import Path
 
     from mirrordash_core.features.updates import service
@@ -1614,38 +1578,37 @@ def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock
 
     async def fake_run(*cmd, timeout=None):
         calls.append(cmd)
-        if case == "one doesn't" and cmd[-1] == "mirrordash_news":  # installs, but import fails
-            return 1, "", "Traceback ...\nModuleNotFoundError: No module named 'cgi'"
         return 0, "", ""
 
     async def fake_uv_pip(python, command, *args, timeout=None):
         return await fake_run("uv", "pip", command, *args)
 
-    async def fake_check(python, names):  # the module host loads each module in the new venv
-        code, _, err = await fake_run(python, "check", *names)
-        return code, err
-
+    if case == "one doesn't":  # installs, but import fails
+        module_site.answer = lambda op, args: (1, "Traceback ...\nModuleNotFoundError: No module named 'cgi'") \
+            if args == ("mirrordash_news",) else (0, "")
     check = {"update_available": True, "needs_python": "3.15", "latest_version": "1.0.0"}
     skip = ("mirrordash_news",) if case == "install anyway" else ()
     service.incompatible.clear()
     with patch.object(service, "check_core_update", AsyncMock(return_value=check)), \
          patch.object(service, "run", side_effect=fake_run), patch.object(service, "uv_pip", side_effect=fake_uv_pip), \
-         patch.object(service, "load_config", return_value=config), patch("mirrordash_core.config.save_config") as save, \
-         patch("mirrordash_core.features.modules.client.module_host.check_venv", side_effect=fake_check):
+         patch.object(service, "load_config", return_value=config), patch("mirrordash_core.config.save_config") as save:
         response = call(lambda: service.update_core(skip))
     assert calls[0] == ("uv", "python", "install", "3.15")
     mock_prepare.assert_awaited_once_with(force_clean=True, python="3.15")
     assert ("uv", "pip", "install", "mirrordash==1.0.0") in calls
+    assert module_site.fresh and module_site.python == "/storage/mirrordash/venv_b/bin/python"
     if case == "one doesn't":
         assert response.status_code == 409 and "mirrordash_news" in response.json()["detail"]
         assert service.incompatible == {"version": "1.0.0", "python": "3.15",
                                         "modules": {"mirrordash_news": "ModuleNotFoundError: No module named 'cgi'"}}
         mock_revert.assert_awaited_once() and mock_commit.assert_not_awaited()
+        assert module_site.kept is False
         save.assert_not_called()
     else:
         assert response.status_code == 200
         mock_commit.assert_awaited_once()
-        installed = [c[3] for c in calls if c[:3] == ("uv", "pip", "install")]
+        assert module_site.kept
+        installed = [c[2] for c in module_site.calls if c[:2] == ("pip", "install")]
         assert ("mirrordash-news==1.2.0" in installed) is (case == "all work")
         if case == "install anyway":  # turned off, its settings kept
             assert config["modules"]["news-1"] == {"module": "mirrordash-news", "enabled": False, "feed": "svt",

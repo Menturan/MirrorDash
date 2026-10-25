@@ -147,7 +147,7 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     assert "Invalid or corrupt backup archive" in r.text
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
-def test_restore_backup_success(mock_subproc, mock_backup_dirs, client):
+def test_restore_backup_success(mock_subproc, mock_backup_dirs, module_site, client):
     backups_dir, data_dir = mock_backup_dirs
     backups_dir.mkdir()
     
@@ -215,13 +215,11 @@ def test_get_modules_dir(tmp_path):
     with patch("mirrordash_core.features.backup.service.ROOT_DIR", fake_root):
         assert get_modules_dir() == fake_dev_modules
         
-    # 2. PyPI mode: if ROOT_DIR/modules does not exist (or is not writeable), use ~/.mirrordash/modules
-    fake_home = tmp_path / "home"
-    expected_home_modules = fake_home / ".mirrordash" / "modules"
-    
+    # 2. PyPI mode: if ROOT_DIR/modules does not exist (or is not writeable), the module host's folder,
+    # where it can build them
     with patch("mirrordash_core.features.backup.service.ROOT_DIR", tmp_path / "nonexistent"), \
-         patch("os.path.expanduser", return_value=str(fake_home)):
-        assert get_modules_dir() == expected_home_modules
+         patch.dict("os.environ", {"MIRRORDASH_MODULE_DIR": str(tmp_path / "modules")}):
+        assert get_modules_dir() == tmp_path / "modules" / "local"
 
 def test_find_local_module_dir(tmp_path):
     from mirrordash_core.features.backup.service import find_local_module_dir
@@ -230,8 +228,7 @@ def test_find_local_module_dir(tmp_path):
     fake_dev_modules = fake_root / "modules"
     fake_dev_modules.mkdir(parents=True)
     
-    fake_home = tmp_path / "home"
-    fake_home_modules = fake_home / ".mirrordash" / "modules"
+    fake_home_modules = tmp_path / "modules" / "local"
     fake_home_modules.mkdir(parents=True)
     
     # Create a dev module
@@ -243,8 +240,8 @@ def test_find_local_module_dir(tmp_path):
     home_module.mkdir()
     
     with patch("mirrordash_core.features.backup.service.ROOT_DIR", fake_root), \
-         patch("os.path.expanduser", return_value=str(fake_home)):
-        
+         patch.dict("os.environ", {"MIRRORDASH_MODULE_DIR": str(tmp_path / "modules")}):
+
         # Should find dev module
         assert find_local_module_dir("mirrordash_weather") == dev_module
         # Normalized check (hyphen vs underscore)
@@ -257,7 +254,7 @@ def test_find_local_module_dir(tmp_path):
         # Should return None for nonexistent
         assert find_local_module_dir("mirrordash_nonexistent") is None
 
-def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
+def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, module_site, client):
     """A real backup (real zip) restored on a freshly flashed mirror: settings, module data and
     GitHub modules come back, the new mirror's admin password stays, GPIO overlays get written."""
     backups_dir, data_dir = mock_backup_dirs
@@ -287,20 +284,8 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     ep.name = "mirrordash-weather"
     source = f"git+https://github.com/someone/mirrordash-weather.git@{commit}"
 
-    real_exec = asyncio.create_subprocess_exec
-    uv_calls = []
-    async def fake_exec(*cmd, **kwargs):
-        if cmd[0] == "openssl":
-            return await real_exec(*cmd, **kwargs)
-        uv_calls.append(cmd)
-        proc = MagicMock(returncode=0)
-        proc.communicate = AsyncMock(return_value=(b"", b""))
-        return proc
-
-    with         patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec", side_effect=fake_exec), \
-         patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
-         patch("mirrordash_core.features.backup.service.venv_distributions",
-               return_value=[MagicMock(entry_points=MagicMock(select=MagicMock(return_value=[ep])))]):
+    with patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
+         patch("mirrordash_core.features.backup.service.module_entry_points", return_value=[ep]):
         with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config):
             r = call(create_backup)
         assert r.status_code == 200, r.json()
@@ -339,7 +324,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     assert state.read_text() == '{"city": "Oslo"}'
     assert state.stat().st_mode & 0o060 == 0o060  # the module host (the group) can write what pi put back
     assert sorted(p.name for p in (module_data / "mirrordash-weather").iterdir()) == ["state.json"]
-    assert any(source in cmd for cmd in uv_calls)
+    assert module_site.calls == [("pip", "install", source)] and module_site.kept  # by the module host
     mock_gpio.assert_awaited_once_with(["button:17"])
     mock_reboot.assert_called_once()
     mock_restart.assert_not_called()
@@ -378,7 +363,7 @@ async def test_an_old_zipcrypto_backup_says_so(tmp_path):
         await read_manifest(str(tmp_path / "old.mirror"), "secret")
 
 
-def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, client):
+def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, module_site, client):
     """With a password: one encrypted file with the admin password, the pi password and the Wi-Fi;
     never the login sessions or the config's last good copy. It restores them on a fresh mirror."""
     backups_dir, data_dir = mock_backup_dirs

@@ -15,6 +15,8 @@ RuntimeDirectoryMode=0750
 UMask=0007
 Environment="HOME=/storage/mirrordash/modules"
 Environment="MIRRORDASH_MODULE_DIR=/storage/mirrordash/modules"
+# The host checks that the limits below hold, and logs an error when one doesn't (host.py sandbox_holes)
+Environment="MIRRORDASH_SANDBOX=1"
 # pycache_prefix: the venv is read-only for this user, so compiled modules are kept in its own folder
 ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache -m mirrordash_core.features.modules.host /run/mirrordash-modules/host.sock
 # It exits when the core goes (a restart, an update) and starts again with the venv there is now

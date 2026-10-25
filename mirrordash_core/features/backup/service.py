@@ -22,9 +22,10 @@ from mirrordash_core.config import (
     save_config,
 )
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
+from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.loader import SAFE_NAME, module_entry_points
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
 from mirrordash_core.host import reboot_system, run_restart
-from mirrordash_core.venv import uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.backup")
 
@@ -59,18 +60,17 @@ ENCRYPTED_MAGIC = b"Salted__"
 
 # Helper to find or restore a local module directory
 def get_modules_dir() -> Path:
-    """Get the directory where local modules live or should be restored."""
+    """Get the directory where local modules live or should be restored: on a mirror the module host's
+    folder, where it can build them (ARCHITECTURE #41)."""
     dev_modules = ROOT_DIR / "modules"
     if dev_modules.exists() and os.access(dev_modules, os.W_OK):
         return dev_modules
-
-    home_modules = get_base_dir() / "modules"
-    return home_modules
+    return get_module_dir() / "local"
 
 
 def find_local_module_dir(package_name: str) -> Path | None:
     norm_pkg = package_name.lower().replace("_", "-")
-    for base_dir in [ROOT_DIR / "modules", get_base_dir() / "modules"]:
+    for base_dir in [ROOT_DIR / "modules", get_module_dir() / "local"]:
         if base_dir.exists():
             for child in base_dir.iterdir():
                 if child.is_dir() and child.name.lower().replace("_", "-") == norm_pkg:
@@ -86,17 +86,36 @@ def venv_distributions(venv_dir: Path | None = None, **kwargs):
     return importlib.metadata.distributions(**kwargs)
 
 
-def installed_modules(venv_dir: Path | None = None) -> list[dict]:
+def _no_links(*patterns):
+    """shutil.ignore_patterns, and every symlink as well: the module host writes in its folder, and a link
+    it put there to the core's data dir would carry that into a backup."""
+    skip = shutil.ignore_patterns(*patterns)
+    return lambda directory, names: skip(directory, names) | {
+        n for n in names if os.path.islink(os.path.join(directory, n))}
+
+
+def _replace_in_module_folder(src: Path, dest: Path) -> bool:
+    """Copy src over dest, in a folder the module host writes, following no symlink there: one would have
+    pi delete or write wherever it points (the core's data dir). False when dest's folder is a link.
+    ponytail: the host keeps running meanwhile, so a link swapped in between the check and the copy still
+    gets through; the upgrade path is the host restoring its own folder, as its own user."""
+    if dest.parent.is_symlink():
+        logger.error(f"{dest.parent} is a symlink: {dest.name} was not restored")
+        return False
+    if dest.is_symlink():
+        dest.unlink()
+    elif dest.exists():
+        shutil.rmtree(dest)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dest, symlinks=True)
+    return True
+
+
+def installed_modules() -> list[dict]:
     """Every installed module and where it reinstalls from: its local folder, its GitHub commit
-    (PEP 610 records it) or its PyPI version. The backup manifest and the venv rebuild use it.
-    venv_dir: another venv's modules instead of this process's (see venv_distributions)."""
+    (PEP 610 records it) or its PyPI version. The backup manifest and a new Python's module site use it."""
     modules = []
-    seen = set()  # a folder twice on sys.path lists its packages twice
-    eps = [ep for dist in venv_distributions(venv_dir) for ep in dist.entry_points.select(group='mirrordash.modules')]
-    for ep in eps:
-        if ep.name in seen:
-            continue
-        seen.add(ep.name)
+    for ep in module_entry_points():
         package_name = ep.dist.name if ep.dist else ep.name
         entry = {"name": ep.name, "package_name": package_name,
                  "version": ep.dist.version if ep.dist else "0.0.0", "type": "pypi"}
@@ -241,14 +260,12 @@ async def create_backup(password: str | None = None) -> dict:
                 raise HTTPException(status_code=500, detail=f"Failed to package data files: {e}")
         else:
             temp_data_dir.mkdir(parents=True, exist_ok=True)
-        # The modules' own data_dirs, in the module host's folder (ARCHITECTURE #41); never their caches.
-        # No symlinks: the module host writes there, and a link to the core's data dir would carry it along.
+        # The modules' own data_dirs, in the module host's folder (ARCHITECTURE #41); never their caches
         module_data = get_module_dir() / "data"
-        def skip_links(directory, names):
-            return skip(directory, names) | {n for n in names if os.path.islink(os.path.join(directory, n))}
         if module_data.is_dir() and not module_data.is_symlink():
             try:
-                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data", ignore=skip_links)
+                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data",
+                                        ignore=_no_links('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm'))
             except Exception as e:
                 logger.error(f"Failed to copy the modules' data: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to package the modules' data: {e}")
@@ -262,7 +279,7 @@ async def create_backup(password: str | None = None) -> dict:
                         shutil.copytree,
                         find_local_module_dir(mod["package_name"]),
                         content / "local_modules" / mod["folder_name"],
-                        ignore=shutil.ignore_patterns('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
+                        ignore=_no_links('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
                     )
         except Exception as e:
             logger.error(f"Failed to package modules metadata: {e}")
@@ -303,17 +320,18 @@ async def delete_backup(filename: str) -> None:
     logger.info(f"Backup deleted: {filename}")
 
 
-async def _restore_module(mod: dict, extract_dir: Path, python: str) -> None:
-    """Install one module from the manifest: a GitHub module at its commit, a PyPI module at its
-    version (or the latest if that fails), a local module from the copy in the backup."""
+async def _restore_module(mod: dict, extract_dir: Path, site) -> None:
+    """Install one module from the manifest into the module site being changed (module_host.packages):
+    a GitHub module at its commit, a PyPI module at its version (or the latest if that fails), a local
+    module from the copy in the backup."""
     package_name, version = mod.get("package_name"), mod.get("version")
     if mod.get("type", "pypi") == "pypi":
         source = mod.get("source") or ""
         target = source if source.startswith("git+https://github.com/") else f"{package_name}=={version}"
         logger.info(f"Restoring module: {package_name} from {target}")
-        if (await uv_pip(python, "install", target))[0] != 0:
+        if (await site.pip("install", target))[0] != 0:
             logger.warning(f"Failed to install package {package_name}=={version}. Retrying general install...")
-            if (await uv_pip(python, "install", package_name))[0] != 0:
+            if (await site.pip("install", package_name))[0] != 0:
                 logger.error(f"Could not restore module {package_name}: install failed")
         return
     folder = mod.get("folder_name")
@@ -327,10 +345,8 @@ async def _restore_module(mod: dict, extract_dir: Path, python: str) -> None:
         return
     logger.info(f"Restoring Local module: {package_name} from folder {folder}")
     dest_dir = get_modules_dir() / folder
-    await asyncio.to_thread(shutil.rmtree, dest_dir, ignore_errors=True)
-    dest_dir.parent.mkdir(parents=True, exist_ok=True)
-    await asyncio.to_thread(shutil.copytree, src_dir, dest_dir)
-    await uv_pip(python, "install", "-e", str(dest_dir))
+    if await asyncio.to_thread(_replace_in_module_folder, src_dir, dest_dir):
+        await site.pip("install", "-e", str(dest_dir))
 
 
 async def _restore_config(extract_dir: Path) -> bool:
@@ -371,32 +387,21 @@ def _restore_data(src_data_dir: Path) -> None:
 
 def _restore_module_data(src: Path) -> None:
     """Each instance's data_dir back into the module host's folder, replacing what's there, writable for
-    the module host through its group (the core writes them as pi). The module host owns that folder: a
-    symlink it put there would have pi delete or write wherever it points (the core's data dir), so none
-    is followed.
-    ponytail: the host keeps running meanwhile, so a link swapped in between the check and the copy still
-    gets through; the upgrade path is the host restoring its own folder, as its own user."""
-    from mirrordash_core.features.modules.loader import SAFE_NAME
+    the module host through its group (the core writes them as pi)."""
     dest_root = get_module_dir() / "data"
-    if dest_root.is_symlink():
-        logger.error(f"{dest_root} is a symlink: the modules' data was not restored")
-        return
     for item in (src.iterdir() if src.is_dir() else []):
         if not item.is_dir() or item.is_symlink() or not SAFE_NAME.match(item.name):
             continue
         dest = dest_root / item.name
-        if dest.is_symlink():
-            dest.unlink()
-        elif dest.exists():
-            shutil.rmtree(dest)
-        shutil.copytree(item, dest, symlinks=True)
+        if not _replace_in_module_folder(item, dest):
+            return
         for path in [dest, *dest.rglob("*")]:
             if not path.is_symlink():
                 path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))
 
 
 async def restore_backup(password: str | None = None) -> dict:
-    """Restore the backup waiting in temp_upload(): modules (into the next A/B venv), settings,
+    """Restore the backup waiting in temp_upload(): modules (into a copy of the module site), settings,
     saved Wi-Fi networks and module data, then restart (or reboot, for new GPIO overlays)."""
     upload = temp_upload()
     if not os.path.exists(upload):
@@ -418,9 +423,9 @@ async def restore_backup(password: str | None = None) -> dict:
                     raise Exception("Failed to extract backup file.")
             extract_dir = Path(extract_dir)
             manifest = json.loads((extract_dir / "backup_manifest.json").read_text(encoding="utf-8"))
-            async with venv_swap() as python:
+            async with module_host.packages() as site:
                 for mod in manifest.get("modules", []):
-                    await _restore_module(mod, extract_dir, python)
+                    await _restore_module(mod, extract_dir, site)
             reboot_needed = await _restore_config(extract_dir)
             await asyncio.to_thread(_restore_data, extract_dir / "data")
             await asyncio.to_thread(_restore_module_data, extract_dir / "module_data")

@@ -22,7 +22,6 @@ from mirrordash_core.features.modules.loader import (
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_restart
-from mirrordash_core.venv import clean_uv_cache, run, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
@@ -174,20 +173,20 @@ async def _pinned_to_latest_release(package_name: str) -> str:
 
 
 async def _change_packages(what: str, uv_args: list[str], verify=None) -> None:
-    """Run one uv pip change in the next A/B venv; keep it only if uv (and `verify`) succeed."""
+    """Run one uv pip change in a copy of the module site (module_host.packages, ARCHITECTURE #41); keep
+    it only if uv (and `verify`, given the site) succeed."""
     try:
-        async with venv_swap() as python:
-            code, _, err = await uv_pip(python, *uv_args)
+        async with module_host.packages() as site:
+            code, err = await site.pip(*uv_args)
             if code != 0:
                 logger.error(f"{what} failed: {err}")
                 raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
             if verify:
-                await verify(python)
+                await verify(site)
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{what} failed: {e}")
-    await clean_uv_cache()
     asyncio.create_task(run_restart())
 
 
@@ -209,18 +208,16 @@ async def update_modules(*package_names: str) -> dict:
         name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
         variants += [name, name.replace("-", "_"), name.replace("_", "-")]
 
-    async def loads_in_new_venv(python):
-        """The core and the upgraded modules must still import, or the swap is undone. The modules are
-        imported by the module host, in its sandbox: their code never runs as the core's user."""
-        code, _, err = await run(python, "-I", "-c", "import mirrordash_core.app")
-        if code == 0:
-            code, err = await module_host.check_venv(python, variants)
+    async def loads_in_new_site(site):
+        """The upgraded modules must still import, or the change is undone: by the module host, in its
+        sandbox, never as the core's user."""
+        code, err = await site.check(variants)
         if code != 0:
             logger.warning(f"Upgrade check failed for {', '.join(package_names)}: {err}. Initiating rollback...")
             raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
 
     logger.info(f"Upgrading packages: {', '.join(package_names)}")
-    await _change_packages("Upgrade", ["install", "--upgrade", *map(_local_target, package_names)], verify=loads_in_new_venv)
+    await _change_packages("Upgrade", ["install", "--upgrade", *map(_local_target, package_names)], verify=loads_in_new_site)
     return {"status": "success", "message": f"Upgraded {', '.join(package_names)}. Restarting..."}
 
 

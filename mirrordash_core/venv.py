@@ -1,8 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 """The A/B virtual environments on /storage, and running uv in them.
 
-Every package change (a module install, update or uninstall, a MirrorDash update, a rebuild) goes
-into the *next* environment while the active one keeps running; `venv_swap` switches the link,
+Every change of the core's packages (a MirrorDash update, a rebuild) goes into the *next* environment while the active one keeps running; `venv_swap` switches the link,
 and keeps the previous environment as venv_old, only when the change worked."""
 
 import asyncio
@@ -38,9 +37,9 @@ def get_venv_paths():
     return venv_link, venv_a, venv_b
 
 
-def _point_link(venv_link: Path, target: Path) -> None:
-    """Atomically point the venv link at target (a sibling directory)."""
-    tmp_link = venv_link.parent / "venv_tmp"
+def point_link(venv_link: Path, target: Path) -> None:
+    """Atomically point the link (the venv's, or the module site's) at target, a sibling directory."""
+    tmp_link = venv_link.with_name(venv_link.name + "_tmp")
     if tmp_link.is_symlink() or tmp_link.exists():
         tmp_link.unlink()
     os.symlink(target.name, tmp_link)
@@ -82,7 +81,7 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
         logger.error(f"Failed to clone/create virtual environment: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
     try:
-        _point_link(venv_link, next_path)
+        point_link(venv_link, next_path)
     except Exception as e:
         logger.error(f"Failed to swap symlink: {e}")
         await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
@@ -145,7 +144,7 @@ async def revert_venv_next(active_path: Path, next_path: Path) -> None:
     """Undo the swap: point the link back at the active venv and delete the next one."""
     logger.warning(f"Reverting A/B swap to: {active_path.name}")
     try:
-        _point_link(active_path.parent / "venv", active_path)
+        point_link(active_path.parent / "venv", active_path)
         await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
     except Exception as e:
         logger.error(f"Failed to revert symlink: {e}")
@@ -185,11 +184,3 @@ async def run(*cmd: str, timeout: float | None = None) -> tuple[int, str, str]:
 async def uv_pip(python: str, command: str, *args: str, timeout: float | None = None) -> tuple[int, str, str]:
     """`uv pip <command> --python <python> <args>`."""
     return await run("uv", "pip", command, "--python", python, *args, timeout=timeout)
-
-
-async def clean_uv_cache() -> None:
-    """Free the space a package change left in uv's cache (/storage is small)."""
-    try:
-        await run("uv", "cache", "clean")
-    except Exception as e:
-        logger.warning(f"Failed to clean uv cache: {e}")

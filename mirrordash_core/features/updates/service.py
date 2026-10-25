@@ -97,30 +97,31 @@ def module_target(mod: dict) -> list[str]:
 
 async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]) -> dict:
     """A MirrorDash that needs a newer Python (ARCHITECTURE #16). The Python goes next to the running
-    one on /storage, an empty venv gets the new MirrorDash and every module, and each module is loaded
-    once in it. Only when all of them work, or the admin chose to turn the ones that don't off (skip),
-    is it switched in; otherwise nothing has changed."""
+    one on /storage, an empty venv gets the new MirrorDash, an empty module site every module built for
+    it, and each module is loaded once from it (by the module host, in its sandbox: ARCHITECTURE #41).
+    Only when all of them work, or the admin chose to turn the ones that don't off (skip), are both
+    switched in; otherwise nothing has changed."""
     from mirrordash_core.features.backup.service import installed_modules
     from mirrordash_core.features.modules.client import module_host
     code, _, err = await run("uv", "python", "install", python, timeout=900)
     if code != 0:
         raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
-    modules = [m for m in installed_modules() if m["name"] not in skip]  # from the running venv
+    modules = [m for m in installed_modules() if m["name"] not in skip]  # from the running module site
     args = ["--prerelease=allow"] if prerelease_enabled() else []
     try:
-        async with venv_swap(force_clean=True, python=python) as py:
+        async with venv_swap(force_clean=True, python=python) as py, module_host.packages(py, fresh=True) as site:
             code, _, err = await uv_pip(py, "install", *args, f"mirrordash=={version}")
             if code != 0:
                 raise HTTPException(status_code=500, detail=f"Upgrade failed: {err.strip()}")
             failed = {}
             for mod in modules:
                 # ponytail: 10 minutes each, so a module that builds C code on the Pi can't hang the update
-                code, _, err = await uv_pip(py, "install", *module_target(mod), timeout=600)
+                code, err = await site.pip("install", *module_target(mod), timeout=600)
                 if code != 0 and mod["type"] == "pypi":
                     # Its newest version may have been made for the new Python already
-                    code, _, err = await uv_pip(py, "install", mod["package_name"], timeout=600)
-                if code == 0:  # loaded by the module host, in its sandbox: never as the core (ARCHITECTURE #41)
-                    code, err = await module_host.check_venv(str(py), [mod["name"]])
+                    code, err = await site.pip("install", mod["package_name"], timeout=600)
+                if code == 0:
+                    code, err = await site.check([mod["name"]])
                 if code != 0:
                     failed[mod["name"]] = (err.strip().splitlines() or ["unknown error"])[-1]
             if failed:
@@ -194,25 +195,20 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
 
 
 async def rebuild_venv() -> dict:
-    """Build a fresh venv with this MirrorDash version and the modules installed now, each from
-    where it came (local folder, GitHub commit, PyPI version). A module that fails undoes the swap."""
-    from mirrordash_core.features.backup.service import (
-        installed_modules,
-        venv_distributions,
-    )
+    """Build a fresh venv with this MirrorDash version. The modules aren't in it (the module site,
+    ARCHITECTURE #41) and stay as they are."""
+    from mirrordash_core.features.backup.service import venv_distributions
     paths = get_venv_paths()
     if not paths:
         raise HTTPException(status_code=500, detail="A/B updates are not supported on this filesystem layout (missing /storage/mirrordash).")
-    modules = installed_modules()  # read from the active venv, before it is replaced
     current_version = get_core_version()
     if os.environ.get("MIRRORDASH_BOOT_STATUS") == "safe_mode":
-        # Safe mode runs base_venv, which has no modules: what to reinstall is in the venv that
-        # didn't start (the link), or the one the launcher set aside before that (venv_failed)
+        # Safe mode runs base_venv: the version to reinstall is the venv's that didn't start (the
+        # link), or the one the launcher set aside before that (venv_failed)
         for venv_dir in (paths[0], paths[0].parent / "venv_failed"):
-            if modules := installed_modules(venv_dir):
-                core = next(iter(venv_distributions(venv_dir, name="mirrordash")), None)
-                current_version = core.version if core else current_version
-                logger.info(f"Safe mode: reinstalling MirrorDash {current_version} and the modules of {venv_dir}")
+            if core := next(iter(venv_distributions(venv_dir, name="mirrordash")), None):
+                current_version = core.version
+                logger.info(f"Safe mode: reinstalling MirrorDash {current_version} of {venv_dir}")
                 break
     logger.info(f"Rebuilding venv: installing mirrordash (version: {current_version})")
     try:
@@ -221,12 +217,6 @@ async def rebuild_venv() -> dict:
             if code != 0:
                 logger.error(f"Failed to install mirrordash: {err}")
                 raise HTTPException(status_code=500, detail=f"Failed to install core: {err}")
-            for mod in modules:
-                target = module_target(mod)
-                logger.info(f"Rebuilding venv: installing module {' '.join(target)}")
-                code, _, err = await uv_pip(python, "install", *target)
-                if code != 0:
-                    raise HTTPException(status_code=500, detail=f"Could not reinstall {mod['package_name']}: {err}")
     except HTTPException:
         raise
     except Exception as e:

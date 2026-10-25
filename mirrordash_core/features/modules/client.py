@@ -10,6 +10,7 @@ config has, and its log lines land under mirrordash.modules.
 
 import asyncio
 import base64
+import contextlib
 import ipaddress
 import itertools
 import json
@@ -22,6 +23,7 @@ import sys
 import tempfile
 import urllib.parse
 from pathlib import Path
+from types import SimpleNamespace
 
 from starlette.responses import Response
 from starlette.routing import get_route_path
@@ -31,6 +33,7 @@ from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.loader import SAFE_NAME
+from mirrordash_core.venv import get_venv_paths
 
 logger = logging.getLogger("mirrordash.core.modules.client")
 
@@ -63,6 +66,13 @@ def placement(module_cfg: dict, instance_id: str) -> dict:
     }
 
 
+def core_python() -> str:
+    """The core's Python as the host reaches it: on a mirror through the venv link on /storage (the host
+    can't see /home), so modules are built for the venv that runs now."""
+    paths = get_venv_paths()
+    return str(paths[0] / "bin" / "python") if paths else sys.executable
+
+
 def lan_hosts(modules: dict) -> set[str]:
     """The host names in the settings marked "format": "lan-url" of the enabled instances: what the owner
     typed (or kept) in the admin page, never a schema's default alone."""
@@ -86,13 +96,16 @@ def lan_hosts(modules: dict) -> set[str]:
 async def lan_addresses(hosts: set[str]) -> list[str]:
     """The home-network addresses those names have now (an IP as is, a name looked up, mDNS too)."""
     loop = asyncio.get_running_loop()
-    addresses = set()
-    for host in hosts:
+
+    async def lookup(host: str) -> list:  # all at once: one name that doesn't answer holds the modules' start 5 s, not 5 s each
         try:
-            infos = await asyncio.wait_for(loop.getaddrinfo(host, None, type=socket.SOCK_STREAM), 5)
+            return await asyncio.wait_for(loop.getaddrinfo(host, None, type=socket.SOCK_STREAM), 5)
         except (OSError, TimeoutError, UnicodeError):
             logger.warning(f"Could not look up {host} for a module's home-network address")
-            continue
+            return []
+
+    addresses = set()
+    for infos in await asyncio.gather(*map(lookup, hosts)):
         for *_, sockaddr in infos:
             ip = ipaddress.ip_address(sockaddr[0].split("%")[0])
             if ip.is_private and not ip.is_loopback and not ip.is_unspecified:
@@ -114,6 +127,7 @@ class ModuleHost:
         self._windows: dict[int, asyncio.Event] = {}
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
+        self._lan_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task] = []
         self._process: asyncio.subprocess.Process | None = None
         self._socket_dir: str | None = None
@@ -168,12 +182,34 @@ class ModuleHost:
         """Every event published in the core (the hardware's) goes to the modules' event bus."""
         self._post({"t": "event", "name": name, "data": data})
 
-    async def check_venv(self, python: str, names: list[str]) -> tuple[int, str]:
-        """Do these modules import in that venv? Run by the host, so in its sandbox, never as the core."""
+    @contextlib.asynccontextmanager
+    async def packages(self, python: str | None = None, fresh: bool = False):
+        """Change the installed modules as venv_swap changes the core: in a copy of the module site (empty
+        when fresh), by the host in its sandbox, so no module's build or .pth runs as the core. Switched in
+        when the block finishes, dropped when it raises. Yields pip(*args, timeout=600) for uv pip install
+        or uninstall, and check(names), both (code, err), run with python (default the core's, as the host
+        reaches it)."""
+        python = python or core_python()
+        code, err = await self._site("prepare", 120, fresh=fresh)
+        if code:
+            raise RuntimeError(err)
         try:
-            reply = await self._request({"t": "check", "python": python, "names": names}, 200)
+            yield SimpleNamespace(
+                pip=lambda *args, timeout=600: self._site("pip", timeout + 30, python=python, args=args, timeout=timeout),
+                check=lambda names: self._site("check", 200, python=python, names=list(names)))
+        except BaseException:
+            await self._site("revert", 120)
+            raise
+        code, err = await self._site("commit", 30)
+        if code:
+            raise RuntimeError(err)
+
+    async def _site(self, op: str, wait: float, **fields) -> tuple[int, str]:
+        """One step of a module site change (host.py's Host._site), given wait seconds: (code, err), never raises."""
+        try:
+            reply = await self._request({"t": "site", "op": op, **fields}, wait)
         except (ConnectionError, TimeoutError) as e:
-            return 1, f"The modules aren't running, so the new version couldn't be checked ({e or 'no answer'})."
+            return 1, f"The modules aren't running, so their packages couldn't be changed ({e or 'no answer'})."
         return (reply.get("code") if isinstance(reply.get("code"), int) else 1), str(reply.get("err", ""))
 
     async def call_route(self, message: dict) -> dict:
@@ -331,17 +367,18 @@ class ModuleHost:
         """Let the host reach exactly the lan-url addresses (on a mirror; the sudo rule allows the helper)."""
         if not os.environ.get("MIRRORDASH_MODULE_SOCKET") or not os.path.exists(LAN_HELPER):
             return
-        addresses = await lan_addresses(lan_hosts(modules))
-        if addresses == self.lan:
-            return
-        process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *addresses,
-                                                       stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
-        _, err = await process.communicate()
-        if process.returncode == 0:
-            self.lan = addresses
-            logger.info(f"Modules may reach on the home network: {', '.join(addresses) or 'nothing'}")
-        else:
-            logger.error(f"Could not set the modules' home-network addresses: {err.decode(errors='replace').strip()}")
+        async with self._lan_lock:  # a start and the refresh: the later one's addresses must win
+            addresses = await lan_addresses(lan_hosts(modules))
+            if addresses == self.lan:
+                return
+            process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *addresses,
+                                                           stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+            _, err = await process.communicate()
+            if process.returncode == 0:
+                self.lan = addresses
+                logger.info(f"Modules may reach on the home network: {', '.join(addresses) or 'nothing'}")
+            else:
+                logger.error(f"Could not set the modules' home-network addresses: {err.decode(errors='replace').strip()}")
 
     async def _refresh_lan(self) -> None:
         # ponytail: a lan-url host that moves to another address is found again within LAN_REFRESH seconds
