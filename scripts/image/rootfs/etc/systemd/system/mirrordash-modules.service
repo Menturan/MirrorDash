@@ -66,9 +66,12 @@ DeviceAllow=char-spi rw
 IPAddressDeny=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0
 IPAddressAllow=127.0.0.53
 
-# A runaway module must not take the core and the screen with it.
+# A runaway module must not take the core and the screen with it (the memory controller: cgroup_enable=memory
+# in cmdline.txt). 30 %: a Pi 3 has ~330 MB free with everything running, so 40 % ran the whole mirror out
+# first. No swap: a leaking module is stopped at its limit instead of filling zram and slowing the screen.
 # ponytail: guessed limits; raise MemoryMax if a module is killed with "oom-kill" in the journal.
-MemoryMax=40%
+MemoryMax=30%
+MemorySwapMax=0
 CPUWeight=50
 IOWeight=50
 TasksMax=256

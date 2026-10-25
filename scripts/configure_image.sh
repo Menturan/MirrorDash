@@ -472,6 +472,9 @@ EOF
       "logo.nologo"
       # A kernel panic, or a root the initramfs can't find, restarts the mirror instead of halting it
       "panic=10"
+      # The Pi's firmware adds cgroup_disable=memory: without the memory controller the module host's
+      # MemoryMax does nothing (seen on the Pi 3B test mirror, ARCHITECTURE #41)
+      "cgroup_enable=memory"
     )
     # Image builds: the root is a squashfs (build_image.sh) under a RAM overlay, from the first boot on.
     # recurse=0 overlays only /: by default overlayroot also puts every fstab mount (/storage!) on the
