@@ -90,6 +90,7 @@ def set_version(version):
     if not count:
         die("no version line in pyproject.toml.")
     path.write_text(content)
+    run("uv", "lock", change=True)  # uv.lock holds the project's version too: committed with it
 
 
 def release_changelog(version, intro="", keep_os_image=False, only_os_image=False, path="CHANGELOG.md"):
