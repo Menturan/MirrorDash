@@ -365,7 +365,9 @@ async function loadActiveModules() {
     }
 }
 
-loadActiveModules();
+// The placeholders first, in the settings' order: a card that arrived before them would take its
+// area's first place (after a restart the clock beat Home Assistant to it)
+const placeholders = loadActiveModules();
 
 // The component library (modules.css, what /design shows) goes into every module's shadow root, so it
 // is loaded once before any module renders. Inline <style>, not a <link>: that would reload on every update.
@@ -373,7 +375,7 @@ let MODULES_CSS = '';
 fetch('/static/modules.css')
     .then(r => (r.ok ? r.text() : ''))
     .catch(() => '')
-    .then(css => { MODULES_CSS = css; connect(); });
+    .then(async css => { MODULES_CSS = css; await placeholders; connect(); });
 
 // Tells the app this page still runs: mirrordash-app-watch restarts the kiosk when it stops (a crashed
 // or frozen WebKit can keep its window, and even its WebSocket, open)

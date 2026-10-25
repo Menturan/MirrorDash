@@ -533,6 +533,39 @@ def test_module_script_gets_its_own_shadow_root(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
+    """The page connects only once the placeholders are up: a card that renders first (the clock, after a
+    restart) mustn't take the place of one that waits for the network (Home Assistant)."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+    held = []
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return held.append(route)  # answered below, after the socket had its chance
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_timeout(500)
+    assert page.evaluate("window.__ws === undefined") and len(held) == 1
+    held[0].fulfill(json={"modules": [{"name": "ha", "position": "top_left", "title": "HA"},
+                                      {"name": "clock", "position": "top_left", "title": "Clock"}]})
+    page.wait_for_function("window.__ws")
+    for name in ("clock", "ha"):
+        page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                      json.dumps({"module": name, "position": "top_left", "html": name}))
+    assert page.evaluate("[...document.querySelectorAll('#top_left [data-module]')].map(e => e.dataset.module)") == ["ha", "clock"]
+
+
+@pytest.mark.only_browser("webkit")
 def test_mirror_page_reloads_only_for_a_new_version(page):
     """After an update the page's own code is new too: it reloads when the server's version or boot id
     changed (a restart may have changed the modules), not when the socket merely reconnected."""
