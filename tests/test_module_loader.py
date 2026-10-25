@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -385,17 +386,30 @@ async def test_a_module_reload_leaves_the_system_settings_alone():
 
 
 @pytest.mark.asyncio
-async def test_lan_access_is_what_the_owner_typed_on_the_home_network():
-    """Only "format": "lan-url" settings count, only home-network addresses come out of them."""
+async def test_lan_access_is_what_the_owner_typed_on_the_home_network(tmp_path, monkeypatch):
+    """Only "format": "lan-url" settings count, only home-network addresses come out of them, and each
+    instance's user may reach its own (mirrordash-module-network's nftables rules), not another's."""
+    from mirrordash_core.features.modules import client as client_module
     from mirrordash_core.features.modules.client import lan_addresses, lan_hosts
 
     schemas = {"md_ha": {"properties": {"url": {"type": "string", "format": "lan-url"}, "other": {"type": "string"}}}}
     modules = {"ha": {"module": "md_ha", "url": "http://192.168.1.20:8123", "other": "http://10.0.0.1"},
                "ha-2": {"module": "md_ha", "url": "homeassistant.local", "enabled": False},
-               "ha-3": {"module": "md_ha"}}
+               "ha-3": {"module": "md_ha"}, "cam": {"module": "md_ha", "url": "192.168.1.30"}}
     with patch("mirrordash_core.features.settings.schema._installed_module_schemas", return_value=schemas):
-        assert lan_hosts(modules) == {"192.168.1.20"}
-    assert await lan_addresses({"192.168.1.20", "8.8.8.8", "127.0.0.1", "fd00::5"}) == ["192.168.1.20", "fd00::5"]
+        assert lan_hosts(modules) == {"ha": {"192.168.1.20"}, "cam": {"192.168.1.30"}}
+        assert await lan_addresses({"192.168.1.20", "8.8.8.8", "127.0.0.1", "fd00::5"}) == {
+            "127.0.0.1": [], "192.168.1.20": ["192.168.1.20"], "8.8.8.8": [], "fd00::5": ["fd00::5"]}
+
+        (tmp_path / "helper").write_text("")
+        monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "helper"))
+        monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", str(tmp_path / "host.sock"))
+        process = MagicMock(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
+        with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)) as run:
+            core = client_module.ModuleHost()
+            core._uids = {"ha": 70100, "cam": 70101}
+            await core._apply_lan(modules)
+    assert run.await_args.args == ("sudo", "-n", str(tmp_path / "helper"), "70101=192.168.1.30", "70100=192.168.1.20")
 
     # The schema's default is a hint in the form, never a value: saving it unchanged opens nothing
     from mirrordash_core.forms import render_schema_form
@@ -437,32 +451,48 @@ async def _call(path: str, method: str = "GET", headers=()) -> tuple[int, dict, 
 
 
 def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
-    """systemd only warns when the kernel can't filter: the host itself finds a port of the mirror, the
-    router, a secret folder or a device within its reach."""
+    """systemd only warns when the kernel can't filter, and a user per module holds only with the right
+    modes: the host looks itself, as a module's user, for a port of the mirror, the router, a secret folder,
+    a device, another module's data or the site within its reach, and for capabilities left over."""
     import socket
 
     from mirrordash_core.features.modules import host
+
+    def holes():
+        return [what for what, reachable in host.sandbox_checks() if reachable]
+
     listener = socket.create_server(("127.0.0.1", 0))
     port = listener.getsockname()[1]
     # The default route through 127.0.0.1 (01 00 00 7f, little-endian), where nothing listens on 53: refused
     (tmp_path / "route").write_text("Iface\tDestination\tGateway\nwlan0\t00000000\t0100007F\n")
     (tmp_path / "gpiochip0").write_text("")
     (tmp_path / "i2c-1").write_text("")
+    modules = tmp_path / "modules"
+    (modules / "data" / "calendar").mkdir(parents=True)
+    (modules / "site_a").mkdir()
+    (modules / "site").symlink_to("site_a")
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(modules))
     try:
         monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
         monkeypatch.setattr(host, "ROUTES", str(tmp_path / "route"))
         monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path): "the core's data"})
         monkeypatch.setattr(host, "SANDBOX_DEVICES", (str(tmp_path / "gpiochip*"), str(tmp_path / "i2c-*")))
         monkeypatch.setattr(host, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
-        assert host.sandbox_holes() == [f"the mirror's own port {port}", "the router (127.0.0.1)",
-                                        f"the core's data ({tmp_path})", str(tmp_path / "gpiochip0")]
+        assert holes() == [f"the mirror's own port {port}", "the router (127.0.0.1)", f"the core's data ({tmp_path})",
+                           str(tmp_path / "gpiochip0"), "another module's data (calendar)",
+                           f"writing the module site ({modules / 'site'})"]
     finally:
         listener.close()
     monkeypatch.setattr(host, "SANDBOX_PORTS", ())
     monkeypatch.setattr(host, "ROUTES", str(tmp_path / "no-route"))
     monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
-    (tmp_path / "gpiochip0").chmod(0)
-    assert host.sandbox_holes() == []
+    for path in (tmp_path / "gpiochip0", modules / "data" / "calendar", modules / "site_a"):
+        path.chmod(0o500 if path.is_dir() else 0)
+    (modules / "data" / "calendar").chmod(0)
+    try:
+        assert holes() == [] and ("capabilities (none)", False) in host.sandbox_checks()
+    finally:
+        (modules / "data" / "calendar").chmod(0o700)
 
 
 FAKE_UV = '''#!{python}
@@ -518,49 +548,48 @@ def test_the_site_is_copied_without_setting_a_setgid_bit(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_the_running_modules_keep_the_settings_order():
-    """The screen lays an area's cards out in the order /api/active-modules lists them; the host reports
+    """The screen lays an area's cards out in the order /api/active-modules lists them; the host reported
     its instances sorted, which put the clock above Home Assistant on the test mirror."""
-    from mirrordash_core.features.modules.client import ModuleHost
+    from mirrordash_core.features.modules.client import Connection, ModuleHost
     core = ModuleHost()
     core._placement = {"ha": {}, "namnsdag": {}, "clock": {}, "off": {}}
-    await core._handle({"t": "status", "gen": core._gen, "running": ["clock", "ha", "namnsdag", "unknown"]})
+    for instance in ("clock", "ha", "namnsdag", "unknown"):
+        conn = core._instances[instance] = Connection(MagicMock(), MagicMock(), None, instance)
+        await core._handle({"t": "status", "gen": 1, "running": [instance]}, conn)
     assert core.running == ["ha", "namnsdag", "clock"]
 
 
 @pytest.mark.asyncio
-async def test_a_module_host_that_keeps_dying_pauses_the_modules(monkeypatch):
-    """A module that uses up the host's memory gets it killed (OOMPolicy=stop) and restarted, forever: after
-    CRASH_LIMIT quick deaths in a row the core starts it without modules, until the Dashboard's button."""
+async def test_a_module_that_keeps_dying_is_paused_alone(monkeypatch):
+    """A module that uses up the modules' memory is the one the kernel kills (oom_score_adj), and the core
+    starts its process again, forever: after CRASH_LIMIT quick deaths in a row it stays off, the others run
+    on, until the Dashboard's button."""
     from mirrordash_core.features.modules import client as client_module
     core = client_module.ModuleHost()
-    starts, fourth = [], asyncio.Event()
+    core._placement = {"leak": {}, "calm": {}}
+    core._instances["calm"] = client_module.Connection(MagicMock(), MagicMock(), None, "calm")
+    starts = []
 
-    async def connect():
-        if len(starts) == 4:
-            fourth.set()
-            await asyncio.Event().wait()  # the paused host lives on
-        reader = asyncio.StreamReader()
-        reader.feed_eof()  # and dies at once
-        return reader, MagicMock()
+    async def sync():
+        if "leak" not in core.paused:
+            starts.append("leak")
+            reader = asyncio.StreamReader()
+            reader.feed_eof()  # it dies at once
+            conn = core._instances["leak"] = client_module.Connection(reader, MagicMock(), None, "leak")
+            asyncio.create_task(core._serve(conn))
 
-    async def send_start():
-        starts.append(core.paused)
-
-    real_sleep = asyncio.sleep
-    monkeypatch.setattr(core, "_connect", connect)
-    monkeypatch.setattr(core, "_send_start", send_start)
-    monkeypatch.setattr(client_module.asyncio, "sleep", lambda seconds: real_sleep(0))
-    task = asyncio.create_task(core._run())
-    await asyncio.wait_for(fourth.wait(), 5)
-    task.cancel()
-    assert starts == [False, False, False, True] and core.paused
+    monkeypatch.setattr(core, "_sync", sync)
+    monkeypatch.setattr(client_module, "RESTART_DELAY", 0)
+    await sync()
+    await _until(lambda: "leak" in core.paused)
+    assert starts == ["leak"] * 3 and core.paused == {"leak"} and list(core._instances) == ["calm"]
     await core.resume()
-    assert not core.paused and core._crashes == 0
+    assert not core.paused and not core._crashes
 
 
 @pytest.mark.asyncio
-async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch):
-    """uv runs in the module host, into a copy of its site that is switched in only when the change worked
+async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch, host_here):
+    """uv runs in the module host (its site process), into a copy of its site that is switched in only when the change worked
     (ARCHITECTURE #41). The core then finds the module by its files: a package's .pth never runs in it."""
     import os
     import sys
@@ -582,13 +611,13 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {}, "globals": {}})
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
     core = client_module.ModuleHost()
-    server = asyncio.create_task(host_module.serve(socket_path))
+    server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
     await core.start_modules()
     site_link = tmp_path / "modules" / "site"
     try:
-        await _until(lambda: core._writer is not None)
-        reply = await core.diagnose()  # Logs → Diagnostics: the host's own checks
+        await _until(lambda: core._control is not None)
+        reply = await core.diagnose()  # Logs → Diagnostics: the host's own checks, as a module's user
         assert isinstance(reply["checks"], list) and reply["sandboxed"] is False and reply["gpio"] == {}
         async with core.packages(sys.executable) as site:
             assert (await site.pip("install", "md_widget"))[0] == 0
@@ -607,7 +636,7 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
                 code, err = await site.pip("install", "md_missing")
                 assert code != 0 and "md_missing" in err
                 raise RuntimeError(err)
-        assert os.readlink(site_link) == "site_b" and not (tmp_path / "modules" / "site_a").exists()
+        assert os.readlink(site_link) == "site_b" and not any((tmp_path / "modules" / "site_a").iterdir())
         assert find_entry_point("md_widget")
     finally:
         await core.stop_modules()
@@ -615,10 +644,10 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
 
 
 @pytest.mark.asyncio
-async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it(tmp_path, monkeypatch):
-    """The core's client and a real module host over a unix socket: the module's card lands in its place,
-    its routes answer under its instance without the owner's cookie and can't set one, and what the host
-    sends for an instance the config hasn't (or for an old start) is dropped."""
+async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it(tmp_path, monkeypatch, host_here, caplog):
+    """The core's client and a real module host over unix sockets: the module's card lands in its place,
+    its routes answer under its instance without the owner's cookie and can't set one, and what its
+    connection sends speaks for it alone, whatever instance it names."""
     import json as json_
 
     from fastapi import APIRouter, HTTPException, Request
@@ -666,19 +695,20 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
     monkeypatch.setattr(client_module, "module_host", client_module.ModuleHost())
     core = client_module.module_host
 
-    server = asyncio.create_task(host_module.serve(socket_path))
+    server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
     sent = []
-    real_send = core._send
+    real_send = client_module.Connection.send
 
-    async def spy(message):
+    async def spy(self, message):
         sent.append(message)
-        await real_send(message)
-    monkeypatch.setattr(core, "_send", spy)
+        await real_send(self, message)
+    monkeypatch.setattr(client_module.Connection, "send", spy)
     await core.start_modules()
     try:
         await _until(lambda: core.running == ["garage"])
-        assert "admin_auth" not in json_.dumps(sent[0])  # the host gets the modules' settings, not the core's
+        start = next(m for m in sent if m["t"] == "start")
+        assert "admin_auth" not in json_.dumps(start) and list(start["modules"]) == ["garage"]  # its own settings only
         await _until(lambda: manager.broadcast.await_count >= 1)
         assert manager.broadcast.await_args.args[0] == {
             "position": "top_left", "module": "garage", "carousel_group": None, "carousel_interval": 15,
@@ -697,11 +727,98 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         assert (await _call("/gone/door/open", "POST"))[0] == 404
         assert (await _call(""))[0] == 404
 
+        garage = core._instances["garage"]
         manager.broadcast.reset_mock()
-        await core._handle({"t": "html", "gen": core._gen, "instance": "not-in-config", "html": "<p>x</p>"})
-        await core._handle({"t": "html", "gen": core._gen - 1, "instance": "garage", "html": "<p>old</p>"})
-        await core._handle({"t": "log", "name": "mirrordash.core.auth", "level": 40, "text": "forged"})
-        assert not manager.broadcast.called
+        await core._handle({"t": "html", "instance": "garage", "html": "<p>x</p>"}, core._control)
+        assert not manager.broadcast.called  # the control process has no card to show
+        await core._handle({"t": "html", "instance": "elsewhere", "html": "<p>x</p>"}, garage)
+        assert manager.broadcast.await_args.args[0]["module"] == "garage"  # its own place, whatever it names
+        with caplog.at_level(logging.INFO):
+            await core._handle({"t": "log", "name": "mirrordash.core.auth", "level": 40, "text": "forged"}, garage)
+        assert [r.name for r in caplog.records if r.message == "forged"] == ["mirrordash.modules.garage"]
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)
+
+
+FORK_PLUGIN = '''
+import asyncio, os, time
+from fastapi import APIRouter
+class Module:
+    def __init__(self, config):
+        self.config = config
+        self.router = APIRouter()
+        @self.router.get("/who")
+        async def who():
+            return {"pid": os.getpid(), "ppid": os.getppid(), "fds": len(os.listdir("/proc/self/fd")),
+                    "oom": open("/proc/self/oom_score_adj").read().strip()}
+    async def run_loop(self, broadcast):
+        await broadcast("x", f"<p>{self.config.get('text')} {os.getpid()}</p>")
+        if self.config.get("die"):
+            os._exit(3)
+        if self.config.get("stuck"):
+            time.sleep(3600)  # a loop that never gives the event loop back: it can't read its connection close
+        await asyncio.Event().wait()
+'''
+
+
+@pytest.mark.asyncio
+async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch):
+    """The real module host (forkserver.py), off a mirror: each instance its own process, forked by the
+    forkserver with no descriptor of another's, first for the kernel's OOM killer; one that keeps dying is
+    paused alone, a changed setting restarts only its instance, and one stuck in a loop still ends when the
+    core lets it go."""
+    import base64
+    import json
+    import os
+
+    from mirrordash_core.features.modules import client as client_module
+    site = tmp_path / "modules" / "site_a"
+    (site / "md_fork").mkdir(parents=True)
+    (site / "md_fork" / "__init__.py").write_text("")
+    (site / "md_fork" / "plugin.py").write_text(FORK_PLUGIN)
+    (site / "md_fork-1.0.dist-info").mkdir()
+    (site / "md_fork-1.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: md-fork\nVersion: 1.0\n")
+    (site / "md_fork-1.0.dist-info" / "entry_points.txt").write_text("[mirrordash.modules]\nmd_fork = md_fork.plugin:Module\n")
+    (tmp_path / "modules" / "site").symlink_to("site_a")
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
+    monkeypatch.delenv("MIRRORDASH_MODULE_SOCKET", raising=False)  # the core starts the host as its child
+    config = {"modules": {"a": {"module": "md_fork", "text": "A"}, "b": {"module": "md_fork", "text": "B"},
+                          "dies": {"module": "md_fork", "die": True}, "stuck": {"module": "md_fork", "stuck": True}},
+              "globals": {}}
+    monkeypatch.setattr(client_module, "load_config", lambda: config)
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), clear_cache=MagicMock()))
+    monkeypatch.setattr(client_module, "RESTART_DELAY", 0.1)
+    core = client_module.ModuleHost()
+
+    async def who(instance):
+        reply = await core.call_route({"instance": instance, "method": "GET", "path": "/who"})
+        return json.loads(base64.b64decode(reply["body"]))
+
+    await core.start_modules()
+    try:
+        await _until(lambda: core.running == ["a", "b", "stuck"] and "dies" in core.paused
+                     and (core._instances.get("stuck") and core._instances["stuck"].html), 30)
+        a, b = await who("a"), await who("b")
+        assert a["pid"] != b["pid"] and a["ppid"] == b["ppid"] != os.getpid()
+        assert a["oom"] == "500" and a["fds"] < 12  # stdio, its two sockets, its event loop's
+        first_a = core._instances["a"].html
+
+        config["modules"]["b"]["text"] = "B2"
+        config["modules"]["a"]["position"] = "top_left"  # a move, not a restart
+        stuck_pid = core._instances["stuck"].html.split()[-1].removesuffix("</p>")
+        del config["modules"]["stuck"]
+        await core.reload_modules()
+        await _until(lambda: (conn := core._instances.get("b")) is not None and "B2" in (conn.html or ""), 30)
+        assert core._instances["a"].html == first_a and (await who("a"))["pid"] == a["pid"]
+        assert set(core._instances) == {"a", "b"}
+
+        def gone(pid):
+            try:
+                os.kill(int(pid), 0)
+            except ProcessLookupError:
+                return True
+            return False
+        await _until(lambda: gone(stuck_pid), 15)  # forkserver.STOP_GRACE after its connection closed
+    finally:
+        await core.stop_modules()

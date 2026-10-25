@@ -1,11 +1,12 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 """The core's side of the module host (host.py, ARCHITECTURE #41).
 
-On a mirror the host is its own service (mirrordash-modules.service, as the user mirrordash-mod) and
-MIRRORDASH_MODULE_SOCKET says where it listens; elsewhere (a developer's machine, the SDK's `start`) the
-core starts it as a child process. Either way the modules run there, and everything the host sends is
-checked here like any other input from outside: it can only put HTML in the places of the instances the
-config has, and its log lines land under mirrordash.modules.
+On a mirror the host is its own service (mirrordash-modules.service) and MIRRORDASH_MODULE_SOCKET says
+where it listens; elsewhere (a developer's machine, the SDK's `start`) the core starts it as a child
+process. Either way the modules run there, each instance in its own process with a connection of its own
+from here, and everything they send is checked here like any other input from outside: an instance can
+only put HTML in its own place and ask GPIO for itself (its connection is who it is), and its log lines
+land under mirrordash.modules.<instance>.
 """
 
 import asyncio
@@ -35,6 +36,7 @@ from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import free_pins, header_chip, request_lines
 from mirrordash_core.features.kiosk.ws import manager
+from mirrordash_core.features.modules.forkserver import MODULE_UIDS
 from mirrordash_core.features.modules.loader import SAFE_NAME
 from mirrordash_core.venv import get_venv_paths
 
@@ -43,12 +45,16 @@ logger = logging.getLogger("mirrordash.core.modules.client")
 LINE_LIMIT = 16 * 1024 * 1024  # as host.py
 BODY_LIMIT = 1024 * 1024  # a call to a module's route
 REQUEST_TIMEOUT = 35  # a little over the host's own
-LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; sets the host's IPAddressAllow
+LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; the home-network addresses per module
 LAN_REFRESH = 600  # seconds between looking up the lan-url hosts again (a DHCP address can change)
-# The host ending this soon after its start, this many times in a row, pauses the modules: one that runs
-# out of memory (MemoryMax, OOMPolicy=stop) or crashes the host would restart it every few seconds forever
+LAN_LIMIT = 64  # the helper's
+# An instance's process ending this soon after its start, this many times in a row, pauses it: one that
+# runs out of memory (the kernel kills it first, oom_score_adj) or crashes would start again forever
 CRASH_WINDOW = 300
 CRASH_LIMIT = 3
+RESTART_DELAY = 5
+# Its place on the screen: changing one moves the card without restarting the module
+PLACEMENT_KEYS = {"position", "carousel_group", "carousel_interval", "max_width", "max_height", "z_index", "opacity"}
 # Headers that never reach a module (the admin session, the admin password) or come back from one
 # (a cookie on the mirror's own site, framing the core's answer, a service worker over the whole site,
 # wiping the site's logins)
@@ -73,6 +79,12 @@ def placement(module_cfg: dict, instance_id: str) -> dict:
     }
 
 
+def settings_key(module_cfg: dict, globals_cfg: dict) -> str:
+    """What an instance was started with, its place aside: another key restarts it."""
+    return json.dumps([{k: v for k, v in module_cfg.items() if k not in PLACEMENT_KEYS}, globals_cfg],
+                      sort_keys=True, default=str)
+
+
 def core_python() -> str:
     """The core's Python as the host reaches it: on a mirror through the venv link on /storage (the host
     can't see /home), so modules are built for the venv that runs now."""
@@ -80,12 +92,12 @@ def core_python() -> str:
     return str(paths[0] / "bin" / "python") if paths else sys.executable
 
 
-def lan_hosts(modules: dict) -> set[str]:
-    """The host names in the settings marked "format": "lan-url" of the enabled instances: what the owner
-    typed (or kept) in the admin page, never a schema's default alone."""
+def lan_hosts(modules: dict) -> dict[str, set[str]]:
+    """Each enabled instance's host names in its settings marked "format": "lan-url": what the owner typed
+    (or kept) in the admin page, never a schema's default alone."""
     from mirrordash_core.features.settings.schema import _installed_module_schemas
     schemas = _installed_module_schemas()
-    hosts = set()
+    hosts = {}
     for instance_id, cfg in modules.items():
         if not cfg.get("enabled", True):
             continue
@@ -96,12 +108,12 @@ def lan_hosts(modules: dict) -> set[str]:
                 value = value.strip()
                 host = urllib.parse.urlsplit(value if "//" in value else "//" + value).hostname
                 if host:
-                    hosts.add(host)
+                    hosts.setdefault(instance_id, set()).add(host)
     return hosts
 
 
-async def lan_addresses(hosts: set[str]) -> list[str]:
-    """The home-network addresses those names have now (an IP as is, a name looked up, mDNS too)."""
+async def lan_addresses(hosts: set[str]) -> dict[str, list[str]]:
+    """The home-network addresses each name has now (an IP as is, a name looked up, mDNS too)."""
     loop = asyncio.get_running_loop()
 
     async def lookup(host: str) -> list:  # all at once: one name that doesn't answer holds the modules' start 5 s, not 5 s each
@@ -111,33 +123,73 @@ async def lan_addresses(hosts: set[str]) -> list[str]:
             logger.warning(f"Could not look up {host} for a module's home-network address")
             return []
 
-    addresses = set()
-    for infos in await asyncio.gather(*map(lookup, hosts)):
+    names = sorted(hosts)
+    found = {}
+    for host, infos in zip(names, await asyncio.gather(*map(lookup, names)), strict=True):
+        addresses = set()
         for *_, sockaddr in infos:
             ip = ipaddress.ip_address(sockaddr[0].split("%")[0])
             if ip.is_private and not ip.is_loopback and not ip.is_unspecified:
                 addresses.add(str(ip))
-    return sorted(addresses)[:32]
+        found[host] = sorted(addresses)
+    return found
+
+
+class Connection:
+    """One connection to the module host: the control process's, or an instance's own process's."""
+
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
+                 fds: socket.socket | None = None, instance: str | None = None):
+        self.reader, self.writer, self.fds, self.instance = reader, writer, fds, instance
+        self.pending: dict[int, asyncio.Future] = {}
+        self.windows: dict[int, asyncio.Event] = {}  # its video windows the core holds
+        self.key: str | None = None  # an instance's settings_key
+        self.html: str | None = None  # its last card, sent again when the screen reloads
+        self.running = False
+        self.started = time.monotonic()
+        self._ids = itertools.count(1)
+        self._lock = asyncio.Lock()
+
+    async def send(self, message: dict) -> None:
+        line = json.dumps(message).encode() + b"\n"
+        async with self._lock:
+            self.writer.write(line)
+            await self.writer.drain()
+
+    async def request(self, message: dict, timeout: float) -> dict:
+        request = next(self._ids)
+        future = self.pending[request] = asyncio.get_running_loop().create_future()
+        try:
+            await self.send({**message, "id": request})
+            return await asyncio.wait_for(future, timeout)
+        finally:
+            self.pending.pop(request, None)
+
+    def close(self) -> None:
+        self.writer.close()
+        if self.fds:
+            self.fds.close()
+        for event in self.windows.values():
+            event.set()
+        for future in self.pending.values():
+            if not future.done():
+                future.set_exception(ConnectionError("the module host went away"))
 
 
 class ModuleHost:
-    """The connection to the module host. The rest of the core asks this what runs (`running`) and has
+    """The connections to the module host. The rest of the core asks this what runs (`running`) and has
     it reload the modules after a settings change."""
 
     def __init__(self):
-        self.running: list[str] = []
-        self.lan: list[str] | None = None  # what the host may reach on the home network, once applied
-        # ponytail: in memory, so a restart of the core tries the modules again (CRASH_LIMIT more crashes)
-        self.paused = False  # the modules crashed the host CRASH_LIMIT times in a row: it runs none (resume)
-        self._crashes = 0
-        self._writer: asyncio.StreamWriter | None = None
-        self._fds: socket.socket | None = None
-        self._gen = 0
+        self.lan: list[str] | None = None  # what the instances may reach on the home network, once applied
+        # ponytail: in memory, so a restart of the core tries them again (CRASH_LIMIT more crashes)
+        self.paused: set[str] = set()  # instances that kept dying soon after their start: not started (resume)
+        self._crashes: dict[str, int] = {}
+        self._control: Connection | None = None
+        self._instances: dict[str, Connection] = {}
+        self._uids: dict[str, int] = {}
         self._placement: dict[str, dict] = {}
-        self._pending: dict[int, asyncio.Future] = {}
-        self._windows: dict[int, asyncio.Event] = {}
-        self._ids = itertools.count(1)
-        self._lock = asyncio.Lock()
+        self._sync_lock = asyncio.Lock()
         self._lan_lock = asyncio.Lock()
         self._tasks: list[asyncio.Task] = []
         self._process: asyncio.subprocess.Process | None = None
@@ -145,6 +197,11 @@ class ModuleHost:
         self._loop: asyncio.AbstractEventLoop | None = None
 
     # The rest of the core
+
+    @property
+    def running(self) -> list[str]:
+        """The instances whose run_loop runs, in the settings' order (the screen lays an area's cards out so)."""
+        return [i for i in self._placement if (conn := self._instances.get(i)) and conn.running]
 
     async def start_modules(self) -> None:
         """At startup: connect to the host (and keep reconnecting) and start the modules there."""
@@ -158,14 +215,13 @@ class ModuleHost:
                        asyncio.create_task(self._refresh_lan(), name="module-host-lan")]
 
     async def stop_modules(self) -> None:
-        """At shutdown: the host stops its modules when the connection ends."""
+        """At shutdown: each instance stops when its connection ends, the host when the control's does."""
         event_bus.forward = None
         for task in self._tasks:
             task.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
         self._tasks = []
-        if self._writer:
-            self._writer.close()
+        self._disconnected()
         if self._process and self._process.returncode is None:
             try:
                 await asyncio.wait_for(self._process.wait(), 5)
@@ -176,47 +232,47 @@ class ModuleHost:
             self._socket_dir = None
 
     async def reload_modules(self) -> None:
-        """After a settings change: the screen reloads and the host starts the modules again."""
+        """After a settings change: the screen reloads, and the instances whose settings changed start again."""
         manager.clear_cache()
         await manager.broadcast({"action": "reload"})
-        if self._writer:
+        if self._control:
             try:
-                await self._send_start()
-            except (ConnectionError, OSError) as e:  # the next connection starts them with these settings
-                logger.warning(f"The module host went away while the modules were reloaded: {e}")
+                await self._sync()
+            except (ConnectionError, OSError, TimeoutError) as e:  # the next connection starts them with these settings
+                logger.warning(f"The module host went away while the modules were reloaded: {e!r}")
 
     def set_awake(self, on: bool) -> None:
         """The screen went on or off (display_power.py): the modules' fetches sleep meanwhile."""
         self._post({"t": "awake", "on": bool(on)})
 
     def forward_event(self, name: str, data) -> None:
-        """Every event published in the core (the hardware's) goes to the modules' event bus."""
+        """Every event published in the core (the hardware's) goes to each instance's event bus."""
         self._post({"t": "event", "name": name, "data": data})
 
     @contextlib.asynccontextmanager
     async def packages(self, python: str | None = None, fresh: bool = False):
         """Change the installed modules as venv_swap changes the core: in a copy of the module site (empty
-        when fresh), by the host in its sandbox, so no module's build or .pth runs as the core. Switched in
+        when fresh), by the host's site user, so no module's build or .pth runs as the core. Switched in
         when the block finishes, dropped when it raises. Yields pip(*args, timeout=600) for uv pip install
         or uninstall, and check(names), both (code, err), run with python (default the core's, as the host
         reaches it)."""
         python = python or core_python()
-        code, err = await self._site("prepare", 120, fresh=fresh)
+        code, err = await self._site("prepare", 150, fresh=fresh)
         if code:
             raise RuntimeError(err)
         try:
             yield SimpleNamespace(
-                pip=lambda *args, timeout=600: self._site("pip", timeout + 30, python=python, args=args, timeout=timeout),
-                check=lambda names: self._site("check", 200, python=python, names=list(names)))
+                pip=lambda *args, timeout=600: self._site("pip", timeout + 60, python=python, args=args, timeout=timeout),
+                check=lambda names: self._site("check", 240, python=python, names=list(names)))
         except BaseException:
-            await self._site("revert", 120)
+            await self._site("revert", 150)
             raise
         code, err = await self._site("commit", 30)
         if code:
             raise RuntimeError(err)
 
     async def _site(self, op: str, wait: float, **fields) -> tuple[int, str]:
-        """One step of a module site change (host.py's Host._site), given wait seconds: (code, err), never raises."""
+        """One step of a module site change (host.py's Control._site), given wait seconds: (code, err), never raises."""
         try:
             reply = await self._request({"t": "site", "op": op, **fields}, wait)
         except (ConnectionError, TimeoutError) as e:
@@ -224,54 +280,59 @@ class ModuleHost:
         return (reply.get("code") if isinstance(reply.get("code"), int) else 1), str(reply.get("err", ""))
 
     async def call_route(self, message: dict) -> dict:
-        return await self._request({"t": "http", **message}, REQUEST_TIMEOUT)
+        conn = self._instances.get(message.get("instance"))
+        if conn is None:
+            raise ConnectionError("the module isn't running")
+        return await conn.request({"t": "http", **message}, REQUEST_TIMEOUT)
 
     async def diagnose(self) -> dict:
-        """The host's sandbox checks and its modules' GPIO lines (host.py's Host._diagnose)."""
-        return await self._request({"t": "diagnose"}, 30)
+        """The sandbox's checks (host.py's Control._diagnose) and each instance's GPIO lines."""
+        reply = await self._request({"t": "diagnose"}, 90)
+
+        async def pins(conn: Connection) -> list:
+            try:
+                answer = await conn.request({"t": "diagnose"}, 5)
+            except (ConnectionError, TimeoutError):
+                return []
+            held = (answer.get("gpio") or {}).get(conn.instance) if isinstance(answer.get("gpio"), dict) else None
+            return held if isinstance(held, list) else []
+
+        conns = list(self._instances.values())
+        held = await asyncio.gather(*map(pins, conns))
+        return {**reply, "gpio": {conn.instance: p for conn, p in zip(conns, held, strict=True) if p}}
 
     async def resume(self) -> None:
-        """Start the modules again after they were paused (the Dashboard's button)."""
-        self.paused, self._crashes = False, 0
+        """Start the paused instances again (the Dashboard's button)."""
+        self.paused.clear()
+        self._crashes.clear()
         logger.info("Modules started again after the pause")
-        if self._writer:
-            await self._send_start()
+        if self._control:
+            await self._sync()
 
     def knows(self, instance_id: str) -> bool:
-        return self._writer is not None and instance_id in self._placement
+        return instance_id in self._instances and instance_id in self._placement
 
-    # The connection
+    # The connections
 
     def _post(self, message: dict) -> None:
-        """Send without waiting, from any thread (an event can be published from one)."""
-        if self._writer and self._loop:
-            self._loop.call_soon_threadsafe(lambda: asyncio.ensure_future(self._send_quietly(message)))
+        """Send to every instance without waiting, from any thread (an event can be published from one)."""
+        if self._loop:
+            self._loop.call_soon_threadsafe(lambda: [asyncio.ensure_future(self._send_quietly(conn, message))
+                                                     for conn in list(self._instances.values())])
 
-    async def _send_quietly(self, message: dict) -> None:
+    async def _send_quietly(self, conn: Connection, message: dict) -> None:
         try:
-            await self._send(message)
+            await conn.send(message)
         except (ConnectionError, OSError, TypeError, ValueError) as e:
-            logger.debug(f"Could not send {message.get('t')} to the module host: {e}")
-
-    async def _send(self, message: dict) -> None:
-        writer = self._writer
-        if writer is None:
-            raise ConnectionError("not connected to the module host")
-        line = json.dumps(message).encode() + b"\n"
-        async with self._lock:
-            writer.write(line)
-            await writer.drain()
+            logger.debug(f"Could not send {message.get('t')} to {conn.instance}: {e}")
 
     async def _request(self, message: dict, timeout: float) -> dict:
-        request = next(self._ids)
-        future = self._pending[request] = asyncio.get_running_loop().create_future()
-        try:
-            await self._send({**message, "id": request})
-            return await asyncio.wait_for(future, timeout)
-        finally:
-            self._pending.pop(request, None)
+        """A request to the control process."""
+        if self._control is None:
+            raise ConnectionError("not connected to the module host")
+        return await self._control.request(message, timeout)
 
-    async def _connect(self) -> tuple[asyncio.StreamReader, asyncio.StreamWriter]:
+    async def _connect(self) -> Connection:
         path = os.environ.get("MIRRORDASH_MODULE_SOCKET")
         if not path:  # not on a mirror: the host is this process's child, on a socket only this user can reach
             if self._process is None or self._process.returncode is not None:
@@ -285,117 +346,187 @@ class ModuleHost:
                 if os.path.exists(path) or self._process.returncode is not None:
                     break
                 await asyncio.sleep(0.1)
-        connection = await asyncio.open_unix_connection(path, limit=LINE_LIMIT)
-        # The second connection, for the file descriptors of GPIO requests (host.py)
+        reader, writer = await asyncio.open_unix_connection(path, limit=LINE_LIMIT)
+        # The second connection, for the instances' sockets (host.py)
+        fds = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         try:
-            self._fds = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
-            self._fds.connect(path + ".fds")
-        except OSError as e:
-            logger.warning(f"No GPIO for modules: the module host's {path}.fds: {e}")
-            self._fds = None
-        return connection
+            fds.connect(path + ".fds")
+        except OSError:
+            fds.close()
+            writer.close()
+            raise
+        return Connection(reader, writer, fds)
 
     async def _run(self) -> None:
         while True:
             try:
-                reader, self._writer = await self._connect()
+                self._control = await self._connect()
             except OSError as e:
                 logger.debug(f"Module host not there yet: {e}")
                 await asyncio.sleep(2)
                 continue
             logger.info("Connected to the module host")
-            connected_at = time.monotonic()
+            reading = asyncio.create_task(self._read(self._control))  # first: the sync waits on its answers
             try:
-                await self._send_start()
-                while line := await reader.readline():
-                    try:
-                        await self._handle(json.loads(line))
-                    except Exception as e:
-                        logger.warning(f"Bad message from the module host: {e!r}")
-            except (ConnectionError, ValueError) as e:  # ValueError: a line over LINE_LIMIT
-                logger.warning(f"The module host's connection ended: {e}")
+                await self._sync()
+                await reading
+            except (ConnectionError, OSError, TimeoutError) as e:
+                logger.warning(f"The module host's connection ended: {e!r}")
             finally:
+                reading.cancel()
                 self._disconnected()
             logger.warning("The module host went away; reconnecting")
-            self._crashes = self._crashes + 1 if time.monotonic() - connected_at < CRASH_WINDOW else 1
-            if self._crashes >= CRASH_LIMIT and not self.paused:
-                self.paused = True
-                logger.error(f"The modules stopped the module host {self._crashes} times in a row soon after it started "
-                             "(a module used up its memory, see 'oom-kill' in Logs → Raspberry Pi, or crashed it): "
-                             "no modules run until they are started again on the Dashboard")
             await asyncio.sleep(1)
 
+    async def _read(self, conn: Connection) -> None:
+        try:
+            while line := await conn.reader.readline():
+                try:
+                    await self._handle(json.loads(line), conn)
+                except Exception as e:
+                    logger.warning(f"Bad message from {conn.instance or 'the module host'}: {e!r}")
+        except (ConnectionError, ValueError) as e:  # ValueError: a line over LINE_LIMIT
+            logger.warning(f"The connection of {conn.instance or 'the module host'} ended: {e}")
+
     def _disconnected(self) -> None:
-        if self._writer:
-            self._writer.close()
-        if self._fds:
-            self._fds.close()
-        self._writer = self._fds = None
-        self.running = []
-        for event in self._windows.values():
-            event.set()
-        for future in self._pending.values():
-            if not future.done():
-                future.set_exception(ConnectionError("the module host went away"))
+        for instance_id in list(self._instances):
+            self._stop(instance_id)
+        if self._control:
+            self._control.close()
+        self._control = None
 
-    async def _send_start(self) -> None:
-        config = load_config()
-        modules = {} if self.paused else {
-            k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
-        self._gen += 1
-        # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
-        self._placement = {instance_id: {**placement(cfg, instance_id), "order": i}
-                           for i, (instance_id, cfg) in enumerate(modules.items())}
-        self.running = []
-        await self._apply_lan(modules)  # before the modules start, so their first call gets through
-        from mirrordash_core.features.power.display_power import display_power_manager
-        await self._send({"t": "start", "gen": self._gen, "modules": modules, "globals": config.get("globals", {}),
-                          "awake": display_power_manager.awake.is_set()})
+    def _stop(self, instance_id: str) -> None:
+        """It stops when its connection closes (nothing else may signal its process: another user)."""
+        if conn := self._instances.pop(instance_id, None):
+            conn.close()
 
-    async def _handle(self, message: dict) -> None:
-        """One message from the host: input from outside, checked like any other."""
-        kind, instance_id = message.get("t"), message.get("instance")
-        if kind == "html":
-            if message.get("gen") == self._gen and instance_id in self._placement and isinstance(message.get("html"), str):
-                await manager.broadcast({**self._placement[instance_id], "html": message["html"]})
-        elif kind == "status":
-            if message.get("gen") == self._gen and isinstance(message.get("running"), list):
-                # In the settings' order, which the screen lays an area's cards out in (the host's list is sorted)
-                self.running = [i for i in self._placement if i in message["running"]]
-        elif kind == "video_playing":
-            if instance_id in self._placement:
-                await manager.set_video_playing(instance_id, bool(message.get("on")))
-        elif kind == "video_window":
-            request, hz = message.get("id"), message.get("hz")
-            if instance_id in self._placement and isinstance(request, int) and request not in self._windows and (
-                    hz is None or (isinstance(hz, int) and 1 <= hz <= 240)):
-                self._windows[request] = asyncio.Event()  # here, not in the task: the end can come first
-                asyncio.create_task(self._hold_window(request, instance_id, bool(message.get("fullscreen")), hz))
-            elif isinstance(request, int):
-                await self._send_quietly({"t": "reply", "id": request, "window": None})  # the module gets an error
-        elif kind == "gpio":
-            if isinstance(message.get("id"), int) and (error := self._gpio(message)):
-                logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
-                await self._send_quietly({"t": "reply", "id": message["id"], "error": error})
-        elif kind == "video_window_end":
-            if message.get("id") in self._windows:
-                self._windows[message["id"]].set()
-        elif kind == "reply":
-            future = self._pending.get(message.get("id"))
+    async def _sync(self) -> None:
+        """Have the instances of the settings run: a new one or one whose settings changed (re)started, one
+        that is gone or turned off stopped, the others left running, their cards sent again."""
+        async with self._sync_lock:
+            if self._control is None:
+                return
+            config = load_config()
+            modules = {k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
+            globals_cfg = config.get("globals", {})
+            # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
+            self._placement = {instance_id: {**placement(cfg, instance_id), "order": i}
+                               for i, (instance_id, cfg) in enumerate(modules.items())}
+            wanted = {i: cfg for i, cfg in modules.items() if cfg.get("enabled", True) and i not in self.paused}
+            reply = await self._request({"t": "uids", "instances": list(wanted)}, 10)
+            uids = reply.get("uids") if isinstance(reply.get("uids"), dict) else {}
+            self._uids = {i: uid for i, uid in uids.items() if i in wanted and type(uid) is int and uid in MODULE_UIDS}
+            await self._apply_lan(wanted)  # before they start, so their first call gets through
+            for instance_id, conn in list(self._instances.items()):
+                if instance_id not in wanted or conn.key != settings_key(wanted[instance_id], globals_cfg):
+                    self._stop(instance_id)
+            from mirrordash_core.features.power.display_power import (
+                display_power_manager,
+            )
+            awake = display_power_manager.awake.is_set()
+            for instance_id, cfg in wanted.items():
+                if conn := self._instances.get(instance_id):
+                    if conn.html is not None:  # for the screen that reloaded
+                        await manager.broadcast({**self._placement[instance_id], "html": conn.html})
+                elif instance_id in self._uids:
+                    await self._start(instance_id, cfg, globals_cfg, awake)
+                else:
+                    logger.error(f"{instance_id}: no user left for a new module instance; not started")
+
+    async def _start(self, instance_id: str, cfg: dict, globals_cfg: dict, awake: bool) -> None:
+        """A process for the instance: one end of its two socket pairs to the host, which runs it as its user."""
+        ours, theirs = socket.socketpair()
+        fds_ours, fds_theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        try:
+            socket.send_fds(self._control.fds, [json.dumps({"instance": instance_id}).encode()],
+                            [theirs.fileno(), fds_theirs.fileno()])
+        except OSError:
+            ours.close()
+            fds_ours.close()
+            raise
+        finally:
+            theirs.close()
+            fds_theirs.close()
+        reader, writer = await asyncio.open_unix_connection(sock=ours, limit=LINE_LIMIT)
+        conn = Connection(reader, writer, fds_ours, instance_id)
+        conn.key = settings_key(cfg, globals_cfg)
+        self._instances[instance_id] = conn
+        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
+        asyncio.create_task(self._serve(conn), name=f"module-{instance_id}")
+
+    async def _serve(self, conn: Connection) -> None:
+        """An instance's connection until it ends; then, unless the core stopped it, start it again or,
+        after CRASH_LIMIT quick deaths in a row, pause it."""
+        await self._read(conn)
+        conn.close()
+        instance_id = conn.instance
+        if self._instances.get(instance_id) is not conn:
+            return  # stopped: its settings changed, or the host went
+        del self._instances[instance_id]
+        crashes = self._crashes.get(instance_id, 0) + 1 if time.monotonic() - conn.started < CRASH_WINDOW else 1
+        self._crashes[instance_id] = crashes
+        if crashes >= CRASH_LIMIT:
+            self.paused.add(instance_id)
+            logger.error(f"{instance_id} stopped {crashes} times in a row soon after it started (it used up the modules' "
+                         "memory, see 'oom-kill' in Logs → Raspberry Pi, or crashed): it stays off until the modules "
+                         "are started again on the Dashboard")
+            return
+        logger.warning(f"{instance_id}'s process ended; starting it again in {RESTART_DELAY} s")
+        await asyncio.sleep(RESTART_DELAY)
+        try:
+            await self._sync()
+        except (ConnectionError, OSError, TimeoutError) as e:
+            logger.warning(f"{instance_id} couldn't start again: {e!r}")
+
+    async def _handle(self, message: dict, conn: Connection) -> None:
+        """One message from the host: input from outside, checked like any other. An instance's connection
+        speaks for that instance alone, whatever its message names."""
+        kind, instance_id = message.get("t"), conn.instance
+        if kind == "reply":
+            future = conn.pending.get(message.get("id"))
             if future and not future.done():
                 future.set_result(message)
         elif kind == "log":
             name = str(message.get("name", ""))
-            name = name if LOG_NAME.match(name) and name.startswith("mirrordash.modules") else "mirrordash.modules.host"
+            if instance_id:
+                name = f"mirrordash.modules.{instance_id}"
+            elif not (LOG_NAME.match(name) and name.startswith("mirrordash.modules")):
+                name = "mirrordash.modules.host"
             level = message.get("level") if isinstance(message.get("level"), int) else logging.INFO
             # Each further line (a traceback) carries the name too: a line of its own can't pass for the core's
             text = str(message.get("text", ""))[:4000].replace("\r", "").replace("\n", f"\n    {name}: ")
             logging.getLogger(name).log(min(max(level, logging.DEBUG), logging.CRITICAL), text)
+        elif instance_id is None or self._instances.get(instance_id) is not conn or instance_id not in self._placement:
+            return  # the control process sends replies and logs only; a stopped instance nothing
+        elif kind == "html":
+            if isinstance(message.get("html"), str):
+                conn.html = message["html"]
+                await manager.broadcast({**self._placement[instance_id], "html": conn.html})
+        elif kind == "status":
+            if isinstance(message.get("running"), list):
+                conn.running = instance_id in message["running"]
+        elif kind == "video_playing":
+            await manager.set_video_playing(instance_id, bool(message.get("on")))
+        elif kind == "video_window":
+            request, hz = message.get("id"), message.get("hz")
+            if isinstance(request, int) and request not in conn.windows and (
+                    hz is None or (isinstance(hz, int) and 1 <= hz <= 240)):
+                conn.windows[request] = asyncio.Event()  # here, not in the task: the end can come first
+                asyncio.create_task(self._hold_window(conn, request, bool(message.get("fullscreen")), hz))
+            elif isinstance(request, int):
+                await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})  # the module gets an error
+        elif kind == "gpio":
+            if isinstance(message.get("id"), int) and (error := self._gpio(message, conn)):
+                logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
+                await self._send_quietly(conn, {"t": "reply", "id": message["id"], "error": error})
+        elif kind == "video_window_end":
+            if message.get("id") in conn.windows:
+                conn.windows[message["id"]].set()
 
-    def _gpio(self, message: dict) -> str | None:
-        """A module's GPIO request (features/hardware/gpio.py): its lines' file descriptor sent to the host
-        over the second connection, or why not. Only free header pins, whatever the module asks."""
-        instance_id, pins = message.get("instance"), message.get("pins")
+    def _gpio(self, message: dict, conn: Connection) -> str | None:
+        """An instance's GPIO request (features/hardware/gpio.py): its lines' file descriptor sent to its
+        process over its own descriptor socket, or why not. Only free header pins, whatever it asks."""
+        instance_id, pins = conn.instance, message.get("pins")
         options = {k: message[k] for k in ("output", "initial", "pull", "edge", "active_low", "debounce_ms") if k in message}
         if instance_id not in self._placement:
             return "not an instance of this mirror"
@@ -406,8 +537,6 @@ class ModuleHost:
             return "output and active_low are true or false, initial 0 or 1, debounce_ms a number"
         if taken := sorted(set(pins) - free_pins(load_config())):
             return f"GPIO {', '.join(map(str, taken))} isn't free for modules (not on the header, or a device in the Hardware tab uses it)"
-        if not self._fds:
-            return "the mirror can't hand out GPIO right now"
         if not (chip := header_chip()):
             return "this machine has no GPIO header"
         try:
@@ -415,46 +544,50 @@ class ModuleHost:
         except (OSError, ValueError) as e:
             return str(e)
         try:
-            socket.send_fds(self._fds, [struct.pack("<Q", message["id"])], [fd])
+            socket.send_fds(conn.fds, [struct.pack("<Q", message["id"])], [fd])
         except OSError as e:
             return f"couldn't hand the pins over: {e}"
         finally:
-            os.close(fd)  # the host's copy holds the lines now
+            os.close(fd)  # the instance's copy holds the lines now
         logger.info(f"{instance_id} has GPIO {', '.join(map(str, pins))}")
         return None
 
-    async def _hold_window(self, request: int, instance_id: str, fullscreen: bool, hz: int | None) -> None:
+    async def _hold_window(self, conn: Connection, request: int, fullscreen: bool, hz: int | None) -> None:
         from mirrordash_core.features.video.window import video_window
         answered = False
         try:
-            async with video_window(instance_id, fullscreen=fullscreen, hz=hz) as window:
-                await self._send({"t": "reply", "id": request, "window": {
+            async with video_window(conn.instance, fullscreen=fullscreen, hz=hz) as window:
+                await conn.send({"t": "reply", "id": request, "window": {
                     "app_id": window.app_id, "rect": window.rect, "fullscreen": window.fullscreen}})
                 answered = True
-                await self._windows[request].wait()
+                await conn.windows[request].wait()
         except Exception as e:
-            logger.warning(f"{instance_id}: video window failed: {e!r}")
+            logger.warning(f"{conn.instance}: video window failed: {e!r}")
             if not answered:
-                await self._send_quietly({"t": "reply", "id": request, "window": None})
+                await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})
         finally:
-            self._windows.pop(request, None)
+            conn.windows.pop(request, None)
 
     # The home network
 
     async def _apply_lan(self, modules: dict) -> None:
-        """Let the host reach exactly the lan-url addresses (on a mirror; the sudo rule allows the helper)."""
+        """Let each instance's user reach exactly its lan-url addresses (on a mirror; the sudo rule allows the
+        helper, which sets the host's IPAddressAllow to all of them and nftables per user)."""
         if not os.environ.get("MIRRORDASH_MODULE_SOCKET") or not os.path.exists(LAN_HELPER):
             return
         async with self._lan_lock:  # a start and the refresh: the later one's addresses must win
-            addresses = await lan_addresses(lan_hosts(modules))
-            if addresses == self.lan:
+            hosts = {i: names for i, names in lan_hosts(modules).items() if i in self._uids}
+            found = await lan_addresses(set().union(*hosts.values()))
+            allowed = sorted({(i, a) for i, names in hosts.items() for name in names for a in found.get(name, [])})[:LAN_LIMIT]
+            pairs = [f"{self._uids[i]}={a}" for i, a in allowed]
+            if pairs == self.lan:
                 return
-            process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *addresses,
+            process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *pairs,
                                                            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             _, err = await process.communicate()
             if process.returncode == 0:
-                self.lan = addresses
-                logger.info(f"Modules may reach on the home network: {', '.join(addresses) or 'nothing'}")
+                self.lan = pairs
+                logger.info("Modules may reach on the home network: " + (", ".join(f"{i} {a}" for i, a in allowed) or "nothing"))
             else:
                 logger.error(f"Could not set the modules' home-network addresses: {err.decode(errors='replace').strip()}")
 
@@ -463,7 +596,8 @@ class ModuleHost:
         while True:
             await asyncio.sleep(LAN_REFRESH)
             try:
-                modules = {k: v for k, v in load_config().get("modules", {}).items() if isinstance(v, dict)}
+                modules = {k: v for k, v in load_config().get("modules", {}).items()
+                           if isinstance(v, dict) and k not in self.paused}
                 await self._apply_lan(modules)
             except Exception as e:
                 logger.warning(f"Could not refresh the modules' home-network addresses: {e!r}")
@@ -473,8 +607,8 @@ module_host = ModuleHost()
 
 
 async def module_routes(scope, receive, send) -> None:
-    """Mounted at /api/modules: /api/modules/<instance>/... goes to that instance's `router` in the module
-    host, and nowhere else, so a module can't add or shadow a route of the core. No login in front: the
+    """Mounted at /api/modules: /api/modules/<instance>/... goes to that instance's `router` in its own
+    process, and nowhere else, so a module can't add or shadow a route of the core. No login in front: the
     module checks its callers itself. Its answer can't set a cookie on the mirror's site, and runs as a
     sandboxed page in a browser, so HTML from a module can't act as the admin page."""
     if scope["type"] != "http":

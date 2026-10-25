@@ -1,33 +1,43 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 """The module host (ARCHITECTURE #41): `python -m mirrordash_core.features.modules.host <socket>`.
 
-Every module runs here, apart from the core: on a mirror as its own user in its own sandbox
-(mirrordash-modules.service), with no way to the core's files, its routes or the home network. The core
-connects to the unix socket (client.py) and both send one JSON object per line:
+Every module runs apart from the core: on a mirror in its own sandbox (mirrordash-modules.service), each
+instance in a process of its own as a user of its own, with no way to the core's files, its routes, the
+home network or the other modules. forkserver.py makes the processes; the control process (serve, as the
+unit's user) answers the core's connection on the unix socket, and both send one JSON object per line:
 
-  core -> host  start {gen, modules, globals, awake}   (re)start the modules with these settings
-                awake {on}                              the screen went on or off
-                event {name, data}                      a hardware event for the modules' event bus
-                http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
-                site {id, op, ...}                      a change to the installed modules (Host._site)
-                diagnose {id}                           the sandbox's checks and the modules' GPIO (Logs → Diagnostics)
-                reply {id, window}                      the answer to video_window
-  host -> core  html {gen, instance, html}              an instance's card (the core places it)
-                status {gen, running}                   the instances whose run_loop runs
-                video_playing {instance, on}
-                video_window {id, instance, fullscreen, hz}, video_window_end {id}
-                gpio {id, instance, pins, output, ...}  lines for a module (features/hardware/gpio.py)
-                log {name, level, text}
-                reply {id, ...}                         the answer to http or check
+  core -> control  uids {id, instances}              each instance's user (module_uids)
+                   site {id, op, ...}                a change to the installed modules (site_step)
+                   diagnose {id}                     the sandbox's checks, made as a module's user (probe_main)
+  control -> core  reply {id, ...}, log {name, level, text}
 
-A GPIO request's answer is a file descriptor, which a stream can't carry: the core sends it over a second
-connection, to <socket>.fds (SOCK_SEQPACKET), as one message per descriptor holding the request's id.
+To start an instance the core makes two socket pairs, for its messages and for GPIO's descriptors, and
+sends one end of each over the second connection (<socket>.fds, SOCK_SEQPACKET) with {"instance": id}: the
+process the forkserver makes for it gets them, so its connection is who it is. Over it, the host protocol
+for that one instance (Host):
 
-The host serves one connection. When it ends (the core restarted, or was updated), the host stops its
-modules and exits; systemd starts it again, so a new venv's modules load fresh.
+  core -> instance  start {gen, modules, globals, awake}   start it with these settings
+                    awake {on}                              the screen went on or off
+                    event {name, data}                      a hardware event for the modules' event bus
+                    http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
+                    diagnose {id}                           its GPIO lines (Logs → Diagnostics)
+                    reply {id, window}                      the answer to video_window
+  instance -> core  html {gen, instance, html}              its card (the core places it)
+                    status {gen, running}                   whether its run_loop runs
+                    video_playing {instance, on}
+                    video_window {id, instance, fullscreen, hz}, video_window_end {id}
+                    gpio {id, instance, pins, output, ...}  lines for it (features/hardware/gpio.py)
+                    log {name, level, text}
+                    reply {id, ...}                         the answer to http or diagnose
 
-The modules are installed in the module site (loader.module_site), in the host's own folder: uv runs
-here, as the host's user in its sandbox, so a package's build and its .pth never run as the core.
+A GPIO request's answer is a file descriptor, sent over the instance's descriptor socket as one message
+holding the request's id. An instance stops when the core closes its connection. When the core's
+connection to the control process ends (the core restarted, or was updated), the host exits and systemd
+starts it again, so a new venv's modules load fresh.
+
+The modules are installed in the module site (loader.module_site), in the host's own folder: uv runs in a
+process of its own (site_main, as forkserver.SITE_UID), so a package's build and its .pth never run as the
+core, the forkserver or another module.
 """
 
 import asyncio
@@ -49,8 +59,10 @@ from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI
 
+from mirrordash_core.config import get_module_dir
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import GpioLines
+from mirrordash_core.features.modules import forkserver
 from mirrordash_core.features.modules.loader import SAFE_NAME, ModuleLoader, module_site
 from mirrordash_core.venv import point_link
 
@@ -62,6 +74,8 @@ REQUEST_TIMEOUT = 30
 GPIO_TIMEOUT = 10
 CHECK_TIMEOUT = 180
 UV_TIMEOUT = 600  # one uv pip run, unless the core asks for another
+SITE_STEP_TIMEOUT = 200  # the other steps
+PROBE_TIMEOUT = 60
 VIDEO_WINDOW_TIMEOUT = 30  # the core asks the page (5 s) and switches the refresh rate first
 # The check of a changed site (service.py update_modules): these modules must import from it
 CHECK = ("import site, sys; site.addsitedir(sys.argv[1]); from importlib.metadata import entry_points; "
@@ -107,19 +121,24 @@ def default_gateway() -> str | None:
 
 
 def sandbox_checks() -> list[tuple[str, bool]]:
-    """What the sandbox (mirrordash-modules.service) keeps from the modules: (what, reachable), each should be
-    False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
-    device cgroup, namespaces), so the host looks: at its start, and from the admin page (Logs → Diagnostics)."""
+    """What the sandbox keeps from a module, looked at as one (probe_main): (what, reachable), each should
+    be False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
+    device cgroup, namespaces), and a user per module holds only if its capabilities are gone and the
+    folders' modes are right, so the host looks: when the core connects, and from Logs → Diagnostics."""
     checks = [(f"the mirror's own port {port}", reaches("127.0.0.1", port)) for port in SANDBOX_PORTS]
     if gateway := default_gateway():
         checks.append((f"the router ({gateway})", reaches(gateway, 53)))
     checks += [(f"{what} ({path})", os.access(path, os.R_OK)) for path, what in SANDBOX_PATHS.items()]
     devices = sorted({p for pattern in SANDBOX_DEVICES for p in glob.glob(pattern)} - MODULE_DEVICES)
-    return checks + [(path, opens(path)) for path in devices]
-
-
-def sandbox_holes() -> list[str]:
-    return [what for what, reachable in sandbox_checks() if reachable]
+    checks += [(path, opens(path)) for path in devices]
+    data = get_module_dir() / "data"
+    with contextlib.suppress(OSError):
+        checks += [(f"another module's data ({entry.name})", os.access(entry.path, os.R_OK))
+                   for entry in sorted(os.scandir(data), key=lambda e: e.name)]
+    checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
+    checks.append(("capabilities (" + (", ".join(forkserver.capabilities()) or "none") + ")",
+                   bool(forkserver.capabilities())))
+    return checks
 
 
 def site_paths() -> tuple[Path, Path, Path]:
@@ -143,6 +162,17 @@ def copy_site(src: Path, dst: Path) -> None:
                 os.symlink(os.readlink(path), target / name)
             else:
                 shutil.copy2(path, target / name)
+
+
+def empty(folder: Path) -> None:
+    """Everything in folder, not the folder: the site's folders are the site user's in the host's, which it
+    can't write (forkserver.own_folder makes them)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for entry in os.scandir(folder):
+        if entry.is_dir(follow_symlinks=False):
+            shutil.rmtree(entry.path)
+        else:
+            os.unlink(entry.path)
 
 
 async def run(*cmd: str, timeout: float) -> tuple[int, str]:
@@ -233,12 +263,8 @@ class HostLink:
             os.close(fd)  # its request timed out meanwhile
 
 
-def receive_fds(listener: socket.socket, link: HostLink, loop: asyncio.AbstractEventLoop) -> None:
-    """In a thread: the core's second connection, each message a request id with one file descriptor."""
-    try:
-        conn, _ = listener.accept()
-    except OSError:
-        return
+def receive_fds(conn: socket.socket, link: HostLink, loop: asyncio.AbstractEventLoop) -> None:
+    """In a thread: the instance's descriptor socket, each message a request id with one file descriptor."""
     with conn:
         while True:
             try:
@@ -255,7 +281,7 @@ def receive_fds(listener: socket.socket, link: HostLink, loop: asyncio.AbstractE
 
 
 class LogForward(logging.Handler):
-    """Every log record of the host goes to the core, which writes it to its log under mirrordash.modules
+    """Every log record of the process goes to the core, which writes it to its log under mirrordash.modules
     (the admin page's Logs). From any thread: a module's fetch logs from one."""
 
     def __init__(self, link: HostLink, loop: asyncio.AbstractEventLoop):
@@ -310,8 +336,20 @@ async def call_route(app, message: dict) -> tuple[int, list, bytes]:
     return status, headers, b"".join(chunks)
 
 
+async def read_lines(reader: asyncio.StreamReader, handle) -> None:
+    """handle(message) for each line from the core, until it closes."""
+    try:
+        while line := await reader.readline():
+            try:
+                handle(json.loads(line))
+            except Exception as e:
+                logger.error(f"Bad message from the core: {e}")
+    except (ConnectionError, ValueError) as e:  # ValueError: a line over LINE_LIMIT
+        logger.warning(f"The connection to the core ended: {e}")
+
+
 class Host:
-    """One connection from the core, and the modules it runs."""
+    """One instance's connection from the core, and the module it runs (in the instance's own process)."""
 
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
         self.reader = reader
@@ -324,18 +362,8 @@ class Host:
     async def run(self) -> None:
         forward = LogForward(self.link, asyncio.get_running_loop())
         logging.getLogger().addHandler(forward)
-        if os.environ.get("MIRRORDASH_SANDBOX"):  # on a mirror; said once the core reads the log
-            for hole in await asyncio.to_thread(sandbox_holes):
-                logger.error(f"The module sandbox is open: modules can reach {hole}")
         try:
-            while line := await self.reader.readline():
-                try:
-                    message = json.loads(line)
-                    self._handle(message)
-                except Exception as e:
-                    logger.error(f"Bad message from the core: {e}")
-        except (ConnectionError, ValueError) as e:  # ValueError: a line over LINE_LIMIT
-            logger.warning(f"The connection to the core ended: {e}")
+            await read_lines(self.reader, self._handle)
         finally:
             logging.getLogger().removeHandler(forward)
             for task in self._tasks:
@@ -344,7 +372,7 @@ class Host:
             self.link.writer.close()
 
     def _spawn(self, coro) -> None:
-        """Run a message's work beside the read loop, so a slow module doesn't hold up the others."""
+        """Run a message's work beside the read loop, so a slow route doesn't hold up the rest."""
         task = asyncio.create_task(coro)
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -359,10 +387,9 @@ class Host:
             event_bus.publish(str(message.get("name")), message.get("data"))
         elif kind == "http":
             self._spawn(self._http(message))
-        elif kind == "site":
-            self._spawn(self._site(message))
         elif kind == "diagnose":
-            self._spawn(self._diagnose(message))
+            gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
+            self._spawn(self.link.send({"t": "reply", "id": message.get("id"), "gpio": gpio}))
         elif kind == "reply":
             future = self.link.pending.get(message.get("id"))
             if future and not future.done():
@@ -394,56 +421,224 @@ class Host:
         await self.link.send({"t": "reply", "id": message.get("id"), "status": status, "headers": headers,
                               "body": base64.b64encode(body).decode()})
 
-    async def _diagnose(self, message: dict) -> None:
-        checks = await asyncio.to_thread(sandbox_checks)
-        gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
-        await self.link.send({"t": "reply", "id": message.get("id"), "checks": checks, "gpio": gpio,
-                              "sandboxed": bool(os.environ.get("MIRRORDASH_SANDBOX"))})
+
+# The processes the forkserver makes (forkserver.run's children), each an async function of its sockets
+
+
+async def instance_main(stream: socket.socket, fds: socket.socket, instance: str) -> None:
+    """One module instance, as its own user: the core's connection for it and the module."""
+    # After the core's own packages: a module's copy of one (uv installs every dependency) never shadows them.
+    # Only here, as the module's user: the site's .pth files run on adding it.
+    site.addsitedir(str(module_site()))
+    reader, writer = await asyncio.open_unix_connection(sock=stream, limit=LINE_LIMIT)
+    host = Host(reader, writer)
+    threading.Thread(target=receive_fds, args=(fds, host.link, asyncio.get_running_loop()), daemon=True).start()
+    await host.run()
+
+
+async def site_step(message: dict) -> tuple[int, str]:
+    """One step of a change to the installed modules (client.py's ModuleHost.packages), like the core's
+    venv_swap: prepare the next site (a copy of the active one, or empty when fresh), run uv pip in it,
+    import modules from it, or drop it. The control process switches the link (commit)."""
+    op, python = message.get("op"), str(message.get("python") or "")
+    _, active, next_site = site_paths()
+    if op == "prepare":
+        await asyncio.to_thread(empty, next_site)
+        if active.is_dir() and not message.get("fresh"):
+            await asyncio.to_thread(copy_site, active, next_site)
+    elif op == "pip":
+        args = [str(a) for a in message.get("args") or []]
+        timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else UV_TIMEOUT
+        if args[:1] not in (["install"], ["uninstall"]):
+            return 1, f"not a uv pip change: {args[:1]}"
+        # --no-cache: the host's folder is on /storage, which is small
+        code, err = await run("uv", "pip", args[0], "--python", python, "--target", str(next_site),
+                              "--no-cache", *args[1:], timeout=timeout)
+        if code == 0:  # a module's process can't write the site, so its bytecode is made here
+            await run(python, "-I", "-m", "compileall", "-q", str(next_site), timeout=timeout)
+        return code, err
+    elif op == "check":
+        names = [n for n in message.get("names", []) if isinstance(n, str) and SAFE_NAME.match(n)]
+        return await run(python, "-I", "-c", CHECK, str(next_site), *names, timeout=CHECK_TIMEOUT)
+    elif op == "revert":
+        await asyncio.to_thread(empty, next_site)
+    else:
+        return 1, f"unknown site step {op!r}"
+    return 0, ""
+
+
+async def site_main(stream: socket.socket, _instance=None) -> None:
+    """One site step, as the site's user: a line in, the answer out."""
+    reader, writer = await asyncio.open_unix_connection(sock=stream, limit=LINE_LIMIT)
+    try:
+        code, err = await site_step(json.loads(await reader.readline()))
+    except (OSError, ValueError) as e:
+        code, err = 1, str(e)
+    writer.write(json.dumps({"code": code, "err": err}).encode() + b"\n")
+    await writer.drain()
+    writer.close()
+
+
+async def probe_main(stream: socket.socket, _instance=None) -> None:
+    """The sandbox's checks, as a module's user would see it (forkserver.PROBE_UID)."""
+    reader, writer = await asyncio.open_unix_connection(sock=stream)
+    writer.write(json.dumps({"checks": await asyncio.to_thread(sandbox_checks)}).encode() + b"\n")
+    await writer.drain()
+    writer.close()
+
+
+CHILDREN = {"module": instance_main, "site": site_main, "probe": probe_main}
+
+
+def module_uids(instances: list[str]) -> dict[str, int]:
+    """Each instance's user, kept in the host's folder (/storage outlives the image) so its files stay its
+    own. A new instance gets the next uid, never one that was another's: that one's data may still be there.
+    ponytail: forkserver.MODULE_UIDS holds 900 instances ever made on a mirror; past that a new one doesn't start."""
+    path = get_module_dir() / "uids.json"
+    try:
+        uids = {k: v for k, v in json.loads(path.read_text()).items() if type(v) is int and v in forkserver.MODULE_UIDS}
+    except (OSError, ValueError, AttributeError):
+        uids = {}
+    new = [i for i in instances if i not in uids and SAFE_NAME.match(i)]
+    for instance in new:
+        uid = max(uids.values(), default=forkserver.MODULE_UIDS.start - 1) + 1
+        if uid in forkserver.MODULE_UIDS:
+            uids[instance] = uid
+    if new:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name("uids.json.tmp")
+        tmp.write_text(json.dumps(uids, indent=1))
+        os.replace(tmp, path)
+    return {i: uids[i] for i in instances if i in uids}
+
+
+class Control:
+    """The core's connection to the control process: the users, the site and the checks."""
+
+    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, spawn):
+        self.reader = reader
+        self.link = HostLink(writer)
+        self.spawn = spawn  # forkserver.Spawner, or a stand-in that runs CHILDREN here (the tests)
+        self.sandboxed = bool(os.environ.get("MIRRORDASH_SANDBOX"))
+        self._tasks: set[asyncio.Task] = set()
+
+    async def run(self) -> None:
+        forward = LogForward(self.link, asyncio.get_running_loop())
+        logging.getLogger().addHandler(forward)
+        if os.environ.get("MIRRORDASH_NO_USERS"):  # said once the core reads the log
+            logger.error("This OS image can't give each module a user of its own, so no module runs: "
+                         "install the system update (Settings → Updates)")
+        elif self.sandboxed:
+            self._spawn(self._check())
+        try:
+            await read_lines(self.reader, self._handle)
+        finally:
+            logging.getLogger().removeHandler(forward)
+            for task in self._tasks:
+                task.cancel()
+            self.link.writer.close()
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
+
+    def _handle(self, message: dict) -> None:
+        kind, request = message.get("t"), message.get("id")
+        if kind == "uids":
+            instances = [i for i in message.get("instances") or [] if isinstance(i, str)]
+            self._spawn(self.link.send({"t": "reply", "id": request, "uids": module_uids(instances)}))
+        elif kind == "site":
+            self._spawn(self._site(message))
+        elif kind == "diagnose":
+            self._spawn(self._diagnose(request))
+
+    def instance(self, data: bytes, fds: list[int]) -> None:
+        """The core's request to start an instance (receive_spawns): its sockets go to its process."""
+        socks = [socket.socket(fileno=fd) for fd in fds]
+        try:
+            instance = json.loads(data).get("instance")
+            uid = module_uids([instance]).get(instance) if isinstance(instance, str) else None
+            if uid is None or len(socks) != 2:
+                raise ValueError(f"no user for {instance!r}")
+        except (ValueError, AttributeError, OSError) as e:
+            logger.error(f"A module instance couldn't start: {e}")
+            for s in socks:
+                s.close()
+            return
+        self.spawn("module", uid, instance, socks)
+
+    async def child(self, kind: str, uid: int, message: dict | None, timeout: float) -> dict:
+        """Run a site step or the probe in a process of its own: the message in, its answer out."""
+        ours, theirs = socket.socketpair()
+        reader, writer = await asyncio.open_unix_connection(sock=ours, limit=LINE_LIMIT)
+        try:
+            self.spawn(kind, uid, None, [theirs])
+            if message is not None:
+                writer.write(json.dumps(message).encode() + b"\n")
+                await writer.drain()
+            return json.loads(await asyncio.wait_for(reader.readline(), timeout) or b"{}")
+        finally:
+            writer.close()
+
+    async def _check(self) -> None:
+        try:
+            checks = (await self.child("probe", forkserver.PROBE_UID, None, PROBE_TIMEOUT)).get("checks") or []
+        except (OSError, ValueError, TimeoutError) as e:
+            checks = [(f"the self-check, which didn't finish ({e!r})", True)]
+        for what, reachable in checks:
+            if reachable:
+                logger.error(f"The module sandbox is open: modules can reach {what}")
+
+    async def _diagnose(self, request) -> None:
+        try:
+            checks = (await self.child("probe", forkserver.PROBE_UID, None, PROBE_TIMEOUT)).get("checks") or []
+        except (OSError, ValueError, TimeoutError) as e:
+            checks = [(f"the self-check, which didn't finish ({e!r})", True)]
+        await self.link.send({"t": "reply", "id": request, "checks": checks, "sandboxed": self.sandboxed})
 
     async def _site(self, message: dict) -> None:
-        """One step of a change to the installed modules (client.py's ModuleHost.packages), like the core's
-        venv_swap: prepare the next site (a copy of the active one, or empty when fresh), run uv pip in it,
-        import modules from it, switch the link to it, or drop it. The core runs one change at a time."""
-        op, python = message.get("op"), str(message.get("python") or "")
-        link, active, next_site = site_paths()
+        """One step of a change to the installed modules: in the site's process, but the link's switch (the
+        host's folder is the unit's user's). The core runs one change at a time."""
         code, err = 0, ""
         try:
-            if op == "prepare":
-                await asyncio.to_thread(shutil.rmtree, next_site, ignore_errors=True)
-                if active.is_dir() and not message.get("fresh"):
-                    await asyncio.to_thread(copy_site, active, next_site)
-                else:
-                    next_site.mkdir(parents=True)
-            elif op == "pip":
-                args = [str(a) for a in message.get("args") or []]
-                timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else UV_TIMEOUT
-                if args[:1] in (["install"], ["uninstall"]):
-                    # --no-cache: the host's folder is on /storage, which is small
-                    code, err = await run("uv", "pip", args[0], "--python", python, "--target", str(next_site),
-                                          "--no-cache", *args[1:], timeout=timeout)
-                else:
-                    code, err = 1, f"not a uv pip change: {args[:1]}"
-            elif op == "check":
-                names = [n for n in message.get("names", []) if isinstance(n, str) and SAFE_NAME.match(n)]
-                code, err = await run(python, "-I", "-c", CHECK, str(next_site), *names, timeout=CHECK_TIMEOUT)
-            elif op == "commit":
+            if message.get("op") == "commit":
+                link, _, next_site = site_paths()
                 point_link(link, next_site)
-            elif op == "revert":
-                await asyncio.to_thread(shutil.rmtree, next_site, ignore_errors=True)
             else:
-                code, err = 1, f"unknown site step {op!r}"
-        except OSError as e:
-            code, err = 1, str(e)
+                timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else SITE_STEP_TIMEOUT
+                reply = await self.child("site", forkserver.SITE_UID, message, timeout + 30)
+                code = reply.get("code") if isinstance(reply.get("code"), int) else 1
+                err = str(reply.get("err", "the step ended without an answer"))
+        except (OSError, ValueError, TimeoutError) as e:
+            code, err = 1, str(e) or repr(e)
         if code:
-            logger.warning(f"Module site {op} failed: {err.strip()}")
+            logger.warning(f"Module site {message.get('op')} failed: {err.strip()}")
         await self.link.send({"t": "reply", "id": message.get("id"), "code": code, "err": err})
 
 
-async def serve(path: str) -> None:
+def receive_spawns(listener: socket.socket, control: Control, loop: asyncio.AbstractEventLoop) -> None:
+    """In a thread: the core's second connection, each message an instance to start with its two sockets."""
+    try:
+        conn, _ = listener.accept()
+    except OSError:
+        return
+    with conn:
+        while True:
+            try:
+                data, fds, _, _ = socket.recv_fds(conn, 4096, 2)
+            except OSError:
+                return
+            if not data:
+                return
+            loop.call_soon_threadsafe(control.instance, data, fds)
+
+
+async def serve(path: str, spawn) -> None:
     """Serve the core's connection on the unix socket at path, and return when it ends."""
     done = asyncio.Event()
     busy = False
-    # Before the main socket: the core connects here right after it (GPIO's file descriptors)
+    # Before the main socket: the core connects here right after it (the instances' sockets)
     Path(path + ".fds").unlink(missing_ok=True)
     fd_listener = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     fd_listener.bind(path + ".fds")
@@ -455,11 +650,11 @@ async def serve(path: str) -> None:
             writer.close()
             return
         busy = True
-        host = Host(reader, writer)
-        threading.Thread(target=receive_fds, args=(fd_listener, host.link, asyncio.get_running_loop()),
+        control = Control(reader, writer, spawn)
+        threading.Thread(target=receive_spawns, args=(fd_listener, control, asyncio.get_running_loop()),
                          daemon=True).start()
         try:
-            await host.run()
+            await control.run()
         finally:
             done.set()
 
@@ -476,9 +671,8 @@ async def serve(path: str) -> None:
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger().handlers[0].setLevel(logging.WARNING)  # the rest reaches the core's log (LogForward)
-    # After the core's own packages: a module's copy of one (uv installs every dependency) never shadows them
-    site.addsitedir(str(module_site()))
-    asyncio.run(serve(sys.argv[1]))
+    path = sys.argv[1]
+    forkserver.run(lambda sock: serve(path, forkserver.Spawner(sock)), CHILDREN)
 
 
 if __name__ == "__main__":

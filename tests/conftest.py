@@ -28,6 +28,21 @@ def _fresh_logins(monkeypatch):
     monkeypatch.setattr(admin, "_failures", {})
 
 
+@pytest.fixture
+def host_here():
+    """host_here(path): the module host's control process as a task, serving path, with the processes the
+    forkserver would make as tasks of this process too (no fork, no user each), so a test's monkeypatches
+    reach the modules."""
+    import asyncio
+
+    from mirrordash_core.features.modules import host
+    children = set()
+
+    def spawn(kind, uid, instance, socks):
+        children.add(asyncio.get_running_loop().create_task(host.CHILDREN[kind](*socks, instance)))
+    return lambda path: asyncio.create_task(host.serve(path, spawn))
+
+
 @pytest.fixture(autouse=True)
 def _not_on_a_mirror(monkeypatch):
     """UV_PYTHON_INSTALL_DIR means "on a mirror" to the updates (a Python patch upgrade first); CI's

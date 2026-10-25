@@ -1,24 +1,49 @@
 #!/usr/bin/python3 -I
-# Usage: mirrordash-module-network [address ...]
-# Lets the module host (mirrordash-modules.service) reach exactly these home-network addresses, besides
-# systemd-resolved's stub: the "lan-url" settings the owner typed (features/modules/client.py,
-# ARCHITECTURE #41). No address: the home network is closed again. The core runs it through sudo, so
-# only home-network addresses pass, at most 32; it lasts until the next boot, and the core sets it at
-# every start.
+# Usage: mirrordash-module-network [uid=address ...]
+# Lets each module instance's user (features/modules/forkserver.py) reach exactly its home-network
+# addresses, besides systemd-resolved's stub: the "lan-url" settings the owner typed
+# (features/modules/client.py, ARCHITECTURE #41). The module host (mirrordash-modules.service) may reach
+# all of them (IPAddressAllow, the cgroup's filter), and nftables keeps each to its own user: an address
+# is open to the users it is given to and refused to the host's other users. Nothing given: the home
+# network is closed again. The core runs it through sudo, so only the modules' users and home-network
+# addresses pass, at most 64 pairs; it lasts until the next boot, and the core sets it at every start.
 import ipaddress
 import subprocess
 import sys
 
-addresses = sys.argv[1:]
-if len(addresses) > 32:
-    sys.exit("at most 32 addresses")
-for address in addresses:
+MODULE_USERS = range(70000, 71000)  # forkserver.UIDS
+HOST_USER = 960  # mirrordash-mod: the forkserver and the control process, which reach nothing at home
+
+pairs = sys.argv[1:]
+if len(pairs) > 64:
+    sys.exit("at most 64 addresses")
+allowed = []
+for pair in pairs:
+    uid, _, address = pair.partition("=")
     try:
-        ip = ipaddress.ip_address(address)
+        uid, ip = int(uid), ipaddress.ip_address(address)
     except ValueError:
-        sys.exit(f"not an address: {address}")
+        sys.exit(f"not a module user and an address: {pair}")
+    if uid not in MODULE_USERS:
+        sys.exit(f"not a module user: {uid}")
     if not ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
         sys.exit(f"not a home-network address: {address}")
-allow = " ".join(["127.0.0.53", *addresses])
+    allowed.append((uid, ip))
+
+users = f"{{ {HOST_USER}, {MODULE_USERS.start}-{MODULE_USERS.stop - 1} }}"
+rules = [f"meta skuid {uid} {'ip' if ip.version == 4 else 'ip6'} daddr {ip} accept" for uid, ip in allowed]
+for version, family in ((4, "ip"), (6, "ip6")):
+    opened = sorted({str(ip) for _, ip in allowed if ip.version == version})
+    if opened:
+        # admin-prohibited, not a reset: the host's self-check counts "refused" as reached
+        rules.append(f"meta skuid {users} {family} daddr {{ {', '.join(opened)} }} reject with icmpx admin-prohibited")
+# Made (if missing), dropped and made again in one transaction: the rules are replaced at once
+ruleset = "\n".join([
+    "table inet mirrordash_modules", "delete table inet mirrordash_modules",
+    "table inet mirrordash_modules {", "  chain out {", "    type filter hook output priority 0; policy accept;",
+    *(f"    {rule}" for rule in rules), "  }", "}", ""])
+if subprocess.run(["nft", "-f", "-"], input=ruleset, text=True).returncode:
+    sys.exit("could not set the modules' nftables rules")
+allow = " ".join(["127.0.0.53", *sorted({str(ip) for _, ip in allowed})])
 sys.exit(subprocess.run(["systemctl", "set-property", "--runtime", "mirrordash-modules.service",
                          "IPAddressAllow=", f"IPAddressAllow={allow}"]).returncode)

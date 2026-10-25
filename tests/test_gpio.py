@@ -47,7 +47,7 @@ def test_a_request_asks_the_kernel_for_exactly_those_lines():
 
 
 @pytest.mark.asyncio
-async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, monkeypatch):
+async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, monkeypatch, host_here):
     """A real module host and the core's client: the module's request goes to the core, which checks it
     and hands over the lines' file descriptor (a pipe here, there is no GPIO chip in a test)."""
     import mirrordash_core.features.modules.loader
@@ -99,7 +99,7 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
     monkeypatch.setattr(client_module, "header_chip", lambda: "/dev/gpiochip0")
     monkeypatch.setattr(client_module, "request_lines", fake_request)
     core = client_module.ModuleHost()
-    server = asyncio.create_task(host_module.serve(socket_path))
+    server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
     await core.start_modules()
     try:
@@ -110,8 +110,9 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
         assert results["read"] == b"x"
         # The crash let the lines go (the kernel would refuse them as busy otherwise), the new start got its own
         assert results["lines"].fd == -1 and results["again"].fd >= 0
-        # Asked from outside its own instance, the core refuses as well
-        assert core._gpio({"id": 99, "instance": "elsewhere", "pins": [27]}) == "not an instance of this mirror"
+        # A connection speaks for its own instance only, whatever its message names; one of no instance gets none
+        stranger = client_module.Connection(MagicMock(), MagicMock(), None, "elsewhere")
+        assert core._gpio({"id": 99, "instance": "relay", "pins": [27]}, stranger) == "not an instance of this mirror"
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

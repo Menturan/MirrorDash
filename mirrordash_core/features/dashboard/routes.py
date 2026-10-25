@@ -59,7 +59,7 @@ async def get_panel_dashboard(request: Request):
             "cpu_load": get_cpu_load(),
             "local_ip": local_ip,
             "active_count": len(module_host.running),
-            "modules_paused": module_host.paused,
+            "modules_paused": sorted(module_host.paused),
             "uptime_str": uptime_str,
             "ram_usage": ram_usage,
             "ntp_synchronized": ntp_synchronized,

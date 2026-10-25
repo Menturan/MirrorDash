@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,7 +17,7 @@ def test_active_modules_carousel_fields(client):
         "mirrordash-clock": {"position": "middle_left"},
     }}
 
-    with patch("mirrordash_core.features.kiosk.routes.module_host.running", ["mirrordash-calendar", "mirrordash-clock"]), \
+    with patch("mirrordash_core.features.kiosk.routes.module_host", MagicMock(running=["mirrordash-calendar", "mirrordash-clock"])), \
          patch("mirrordash_core.features.kiosk.routes.load_config", return_value=config), \
          patch("mirrordash_core.features.kiosk.routes.find_entry_point", return_value=None):
         response = client.get("/api/active-modules")

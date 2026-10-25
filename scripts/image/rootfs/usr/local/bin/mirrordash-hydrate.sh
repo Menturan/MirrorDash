@@ -28,7 +28,7 @@ mkdir -p /storage/mirrordash/system-connections
 chown pi:pi /storage/mirrordash
 chown pi:pi /storage/mirrordash/data
 # The core's data (every setting and key, the logins, the Matter token) is pi's alone; the modules,
-# as their own user, have a folder of their own (mirrordash-modules.service, ARCHITECTURE #41), which
+# as their own users, have a folder of their own (mirrordash-modules.service, ARCHITECTURE #41), which
 # pi reaches through their group (backups)
 chmod 700 /storage/mirrordash/data
 mkdir -p /storage/mirrordash/modules
@@ -59,7 +59,12 @@ if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q "$MODULES"; t
 fi
 if id mirrordash-mod >/dev/null 2>&1; then
     [ "$(stat -c %U /storage/mirrordash/modules)" = mirrordash-mod ] || chown -R mirrordash-mod:mirrordash-mod /storage/mirrordash/modules
-    chmod 2770 /storage/mirrordash/modules
+    # Each module instance runs as a user of its own (features/modules/forkserver.py), in no group of the
+    # folder: it may pass through these (o+x), not list them, to its own data folder and the site. Set
+    # here, as root: the host's sandbox refuses a setgid mode (RestrictSUIDSGID).
+    mkdir -p "$MODULES/data" "$MODULES/cache"
+    chown mirrordash-mod:mirrordash-mod "$MODULES/data" "$MODULES/cache"
+    chmod 2771 "$MODULES" "$MODULES/data" "$MODULES/cache"
 fi
 chown root:root /storage/mirrordash/system-connections
 chmod 700 /storage/mirrordash/system-connections

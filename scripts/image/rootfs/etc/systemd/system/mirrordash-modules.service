@@ -1,5 +1,5 @@
 [Unit]
-Description=MirrorDash modules (apart from the core, as their own user, ARCHITECTURE #41)
+Description=MirrorDash modules (apart from the core, each as a user of its own, ARCHITECTURE #41)
 After=mirrordash-storage-init.service systemd-resolved.service network.target
 Requires=mirrordash-storage-init.service
 # It exits whenever the core restarts: never give up starting it again
@@ -15,9 +15,10 @@ RuntimeDirectoryMode=0750
 UMask=0007
 Environment="HOME=/storage/mirrordash/modules"
 Environment="MIRRORDASH_MODULE_DIR=/storage/mirrordash/modules"
-# The host checks that the limits below hold, and logs an error when one doesn't (host.py sandbox_holes)
+# The host checks that the limits below hold, and logs an error when one doesn't (host.py sandbox_checks)
 Environment="MIRRORDASH_SANDBOX=1"
-# pycache_prefix: the venv is read-only for this user, so compiled modules are kept in its own folder
+# pycache_prefix: the venv is read-only for this user, so the core's code compiled for the forkserver is
+# kept in its folder; a module's process writes none (forkserver.py), the site's process compiles the site
 ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache -m mirrordash_core.features.modules.host /run/mirrordash-modules/host.sock
 # It exits when the core goes (a restart, an update) and starts again with the venv there is now
 Restart=always
@@ -42,7 +43,10 @@ ProtectControlGroups=yes
 ProtectClock=yes
 ProtectHostname=yes
 NoNewPrivileges=yes
-CapabilityBoundingSet=
+# Only to make each module instance's process a user of its own (forkserver.py): the forkserver keeps them,
+# every other process clears them before anything else runs (and the host's self-check looks)
+CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN
+AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_CHOWN
 RestrictNamespaces=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
@@ -73,6 +77,9 @@ IPAddressAllow=127.0.0.53
 # first. No swap: a leaking module is stopped at its limit instead of filling zram and slowing the screen.
 # ponytail: guessed limits; raise MemoryMax if a module is killed with "oom-kill" in the journal.
 MemoryMax=30%
+# At the limit the kernel kills one process, a module's first (oom_score_adj 500), and the rest run on;
+# the core starts it again, and pauses it after it died three times in a row (client.py CRASH_LIMIT)
+OOMPolicy=continue
 MemorySwapMax=0
 CPUWeight=50
 IOWeight=50

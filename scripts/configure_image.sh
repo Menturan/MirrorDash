@@ -807,7 +807,7 @@ step_ab_updates() {
   visudo -cf /etc/sudoers.d/mirrordash-rauc
 }
 
-# The modules run apart from the core, as their own user, in their own sandbox (ARCHITECTURE #41)
+# The modules run apart from the core, each as a user of its own, in their own sandbox (ARCHITECTURE #41)
 step_module_host() {
   echo "Creating the modules' user..."
   # A fixed id: /storage keeps the modules' folder across OS updates, and the next image's user must own it
@@ -829,8 +829,9 @@ step_module_host() {
   # The host may not reach the home network, the router (usually the DNS server) included: names go
   # through systemd-resolved's stub on 127.0.0.53, which it may reach. The last apt package with a
   # download: installing it points /etc/resolv.conf at that stub, which doesn't answer in this build.
-  echo "Installing systemd-resolved..."
-  apt-get install -y --no-install-recommends systemd-resolved
+  # nftables: mirrordash-module-network keeps each module's home-network address to its own user.
+  echo "Installing systemd-resolved and nftables..."
+  apt-get install -y --no-install-recommends systemd-resolved nftables
   put 0644 /etc/systemd/resolved.conf.d/mirrordash.conf
   systemctl --root=/ enable systemd-resolved.service
 }

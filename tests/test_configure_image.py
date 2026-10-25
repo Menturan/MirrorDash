@@ -274,10 +274,12 @@ def test_pi_password_helper_sets_only_pi(tmp_path):
 
 def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_addresses(tmp_path):
     """The module host's unit keeps the core's data, the home network and the mirror's own routes away
-    (ARCHITECTURE #41); its helper, run as root by the core, lets through only home-network addresses."""
+    (ARCHITECTURE #41) and may only make each module a user of its own; its helper, run as root by the core,
+    lets through only home-network addresses, each to its own module's user."""
     host = unit("/etc/systemd/system/mirrordash-modules.service").splitlines()
     for line in ("User=mirrordash-mod", "ProtectSystem=strict", "ProtectHome=yes", "NoNewPrivileges=yes",
-                 "CapabilityBoundingSet=", "DevicePolicy=closed", "IPAddressAllow=127.0.0.53",
+                 "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN", "AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_CHOWN",
+                 "OOMPolicy=continue", "DevicePolicy=closed", "IPAddressAllow=127.0.0.53",
                  "ReadWritePaths=/storage/mirrordash/modules", "SystemCallFilter=@system-service",
                  'Environment="MIRRORDASH_SANDBOX=1"'):  # the IP filters: test_audit_image
         assert line in host, line
@@ -292,28 +294,40 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     # nor the card at all: their folder is a file system of its own, in a file (hydrate), mounted before both start
     hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
     assert 'mount -o loop,discard,nosuid,nodev "$MODULES_IMG" "$MODULES"' in hydrate
-    assert hydrate.index("$MODULES_IMG\" \"$MODULES\"") < hydrate.index("chmod 2770 /storage/mirrordash/modules")
+    # mounted first, then passable (not listable) for the modules' users, who are in none of its groups
+    assert hydrate.index("$MODULES_IMG\" \"$MODULES\"") < hydrate.index('chmod 2771 "$MODULES" "$MODULES/data" "$MODULES/cache"')
     # MemoryMax needs the memory controller, which the Pi's firmware turns off
     assert "MemoryMax=30%" in host and "ProcSubset=pid" in host and '"cgroup_enable=memory"' in SETUP
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network" in unit("/etc/sudoers.d/mirrordash")
-    assert "systemd-resolved" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")
+    assert "systemd-resolved nftables" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     log = tmp_path / "systemctl.log"
     (bin_dir / "systemctl").write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > {log}\n')
     (bin_dir / "systemctl").chmod(0o755)
+    rules = tmp_path / "nft.rules"
+    (bin_dir / "nft").write_text(f'#!/bin/sh\ncat > {rules}\n')
+    (bin_dir / "nft").chmod(0o755)
     helper = ROOTFS / "usr" / "local" / "bin" / "mirrordash-module-network"
 
     def run(*args):
         return subprocess.run(["python3", str(helper), *args], capture_output=True, text=True,
                               env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"}).returncode
 
-    assert run("192.168.1.20", "fd00::5") == 0
+    assert run("70100=192.168.1.20", "70101=fd00::5", "70102=192.168.1.20") == 0
     assert log.read_text().splitlines() == ["set-property", "--runtime", "mirrordash-modules.service",
                                             "IPAddressAllow=", "IPAddressAllow=127.0.0.53 192.168.1.20 fd00::5"]
-    assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53"
-    for bad in ("8.8.8.8", "127.0.0.1", "0.0.0.0", "224.0.0.1", "192.168.1.0/24", "--now", "::1"):
+    written = rules.read_text()
+    for rule in ("meta skuid 70100 ip daddr 192.168.1.20 accept", "meta skuid 70101 ip6 daddr fd00::5 accept",
+                 "meta skuid 70102 ip daddr 192.168.1.20 accept",
+                 "meta skuid { 960, 70000-70999 } ip daddr { 192.168.1.20 } reject with icmpx admin-prohibited",
+                 "meta skuid { 960, 70000-70999 } ip6 daddr { fd00::5 } reject with icmpx admin-prohibited"):
+        assert rule in written, rule
+    assert written.index("daddr fd00::5 accept") < written.index("reject") and written.startswith("table inet mirrordash_modules\ndelete table")
+    assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53" and "skuid" not in rules.read_text()
+    for bad in ("192.168.1.20", "70100=8.8.8.8", "70100=127.0.0.1", "70100=0.0.0.0", "70100=224.0.0.1",
+                "70100=192.168.1.0/24", "1000=192.168.1.20", "960=192.168.1.20", "--now", "70100=::1"):
         log.unlink(missing_ok=True)
         assert run(bad) != 0 and not log.exists(), bad
