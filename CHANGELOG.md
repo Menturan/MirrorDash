@@ -9,9 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- Modules that keep stopping soon after they start (one using up its memory, most likely) are paused after the third time, instead of starting over every few seconds; the *Dashboard* says so and starts them again with one button.
-- A new push button is suggested on GPIO 3 (pin 5), the pin that also starts the mirror after it was shut down.
-
 ### OS image
 
 - Modules no longer see the mirror's own system details (its processor, memory and kernel settings), only their own processes.
@@ -26,6 +23,11 @@ There are two kinds of releases:
 - Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).
 - The mirror no longer gets stuck without Wi-Fi or setup network when several saved networks are out of range.
 - *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
+
+## [0.9.2] - 2026-10-25
+
+- Modules that keep stopping soon after they start (one using up its memory, most likely) are paused after the third time, instead of starting over every few seconds; the *Dashboard* says so and starts them again with one button.
+- A new push button is suggested on GPIO 3 (pin 5), the pin that also starts the mirror after it was shut down.
 
 ## [0.9.1] - 2026-10-25
 
