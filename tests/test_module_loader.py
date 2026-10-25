@@ -506,6 +506,17 @@ def test_the_site_is_copied_without_setting_a_setgid_bit(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_the_running_modules_keep_the_settings_order():
+    """The screen lays an area's cards out in the order /api/active-modules lists them; the host reports
+    its instances sorted, which put the clock above Home Assistant on the test mirror."""
+    from mirrordash_core.features.modules.client import ModuleHost
+    core = ModuleHost()
+    core._placement = {"ha": {}, "namnsdag": {}, "clock": {}, "off": {}}
+    await core._handle({"t": "status", "gen": core._gen, "running": ["clock", "ha", "namnsdag", "unknown"]})
+    assert core.running == ["ha", "namnsdag", "clock"]
+
+
+@pytest.mark.asyncio
 async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch):
     """uv runs in the module host, into a copy of its site that is switched in only when the change worked
     (ARCHITECTURE #41). The core then finds the module by its files: a package's .pth never runs in it."""

@@ -331,7 +331,8 @@ class ModuleHost:
                 await manager.broadcast({**self._placement[instance_id], "html": message["html"]})
         elif kind == "status":
             if message.get("gen") == self._gen and isinstance(message.get("running"), list):
-                self.running = [i for i in message["running"] if i in self._placement]
+                # In the settings' order, which the screen lays an area's cards out in (the host's list is sorted)
+                self.running = [i for i in self._placement if i in message["running"]]
         elif kind == "video_playing":
             if instance_id in self._placement:
                 await manager.set_video_playing(instance_id, bool(message.get("on")))
