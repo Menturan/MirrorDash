@@ -90,6 +90,21 @@ def site_paths() -> tuple[Path, Path, Path]:
     return link, active, site_a if active == site_b else site_b
 
 
+def copy_site(src: Path, dst: Path) -> None:
+    """shutil.copytree(src, dst, symlinks=True), but the folders' modes aren't copied: they carry the modules
+    folder's setgid bit, and setting it is what RestrictSUIDSGID= forbids (EPERM: every module change after
+    the first failed on the test mirror). A new folder gets the bit from its parent anyway."""
+    for root, dirs, files in os.walk(src):
+        target = dst / os.path.relpath(root, src)
+        target.mkdir(parents=True, exist_ok=True)
+        for name in files + [d for d in dirs if os.path.islink(os.path.join(root, d))]:
+            path = os.path.join(root, name)
+            if os.path.islink(path):
+                os.symlink(os.readlink(path), target / name)
+            else:
+                shutil.copy2(path, target / name)
+
+
 async def run(*cmd: str, timeout: float) -> tuple[int, str]:
     """(returncode, the end of stderr); 124 after timeout seconds, like timeout(1)."""
     try:
@@ -348,7 +363,7 @@ class Host:
             if op == "prepare":
                 await asyncio.to_thread(shutil.rmtree, next_site, ignore_errors=True)
                 if active.is_dir() and not message.get("fresh"):
-                    await asyncio.to_thread(shutil.copytree, active, next_site, symlinks=True)
+                    await asyncio.to_thread(copy_site, active, next_site)
                 else:
                     next_site.mkdir(parents=True)
             elif op == "pip":

@@ -470,6 +470,41 @@ if args[-1] != "md_widget":
 '''
 
 
+def test_the_site_is_copied_without_setting_a_setgid_bit(tmp_path, monkeypatch):
+    """The modules folder is setgid (2770) and its folders inherit the bit; the host's sandbox
+    (RestrictSUIDSGID=) refuses to set it, which copytree's copystat does: every module change after the
+    first failed with EPERM on the test mirror."""
+    import os
+    import shutil
+    import stat
+
+    from mirrordash_core.features.modules.host import copy_site
+
+    src = tmp_path / "site_b"
+    (src / "pkg" / "templates").mkdir(parents=True)
+    (src / "pkg" / "templates" / "widget.html").write_text("<p>hi</p>")
+    (src / "bin").mkdir()
+    (src / "bin" / "tool").write_text("#!/bin/sh\n")
+    (src / "bin" / "tool").chmod(0o750)
+    (src / "pkg-link").symlink_to("pkg")
+    for folder in (src, src / "pkg", src / "pkg" / "templates", src / "bin"):
+        folder.chmod(0o2770)
+    real_chmod = os.chmod
+
+    def sandboxed_chmod(path, mode, *args, **kwargs):
+        if mode & (stat.S_ISUID | stat.S_ISGID):
+            raise PermissionError(1, "Operation not permitted", str(path))
+        return real_chmod(path, mode, *args, **kwargs)
+    monkeypatch.setattr(os, "chmod", sandboxed_chmod)
+
+    with pytest.raises(OSError):  # what the host did
+        shutil.copytree(src, tmp_path / "copytree", symlinks=True)
+    copy_site(src, tmp_path / "site_a")
+    dst = tmp_path / "site_a"
+    assert (dst / "pkg" / "templates" / "widget.html").read_text() == "<p>hi</p>"
+    assert os.readlink(dst / "pkg-link") == "pkg" and os.access(dst / "bin" / "tool", os.X_OK)
+
+
 @pytest.mark.asyncio
 async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch):
     """uv runs in the module host, into a copy of its site that is switched in only when the change worked
