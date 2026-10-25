@@ -12,6 +12,7 @@ There are two kinds of releases:
 - Each module now runs on its own, as a user of its own: one module can no longer read another's settings, saved data or keys (like the Home Assistant token), and a module that crashes or uses up the modules' memory stops alone while the others keep running. After it stops three times in a row soon after starting, it stays off and the *Dashboard* names it, with *Start Modules Again*.
 - Changing a module's settings restarts only that module, and moving it on the screen restarts none: the other modules keep their place and what they show.
 - The *Logs* tab shows each module's lines under its own name.
+- *System Language* in *Settings* lists every language again, not only five.
 - Needs the system update that comes with this version: on an older one no module runs, and the admin page says so.
 
 ### OS image

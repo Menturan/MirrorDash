@@ -105,21 +105,11 @@ def validate_config(config: dict) -> None:
 
 async def get_globals_schema() -> dict:
     """Return the JSON schema defining global configuration settings."""
-    try:
-        # ponytail: babel isn't a dependency (too big for one list); only when a module brought it along
-        # do all languages show, otherwise the short list below. Upgrade: ship the list as a JSON file.
-        import babel
-        babel_locale = babel.Locale('en')
-        lang_list = sorted(
-            [(code, name) for code, name in babel_locale.languages.items() if len(code) == 2],
-            key=lambda x: x[1]
-        )
-        enum_codes = [code for code, name in lang_list]
-        enum_titles = [name for code, name in lang_list]
-    except Exception as e:
-        logger.info(f"Short language list (babel not installed): {e}")
-        enum_codes = ["en", "sv", "de", "fr", "nl"]
-        enum_titles = ["English", "Swedish", "German", "French", "Dutch"]
+    import babel  # here, not at the top: its locale data is only needed by the admin page
+    lang_list = sorted(((code, name) for code, name in babel.Locale('en').languages.items() if len(code) == 2),
+                       key=lambda x: x[1])
+    enum_codes = [code for code, name in lang_list]
+    enum_titles = [name for code, name in lang_list]
 
     return {
         "title": "Global Settings",

@@ -572,7 +572,9 @@ def test_get_globals_schema():
     assert isinstance(schema, dict)
     assert schema["title"] == "Global Settings"
     assert "properties" in schema
-    assert "language" in schema["properties"]
+    language = schema["properties"]["language"]
+    assert dict(zip(language["enum"], language["enum_titles"], strict=True))["sv"] == "Swedish"
+    assert len(language["enum"]) > 100  # every language babel knows, not a short fallback list
 
 
 # ---------------------------------------------------------------------------
