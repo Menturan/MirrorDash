@@ -331,7 +331,7 @@ wheels = [
 
 [[package]]
 name = "mirrordash"
-version = "0.9.1rc2"
+version = "0.9.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
