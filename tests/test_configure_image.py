@@ -281,7 +281,10 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
                  "CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN", "AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_CHOWN",
                  "OOMPolicy=continue", "DevicePolicy=closed", "IPAddressAllow=127.0.0.53",
                  "ReadWritePaths=/storage/mirrordash/modules", "SystemCallFilter=@system-service",
-                 'Environment="MIRRORDASH_SANDBOX=1"'):  # the IP filters: test_audit_image
+                 'Environment="MIRRORDASH_SANDBOX=1"',
+                 # forkserver, not host: an app from before it would run its modules with the capabilities
+                 "ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache"
+                 " -m mirrordash_core.features.modules.forkserver /run/mirrordash-modules/host.sock"):  # the IP filters: test_audit_image
         assert line in host, line
     assert any(line.startswith("InaccessiblePaths=-/storage/mirrordash/data ") for line in host)
     # No GPIO chip nor gpiomem (every pin, the SD card's too): pins come from the core (features/hardware/gpio.py)

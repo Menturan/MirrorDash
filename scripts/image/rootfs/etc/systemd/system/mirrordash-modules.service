@@ -19,7 +19,8 @@ Environment="MIRRORDASH_MODULE_DIR=/storage/mirrordash/modules"
 Environment="MIRRORDASH_SANDBOX=1"
 # pycache_prefix: the venv is read-only for this user, so the core's code compiled for the forkserver is
 # kept in its folder; a module's process writes none (forkserver.py), the site's process compiles the site
-ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache -m mirrordash_core.features.modules.host /run/mirrordash-modules/host.sock
+# forkserver, not host: an app from before it would run its modules with the capabilities below
+ExecStart=/storage/mirrordash/venv/bin/python -I -X pycache_prefix=/storage/mirrordash/modules/.pycache -m mirrordash_core.features.modules.forkserver /run/mirrordash-modules/host.sock
 # It exits when the core goes (a restart, an update) and starts again with the venv there is now
 Restart=always
 RestartSec=2

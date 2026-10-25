@@ -245,3 +245,10 @@ class Spawner:
         finally:
             for s in socks:
                 s.close()
+
+
+if __name__ == "__main__":
+    # The unit's ExecStart, rather than host: an app from before this file can't start, so it never runs its
+    # modules with the unit's capabilities
+    from mirrordash_core.features.modules.host import main
+    main()

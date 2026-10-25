@@ -120,21 +120,27 @@ def default_gateway() -> str | None:
     return None
 
 
-def sandbox_checks() -> list[tuple[str, bool]]:
+def data_folders() -> list[str]:
+    """The instances' data folders, as the control process sees them (a module's user can't list them)."""
+    with contextlib.suppress(OSError):
+        return sorted(e.name for e in os.scandir(get_module_dir() / "data") if SAFE_NAME.match(e.name))
+    return []
+
+
+def sandbox_checks(data: list[str] | None = None) -> list[tuple[str, bool]]:
     """What the sandbox keeps from a module, looked at as one (probe_main): (what, reachable), each should
     be False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
     device cgroup, namespaces), and a user per module holds only if its capabilities are gone and the
-    folders' modes are right, so the host looks: when the core connects, and from Logs → Diagnostics."""
+    folders' modes are right, so the host looks: when the core connects, and from Logs → Diagnostics.
+    data: the instances' data folders (default: those this process can list)."""
     checks = [(f"the mirror's own port {port}", reaches("127.0.0.1", port)) for port in SANDBOX_PORTS]
     if gateway := default_gateway():
         checks.append((f"the router ({gateway})", reaches(gateway, 53)))
     checks += [(f"{what} ({path})", os.access(path, os.R_OK)) for path, what in SANDBOX_PATHS.items()]
     devices = sorted({p for pattern in SANDBOX_DEVICES for p in glob.glob(pattern)} - MODULE_DEVICES)
     checks += [(path, opens(path)) for path in devices]
-    data = get_module_dir() / "data"
-    with contextlib.suppress(OSError):
-        checks += [(f"another module's data ({entry.name})", os.access(entry.path, os.R_OK))
-                   for entry in sorted(os.scandir(data), key=lambda e: e.name)]
+    checks += [(f"another module's data ({name})", os.access(get_module_dir() / "data" / name, os.R_OK))
+               for name in (data_folders() if data is None else data)]
     checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
     checks.append(("capabilities (" + (", ".join(forkserver.capabilities()) or "none") + ")",
                    bool(forkserver.capabilities())))
@@ -482,7 +488,9 @@ async def site_main(stream: socket.socket, _instance=None) -> None:
 async def probe_main(stream: socket.socket, _instance=None) -> None:
     """The sandbox's checks, as a module's user would see it (forkserver.PROBE_UID)."""
     reader, writer = await asyncio.open_unix_connection(sock=stream)
-    writer.write(json.dumps({"checks": await asyncio.to_thread(sandbox_checks)}).encode() + b"\n")
+    data = json.loads(await reader.readline()).get("data")
+    data = [n for n in data if isinstance(n, str) and SAFE_NAME.match(n)] if isinstance(data, list) else []
+    writer.write(json.dumps({"checks": await asyncio.to_thread(sandbox_checks, data)}).encode() + b"\n")
     await writer.drain()
     writer.close()
 
@@ -581,21 +589,21 @@ class Control:
         finally:
             writer.close()
 
-    async def _check(self) -> None:
+    async def probe(self) -> list:
+        """sandbox_checks as the self-check's user, told the data folders it can't list."""
         try:
-            checks = (await self.child("probe", forkserver.PROBE_UID, None, PROBE_TIMEOUT)).get("checks") or []
+            reply = await self.child("probe", forkserver.PROBE_UID, {"data": data_folders()}, PROBE_TIMEOUT)
+            return reply.get("checks") or []
         except (OSError, ValueError, TimeoutError) as e:
-            checks = [(f"the self-check, which didn't finish ({e!r})", True)]
-        for what, reachable in checks:
+            return [(f"the self-check, which didn't finish ({e!r})", True)]
+
+    async def _check(self) -> None:
+        for what, reachable in await self.probe():
             if reachable:
                 logger.error(f"The module sandbox is open: modules can reach {what}")
 
     async def _diagnose(self, request) -> None:
-        try:
-            checks = (await self.child("probe", forkserver.PROBE_UID, None, PROBE_TIMEOUT)).get("checks") or []
-        except (OSError, ValueError, TimeoutError) as e:
-            checks = [(f"the self-check, which didn't finish ({e!r})", True)]
-        await self.link.send({"t": "reply", "id": request, "checks": checks, "sandboxed": self.sandboxed})
+        await self.link.send({"t": "reply", "id": request, "checks": await self.probe(), "sandboxed": self.sandboxed})
 
     async def _site(self, message: dict) -> None:
         """One step of a change to the installed modules: in the site's process, but the link's switch (the
