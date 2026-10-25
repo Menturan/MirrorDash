@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import stat
 import tempfile
 import zipfile
 from datetime import datetime
@@ -86,32 +87,94 @@ def venv_distributions(venv_dir: Path | None = None, **kwargs):
     return importlib.metadata.distributions(**kwargs)
 
 
-def _no_links(*patterns):
-    """shutil.ignore_patterns, and every symlink as well: the module host writes in its folder, and a link
-    it put there to the core's data dir would carry that into a backup."""
-    skip = shutil.ignore_patterns(*patterns)
-    return lambda directory, names: skip(directory, names) | {
-        n for n in names if os.path.islink(os.path.join(directory, n))}
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def copy_out(src: Path, dst: Path, skip) -> None:
+    """shutil.copytree(src, dst, ignore=skip) out of a folder the module host writes, through file
+    descriptors (os.fwalk, O_NOFOLLOW): no symlink is followed, not even one swapped in while it copies,
+    so the host can't carry the core's data into a backup. Links themselves are left out."""
+    for root, dirs, files, root_fd in os.fwalk(src, follow_symlinks=False):
+        target = dst / os.path.relpath(root, src)
+        target.mkdir(parents=True, exist_ok=True)
+        ignored = skip(root, dirs + files)
+        dirs[:] = [d for d in dirs if d not in ignored]
+        for name in files:
+            if name in ignored:
+                continue
+            try:
+                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+            except OSError:  # a link (ELOOP), or gone meanwhile
+                continue
+            with open(fd, "rb") as f:
+                if stat.S_ISREG(os.fstat(fd).st_mode):
+                    with open(target / name, "wb") as out:
+                        shutil.copyfileobj(f, out)
+
+
+def _open_dir(root: Path, parts: tuple[str, ...]) -> int:
+    """root/parts... opened as a directory, each part made if missing and none followed if it is a link."""
+    fd = os.open(root, DIR_FLAGS)
+    try:
+        for part in parts:
+            with contextlib.suppress(FileExistsError):
+                os.mkdir(part, dir_fd=fd)
+            fd, parent = os.open(part, DIR_FLAGS, dir_fd=fd), fd
+            os.close(parent)
+    except OSError:
+        os.close(fd)
+        raise
+    return fd
+
+
+def _copy_in(src: Path, dir_fd: int) -> None:
+    """src's files into the open directory, group-writable for the module host (pi writes them); links
+    left out. Nothing at dir_fd is followed: made with O_EXCL and O_NOFOLLOW."""
+    for entry in os.scandir(src):
+        if entry.is_symlink():
+            continue
+        if entry.is_dir():
+            os.mkdir(entry.name, dir_fd=dir_fd)
+            fd = os.open(entry.name, DIR_FLAGS, dir_fd=dir_fd)
+            try:
+                os.fchmod(fd, 0o2770)
+                _copy_in(Path(entry.path), fd)
+            finally:
+                os.close(fd)
+        else:
+            fd = os.open(entry.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660, dir_fd=dir_fd)
+            with open(fd, "wb") as out, open(entry.path, "rb") as f:
+                os.fchmod(fd, 0o660)
+                shutil.copyfileobj(f, out)
 
 
 def _replace_in_module_folder(src: Path, dest: Path) -> bool:
-    """Copy src over dest, in a folder the module host writes, following no symlink there: one would have
-    pi delete or write wherever it points (the core's data dir). Writable for the module host through its
-    group, as pi writes it. False when dest's folder is a link.
-    ponytail: the host keeps running meanwhile, so a link swapped in between the check and the copy still
-    gets through; the upgrade path is the host restoring its own folder, as its own user."""
-    if dest.parent.is_symlink():
-        logger.error(f"{dest.parent} is a symlink: {dest.name} was not restored")
+    """Copy src over dest, in a folder the module host writes, through file descriptors: no symlink there
+    is followed, not even one swapped in meanwhile (a link would have pi delete or write wherever it
+    points, the core's data dir). False when a folder on the way is a link."""
+    host_dir = get_module_dir()
+    root, parts = (host_dir, dest.parent.relative_to(host_dir).parts) if dest.is_relative_to(host_dir) \
+        else (dest.parent, ())
+    try:
+        parent = _open_dir(root, parts)
+    except OSError as e:
+        logger.error(f"{dest.parent} isn't a folder of its own ({e}): {dest.name} was not restored")
         return False
-    if dest.is_symlink():
-        dest.unlink()
-    elif dest.exists():
-        shutil.rmtree(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dest, symlinks=True)
-    for path in [dest, *dest.rglob("*")]:
-        if not path.is_symlink():
-            path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))
+    try:
+        with contextlib.suppress(FileNotFoundError):
+            if stat.S_ISDIR(os.stat(dest.name, dir_fd=parent, follow_symlinks=False).st_mode):
+                shutil.rmtree(dest.name, dir_fd=parent)  # fd-based: follows no link either
+            else:
+                os.unlink(dest.name, dir_fd=parent)
+        os.mkdir(dest.name, dir_fd=parent)
+        fd = os.open(dest.name, DIR_FLAGS, dir_fd=parent)
+        try:
+            os.fchmod(fd, 0o2770)
+            _copy_in(src, fd)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(parent)
     return True
 
 
@@ -268,8 +331,8 @@ async def create_backup(password: str | None = None) -> dict:
         module_data = get_module_dir() / "data"
         if module_data.is_dir() and not module_data.is_symlink():
             try:
-                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data",
-                                        ignore=_no_links('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm'))
+                await asyncio.to_thread(copy_out, module_data, content / "module_data",
+                                        shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm'))
             except Exception as e:
                 logger.error(f"Failed to copy the modules' data: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to package the modules' data: {e}")
@@ -280,10 +343,10 @@ async def create_backup(password: str | None = None) -> dict:
             for mod in modules_list:
                 if mod["type"] == "local":
                     await asyncio.to_thread(
-                        shutil.copytree,
+                        copy_out,
                         find_local_module_dir(mod["package_name"]),
                         content / "local_modules" / mod["folder_name"],
-                        ignore=_no_links('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
+                        shutil.ignore_patterns('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
                     )
         except Exception as e:
             logger.error(f"Failed to package modules metadata: {e}")

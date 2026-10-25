@@ -254,6 +254,31 @@ def test_find_local_module_dir(tmp_path):
         # Should return None for nonexistent
         assert find_local_module_dir("mirrordash_nonexistent") is None
 
+def test_a_folder_swapped_for_a_link_during_a_restore_doesnt_reach_the_core(tmp_path, monkeypatch):
+    """The module host keeps running while pi restores into its folder: a folder on the way swapped for a
+    link to the core's data after any check must still not be written through, nor emptied."""
+    from mirrordash_core.features.backup import service
+    host_dir, core_data = tmp_path / "modules", tmp_path / "data"
+    (host_dir / "data" / "weather").mkdir(parents=True)
+    core_data.mkdir()
+    (core_data / "config.json").write_text("secret")
+    src = tmp_path / "backup" / "weather"
+    src.mkdir(parents=True)
+    (src / "state.json").write_text("{}")
+    monkeypatch.setattr(service, "get_module_dir", lambda: host_dir)
+    real_rmtree = shutil.rmtree
+
+    def swap_then_rmtree(*args, **kwargs):  # the host, between pi's look and pi's writes
+        (host_dir / "data").rename(host_dir / "data-old")
+        (host_dir / "data").symlink_to(core_data)
+        real_rmtree(*args, **kwargs)
+
+    monkeypatch.setattr(service.shutil, "rmtree", swap_then_rmtree)
+    assert service._replace_in_module_folder(src, host_dir / "data" / "weather")
+    assert sorted(p.name for p in core_data.iterdir()) == ["config.json"]
+    assert (host_dir / "data-old" / "weather" / "state.json").read_text() == "{}"  # where the folder went
+
+
 def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, module_site, client):
     """A real backup (real zip) restored on a freshly flashed mirror: settings, module data and
     GitHub modules come back, the new mirror's admin password stays, GPIO overlays get written."""

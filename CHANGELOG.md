@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Fixed: a module could have a backup or a restore read or write MirrorDash's own files, by swapping one of its folders while the backup was being made.
+
 ### OS image
 
 - Modules no longer see the mirror's own system details (its processor, memory and kernel settings), only their own processes.
