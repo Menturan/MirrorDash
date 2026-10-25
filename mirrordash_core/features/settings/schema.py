@@ -3,7 +3,6 @@
 import base64
 import json
 import logging
-import os
 
 from mirrordash_core.forms import POSITIONS
 
@@ -17,14 +16,13 @@ def get_module_schema(ep) -> dict | None:
     """A module's config_schema.json (or schema.json) next to its plugin file, with its icon.svg as
     "icon" (a data: URL, shown as a mask so its scripts never run). Read as files: the core never
     imports a module (ARCHITECTURE #41)."""
-    from mirrordash_core.features.modules.loader import package_dir
+    from mirrordash_core.features.modules.loader import module_file, package_dir
     plugin_dir = package_dir(ep) if ep else None
 
     schema = None
     if plugin_dir:
         for filename in ("config_schema.json", "schema.json"):
-            filepath = os.path.join(plugin_dir, filename)
-            if os.path.isfile(filepath):
+            if filepath := module_file(plugin_dir, filename):
                 try:
                     with open(filepath, encoding="utf-8") as f:
                         data = json.load(f)
@@ -35,16 +33,14 @@ def get_module_schema(ep) -> dict | None:
                     logger.warning(f"Error loading standalone schema {filepath}: {e}")
 
     # 3. If we resolved a schema and have a plugin_dir, check for icon.svg next to it
-    if schema and plugin_dir:
-        svg_path = os.path.join(plugin_dir, "icon.svg")
-        if os.path.isfile(svg_path):
-            try:
-                with open(svg_path, "rb") as svg_f:
-                    svg_content = svg_f.read().strip()
-                    if svg_content.startswith(b"<svg"):
-                        schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
-            except Exception as svg_err:
-                logger.warning(f"Error loading icon.svg next to schema: {svg_err}")
+    if schema and (svg_path := module_file(plugin_dir, "icon.svg")):
+        try:
+            with open(svg_path, "rb") as svg_f:
+                svg_content = svg_f.read().strip()
+                if svg_content.startswith(b"<svg"):
+                    schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
+        except Exception as svg_err:
+            logger.warning(f"Error loading icon.svg next to schema: {svg_err}")
 
     return schema
 

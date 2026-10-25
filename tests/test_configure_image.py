@@ -278,12 +278,10 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     host = unit("/etc/systemd/system/mirrordash-modules.service").splitlines()
     for line in ("User=mirrordash-mod", "ProtectSystem=strict", "ProtectHome=yes", "NoNewPrivileges=yes",
                  "CapabilityBoundingSet=", "DevicePolicy=closed", "IPAddressAllow=127.0.0.53",
-                 "ReadWritePaths=/storage/mirrordash/modules",
-                 "IPAddressDeny=localnet link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0"):
+                 "ReadWritePaths=/storage/mirrordash/modules", "SystemCallFilter=@system-service",
+                 'Environment="MIRRORDASH_SANDBOX=1"'):  # the IP filters: test_audit_image
         assert line in host, line
     assert any(line.startswith("InaccessiblePaths=-/storage/mirrordash/data ") for line in host)
-    assert "IPAddressDeny=localnet link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0" in unit(
-        "/etc/systemd/system/cog-kiosk.service").splitlines()
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network" in unit("/etc/sudoers.d/mirrordash")
     assert "systemd-resolved" in SETUP and "MulticastDNS=no" in unit("/etc/systemd/resolved.conf.d/mirrordash.conf")

@@ -21,6 +21,28 @@ def test_sudo_runs_the_wifi_country_wrapper_not_raspi_config(tmp_path):
         assert subprocess.run(["bash", str(script), bad]).returncode == 2
 
 
+def test_ip_filters_name_only_what_systemd_knows():
+    """systemd skips a word it doesn't know in IPAddressDeny= with a mere warning ("localnet" left the
+    module host on the home network and the core's loopback routes), so every word must be one of its
+    names or an address; and the module host and the screen must keep the home network out."""
+    import ipaddress
+    from pathlib import Path
+
+    from test_configure_image import ROOTFS
+
+    def words(text, key):
+        return [w for line in text.splitlines() if line.startswith(key + "=") for w in line.split("=", 1)[1].split()]
+
+    for path in Path(ROOTFS, "etc/systemd/system").glob("*.service"):
+        text = path.read_text()
+        for word in words(text, "IPAddressDeny") + words(text, "IPAddressAllow"):
+            assert word in ("any", "localhost", "link-local", "multicast") or ipaddress.ip_network(word, strict=False), \
+                f"{path.name}: {word}"
+    home = {"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "link-local", "::/0"}
+    assert home | {"localhost"} <= set(words(unit("/etc/systemd/system/mirrordash-modules.service"), "IPAddressDeny"))
+    assert home <= set(words(unit("/etc/systemd/system/cog-kiosk.service"), "IPAddressDeny"))
+
+
 def test_polkit_names_the_actions_it_allows():
     rules = unit("/etc/polkit-1/rules.d/50-mirrordash-networkmanager.rules")
     assert 'indexOf("org.freedesktop.NetworkManager.") == 0' not in rules

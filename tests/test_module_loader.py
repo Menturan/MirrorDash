@@ -83,6 +83,10 @@ def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monke
     (pkg / "config_schema.json").write_text('{"title": "Untouched", "properties": {"url": {"type": "string"}}}')
     (pkg / "icon.svg").write_text('<svg onload="alert(1)"></svg>')
     (pkg / "translations" / "en.json").write_text('{"title": "Untouched"}')
+    # A link out of the folders modules are found in (to the core's data, in the module host's site) isn't read
+    secret = tmp_path.parent / f"{tmp_path.name}-core-data.json"
+    secret.write_text('{"title": "the core\'s secret"}')
+    (pkg / "translations" / "sv.json").symlink_to(secret)
     monkeypatch.syspath_prepend(str(tmp_path))
     ep = type("EP", (), {"name": "md_untouched", "module": "md_untouched.plugin"})()
 

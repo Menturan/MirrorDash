@@ -75,11 +75,6 @@ FAKE_MODULES = importlib.metadata.EntryPoints([
     importlib.metadata.EntryPoint("mirrordash_clock", f"{__name__}:FakeClock", "mirrordash.modules"),
     importlib.metadata.EntryPoint("mirrordash_calendar", f"{__name__}:FakeCalendar", "mirrordash.modules"),
 ])
-_real_entry_points = importlib.metadata.entry_points
-
-
-def fake_entry_points(**kwargs):
-    return FAKE_MODULES if kwargs.get("group") == "mirrordash.modules" else _real_entry_points(**kwargs)
 
 
 @contextlib.contextmanager
@@ -137,7 +132,9 @@ def patch_all_system():
                     pass
         
         # The installed modules are the two above (clock on the mirror, calendar not yet)
-        stack.enter_context(patch("importlib.metadata.entry_points", fake_entry_points))
+        for m in ("loader", "service"):
+            stack.enter_context(patch(f"mirrordash_core.features.modules.{m}.module_entry_points", lambda: list(FAKE_MODULES)))
+        stack.enter_context(patch("mirrordash_core.features.backup.service.module_entry_points", lambda: list(FAKE_MODULES)))
 
         # Intercept subprocesses in admin_system.py
         stack.enter_context(patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", return_value=mock_proc))

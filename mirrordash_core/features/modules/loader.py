@@ -89,13 +89,23 @@ def package_dir(ep) -> Path | None:
     return Path(spec.origin).parent if spec.origin else None
 
 
+def module_file(pkg_dir: Path | None, *parts: str) -> Path | None:
+    """A file in a module's package, for the core to read, or None. One that really lies outside the
+    folders modules are found in isn't read: the module host writes the site, and a link it put there to
+    the core's data would have the core show that (a translated title on the screen)."""
+    if pkg_dir is None:
+        return None
+    real = Path(pkg_dir, *parts).resolve()
+    roots = [Path(p).resolve() for p in module_search_path() if p]
+    return real if real.is_file() and any(real.is_relative_to(root) for root in roots) else None
+
+
 def load_translations(pkg_dir: Path | None, lang: str) -> dict:
     """The module's translations/en.json, with the configured language's file over it."""
     translations = {}
     for code in dict.fromkeys(["en", lang or "en"]):
         try:
-            path = pkg_dir / "translations" / f"{code}.json"
-            if path.is_file():
+            if path := module_file(pkg_dir, "translations", f"{code}.json"):
                 translations.update(json.loads(path.read_text(encoding="utf-8")))
         except Exception as e:
             logger.debug(f"Could not load translations from {pkg_dir} in language '{code}': {e}")

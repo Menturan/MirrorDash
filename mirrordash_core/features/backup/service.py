@@ -96,7 +96,8 @@ def _no_links(*patterns):
 
 def _replace_in_module_folder(src: Path, dest: Path) -> bool:
     """Copy src over dest, in a folder the module host writes, following no symlink there: one would have
-    pi delete or write wherever it points (the core's data dir). False when dest's folder is a link.
+    pi delete or write wherever it points (the core's data dir). Writable for the module host through its
+    group, as pi writes it. False when dest's folder is a link.
     ponytail: the host keeps running meanwhile, so a link swapped in between the check and the copy still
     gets through; the upgrade path is the host restoring its own folder, as its own user."""
     if dest.parent.is_symlink():
@@ -108,6 +109,9 @@ def _replace_in_module_folder(src: Path, dest: Path) -> bool:
         shutil.rmtree(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(src, dest, symlinks=True)
+    for path in [dest, *dest.rglob("*")]:
+        if not path.is_symlink():
+            path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))
     return True
 
 
@@ -386,18 +390,13 @@ def _restore_data(src_data_dir: Path) -> None:
 
 
 def _restore_module_data(src: Path) -> None:
-    """Each instance's data_dir back into the module host's folder, replacing what's there, writable for
-    the module host through its group (the core writes them as pi)."""
+    """Each instance's data_dir back into the module host's folder, replacing what's there."""
     dest_root = get_module_dir() / "data"
     for item in (src.iterdir() if src.is_dir() else []):
         if not item.is_dir() or item.is_symlink() or not SAFE_NAME.match(item.name):
             continue
-        dest = dest_root / item.name
-        if not _replace_in_module_folder(item, dest):
+        if not _replace_in_module_folder(item, dest_root / item.name):
             return
-        for path in [dest, *dest.rglob("*")]:
-            if not path.is_symlink():
-                path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))
 
 
 async def restore_backup(password: str | None = None) -> dict:
