@@ -73,13 +73,13 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 uvx mirrordash-sdk quickstart mirrordash-my-widget
 ```
 
-This creates a module with example data and starts a mirror on your computer that shows every change as you save. Put the module on GitHub as `mirrordash-<something>` and publish a GitHub Release: it then shows up in every mirror's Discover list. The [SDK](https://github.com/Menturan/mirrordash-sdk) and its [module guide](https://github.com/Menturan/mirrordash-sdk/blob/master/MODULE_GUIDE.md) have the details.
+This creates a module with example data and starts a mirror on your computer that shows every change as you save. Put the module on GitHub as `mirrordash-<something>` and publish a GitHub Release: it then shows up under *Modules → Add modules* on every mirror. The [SDK](https://github.com/Menturan/mirrordash-sdk) and its [module guide](https://github.com/Menturan/mirrordash-sdk/blob/master/MODULE_GUIDE.md) have the details.
 
 ## Under the hood
 
 * **Server:** FastAPI (Python 3.14). Modules push their content to the screen over a WebSocket, and a page that reconnects gets everything again right away.
 * **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by Cog (WPE WebKit) on labwc. Every mirror has its component library at `/design`.
-* **Modules:** each is its own Python package, found through entry points. A module that crashes is restarted on its own.
+* **Modules:** each is its own Python package, found through entry points, and runs in a sandboxed process as a user of its own. A module that crashes is restarted on its own.
 * **System:** Raspberry Pi OS (Debian 13) with a read-only root (overlayroot). Settings, modules and Wi-Fi live on a separate partition. Updates go into a second environment, and the mirror switches back if the new one doesn't start.
 
 ## Documentation
