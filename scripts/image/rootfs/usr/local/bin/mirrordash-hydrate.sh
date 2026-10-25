@@ -32,6 +32,31 @@ chown pi:pi /storage/mirrordash/data
 # pi reaches through their group (backups)
 chmod 700 /storage/mirrordash/data
 mkdir -p /storage/mirrordash/modules
+# On an image the modules' folder is a file system of its own, in a sparse file on /storage: a module
+# that fills it can't fill the card (ARCHITECTURE #41). A quarter of /storage, at most 8 GB, made once,
+# with what the folder held moved in; discard gives back the space of what is deleted in it.
+MODULES=/storage/mirrordash/modules
+MODULES_IMG=/storage/mirrordash/modules.img
+if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q "$MODULES"; then
+    if [ ! -f "$MODULES_IMG" ]; then
+        echo "Making the modules' own file system..."
+        size=$(( $(df --output=size -k /storage | tail -1) / 4 ))
+        [ "$size" -gt 8388608 ] && size=8388608
+        rm -f "$MODULES_IMG.tmp"
+        truncate -s "${size}K" "$MODULES_IMG.tmp"
+        mkfs.ext4 -q -F -m 0 -L mirrordash-modules "$MODULES_IMG.tmp"
+        mkdir -p /run/mirrordash-modules-fs
+        mount -o loop "$MODULES_IMG.tmp" /run/mirrordash-modules-fs
+        cp -a "$MODULES/." /run/mirrordash-modules-fs/
+        umount /run/mirrordash-modules-fs
+        mv "$MODULES_IMG.tmp" "$MODULES_IMG"
+        find "$MODULES" -mindepth 1 -delete
+    fi
+    rc=0; e2fsck -p "$MODULES_IMG" >/dev/null || rc=$?
+    if [ "$rc" -ge 4 ]; then e2fsck -y "$MODULES_IMG" >/dev/null || true; fi
+    # Without it the modules still run, in the folder on /storage, without the limit
+    mount -o loop,discard,nosuid,nodev "$MODULES_IMG" "$MODULES" || echo "Warning: the modules' file system didn't mount" >&2
+fi
 if id mirrordash-mod >/dev/null 2>&1; then
     [ "$(stat -c %U /storage/mirrordash/modules)" = mirrordash-mod ] || chown -R mirrordash-mod:mirrordash-mod /storage/mirrordash/modules
     chmod 2770 /storage/mirrordash/modules

@@ -289,6 +289,10 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     assert 'SUBSYSTEM=="i2c-dev", KERNEL!="i2c-1", GROUP:="root", MODE:="0600"' in unit("/etc/udev/rules.d/90-mirrordash-i2c.rules")
     # A module can't fill /storage for the core: ext4's reserve is pi's too
     assert re.search(r"LABEL=mirrordash-data .*\bresgid=\$\(id -g pi\)", SETUP)
+    # nor the card at all: their folder is a file system of its own, in a file (hydrate), mounted before both start
+    hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
+    assert 'mount -o loop,discard,nosuid,nodev "$MODULES_IMG" "$MODULES"' in hydrate
+    assert hydrate.index("$MODULES_IMG\" \"$MODULES\"") < hydrate.index("chmod 2770 /storage/mirrordash/modules")
     # MemoryMax needs the memory controller, which the Pi's firmware turns off
     assert "MemoryMax=30%" in host and "ProcSubset=pid" in host and '"cgroup_enable=memory"' in SETUP
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
