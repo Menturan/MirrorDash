@@ -445,7 +445,8 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
                     raise HTTPException(status_code=400, detail="open or closed")
                 return JSONResponse({"door": state, "cookie": request.headers.get("cookie"),
                                      "api_path": config["api_path"], "client": request.client.host},
-                                    headers={"Set-Cookie": "mirrordash_session=evil", "X-Garage": "1"})
+                                    headers={"Set-Cookie": "mirrordash_session=evil", "X-Garage": "1",
+                                             "Service-Worker-Allowed": "/", "Clear-Site-Data": '"cookies"'})
 
         async def run_loop(self, broadcast_fn):
             await broadcast_fn("garage", "<p>closed</p>")
@@ -496,6 +497,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         assert status == 200
         assert json_.loads(body) == {"door": "open", "cookie": None, "api_path": "/api/modules/garage", "client": "192.168.1.5"}
         assert "set-cookie" not in headers and headers["x-garage"] == ["1"]
+        assert "service-worker-allowed" not in headers and "clear-site-data" not in headers
         assert headers["content-security-policy"] == ["sandbox"]
         assert (await _call("/garage/door/ajar", "POST"))[0] == 400
         assert (await _call("/garage/elsewhere"))[0] == 404

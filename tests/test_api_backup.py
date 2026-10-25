@@ -273,6 +273,9 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     module_data = data_dir.parent / "modules" / "data"
     (module_data / "mirrordash-weather").mkdir(parents=True)
     (module_data / "mirrordash-weather" / "state.json").write_text('{"city": "Oslo"}')
+    # The module host owns that folder: links it put there must not carry the core's data into the backup
+    (module_data / "mirrordash-weather" / "stolen.json").symlink_to(data_dir / "config.json")
+    (module_data / "mirrordash-weather" / "stolen").symlink_to(data_dir)
 
     commit = "a" * 40
     dist = MagicMock(version="1.2.0")
@@ -311,6 +314,8 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
         shutil.rmtree(data_dir)
         shutil.rmtree(module_data)
         data_dir.mkdir()
+        module_data.mkdir()
+        (module_data / "mirrordash-weather").symlink_to(data_dir)  # the restore must not empty the core's data dir
         fresh_config = json.dumps({"admin_auth": MOCK_CONFIG["admin_auth"]})
         (data_dir / "config.json").write_text(fresh_config)
         shutil.copy(archive, backups_dir / "tmp_upload.mirror")
@@ -333,6 +338,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, client):
     state = module_data / "mirrordash-weather" / "state.json"
     assert state.read_text() == '{"city": "Oslo"}'
     assert state.stat().st_mode & 0o060 == 0o060  # the module host (the group) can write what pi put back
+    assert sorted(p.name for p in (module_data / "mirrordash-weather").iterdir()) == ["state.json"]
     assert any(source in cmd for cmd in uv_calls)
     mock_gpio.assert_awaited_once_with(["button:17"])
     mock_reboot.assert_called_once()

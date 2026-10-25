@@ -241,11 +241,14 @@ async def create_backup(password: str | None = None) -> dict:
                 raise HTTPException(status_code=500, detail=f"Failed to package data files: {e}")
         else:
             temp_data_dir.mkdir(parents=True, exist_ok=True)
-        # The modules' own data_dirs, in the module host's folder (ARCHITECTURE #41); never their caches
+        # The modules' own data_dirs, in the module host's folder (ARCHITECTURE #41); never their caches.
+        # No symlinks: the module host writes there, and a link to the core's data dir would carry it along.
         module_data = get_module_dir() / "data"
-        if module_data.is_dir():
+        def skip_links(directory, names):
+            return skip(directory, names) | {n for n in names if os.path.islink(os.path.join(directory, n))}
+        if module_data.is_dir() and not module_data.is_symlink():
             try:
-                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data", ignore=skip)
+                await asyncio.to_thread(shutil.copytree, module_data, content / "module_data", ignore=skip_links)
             except Exception as e:
                 logger.error(f"Failed to copy the modules' data: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to package the modules' data: {e}")
@@ -368,16 +371,25 @@ def _restore_data(src_data_dir: Path) -> None:
 
 def _restore_module_data(src: Path) -> None:
     """Each instance's data_dir back into the module host's folder, replacing what's there, writable for
-    the module host through its group (the core writes them as pi)."""
+    the module host through its group (the core writes them as pi). The module host owns that folder: a
+    symlink it put there would have pi delete or write wherever it points (the core's data dir), so none
+    is followed.
+    ponytail: the host keeps running meanwhile, so a link swapped in between the check and the copy still
+    gets through; the upgrade path is the host restoring its own folder, as its own user."""
     from mirrordash_core.features.modules.loader import SAFE_NAME
     dest_root = get_module_dir() / "data"
+    if dest_root.is_symlink():
+        logger.error(f"{dest_root} is a symlink: the modules' data was not restored")
+        return
     for item in (src.iterdir() if src.is_dir() else []):
-        if not item.is_dir() or not SAFE_NAME.match(item.name):
+        if not item.is_dir() or item.is_symlink() or not SAFE_NAME.match(item.name):
             continue
         dest = dest_root / item.name
-        if dest.exists():
+        if dest.is_symlink():
+            dest.unlink()
+        elif dest.exists():
             shutil.rmtree(dest)
-        shutil.copytree(item, dest)
+        shutil.copytree(item, dest, symlinks=True)
         for path in [dest, *dest.rglob("*")]:
             if not path.is_symlink():
                 path.chmod(path.stat().st_mode | (0o070 if path.is_dir() else 0o060))

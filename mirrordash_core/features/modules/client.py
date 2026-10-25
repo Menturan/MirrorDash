@@ -40,10 +40,12 @@ REQUEST_TIMEOUT = 35  # a little over the host's own
 LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; sets the host's IPAddressAllow
 LAN_REFRESH = 600  # seconds between looking up the lan-url hosts again (a DHCP address can change)
 # Headers that never reach a module (the admin session, the admin password) or come back from one
-# (a cookie on the mirror's own site, framing the core's answer)
+# (a cookie on the mirror's own site, framing the core's answer, a service worker over the whole site,
+# wiping the site's logins)
 REQUEST_HEADERS_DROPPED = {"cookie", "x-api-key", "host", "content-length"}
 RESPONSE_HEADERS_DROPPED = {"set-cookie", "content-length", "transfer-encoding", "connection",
-                            "content-security-policy", "x-content-type-options"}
+                            "content-security-policy", "x-content-type-options",
+                            "service-worker-allowed", "clear-site-data"}
 LOG_NAME = re.compile(r"^[\w.-]{1,100}$")
 
 
