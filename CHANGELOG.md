@@ -9,8 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- Fixed: a module could have a backup or a restore read or write MirrorDash's own files, by swapping one of its folders while the backup was being made.
-
 ### OS image
 
 - Modules have a space of their own on the SD card (a quarter of it, at most 8 GB): one that fills it can no longer fill the card. It's made at the first start of this version, which then takes a little longer.
@@ -26,6 +24,10 @@ There are two kinds of releases:
 - Backups larger than 1 MB can be uploaded through `mirrordash.local` (and the setup page).
 - The mirror no longer gets stuck without Wi-Fi or setup network when several saved networks are out of range.
 - *Power* → *USB*: turn the USB ports off on a Raspberry Pi 3 (or 1, 2, Zero), so the mirror runs a little cooler. The Ethernet port goes off with them, so the mirror needs Wi-Fi.
+
+## [0.9.3] - 2026-10-25
+
+- Fixed: a module could have a backup or a restore read or write MirrorDash's own files, by swapping one of its folders while the backup was being made.
 
 ## [0.9.2] - 2026-10-25
 
