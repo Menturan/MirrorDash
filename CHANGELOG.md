@@ -20,6 +20,7 @@ There are two kinds of releases:
 - Set up a new mirror from a backup: on the Wi-Fi setup page, tap *Set up from a backup instead*. The mirror joins a Wi-Fi network from the backup and restores everything else by itself.
 - A backup no longer contains your login sessions, and a crafted backup file can no longer delete folders on the mirror. A restore that fails halfway no longer damages the installed modules.
 - Saving a module's settings no longer flickers the screen or briefly drops the mirror from Home Assistant and other Matter apps.
+- *Logs* → *Diagnostics* shows whether the modules' limits hold, how much memory they use and how often they restarted, and downloads one file with the versions and logs to send when asking for help (no settings or passwords in it).
 - Fixed: updating or adding a module when one was already installed failed with "Operation not permitted".
 - Fixed: a button that bounces no longer turns a double press into a triple, or a long press into short ones first.
 - Fixed: after a restart the cards of an area could show in another order than the one you set (a card that loaded faster came first).

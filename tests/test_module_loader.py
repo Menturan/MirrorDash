@@ -437,20 +437,31 @@ async def _call(path: str, method: str = "GET", headers=()) -> tuple[int, dict, 
 
 
 def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
-    """systemd only warns when the kernel can't filter: the host itself finds a port of the mirror or the
-    core's data within its reach."""
+    """systemd only warns when the kernel can't filter: the host itself finds a port of the mirror, the
+    router, a secret folder or a device within its reach."""
     import socket
 
     from mirrordash_core.features.modules import host
     listener = socket.create_server(("127.0.0.1", 0))
+    port = listener.getsockname()[1]
+    # The default route through 127.0.0.1 (01 00 00 7f, little-endian), where nothing listens on 53: refused
+    (tmp_path / "route").write_text("Iface\tDestination\tGateway\nwlan0\t00000000\t0100007F\n")
+    (tmp_path / "gpiochip0").write_text("")
+    (tmp_path / "i2c-1").write_text("")
     try:
-        monkeypatch.setattr(host, "SANDBOX_PORTS", (listener.getsockname()[1],))
-        monkeypatch.setattr(host, "CORE_DATA", str(tmp_path))
-        assert host.sandbox_holes() == [f"the mirror's own port {listener.getsockname()[1]}",
-                                        f"the core's data ({tmp_path})"]
+        monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
+        monkeypatch.setattr(host, "ROUTES", str(tmp_path / "route"))
+        monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path): "the core's data"})
+        monkeypatch.setattr(host, "SANDBOX_DEVICES", (str(tmp_path / "gpiochip*"), str(tmp_path / "i2c-*")))
+        monkeypatch.setattr(host, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
+        assert host.sandbox_holes() == [f"the mirror's own port {port}", "the router (127.0.0.1)",
+                                        f"the core's data ({tmp_path})", str(tmp_path / "gpiochip0")]
     finally:
         listener.close()
-    monkeypatch.setattr(host, "CORE_DATA", str(tmp_path / "out-of-sight"))
+    monkeypatch.setattr(host, "SANDBOX_PORTS", ())
+    monkeypatch.setattr(host, "ROUTES", str(tmp_path / "no-route"))
+    monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
+    (tmp_path / "gpiochip0").chmod(0)
     assert host.sandbox_holes() == []
 
 
@@ -546,6 +557,8 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
     site_link = tmp_path / "modules" / "site"
     try:
         await _until(lambda: core._writer is not None)
+        reply = await core.diagnose()  # Logs → Diagnostics: the host's own checks
+        assert isinstance(reply["checks"], list) and reply["sandboxed"] is False and reply["gpio"] == {}
         async with core.packages(sys.executable) as site:
             assert (await site.pip("install", "md_widget"))[0] == 0
             code, err = await site.check(["md_widget"])

@@ -1,0 +1,49 @@
+{# Diagnostics (diagnostics.py host_state): replaced as a whole by Check Again #}
+<div id="diagnostics">
+    <h3 style="margin-top: 0;">Module sandbox</h3>
+    {% if state.error %}
+    <p class="error-text">{{ state.error }}</p>
+    {% else %}
+    {% set open = state.checks | selectattr(1) | list %}
+    <p class="panel-subtitle">
+        {% if not state.sandboxed %}<span style="color: var(--warning-color);">Not sandboxed: this isn't a mirror.</span>
+        {% elif open %}<span style="color: var(--danger);"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i>
+            Modules can reach {{ open | length }} of {{ state.checks | length }} things they shouldn't.</span>
+        {% else %}<span style="color: var(--success);"><i class="fas fa-check" aria-hidden="true"></i>
+            Modules can't reach any of the {{ state.checks | length }} things they shouldn't.</span>{% endif %}
+        The module host checks this itself, as at every start.
+    </p>
+    <details>
+        <summary class="muted" style="cursor: pointer;">What was checked</summary>
+        <ul style="list-style: none; padding: 0; margin: 8px 0 0; font-size: 0.8rem; line-height: 1.7; overflow-wrap: anywhere;">
+            {% for what, reachable in state.checks %}
+            <li><i class="fas {{ 'fa-xmark' if reachable else 'fa-check' }}" style="width: 1.2em; color: {{ 'var(--danger)' if reachable else 'var(--success)' }};"
+                   aria-label="{{ 'Reachable' if reachable else 'Blocked' }}"></i> {{ what }}</li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+
+    <h3>Module host</h3>
+    <div class="reading-tiles">
+        <div><div class="reading-value">{{ state.memory or "-" }}</div><div class="reading-label">Memory now (limit {{ state.limit or "none" }})</div></div>
+        <div><div class="reading-value">{{ state.peak or "-" }}</div><div class="reading-label">Most since its start</div></div>
+        <div><div class="reading-value">{{ state.restarts or "-" }}</div><div class="reading-label">Restarts since the mirror started</div></div>
+        <div><div class="reading-value">{{ state.core_memory or "-" }}</div><div class="reading-label">MirrorDash's own memory</div></div>
+    </div>
+    <p class="field-description" style="margin-top: 12px;">
+        Running since {{ state.since or "-" }}. It restarts with MirrorDash too; restarts that grow on their own
+        mean a module crashes it or uses up its memory (see the Modules log).
+        On the home network modules may reach {{ state.lan | join(", ") if state.lan else "nothing" }} (their lan-url settings).
+        {% if state.gpio %}GPIO in use: {% for instance, pins in state.gpio.items() %}{{ instance }} {{ pins | join(", ") }}{{ "; " if not loop.last }}{% endfor %}.
+        {% else %}No module uses GPIO.{% endif %}
+    </p>
+
+    <div class="card-actions" style="margin-top: 16px;">
+        <a class="btn primary btn-sm" href="/admin/logs/diagnostics.txt" download><i class="fas fa-download"></i> Download Diagnostics</a>
+        <button type="button" class="btn secondary btn-sm" hx-get="/admin/panels/logs/diagnostics"
+                hx-target="#diagnostics" hx-swap="outerHTML"><i class="fas fa-sync"></i> Check Again</button>
+    </div>
+    <p class="field-description">The download holds the versions, these checks and the logs, not your settings or passwords.
+        Look through it before you share it.</p>
+</div>

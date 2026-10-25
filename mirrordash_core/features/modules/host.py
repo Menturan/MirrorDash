@@ -10,6 +10,7 @@ connects to the unix socket (client.py) and both send one JSON object per line:
                 event {name, data}                      a hardware event for the modules' event bus
                 http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
                 site {id, op, ...}                      a change to the installed modules (Host._site)
+                diagnose {id}                           the sandbox's checks and the modules' GPIO (Logs → Diagnostics)
                 reply {id, window}                      the answer to video_window
   host -> core  html {gen, instance, html}              an instance's card (the core places it)
                 status {gen, running}                   the instances whose run_loop runs
@@ -32,6 +33,7 @@ here, as the host's user in its sandbox, so a package's build and its .pth never
 import asyncio
 import base64
 import contextlib
+import glob
 import itertools
 import json
 import logging
@@ -67,19 +69,57 @@ CHECK = ("import site, sys; site.addsitedir(sys.argv[1]); from importlib.metadat
 
 
 SANDBOX_PORTS = (80, 8000)  # the mirror's own site (nginx) and the core behind it
-CORE_DATA = "/storage/mirrordash/data"
+ROUTES = "/proc/net/route"  # the router: the way into the home network
+# mirrordash-modules.service's InaccessiblePaths and ProtectHome
+SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirrordash/ssh": "the SSH keys",
+                 "/storage/mirrordash/system-connections": "the Wi-Fi passwords", "/storage/rauc": "the OS update keys",
+                 "/home": "the home folders", "/run/dbus": "the system bus"}
+# Its DevicePolicy=closed and the I2C rule (90-mirrordash-i2c.rules): GPIO only through the core, no other I2C bus
+SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", "/dev/input/event*", "/dev/video*")
+MODULE_DEVICES = {"/dev/i2c-1"}  # the header's I2C bus
+
+
+def reaches(host: str, port: int) -> bool:
+    """A connection gets through, or an answer comes back (refused): the address is in reach. A filter says EPERM."""
+    try:
+        socket.create_connection((host, port), timeout=1).close()
+    except ConnectionRefusedError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def opens(path: str) -> bool:
+    try:
+        os.close(os.open(path, os.O_RDWR | os.O_NONBLOCK))
+    except OSError:
+        return False
+    return True
+
+
+def default_gateway() -> str | None:
+    with contextlib.suppress(OSError, ValueError, IndexError), open(ROUTES) as f:
+        for fields in (line.split() for line in f.readlines()[1:]):
+            if fields[1] == "00000000" and fields[2] != "00000000":
+                return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    return None
+
+
+def sandbox_checks() -> list[tuple[str, bool]]:
+    """What the sandbox (mirrordash-modules.service) keeps from the modules: (what, reachable), each should be
+    False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
+    device cgroup, namespaces), so the host looks: at its start, and from the admin page (Logs → Diagnostics)."""
+    checks = [(f"the mirror's own port {port}", reaches("127.0.0.1", port)) for port in SANDBOX_PORTS]
+    if gateway := default_gateway():
+        checks.append((f"the router ({gateway})", reaches(gateway, 53)))
+    checks += [(f"{what} ({path})", os.access(path, os.R_OK)) for path, what in SANDBOX_PATHS.items()]
+    devices = sorted({p for pattern in SANDBOX_DEVICES for p in glob.glob(pattern)} - MODULE_DEVICES)
+    return checks + [(path, opens(path)) for path in devices]
 
 
 def sandbox_holes() -> list[str]:
-    """What the sandbox (mirrordash-modules.service) should keep from the modules but doesn't. systemd only
-    warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny), so the host looks."""
-    holes = []
-    for port in SANDBOX_PORTS:
-        with contextlib.suppress(OSError), socket.create_connection(("127.0.0.1", port), timeout=1):
-            holes.append(f"the mirror's own port {port}")
-    if os.access(CORE_DATA, os.R_OK):
-        holes.append(f"the core's data ({CORE_DATA})")
-    return holes
+    return [what for what, reachable in sandbox_checks() if reachable]
 
 
 def site_paths() -> tuple[Path, Path, Path]:
@@ -321,6 +361,8 @@ class Host:
             self._spawn(self._http(message))
         elif kind == "site":
             self._spawn(self._site(message))
+        elif kind == "diagnose":
+            self._spawn(self._diagnose(message))
         elif kind == "reply":
             future = self.link.pending.get(message.get("id"))
             if future and not future.done():
@@ -351,6 +393,12 @@ class Host:
                 status, headers, body = 500, [["content-type", "text/plain"]], b"Internal Server Error"
         await self.link.send({"t": "reply", "id": message.get("id"), "status": status, "headers": headers,
                               "body": base64.b64encode(body).decode()})
+
+    async def _diagnose(self, message: dict) -> None:
+        checks = await asyncio.to_thread(sandbox_checks)
+        gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
+        await self.link.send({"t": "reply", "id": message.get("id"), "checks": checks, "gpio": gpio,
+                              "sandboxed": bool(os.environ.get("MIRRORDASH_SANDBOX"))})
 
     async def _site(self, message: dict) -> None:
         """One step of a change to the installed modules (client.py's ModuleHost.packages), like the core's

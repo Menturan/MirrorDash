@@ -218,6 +218,10 @@ class ModuleHost:
     async def call_route(self, message: dict) -> dict:
         return await self._request({"t": "http", **message}, REQUEST_TIMEOUT)
 
+    async def diagnose(self) -> dict:
+        """The host's sandbox checks and its modules' GPIO lines (host.py's Host._diagnose)."""
+        return await self._request({"t": "diagnose"}, 30)
+
     def knows(self, instance_id: str) -> bool:
         return self._writer is not None and instance_id in self._placement
 

@@ -6,9 +6,10 @@ import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 
 from mirrordash_core.admin import require_api_key, templates
+from mirrordash_core.features.logs.diagnostics import host_state, report
 from mirrordash_core.features.logs.saved import (
     delete_saved_logs,
     saved_log_file,
@@ -122,6 +123,20 @@ async def get_logs_viewer(type: str = "system", lines: int = 100, module: str | 
     log_data = await get_logs(type=type, lines=lines, module=module)
     logs_content = log_data.get("logs", "No logs found.")
     return HTMLResponse(content=html.escape(logs_content))  # log lines can contain anything, e.g. request paths
+
+
+# --- Diagnostics (diagnostics.py) ---
+
+@router.get("/panels/logs/diagnostics", dependencies=[Depends(require_api_key)])
+async def get_diagnostics(request: Request):
+    return templates.TemplateResponse(request=request, name="admin_logs_diagnostics.html",
+                                      context={"state": await host_state()})
+
+
+@router.get("/logs/diagnostics.txt", dependencies=[Depends(require_api_key)])
+async def download_diagnostics():
+    text = await report((await get_logs("system", 300))["logs"], (await get_logs("modules", 300))["logs"])
+    return PlainTextResponse(text, headers={"Content-Disposition": "attachment; filename=mirrordash-diagnostics.txt"})
 
 
 # --- Logs saved when an update failed (saved.py) ---

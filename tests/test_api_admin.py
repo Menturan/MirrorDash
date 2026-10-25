@@ -1381,6 +1381,27 @@ def test_saved_logs_can_be_seen_downloaded_and_deleted(client, tmp_path, monkeyp
     assert not list(tmp_path.iterdir())
 
 
+def test_diagnostics_show_the_sandbox_checks_and_take_the_host_s_answer_as_input(client, monkeypatch):
+    """Logs → Diagnostics: the module host runs as a lower user, so its answer is checked like any input."""
+    from mirrordash_core.features.logs import diagnostics
+    show = ("ActiveEnterTimestamp=Sun 2026-10-25 12:26:03 CET\nNRestarts=1\nMemoryCurrent=75517952\n"
+            "MemoryPeak=[not set]\nMemoryMax=284696576\nIPAddressAllow=192.168.1.85/32 127.0.0.53/32")
+    monkeypatch.setattr(diagnostics, "run", AsyncMock(return_value=show))
+    monkeypatch.setattr(diagnostics.module_host, "diagnose", AsyncMock(return_value={
+        "sandboxed": True, "gpio": {"buttons": [27, "x"]},
+        "checks": [["the mirror's own port 80", False], ["<b>the router</b>", "yes"], ["/dev/gpiochip0", True], "junk"]}))
+    page = client.get("/admin/panels/logs/diagnostics", headers={"X-API-Key": "secret"}).text
+    assert "Modules can reach 1 of 3 things" in page and "&lt;b&gt;the router&lt;/b&gt;" in page
+    assert "72 MB" in page and "272 MB" in page and "192.168.1.85/32" in page and "127.0.0.53" not in page
+    assert "buttons 27." in page
+
+    monkeypatch.setattr(diagnostics.module_host, "diagnose", AsyncMock(side_effect=ConnectionError("not connected")))
+    assert "didn&#39;t answer (not connected)" in client.get("/admin/panels/logs/diagnostics", headers={"X-API-Key": "secret"}).text
+    with patch("mirrordash_core.features.logs.routes.get_logs", new_callable=AsyncMock, return_value={"logs": "a log line"}):
+        text = client.get("/admin/logs/diagnostics.txt", headers={"X-API-Key": "secret"}).text
+    assert "=== Module sandbox ===" in text and "a log line" in text
+
+
 def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
     import time
 
