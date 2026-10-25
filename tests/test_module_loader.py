@@ -748,6 +748,20 @@ class Module:
     def __init__(self, config):
         self.config = config
         self.router = APIRouter()
+        self.heard = []
+        bus = config["event_bus"]
+        for name in ("md_fork.hello", "md_fork.private", "hardware.button", "md_other.hello"):
+            bus.subscribe(name, lambda data, name=name: self.heard.append([name, data]))
+        @self.router.get("/shout")
+        async def shout():
+            bus.publish("md_fork.hello", self.config.get("text"), public=True)
+            bus.publish("md_fork.private", self.config.get("text"))
+            bus.publish("hardware.button", {"press": "single"}, public=True)  # not its name to use
+            bus.publish("md_other.hello", "forged", public=True)
+            return {}
+        @self.router.get("/heard")
+        async def heard():
+            return self.heard
         @self.router.get("/who")
         async def who():
             return {"pid": os.getpid(), "ppid": os.getppid(), "fds": len(os.listdir("/proc/self/fd")),
@@ -795,6 +809,10 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
         reply = await core.call_route({"instance": instance, "method": "GET", "path": "/who"})
         return json.loads(base64.b64decode(reply["body"]))
 
+    async def who_heard(instance):
+        reply = await core.call_route({"instance": instance, "method": "GET", "path": "/heard"})
+        return json.loads(base64.b64decode(reply["body"]))
+
     await core.start_modules()
     try:
         await _until(lambda: core.running == ["a", "b", "stuck"] and "dies" in core.paused
@@ -802,6 +820,15 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
         a, b = await who("a"), await who("b")
         assert a["pid"] != b["pid"] and a["ppid"] == b["ppid"] != os.getpid()
         assert a["oom"] == "500" and a["fds"] < 12  # stdio, its two sockets, its event loop's
+
+        # A public event reaches every instance through the core, the sender's too; a private one stays home
+        await core.call_route({"instance": "a", "method": "GET", "path": "/shout"})
+        for _ in range(100):
+            if await who_heard("b"):
+                break
+            await asyncio.sleep(0.05)
+        assert await who_heard("b") == [["md_fork.hello", "A"]]
+        assert sorted(await who_heard("a")) == [["md_fork.hello", "A"], ["md_fork.private", "A"]]
         first_a = core._instances["a"].html
 
         config["modules"]["b"]["text"] = "B2"

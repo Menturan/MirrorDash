@@ -11,6 +11,7 @@ land under mirrordash.modules.<instance>.
 
 import asyncio
 import base64
+import collections
 import contextlib
 import ipaddress
 import itertools
@@ -48,6 +49,9 @@ REQUEST_TIMEOUT = 35  # a little over the host's own
 LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; the home-network addresses per module
 LAN_REFRESH = 600  # seconds between looking up the lan-url hosts again (a DHCP address can change)
 LAN_LIMIT = 64  # the helper's
+EVENT_NAME = re.compile(r"[A-Za-z0-9_]+\.[A-Za-z0-9_.:-]{1,100}")  # a public event's: "<module>.<what>"
+EVENT_LIMIT = 64 * 1024  # a public event's data, as JSON
+EVENT_RATE = 20  # public events an instance may send a second; more are dropped
 # An instance's process ending this soon after its start, this many times in a row, pauses it: one that
 # runs out of memory (the kernel kills it first, oom_score_adj) or crashes would start again forever
 CRASH_WINDOW = 300
@@ -147,6 +151,8 @@ class Connection:
         self.html: str | None = None  # its last card, sent again when the screen reloads
         self.running = False
         self.started = time.monotonic()
+        self.module = ""  # an instance's module (its package name): the start of its public events' names
+        self.published: collections.deque[float] = collections.deque(maxlen=EVENT_RATE)  # when, the last ones
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
 
@@ -450,6 +456,7 @@ class ModuleHost:
         reader, writer = await asyncio.open_unix_connection(sock=ours, limit=LINE_LIMIT)
         conn = Connection(reader, writer, fds_ours, instance_id)
         conn.key = settings_key(cfg, globals_cfg)
+        conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
         self._instances[instance_id] = conn
         await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
         asyncio.create_task(self._serve(conn), name=f"module-{instance_id}")
@@ -502,6 +509,19 @@ class ModuleHost:
             if isinstance(message.get("html"), str):
                 conn.html = message["html"]
                 await manager.broadcast({**self._placement[instance_id], "html": conn.html})
+        elif kind == "publish":
+            # A module's public event, to every instance (its own too) but never the core's own subscribers:
+            # named after its module, so it can't pass for the hardware's or another module's
+            name, data, now = message.get("name"), message.get("data"), time.monotonic()
+            if len(conn.published) == EVENT_RATE and now - conn.published[0] < 1:
+                return  # over EVENT_RATE a second: dropped without a log line, which a flood would flood too
+            conn.published.append(now)
+            if not (isinstance(name, str) and name.startswith(conn.module + ".") and EVENT_NAME.fullmatch(name)):
+                logger.warning(f"{instance_id}: a public event's name must start with '{conn.module}.': {str(name)[:100]!r}")
+            elif len(json.dumps(data)) > EVENT_LIMIT:
+                logger.warning(f"{instance_id}: public event {name} is over {EVENT_LIMIT // 1024} kB, dropped")
+            else:
+                self._post({"t": "event", "name": name, "data": data})
         elif kind == "status":
             if isinstance(message.get("running"), list):
                 conn.running = instance_id in message["running"]

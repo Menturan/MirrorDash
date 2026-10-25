@@ -366,11 +366,20 @@ class Host:
         self._tasks: set[asyncio.Task] = set()
 
     async def run(self) -> None:
-        forward = LogForward(self.link, asyncio.get_running_loop())
+        loop = asyncio.get_running_loop()
+        forward = LogForward(self.link, loop)
         logging.getLogger().addHandler(forward)
+
+        def share(name: str, data) -> None:
+            """A public event (event_bus.publish(..., public=True)), from any thread: to the core."""
+            message = {"t": "publish", "name": str(name), "data": data}
+            json.dumps(message)  # not JSON: the module's publish raises, rather than send it changed
+            loop.call_soon_threadsafe(lambda: self._spawn(self.link.send(message)))
+        event_bus.share = share
         try:
             await read_lines(self.reader, self._handle)
         finally:
+            event_bus.share = None
             logging.getLogger().removeHandler(forward)
             for task in self._tasks:
                 task.cancel()

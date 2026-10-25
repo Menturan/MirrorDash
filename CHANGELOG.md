@@ -13,6 +13,7 @@ There are two kinds of releases:
 - Changing a module's settings restarts only that module, and moving it on the screen restarts none: the other modules keep their place and what they show.
 - The *Logs* tab shows each module's lines under its own name.
 - *System Language* in *Settings* lists every language again, not only five.
+- Modules can send each other messages again, now only the ones a module makes public (for module authors: `publish(..., public=True)`).
 - Needs the system update that comes with this version: on an older one no module runs, and the admin page says so.
 
 ### OS image

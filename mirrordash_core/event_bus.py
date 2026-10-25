@@ -14,6 +14,8 @@ class EventBus:
         self._loop: asyncio.AbstractEventLoop | None = None  # the app's, for a publish from a thread
         # In the core: every event also goes to the module host (client.py), where the modules subscribe
         self.forward: Callable[[str, Any], None] | None = None
+        # In a module instance's process: a public event goes to the core, which gives it to every instance
+        self.share: Callable[[str, Any], None] | None = None
 
     def subscribe(self, event_type: str, callback: Callable[[Any], Any]) -> None:
         """Subscribe to a specific type of event."""
@@ -37,12 +39,17 @@ class EventBus:
         """Drop every subscription (all module instances are being replaced)."""
         self._subscribers.clear()
 
-    def publish(self, event_type: str, data: Any = None) -> None:
+    def publish(self, event_type: str, data: Any = None, public: bool = False) -> None:
         """Publish an event to all subscribers.
         If a subscriber callback is an async coroutine function, it is scheduled on
         the app's event loop (also from a module's own thread). If it's a sync function, it is called
         directly, in the publisher's thread.
+        public, in a module instance: every instance gets it, the sender's own too, through the core (client.py),
+        which checks it first; otherwise it stays in the instance.
         """
+        if public and self.share:
+            self.share(event_type, data)
+            return
         if self.forward:
             self.forward(event_type, data)
         try:
