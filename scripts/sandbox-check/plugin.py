@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import threading
 from pathlib import Path
@@ -11,6 +12,21 @@ def attempt(fn):
         return fn()
     except OSError as e:
         return f"{type(e).__name__}"
+
+
+def fill(folder):
+    """Write 20 MB into a RAM folder (the unit's are 16 MB), then remove it: OSError when the cap holds."""
+    path = f"{folder}/fill-{os.getuid()}"
+    try:
+        with open(path, "wb") as f:
+            for _ in range(20):
+                f.write(b"x" * 1048576)
+        return "WROTE 20 MB"
+    except OSError as e:
+        return type(e).__name__
+    finally:
+        with contextlib.suppress(OSError):
+            os.remove(path)
 
 
 def threads_started(n):
@@ -51,6 +67,7 @@ class Module:
                 "threads": threads_started(300),
                 "read_uids": attempt(lambda: open("/storage/mirrordash/modules/uids.json").read()),
                 "parent_mem": attempt(lambda: (open(f"/proc/{os.getppid()}/mem", "rb").close(), "OPENED")[1]),
+                "fill_tmp": fill("/tmp"), "fill_shm": fill("/dev/shm"),
                 "home": os.environ.get("HOME"), "tmp": os.environ.get("TMPDIR"), "umask": oct(os.umask(0o007)),
                 "oom": open("/proc/self/oom_score_adj").read().strip(),
                 "fds": sorted(os.listdir("/proc/self/fd")),

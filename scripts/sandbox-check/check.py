@@ -50,6 +50,7 @@ async def main():
         assert w["setuid0"] == w["read_other"] == w["list_other"] == w["list_modules"] == "PermissionError"
         assert w["write_site"] == w["write_code"] == w["read_uids"] == "PermissionError" and w["parent_mem"] != "OPENED"
         assert w["write_own"] == "ok" and w["oom"] == "500" and 200 < w["threads"] < 256  # TASKS
+        assert w["fill_tmp"] == w["fill_shm"] == "OSError"  # a RAM folder of 16 MB: no module pins the unit's memory
     assert a["append_restored"] == "ok"  # what pi restored was given back to the module
     print(sh(f"stat -c '%u:%g %A %n' {M}/site_a {M}/pkgs {M}/pkgs/md-probe_1/md_probe/plugin.py {M}/data/*/*"))
 

@@ -33,7 +33,10 @@ ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/storage/mirrordash/modules
 InaccessiblePaths=-/storage/mirrordash/data -/storage/mirrordash/logs -/storage/mirrordash/ssh -/storage/mirrordash/system-connections -/storage/rauc -/run/dbus
-PrivateTmp=yes
+# /tmp and /dev/shm of its own, small: they are RAM, and with no swap a file there is never reclaimed, so one
+# module's would get the others killed at MemoryMax (and the host's /dev/shm outlived the unit). The modules'
+# own temporary files go to their cache folder (TMPDIR), uv's to the module's folder (forkserver.py)
+TemporaryFileSystem=/tmp:mode=1777,size=16M /dev/shm:mode=1777,size=16M
 ProtectProc=invisible
 # Only the processes in /proc, not the machine's (cpuinfo, meminfo, the kernel's settings): no module needs them
 ProcSubset=pid

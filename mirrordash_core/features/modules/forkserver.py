@@ -207,8 +207,10 @@ def spawn(request: dict, fds: list[int], children: dict, sandboxed: bool) -> Non
             home = os.path.join(root, "pkgs", instance)
             own_folder(home, owner, readable=True)
         # The site's HOME is its module's folder: uv and git read their config from HOME, and the unit's /tmp
-        # is every module's, so another module could plant one there (an index, a git insteadOf or hook)
-        env, umask = {"HOME": home, "TMPDIR": "/tmp"}, 0o022  # the site: every module reads it
+        # is every module's, so another module could plant one there (an index, a git insteadOf or hook).
+        # Its TMPDIR too: uv unpacks there (babel alone is 30 MB), more than the unit's /tmp holds, and on
+        # the same file system as the folder uv links instead of copying
+        env, umask = {"HOME": home, "TMPDIR": home}, 0o022  # the site: every module reads it
     socks = [socket.socket(fileno=fd) for fd in fds]
     try:
         fork(lambda *s: children[kind](*s, instance), socks, owner, env, umask)
