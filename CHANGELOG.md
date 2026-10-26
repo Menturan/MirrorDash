@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.9.5-os1] - 2026-10-26
+
+OS image with MirrorDash 0.9.5.
 
 - A module's home-network address can no longer be the mirror itself, even when it is typed in its settings.
 - A module can no longer hold on to the modules' memory with temporary files, getting the other modules stopped or slowing the whole mirror until it restarts.
