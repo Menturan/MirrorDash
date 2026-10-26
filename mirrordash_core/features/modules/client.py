@@ -52,7 +52,7 @@ LAN_LIMIT = 64  # the helper's
 EVENT_NAME = re.compile(r"[A-Za-z0-9_]+\.[A-Za-z0-9_.:-]{1,100}")  # a public event's: "<module>.<what>"
 EVENT_LIMIT = 64 * 1024  # a public event's data, as JSON
 EVENT_RATE = 20  # public events an instance may send a second; more are dropped
-HTML_LIMIT = 512 * 1024  # a card; a bigger one isn't shown (the screen and every admin page get each card)
+HTML_LIMIT = 512 * 1024  # a card; a bigger one isn't shown (every open screen gets each card)
 HTML_INTERVAL = 0.5  # seconds between a card's sends to the screen: one sent sooner waits, and only the last goes
 LOG_BURST, LOG_WINDOW = 100, 10  # log lines an instance may send in LOG_WINDOW seconds; more are counted, not logged
 # An instance's process ending this soon after its start, this many times in a row, pauses it: one that
