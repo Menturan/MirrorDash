@@ -340,7 +340,7 @@ wheels = [
 
 [[package]]
 name = "mirrordash"
-version = "0.9.4"
+version = "0.9.5rc1"
 source = { editable = "." }
 dependencies = [
     { name = "babel" },
