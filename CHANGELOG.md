@@ -9,6 +9,12 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- A module that reaches a device on your home network (like Home Assistant) reaches only its own address, not another module's.
+
+## [0.9.4] - 2026-10-26
+
 - Each module is now installed in a folder of its own, so one module's install can no longer change another module's code or run code in it. **After this update the mirror shows no modules until you install them again** under *Modules → Add modules*; their settings are kept.
 - Each module now runs on its own, as a user of its own: one module can no longer read another's settings, saved data or keys (like the Home Assistant token), and a module that crashes or uses up the modules' memory stops alone while the others keep running. After it stops three times in a row soon after starting, it stays off and the *Dashboard* names it, with *Start Modules Again*.
 - Changing a module's settings restarts only that module, and moving it on the screen restarts none: the other modules keep their place and what they show.
@@ -18,10 +24,6 @@ There are two kinds of releases:
 - A module's scripts on the mirror (a ticking clock, a scrolling news list) run only for MirrorDash's own modules and the ones you allow in the module's settings (*Run its scripts on the mirror*): a script could read what the other modules show and send it elsewhere.
 - Modules can send each other messages again, now only the ones a module makes public (for module authors: `publish(..., public=True)`).
 - Needs the system update that comes with this version: on an older one no module runs, and the admin page says so.
-
-### OS image
-
-- A module that reaches a device on your home network (like Home Assistant) reaches only its own address, not another module's.
 
 ## [0.9.3-os1] - 2026-10-25
 
