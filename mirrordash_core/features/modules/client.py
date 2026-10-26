@@ -38,7 +38,12 @@ from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import free_pins, header_chip, request_lines
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.forkserver import MODULE_UIDS
-from mirrordash_core.features.modules.loader import SAFE_NAME
+from mirrordash_core.features.modules.loader import (
+    SAFE_NAME,
+    find_entry_point,
+    module_entry_points,
+    scripts_allowed,
+)
 from mirrordash_core.venv import get_venv_paths
 
 logger = logging.getLogger("mirrordash.core.modules.client")
@@ -423,7 +428,9 @@ class ModuleHost:
             modules = {k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
             globals_cfg = config.get("globals", {})
             # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
-            self._placement = {instance_id: {**placement(cfg, instance_id), "order": i}
+            eps = module_entry_points()
+            self._placement = {instance_id: {**placement(cfg, instance_id), "order": i, "scripts": scripts_allowed(
+                                   find_entry_point(cfg.get("module", instance_id), eps), config)}
                                for i, (instance_id, cfg) in enumerate(modules.items())}
             wanted = {i: cfg for i, cfg in modules.items() if cfg.get("enabled", True) and i not in self.paused}
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 10)

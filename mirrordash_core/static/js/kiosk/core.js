@@ -3,6 +3,8 @@
  * Uses Shadow DOM for style isolation (design tokens injected separately).
  */
 
+// The page's script nonce (its CSP runs no other script): given to the scripts of cards that may run them
+const NONCE = document.currentScript.nonce;
 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
 const wsUrl = `${protocol}//${window.location.host}/ws`;
 let socket;
@@ -238,7 +240,8 @@ function connect() {
             lucide.createIcons({ root: shadow });
         }
 
-        // Execute any script tags inside the shadow DOM (since innerHTML doesn't execute them).
+        // Execute any script tags inside the shadow DOM (since innerHTML doesn't execute them), if the
+        // module may run scripts (data.scripts, ARCHITECTURE #41: they could read the other cards).
         // Each script gets its module's shadow root as `root` (document.currentScript is null in a shadow tree).
         // The root survives re-renders, so per-instance state like timers can live on it: root._timer.
         // ponytail: inline classic scripts run synchronously on insert, so one global hand-off is enough;
@@ -246,10 +249,15 @@ function connect() {
         window.__mirrordashRoot = shadow;
         const scripts = shadow.querySelectorAll('script');
         for (const oldScript of scripts) {
+            if (!data.scripts) {
+                oldScript.remove();
+                continue;
+            }
             const newScript = document.createElement('script');
             for (const attr of oldScript.attributes) {
                 newScript.setAttribute(attr.name, attr.value);
             }
+            newScript.nonce = NONCE;
             newScript.textContent = `(function (root) {\n${oldScript.textContent}\n})(window.__mirrordashRoot);`;
             oldScript.parentNode.replaceChild(newScript, oldScript);
         }

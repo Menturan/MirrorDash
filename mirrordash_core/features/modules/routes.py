@@ -20,8 +20,14 @@ from mirrordash_core.config import (
     save_config,
 )
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.loader import SAFE_NAME, find_entry_point
+from mirrordash_core.features.modules.loader import (
+    SAFE_NAME,
+    find_entry_point,
+    scripts_allowed,
+    site_name,
+)
 from mirrordash_core.features.modules.service import (
+    allow_scripts,
     check_module_update,
     install_module,
     list_community_modules,
@@ -98,7 +104,20 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
         "standard_form": render_schema_form({"properties": {k: v for k, v in standard.items() if k != "position"}},
                                             cfg, prefix, module_name),
         "module_form": render_schema_form({"properties": own}, cfg, prefix, module_name),
+        "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, load_config()),
     })
+
+
+@router.post("/panels/modules/scripts/{module_name}", dependencies=[Depends(require_api_key)])
+async def set_module_scripts(module_name: str, request: Request):
+    """The owner's yes or no to a module's card running its scripts on the screen (scripts_allowed)."""
+    ep = find_entry_point(module_name)
+    if not (name := site_name(ep) if ep else None):
+        raise HTTPException(status_code=404, detail="Module not found")
+    on = (await read_form(request)).get("on") in (True, "true")
+    allow_scripts(name, on)
+    await module_host.reload_modules()  # the screen reloads: a script that ran keeps its timers until then
+    return notify(f"{module_name}'s scripts {'run' if on else 'no longer run'} on the mirror.")
 
 
 def _new_instance_id(module_name: str, modules_config: dict) -> str:

@@ -36,4 +36,22 @@
         {% endif %}
     </div>
 </form>
+{% if site_name %}
+{# For every card of this module; a module in the core's venv (the image's clock) always runs its scripts #}
+<form hx-post="/admin/panels/modules/scripts/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+    <div class="form-group">
+        <div class="form-label-desc">
+            <label for="module-scripts">Run its scripts on the mirror</label>
+            <p class="field-description">Some modules need them, for a ticking clock or a scrolling list. A module's
+                scripts can read what the other modules show on the mirror and send it anywhere: allow them only
+                for a module you trust. On by itself for MirrorDash's own modules.</p>
+        </div>
+        <label class="switch">
+            <input type="hidden" name="on" value="false">
+            <input type="checkbox" id="module-scripts" name="on" value="true" {% if scripts_allowed %}checked{% endif %}>
+            <span class="slider round"></span>
+        </label>
+    </div>
+</form>
+{% endif %}
 <script>triggerLucide();</script>

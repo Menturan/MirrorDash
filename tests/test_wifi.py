@@ -227,6 +227,11 @@ def test_index_serves_dashboard_when_configured(mock_load, mock_hotspot, client)
     # The modules' cards run here: their JS may talk to this server only (ARCHITECTURE #41)
     csp = response.headers["content-security-policy"]
     assert "connect-src 'self' ws://localhost:8000;" in csp and "frame-ancestors 'none'" in csp
+    # and only scripts with this page's nonce run: no card's inline script or frame (ARCHITECTURE #41)
+    nonce = csp.split("script-src 'nonce-", 1)[1].split("'", 1)[0]
+    assert "frame-src 'none'" in csp and "unsafe-inline';" not in csp.split("style-src")[0]
+    assert response.text.count("<script") == response.text.count(f'<script nonce="{nonce}"') > 0
+    assert nonce not in client.get("/", headers={"host": "localhost:8000"}).text  # a new one every time
     evil = client.get("/", headers={"host": "x; connect-src *"}).headers["content-security-policy"]
     assert "connect-src 'self';" in evil and "*;" not in evil.replace("img-src *", "")
 

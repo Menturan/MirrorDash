@@ -71,6 +71,19 @@ def module_folder(ep) -> str | None:
     return str(ep.dist.locate_file("")) if getattr(ep, "dist", None) else None
 
 
+def site_name(ep) -> str | None:
+    """A module's folder's name in the module site (site/<name>), or None for one in the core's venv."""
+    folder = module_folder(ep)
+    return Path(folder).name if folder and Path(folder).parent == module_site() else None
+
+
+def scripts_allowed(ep, config: dict) -> bool:
+    """Whether a module's card runs its scripts on the screen, where they could read the other cards
+    (ARCHITECTURE #41): a module in the core's venv (the image's clock, a developer's), or one in the site
+    whose name is in config's "module_scripts" (installed from MirrorDash's own GitHub, or the owner's yes)."""
+    return bool(ep) and ((name := site_name(ep)) is None or name in config.get("module_scripts", []))
+
+
 def folder_entry_points(folder: str) -> set[str]:
     """The module names a folder declares, '-' as '_' (find_entry_point's equality)."""
     return {ep.name.replace("-", "_") for dist in importlib.metadata.distributions(path=[folder])

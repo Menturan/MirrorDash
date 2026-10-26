@@ -964,6 +964,36 @@ def test_install_module_enforce_releases(mock_restart, mock_urlopen, module_site
     assert "Try again in an hour" in r3.json()["detail"]
 
 
+@patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
+@patch("mirrordash_core.features.modules.service.run_restart", new_callable=AsyncMock)
+def test_only_the_owners_choice_of_modules_runs_scripts_on_the_screen(mock_restart, mock_urlopen, module_site, client):
+    """A card's scripts could read the other cards (ARCHITECTURE #41): a module installed from MirrorDash's own
+    GitHub runs them, one of that name from anywhere else or uninstalled loses the yes, the owner decides
+    for the others; a module in the core's venv (the image's clock) always does."""
+    from mirrordash_core.features.modules.loader import module_site as site
+    from mirrordash_core.features.modules.loader import scripts_allowed
+    mock_urlopen.return_value.__enter__.return_value.read.return_value = b'{"tag_name": "v1.0.0"}'
+    config = {}
+    in_site = SimpleNamespace(dist=SimpleNamespace(locate_file=lambda _: site() / "mirrordash-news"))
+    in_venv = SimpleNamespace(dist=SimpleNamespace(locate_file=lambda _: "/venv/lib/python3.14/site-packages"))
+    with patch("mirrordash_core.features.modules.service.load_config", return_value=config), \
+         patch("mirrordash_core.features.modules.service.save_config"), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value=config), \
+         patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=in_site), \
+         patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock):
+        for owner, allowed in (("Menturan", True), ("evil", False), ("menturan", True)):
+            answer = call(install_module, f"git+https://github.com/{owner}/mirrordash-news.git@v1.0.0")
+            assert answer.status_code == 200, answer.json()
+            assert scripts_allowed(in_site, config) is allowed
+        assert call(uninstall_module, "mirrordash-news").status_code == 200
+        assert not scripts_allowed(in_site, config) and scripts_allowed(in_venv, config) and not scripts_allowed(None, config)
+        headers = {"X-API-Key": "secret"}
+        assert client.post("/admin/panels/modules/scripts/mirrordash_news", data={"on": "true"}, headers=headers).status_code == 200
+        assert scripts_allowed(in_site, config)
+        assert client.post("/admin/panels/modules/scripts/mirrordash_news", data={"on": "false"}, headers=headers).status_code == 200
+        assert not scripts_allowed(in_site, config)
+
+
 @patch("mirrordash_core.fetch.urllib.request.urlopen")
 @patch("mirrordash_core.features.modules.loader.module_entry_points")
 def test_check_module_update_github(mock_entry_points, mock_urlopen, client):

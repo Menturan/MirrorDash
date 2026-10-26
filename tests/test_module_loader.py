@@ -748,7 +748,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         assert manager.broadcast.await_args.args[0] == {
             "position": "top_left", "module": "garage", "carousel_group": None, "carousel_interval": 15,
             "max_width": None, "max_height": None, "z_index": None, "opacity": None, "order": 0,
-            "html": "<p>closed</p>"}
+            "scripts": False, "html": "<p>closed</p>"}
         assert (tmp_path / "modules" / "data" / "garage").is_dir()
 
         status, headers, body = await _call("/garage/door/open", "POST", [("cookie", "mirrordash_session=owner")])

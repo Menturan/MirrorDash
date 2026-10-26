@@ -5,10 +5,11 @@ import json
 import logging
 import os
 import re
+import secrets
 import time
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
@@ -31,14 +32,16 @@ logger = logging.getLogger("mirrordash.core.kiosk")
 router = APIRouter()
 
 
-def screen_csp(host: str) -> str:
-    """The screen's Content-Security-Policy (ARCHITECTURE #41). The modules' cards run their inline
-    scripts and show pictures and video from anywhere, but their JS talks only to this server (fetch,
-    its WebSocket), and nothing frames the page, submits a form or embeds a plugin."""
+def screen_csp(host: str, nonce: str) -> str:
+    """The screen's Content-Security-Policy (ARCHITECTURE #41). Only scripts with the page's nonce run:
+    the page's own and those core.js gives the cards whose module may run scripts (scripts_allowed); another
+    card's `<script>`, `onerror=` or a frame of this site's (whose scripts would reach the page) never do.
+    Cards show pictures and video from anywhere, but their JS talks only to this server (fetch, its
+    WebSocket), and nothing frames the page, submits a form or embeds a plugin."""
     ws = f" ws://{host}" if re.fullmatch(r"[A-Za-z0-9.:\[\]-]{1,255}", host) else ""
-    return ("default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+    return (f"default-src 'self'; script-src 'nonce-{nonce}'; style-src 'self' 'unsafe-inline'; "
             f"img-src * data: blob:; media-src * data: blob:; font-src 'self' data:; connect-src 'self'{ws}; "
-            "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
+            "frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'")
 
 
 # HTML pages routes
@@ -61,8 +64,10 @@ async def get_index(request: Request):
         page = templates.TemplateResponse(request=request, name="admin_prompt.html",
                                           context={"auth_corrupt": setup[1]})
     else:
-        page = FileResponse(str(PACKAGE_DIR / "static" / "index.html"))
-    page.headers["Content-Security-Policy"] = screen_csp(host)
+        page = HTMLResponse((PACKAGE_DIR / "static" / "index.html").read_text())
+    nonce = secrets.token_urlsafe(16)
+    page = HTMLResponse(page.body.decode().replace("<script", f'<script nonce="{nonce}"'))
+    page.headers["Content-Security-Policy"] = screen_csp(host, nonce)
     return page
 
 

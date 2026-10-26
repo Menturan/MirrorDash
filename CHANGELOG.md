@@ -15,6 +15,7 @@ There are two kinds of releases:
 - The *Logs* tab shows each module's lines under its own name.
 - *System Language* in *Settings* lists every language again, not only five.
 - Opening `mirrordash.local` on a phone or computer goes straight to the admin page. What the mirror shows is shown only on the mirror, so a module's card can't use your admin login.
+- A module's scripts on the mirror (a ticking clock, a scrolling news list) run only for MirrorDash's own modules and the ones you allow in the module's settings (*Run its scripts on the mirror*): a script could read what the other modules show and send it elsewhere.
 - Modules can send each other messages again, now only the ones a module makes public (for module authors: `publish(..., public=True)`).
 - Needs the system update that comes with this version: on an older one no module runs, and the admin page says so.
 

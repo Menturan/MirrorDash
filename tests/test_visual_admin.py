@@ -503,13 +503,25 @@ def test_wifi_setup_flow(page, server_url):
 
 @pytest.mark.only_browser("webkit")
 def test_module_script_gets_its_own_shadow_root(page):
-    """A module's inline script receives its shadow root as `root`; it can't rely on document.currentScript."""
+    """A module's inline script receives its shadow root as `root`; it can't rely on document.currentScript.
+    Under the real page's CSP only a card whose module may run scripts does (ARCHITECTURE #41): another
+    card's script, inline handler or frame runs nothing."""
     import json
     from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from mirrordash_core.app import app
     static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+    with patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=False), \
+         patch("mirrordash_core.features.kiosk.routes.load_config", return_value={"admin_auth": {"hash": "h", "salt": "s"}}):
+        index = TestClient(app, client=("127.0.0.1", 50000)).get("/")
 
     def serve(route):
         path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/":
+            return route.fulfill(body=index.text, content_type="text/html",
+                                 headers={"Content-Security-Policy": index.headers["content-security-policy"]})
         if path == "/api/active-modules":
             return route.fulfill(json=[])
         file = static / path.removeprefix("/static/")
@@ -519,17 +531,23 @@ def test_module_script_gets_its_own_shadow_root(page):
 
     page.route("http://mirror.test/**", serve)
     page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
-    page.goto("http://mirror.test/static/index.html")
+    page.goto("http://mirror.test/")
 
     script = ("<p class='out'></p><script>root.querySelector('.out').textContent = "
               "(document.currentScript ? 'current' : 'root') + ':' + (root._renders = (root._renders || 0) + 1);</script>")
-    for module in ("clock-a", "clock-b", "clock-a"):
-        msg = json.dumps({"module": module, "position": "top_left", "html": script})
+    evil = ("<p class='out'>untouched</p><script>window.ran = 'script'</script>"
+            "<img src='/nope' onerror=\"window.ran = 'onerror'\">"
+            "<iframe srcdoc=\"<script>parent.ran = 'frame'</script>\"></iframe>")
+    for module, html, scripts in (("clock-a", script, True), ("clock-b", script, True), ("clock-a", script, True),
+                                  ("evil", evil, False)):
+        msg = json.dumps({"module": module, "position": "top_left", "html": html, "scripts": scripts})
         page.evaluate("msg => window.__ws.onmessage({ data: msg })", msg)
 
     read = "m => document.querySelector(`[data-module='${m}']`).shadowRoot.querySelector('.out').textContent"
     assert page.evaluate(read, "clock-a") == "root:2"  # same root across re-renders, so state like timers persists
     assert page.evaluate(read, "clock-b") == "root:1"  # and it's per instance
+    page.wait_for_timeout(500)
+    assert page.evaluate("() => window.ran") is None and page.evaluate(read, "evil") == "untouched"
 
 
 @pytest.mark.only_browser("webkit")

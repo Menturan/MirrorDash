@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
 from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.host import package_key
 from mirrordash_core.features.modules.loader import (
     find_entry_point,
     module_entry_points,
@@ -191,12 +192,26 @@ async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
     asyncio.create_task(run_restart())
 
 
+def allow_scripts(name: str | None, allowed: bool) -> None:
+    """Whether the module installed in site/<name> runs its card's scripts on the screen (scripts_allowed)."""
+    config = load_config()
+    names = set(config.get("module_scripts", []))
+    if name and (name in names) != allowed:
+        config["module_scripts"] = sorted(names | {name} if allowed else names - {name})
+        save_config(config)
+
+
 async def install_module(package_name: str) -> dict:
     check_package_name(package_name)
     if package_name.startswith("git+https://github.com/"):
         package_name = await _pinned_to_latest_release(package_name)
     logger.info(f"Installing package: {package_name}")
     await _change_packages("Installation", ["install", _local_target(package_name)])
+    # Its card's scripts run on the screen if it came from MirrorDash's own GitHub; one of that name from
+    # anywhere else loses the yes (ARCHITECTURE #41). Saved before the restart _change_packages scheduled.
+    owner = package_name.removeprefix("git+https://github.com/").split("/")[0].lower()
+    allow_scripts(package_key(_local_target(package_name)),
+                  package_name.startswith("git+https://github.com/") and owner == OFFICIAL_OWNER)
     return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
@@ -300,6 +315,7 @@ async def uninstall_module(package_name: str) -> dict:
         del modules_config[key]
     if instances:
         save_config(config)
+    allow_scripts(package_key(package_name), False)
     return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
 
 
