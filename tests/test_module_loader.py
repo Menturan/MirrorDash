@@ -521,6 +521,48 @@ if name == "md_other":  # a package of md_widget's name too, which must shadow n
 
 
 @pytest.mark.asyncio
+async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, caplog):
+    """A card over HTML_LIMIT isn't shown, a flood of cards reaches the screen as its last one every
+    HTML_INTERVAL, a flood of log lines is counted instead of logged, and a module file over
+    MODULE_FILE_LIMIT isn't read: what a bad module sends can't take the core's memory or its log."""
+    from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.features.modules import loader
+    core = client_module.ModuleHost()
+    core._placement = {"w": {"module": "w"}}
+    conn = core._instances["w"] = client_module.Connection(MagicMock(), MagicMock(), None, "w")
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    monkeypatch.setattr(client_module, "HTML_INTERVAL", 0.2)
+    with caplog.at_level(logging.INFO):
+        for i in range(50):
+            await core._handle({"t": "html", "html": f"<p>{i}</p>"}, conn)
+        await _until(lambda: client_module.manager.broadcast.await_count == 1)
+        for i in (50, 51):  # within HTML_INTERVAL of the last send: they wait, and only the last goes
+            await core._handle({"t": "html", "html": f"<p>{i}</p>"}, conn)
+        await asyncio.sleep(0.1)
+        assert client_module.manager.broadcast.await_count == 1
+        await asyncio.sleep(0.3)
+        sent = [c.args[0]["html"] for c in client_module.manager.broadcast.await_args_list]
+        assert sent == ["<p>49</p>", "<p>51</p>"]
+        for _ in range(3):
+            await core._handle({"t": "html", "html": "x" * (client_module.HTML_LIMIT + 1)}, conn)
+        assert conn.html == "" and sum("not shown" in r.message for r in caplog.records) == 1
+        for i in range(client_module.LOG_BURST + 30):
+            await core._handle({"t": "log", "level": 20, "text": f"line {i}"}, conn)
+        conn.logged.clear()
+        await core._handle({"t": "log", "level": 20, "text": "after"}, conn)
+    lines = [r.message for r in caplog.records if r.name == "mirrordash.modules.w"]
+    assert len(lines) == client_module.LOG_BURST + 2 and lines[-2:] == [
+        f"30 log lines left out: more than {client_module.LOG_BURST} in {client_module.LOG_WINDOW} s", "after"]
+
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "schema.json").write_text(" " * (loader.MODULE_FILE_LIMIT + 1))
+    monkeypatch.setattr(loader, "module_search_path", lambda: [str(tmp_path)])
+    assert loader.module_file(tmp_path / "pkg", "schema.json") is None
+    (tmp_path / "pkg" / "schema.json").write_text("{}")
+    assert loader.module_file(tmp_path / "pkg", "schema.json")
+
+
+@pytest.mark.asyncio
 async def test_the_running_modules_keep_the_settings_order():
     """The screen lays an area's cards out in the order /api/active-modules lists them; the host reported
     its instances sorted, which put the clock above Home Assistant on the test mirror."""
@@ -725,6 +767,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         await core._handle({"t": "html", "instance": "garage", "html": "<p>x</p>"}, core._control)
         assert not manager.broadcast.called  # the control process has no card to show
         await core._handle({"t": "html", "instance": "elsewhere", "html": "<p>x</p>"}, garage)
+        await _until(lambda: manager.broadcast.called)
         assert manager.broadcast.await_args.args[0]["module"] == "garage"  # its own place, whatever it names
         with caplog.at_level(logging.INFO):
             await core._handle({"t": "log", "name": "mirrordash.core.auth", "level": 40, "text": "forged"}, garage)

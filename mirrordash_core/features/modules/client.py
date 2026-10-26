@@ -52,6 +52,9 @@ LAN_LIMIT = 64  # the helper's
 EVENT_NAME = re.compile(r"[A-Za-z0-9_]+\.[A-Za-z0-9_.:-]{1,100}")  # a public event's: "<module>.<what>"
 EVENT_LIMIT = 64 * 1024  # a public event's data, as JSON
 EVENT_RATE = 20  # public events an instance may send a second; more are dropped
+HTML_LIMIT = 512 * 1024  # a card; a bigger one isn't shown (the screen and every admin page get each card)
+HTML_INTERVAL = 0.5  # seconds between a card's sends to the screen: one sent sooner waits, and only the last goes
+LOG_BURST, LOG_WINDOW = 100, 10  # log lines an instance may send in LOG_WINDOW seconds; more are counted, not logged
 # An instance's process ending this soon after its start, this many times in a row, pauses it: one that
 # runs out of memory (the kernel kills it first, oom_score_adj) or crashes would start again forever
 CRASH_WINDOW = 300
@@ -153,6 +156,10 @@ class Connection:
         self.started = time.monotonic()
         self.module = ""  # an instance's module (its package name): the start of its public events' names
         self.published: collections.deque[float] = collections.deque(maxlen=EVENT_RATE)  # when, the last ones
+        self.logged: collections.deque[float] = collections.deque(maxlen=LOG_BURST)  # when, the last log lines
+        self.dropped = 0  # log lines left out since the last one logged
+        self.shown = 0.0  # when its card was last sent to the screen
+        self.showing: asyncio.Task | None = None  # its next card's send, waiting for HTML_INTERVAL
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
 
@@ -485,6 +492,14 @@ class ModuleHost:
         except (ConnectionError, OSError, TimeoutError) as e:
             logger.warning(f"{instance_id} couldn't start again: {e!r}")
 
+    async def _show(self, conn: Connection) -> None:
+        """Send an instance's card to the screen, at most once in HTML_INTERVAL: the latest one, when its
+        time comes (a module re-rendering in a loop would otherwise keep the screen redrawing)."""
+        await asyncio.sleep(max(0.0, conn.shown + HTML_INTERVAL - time.monotonic()))
+        conn.showing, conn.shown = None, time.monotonic()
+        if self._instances.get(conn.instance) is conn and conn.instance in self._placement:
+            await manager.broadcast({**self._placement[conn.instance], "html": conn.html})
+
     async def _handle(self, message: dict, conn: Connection) -> None:
         """One message from the host: input from outside, checked like any other. An instance's connection
         speaks for that instance alone, whatever its message names."""
@@ -494,6 +509,11 @@ class ModuleHost:
             if future and not future.done():
                 future.set_result(message)
         elif kind == "log":
+            now = time.monotonic()
+            if len(conn.logged) == LOG_BURST and now - conn.logged[0] < LOG_WINDOW:
+                conn.dropped += 1  # a flood would rotate the core's own lines out of its log, and wear the card
+                return
+            conn.logged.append(now)
             name = str(message.get("name", ""))
             if instance_id:
                 name = f"mirrordash.modules.{instance_id}"
@@ -502,13 +522,23 @@ class ModuleHost:
             level = message.get("level") if isinstance(message.get("level"), int) else logging.INFO
             # Each further line (a traceback) carries the name too: a line of its own can't pass for the core's
             text = str(message.get("text", ""))[:4000].replace("\r", "").replace("\n", f"\n    {name}: ")
+            if conn.dropped:
+                logging.getLogger(name).warning(f"{conn.dropped} log lines left out: more than {LOG_BURST} in {LOG_WINDOW} s")
+                conn.dropped = 0
             logging.getLogger(name).log(min(max(level, logging.DEBUG), logging.CRITICAL), text)
         elif instance_id is None or self._instances.get(instance_id) is not conn or instance_id not in self._placement:
             return  # the control process sends replies and logs only; a stopped instance nothing
         elif kind == "html":
-            if isinstance(message.get("html"), str):
-                conn.html = message["html"]
-                await manager.broadcast({**self._placement[instance_id], "html": conn.html})
+            html = message.get("html")
+            if not isinstance(html, str):
+                return
+            if len(html) > HTML_LIMIT:
+                if conn.html != "":  # once, not for every card of a flood
+                    logger.warning(f"{instance_id}: its card is over {HTML_LIMIT // 1024} kB, not shown")
+                html = ""
+            conn.html = html
+            if conn.showing is None:
+                conn.showing = asyncio.create_task(self._show(conn))
         elif kind == "publish":
             # A module's public event, to every instance (its own too) but never the core's own subscribers:
             # named after its module, so it can't pass for the hardware's or another module's

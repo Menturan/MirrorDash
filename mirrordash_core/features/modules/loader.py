@@ -42,6 +42,7 @@ logger = logging.getLogger("mirrordash.core.modules")
 MODULE_RESTART_DELAY = 5
 # A module or instance name: it ends up in HTML ids, JS strings, URLs and folder names
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+MODULE_FILE_LIMIT = 1024 * 1024  # a module file the core reads (schema, translations, icon.svg)
 
 
 def module_site() -> Path:
@@ -120,7 +121,12 @@ def module_file(pkg_dir: Path | None, *parts: str) -> Path | None:
         return None
     real = Path(pkg_dir, *parts).resolve()
     roots = [Path(p).resolve() for p in module_search_path() if p]
-    return real if real.is_file() and any(real.is_relative_to(root) for root in roots) else None
+    if not (real.is_file() and any(real.is_relative_to(root) for root in roots)):
+        return None
+    if real.stat().st_size > MODULE_FILE_LIMIT:  # read whole into the core: a huge one would take its memory
+        logger.warning(f"{real} is over {MODULE_FILE_LIMIT // 1024} kB, not read")
+        return None
+    return real
 
 
 def load_translations(pkg_dir: Path | None, lang: str) -> dict:

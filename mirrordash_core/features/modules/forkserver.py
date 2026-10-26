@@ -23,6 +23,7 @@ import ctypes
 import gc
 import json
 import os
+import resource
 import select
 import signal
 import socket
@@ -43,6 +44,9 @@ MODULE_UIDS = range(70100, 71000)  # one per instance, kept in uids.json (host.p
 UIDS = range(70000, 71000)  # all of them (mirrordash-module-network's nftables rules)
 STOP_GRACE = 5  # seconds a module has to stop after its connection closed, before it is ended
 OOM_SCORE_ADJ = "500"  # the kernel kills a module, not the forkserver or the control process
+# Processes and threads a module's user may have (RLIMIT_NPROC, counted per uid): a fork bomb stops there, not
+# at the unit's memory limit with every module. uv's threads and builds need far fewer.
+TASKS = 256
 
 PR_SET_PDEATHSIG, PR_SET_DUMPABLE, PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL = 1, 4, 47, 4
 CAP_VERSION_3 = 0x20080522
@@ -156,6 +160,8 @@ def fork(main, socks: list[socket.socket], uid: int | None, env: dict, umask: in
             prctl(PR_SET_DUMPABLE, 1, 0, 0, 0)
             with open("/proc/self/oom_score_adj", "w") as f:
                 f.write(OOM_SCORE_ADJ)
+            if uid is not None:  # the count is the uid's: off a mirror the developer's, with all their processes
+                resource.setrlimit(resource.RLIMIT_NPROC, (TASKS, TASKS))
         os.environ.update(env)
         os.umask(umask)
         sys.pycache_prefix, sys.dont_write_bytecode = None, True  # the unit's prefix is the forkserver's own

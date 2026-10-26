@@ -1,5 +1,6 @@
 import asyncio
 import os
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter
@@ -10,6 +11,19 @@ def attempt(fn):
         return fn()
     except OSError as e:
         return f"{type(e).__name__}"
+
+
+def threads_started(n):
+    """How many of n threads start (each waits until all tried): RLIMIT_NPROC stops a fork bomb."""
+    done, started = threading.Event(), 0
+    for _ in range(n):
+        try:
+            threading.Thread(target=done.wait, daemon=True).start()
+        except RuntimeError:
+            break
+        started += 1
+    done.set()
+    return started
 
 
 class Module:
@@ -34,6 +48,7 @@ class Module:
                 "list_modules": attempt(lambda: os.listdir("/storage/mirrordash/modules")),
                 "write_site": attempt(lambda: (open(site + "/evil.py", "w").write("x"), "WROTE")[1]),
                 "write_code": attempt(lambda: (open(__file__, "a").write(""), "WROTE")[1]),  # its own module's
+                "threads": threads_started(300),
                 "read_uids": attempt(lambda: open("/storage/mirrordash/modules/uids.json").read()),
                 "parent_mem": attempt(lambda: (open(f"/proc/{os.getppid()}/mem", "rb").close(), "OPENED")[1]),
                 "home": os.environ.get("HOME"), "tmp": os.environ.get("TMPDIR"), "umask": oct(os.umask(0o007)),
