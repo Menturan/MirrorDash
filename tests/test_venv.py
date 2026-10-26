@@ -61,8 +61,8 @@ def test_installed_modules_are_read_from_the_module_site(tmp_path, monkeypatch):
     )
     venv = fake_venv(tmp_path / "venv_b")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
-    (tmp_path / "modules").mkdir()
-    (tmp_path / "modules" / "site").symlink_to(venv / "lib" / "python3.15" / "site-packages")
+    (tmp_path / "modules" / "site").mkdir(parents=True)  # a module's folder: here both in one
+    (tmp_path / "modules" / "site" / "both").symlink_to(venv / "lib" / "python3.15" / "site-packages")
     modules = sorted(installed_modules(), key=lambda m: m["name"])
     assert [(m["package_name"], m["version"], m.get("source")) for m in modules] == [
         ("mirrordash-calendar", "0.3.0", "git+https://github.com/someone/mirrordash-calendar@abc123"),

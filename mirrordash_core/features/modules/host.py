@@ -35,21 +35,24 @@ holding the request's id. An instance stops when the core closes its connection.
 connection to the control process ends (the core restarted, or was updated), the host exits and systemd
 starts it again, so a new venv's modules load fresh.
 
-The modules are installed in the module site (loader.module_site), in the host's own folder: uv runs in a
-process of its own (site_main, as forkserver.SITE_UID), so a package's build and its .pth never run as the
-core, the forkserver or another module.
+The modules are installed in the module site (loader.module_site), in the host's own folder: each module in
+a folder of its own (pkgs/<name>_<n>), where uv runs in a process of its own as that module's user
+(site_main, forkserver.PACKAGE_UIDS), and the site is a link per module to its folder, which only the control
+process writes. So a package's build, the files it installs and its .pth reach no other module's folder or
+process, and never run as the core or the forkserver.
 """
 
 import asyncio
 import base64
 import contextlib
 import glob
+import importlib.metadata
 import itertools
 import json
 import logging
 import os
+import re
 import shutil
-import site
 import socket
 import struct
 import sys
@@ -63,7 +66,13 @@ from mirrordash_core.config import get_module_dir
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import GpioLines
 from mirrordash_core.features.modules import forkserver
-from mirrordash_core.features.modules.loader import SAFE_NAME, ModuleLoader, module_site
+from mirrordash_core.features.modules.loader import (
+    SAFE_NAME,
+    ModuleLoader,
+    folder_entry_points,
+    module_folders,
+    module_site,
+)
 from mirrordash_core.venv import point_link
 
 logger = logging.getLogger("mirrordash.core.modules.host")
@@ -142,6 +151,7 @@ def sandbox_checks(data: list[str] | None = None) -> list[tuple[str, bool]]:
     checks += [(f"another module's data ({name})", os.access(get_module_dir() / "data" / name, os.R_OK))
                for name in (data_folders() if data is None else data)]
     checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
+    checks.append(("writing a module's own folder", any(os.access(f, os.W_OK) for f in module_folders())))
     checks.append(("capabilities (" + (", ".join(forkserver.capabilities()) or "none") + ")",
                    bool(forkserver.capabilities())))
     return checks
@@ -155,30 +165,49 @@ def site_paths() -> tuple[Path, Path, Path]:
     return link, active, site_a if active == site_b else site_b
 
 
-def copy_site(src: Path, dst: Path) -> None:
-    """shutil.copytree(src, dst, symlinks=True), but the folders' modes aren't copied: they carry the modules
-    folder's setgid bit, and setting it is what RestrictSUIDSGID= forbids (EPERM: every module change after
-    the first failed on the test mirror). A new folder gets the bit from its parent anyway."""
-    for root, dirs, files in os.walk(src):
-        target = dst / os.path.relpath(root, src)
-        target.mkdir(parents=True, exist_ok=True)
-        for name in files + [d for d in dirs if os.path.islink(os.path.join(root, d))]:
-            path = os.path.join(root, name)
-            if os.path.islink(path):
-                os.symlink(os.readlink(path), target / name)
-            else:
-                shutil.copy2(path, target / name)
+def site_links(site_dir: Path) -> dict[str, str]:
+    """A site's modules: {name: the name of its folder in pkgs}."""
+    with contextlib.suppress(OSError):
+        return {e.name: Path(os.readlink(e.path)).name for e in os.scandir(site_dir)
+                if e.is_symlink() and SAFE_NAME.match(e.name)}
+    return {}
 
 
-def empty(folder: Path) -> None:
-    """Everything in folder, not the folder: the site's folders are the site user's in the host's, which it
-    can't write (forkserver.own_folder makes them)."""
+def link_module(site_dir: Path, name: str, folder: str) -> None:
+    """Point site_dir/name at pkgs/folder, at once."""
+    tmp = site_dir / f".{name}.tmp"
+    tmp.unlink(missing_ok=True)
+    os.symlink(f"../pkgs/{folder}", tmp)
+    os.replace(tmp, site_dir / name)
+
+
+def package_key(target: str) -> str | None:
+    """The name a module's folder and user go by, from what uv installs: a GitHub repository's name, a
+    local folder's or a PyPI requirement's, lowercase with '-' between words. None for anything else."""
+    if target.startswith("git+"):
+        name = target.split("@")[0].rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
+    elif "/" in target:
+        name = Path(target).name
+    else:
+        name = re.split(r"[\[<>=!~;@ ]", target, maxsplit=1)[0]
+    key = re.sub(r"[-_.]+", "-", name).lower()
+    return key if re.fullmatch(r"[a-z0-9-]{1,56}", key) else None
+
+
+def empty(folder: Path, site: bool = False) -> None:
+    """Everything in folder, not the folder: a module's folder is its user's in pkgs, which it can't write
+    (forkserver.own_folder makes it). site: a site's folder of links, where what an older shared site left
+    and can't be removed stays (module_folders reads the links only)."""
     folder.mkdir(parents=True, exist_ok=True)
     for entry in os.scandir(folder):
-        if entry.is_dir(follow_symlinks=False):
-            shutil.rmtree(entry.path)
-        else:
-            os.unlink(entry.path)
+        try:
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path)
+            else:
+                os.unlink(entry.path)
+        except OSError:
+            if not site:
+                raise
 
 
 async def run(*cmd: str, timeout: float) -> tuple[int, str]:
@@ -441,52 +470,44 @@ class Host:
 
 
 async def instance_main(stream: socket.socket, fds: socket.socket, instance: str) -> None:
-    """One module instance, as its own user: the core's connection for it and the module."""
-    # After the core's own packages: a module's copy of one (uv installs every dependency) never shadows them.
-    # Only here, as the module's user: the site's .pth files run on adding it.
-    site.addsitedir(str(module_site()))
+    """One module instance, as its own user: the core's connection for it and the module (which adds its
+    own folder only: ModuleLoader.start_modules)."""
     reader, writer = await asyncio.open_unix_connection(sock=stream, limit=LINE_LIMIT)
     host = Host(reader, writer)
     threading.Thread(target=receive_fds, args=(fds, host.link, asyncio.get_running_loop()), daemon=True).start()
     await host.run()
 
 
-async def site_step(message: dict) -> tuple[int, str]:
-    """One step of a change to the installed modules (client.py's ModuleHost.packages), like the core's
-    venv_swap: prepare the next site (a copy of the active one, or empty when fresh), run uv pip in it,
-    import modules from it, or drop it. The control process switches the link (commit)."""
+async def site_step(message: dict, folder: Path) -> tuple[int, str]:
+    """One step in one module's own folder, as that module's user (Control._site chooses both): uv pip
+    install into it, import its modules from it, or empty it."""
     op, python = message.get("op"), str(message.get("python") or "")
-    _, active, next_site = site_paths()
-    if op == "prepare":
-        await asyncio.to_thread(empty, next_site)
-        if active.is_dir() and not message.get("fresh"):
-            await asyncio.to_thread(copy_site, active, next_site)
-    elif op == "pip":
+    if op == "pip":
         args = [str(a) for a in message.get("args") or []]
         timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else UV_TIMEOUT
-        if args[:1] not in (["install"], ["uninstall"]):
-            return 1, f"not a uv pip change: {args[:1]}"
+        if args[:1] != ["install"]:
+            return 1, f"not a uv pip install: {args[:1]}"
         # --no-cache: the host's folder is on /storage, which is small
-        code, err = await run("uv", "pip", args[0], "--python", python, "--target", str(next_site),
+        code, err = await run("uv", "pip", "install", "--python", python, "--target", str(folder),
                               "--no-cache", *args[1:], timeout=timeout)
-        if code == 0:  # a module's process can't write the site, so its bytecode is made here
-            await run(python, "-I", "-m", "compileall", "-q", str(next_site), timeout=timeout)
+        if code == 0:  # a module's process can't write its folder, so its bytecode is made here
+            await run(python, "-I", "-m", "compileall", "-q", str(folder), timeout=timeout)
         return code, err
     elif op == "check":
         names = [n for n in message.get("names", []) if isinstance(n, str) and SAFE_NAME.match(n)]
-        return await run(python, "-I", "-c", CHECK, str(next_site), *names, timeout=CHECK_TIMEOUT)
-    elif op == "revert":
-        await asyncio.to_thread(empty, next_site)
+        return await run(python, "-I", "-c", CHECK, str(folder), *names, timeout=CHECK_TIMEOUT)
+    elif op == "clean":
+        await asyncio.to_thread(empty, folder)
     else:
         return 1, f"unknown site step {op!r}"
     return 0, ""
 
 
-async def site_main(stream: socket.socket, _instance=None) -> None:
-    """One site step, as the site's user: a line in, the answer out."""
+async def site_main(stream: socket.socket, folder: str) -> None:
+    """One site step in pkgs/folder, as that module's user: a line in, the answer out."""
     reader, writer = await asyncio.open_unix_connection(sock=stream, limit=LINE_LIMIT)
     try:
-        code, err = await site_step(json.loads(await reader.readline()))
+        code, err = await site_step(json.loads(await reader.readline()), get_module_dir() / "pkgs" / folder)
     except (OSError, ValueError) as e:
         code, err = 1, str(e)
     writer.write(json.dumps({"code": code, "err": err}).encode() + b"\n")
@@ -507,23 +528,25 @@ async def probe_main(stream: socket.socket, _instance=None) -> None:
 CHILDREN = {"module": instance_main, "site": site_main, "probe": probe_main}
 
 
-def module_uids(instances: list[str]) -> dict[str, int]:
-    """Each instance's user, kept in the host's folder (/storage outlives the image) so its files stay its
-    own. A new instance gets the next uid, never one that was another's: that one's data may still be there.
-    ponytail: forkserver.MODULE_UIDS holds 900 instances ever made on a mirror; past that a new one doesn't start."""
-    path = get_module_dir() / "uids.json"
+def module_uids(instances: list[str], file: str = "uids.json", users: range = forkserver.MODULE_UIDS) -> dict[str, int]:
+    """Each instance's user (or each installed module's, in package_uids.json), kept in the host's folder
+    (/storage outlives the image) so its files stay its own. A new one gets the next uid, never one that was
+    another's: that one's files may still be there.
+    ponytail: forkserver.MODULE_UIDS holds 900 instances ever made on a mirror, PACKAGE_UIDS 98 modules ever
+    installed; past that a new one doesn't start or install."""
+    path = get_module_dir() / file
     try:
-        uids = {k: v for k, v in json.loads(path.read_text()).items() if type(v) is int and v in forkserver.MODULE_UIDS}
+        uids = {k: v for k, v in json.loads(path.read_text()).items() if type(v) is int and v in users}
     except (OSError, ValueError, AttributeError):
         uids = {}
     new = [i for i in instances if i not in uids and SAFE_NAME.match(i)]
     for instance in new:
-        uid = max(uids.values(), default=forkserver.MODULE_UIDS.start - 1) + 1
-        if uid in forkserver.MODULE_UIDS:
+        uid = max(uids.values(), default=users.start - 1) + 1
+        if uid in users:
             uids[instance] = uid
     if new:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name("uids.json.tmp")
+        tmp = path.with_name(file + ".tmp")
         tmp.write_text(json.dumps(uids, indent=1))
         os.replace(tmp, path)
     return {i: uids[i] for i in instances if i in uids}
@@ -585,12 +608,13 @@ class Control:
             return
         self.spawn("module", uid, instance, socks)
 
-    async def child(self, kind: str, uid: int, message: dict | None, timeout: float) -> dict:
-        """Run a site step or the probe in a process of its own: the message in, its answer out."""
+    async def child(self, kind: str, uid: int, message: dict | None, timeout: float, folder: str | None = None) -> dict:
+        """Run a site step (in a module's folder) or the probe in a process of its own: the message in, its
+        answer out."""
         ours, theirs = socket.socketpair()
         reader, writer = await asyncio.open_unix_connection(sock=ours, limit=LINE_LIMIT)
         try:
-            self.spawn(kind, uid, None, [theirs])
+            self.spawn(kind, uid, folder, [theirs])
             if message is not None:
                 writer.write(json.dumps(message).encode() + b"\n")
                 await writer.drain()
@@ -615,23 +639,105 @@ class Control:
         await self.link.send({"t": "reply", "id": request, "checks": await self.probe(), "sandboxed": self.sandboxed})
 
     async def _site(self, message: dict) -> None:
-        """One step of a change to the installed modules: in the site's process, but the link's switch (the
-        host's folder is the unit's user's). The core runs one change at a time."""
-        code, err = 0, ""
+        """One step of a change to the installed modules (client.py's ModuleHost.packages), like the core's
+        venv_swap: prepare the next site (the active one's links, or none when fresh), install a module into
+        a new folder of its own or take one out, import modules from it, switch it in or drop it. The links
+        are written here, what runs a module's code in a process as that module's user. The core runs one
+        change at a time."""
+        op = message.get("op")
+        link, active, next_site = site_paths()
         try:
-            if message.get("op") == "commit":
-                link, _, next_site = site_paths()
+            if op == "prepare":
+                await asyncio.to_thread(empty, next_site, True)
+                for name, folder in ({} if message.get("fresh") else site_links(active)).items():
+                    link_module(next_site, name, folder)
+                await self._collect()
+                code, err = 0, ""
+            elif op == "pip":
+                code, err = await self._change(message, next_site)
+            elif op == "check":
+                code, err = await self._check_modules(message, next_site)
+            elif op == "revert":
+                await asyncio.to_thread(empty, next_site, True)
+                code, err = 0, ""
+            elif op == "commit":
                 point_link(link, next_site)
+                code, err = 0, ""
             else:
-                timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else SITE_STEP_TIMEOUT
-                reply = await self.child("site", forkserver.SITE_UID, message, timeout + 30)
-                code = reply.get("code") if isinstance(reply.get("code"), int) else 1
-                err = str(reply.get("err", "the step ended without an answer"))
+                code, err = 1, f"unknown site step {op!r}"
         except (OSError, ValueError, TimeoutError) as e:
             code, err = 1, str(e) or repr(e)
         if code:
-            logger.warning(f"Module site {message.get('op')} failed: {err.strip()}")
+            logger.warning(f"Module site {op} failed: {err.strip()}")
         await self.link.send({"t": "reply", "id": message.get("id"), "code": code, "err": err})
+
+    async def _step(self, name: str, folder: str, message: dict) -> tuple[int, str]:
+        """A site step in pkgs/folder, as the user of the module called name."""
+        uid = module_uids([name], "package_uids.json", forkserver.PACKAGE_UIDS).get(name)
+        if uid is None:
+            return 1, "no user is left for another module on this mirror"
+        timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else SITE_STEP_TIMEOUT
+        reply = await self.child("site", uid, message, timeout + 30, folder)
+        return (reply.get("code") if isinstance(reply.get("code"), int) else 1), \
+            str(reply.get("err", "the step ended without an answer"))
+
+    async def _change(self, message: dict, next_site: Path) -> tuple[int, str]:
+        """uv pip install of one module, into a new folder of its own, linked in only if it worked and
+        claims no other module's name; or uninstall: its link taken out."""
+        args = [str(a) for a in message.get("args") or []]
+        name = package_key(args[-1]) if len(args) > 1 else None
+        if args[:1] not in (["install"], ["uninstall"]) or not name:
+            return 1, f"not one module to install or uninstall: {args}"
+        links = site_links(next_site)
+        if args[0] == "uninstall":
+            gone = [k for k, f in links.items() if any(package_key(d.name) == name for d in
+                    importlib.metadata.distributions(path=[str(next_site / k)]))]
+            for k in gone:
+                (next_site / k).unlink()
+            return (0, "") if gone else (1, f"{args[-1]} is not installed")
+        pkgs = get_module_dir() / "pkgs"
+        taken = [int(e.name.rpartition("_")[2]) for e in os.scandir(pkgs)
+                 if e.name.rpartition("_")[0] == name and e.name.rpartition("_")[2].isdigit()] if pkgs.is_dir() else []
+        folder = f"{name}_{max(taken, default=0) + 1}"
+        code, err = await self._step(name, folder, message)
+        if code:
+            return code, err
+        claimed = folder_entry_points(str(pkgs / folder))
+        for other, other_folder in links.items():
+            if other != name and (both := claimed & folder_entry_points(str(pkgs / other_folder))):
+                return 1, f"{args[-1]} has a module named {', '.join(sorted(both))}, as {other} already has"
+        link_module(next_site, name, folder)
+        return 0, ""
+
+    async def _check_modules(self, message: dict, next_site: Path) -> tuple[int, str]:
+        """The modules named import from the next site: each in its own folder, as its own user."""
+        names = {str(n).replace("-", "_") for n in message.get("names") or []}
+        for name, folder in site_links(next_site).items():
+            if folder_entry_points(str(next_site / name)) & names:
+                code, err = await self._step(name, folder, {**message, "timeout": CHECK_TIMEOUT})
+                if code:
+                    return code, err
+        return 0, ""
+
+    async def _collect(self) -> None:
+        """Remove the module folders neither site links to (an older version, an uninstalled module, a
+        failed install), each emptied as its user. One that won't go stays until the next change."""
+        used = {f for s in site_paths()[1:] for f in site_links(s).values()}
+        entries = []
+        with contextlib.suppress(OSError):
+            entries = [e for e in os.scandir(get_module_dir() / "pkgs") if e.name not in used
+                       and SAFE_NAME.match(e.name) and e.name.rpartition("_")[2].isdigit()]
+        for entry in entries:
+            try:
+                if entry.stat(follow_symlinks=False).st_uid in forkserver.PACKAGE_UIDS:
+                    code, err = await self._step(entry.name.rpartition("_")[0], entry.name, {"op": "clean"})
+                    if code:
+                        raise OSError(err)
+                else:  # off a mirror: the developer's own
+                    await asyncio.to_thread(empty, Path(entry.path))
+                os.rmdir(entry.path)
+            except (OSError, ValueError, TimeoutError) as e:
+                logger.warning(f"An old module folder ({entry.name}) couldn't be removed: {e}")
 
 
 def receive_spawns(listener: socket.socket, control: Control, loop: asyncio.AbstractEventLoop) -> None:

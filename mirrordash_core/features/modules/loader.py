@@ -16,6 +16,7 @@ import json
 import logging
 import os
 import re
+import site
 import sys
 import time
 import urllib.error
@@ -45,14 +46,34 @@ SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 def module_site() -> Path:
     """Where modules are installed: the module host's own folder, a link it switches between site_a and
-    site_b (host.py). Never on the core's sys.path: the core reads its files only, so a package's .pth or
-    one that shadows the core's own runs nowhere but in the module host (ARCHITECTURE #41)."""
+    site_b (host.py), each a link per module to the folder it was installed in alone. Never on the core's
+    sys.path: the core reads its files only, so a package's .pth or one that shadows the core's own runs
+    nowhere but in the module host, and there only in that module's process (ARCHITECTURE #41)."""
     return get_module_dir() / "site"
 
 
+def module_folders() -> list[str]:
+    """Each installed module's own folder (site/<name>), in name order."""
+    with contextlib.suppress(OSError):
+        return [str(module_site() / e.name) for e in sorted(os.scandir(module_site()), key=lambda e: e.name)
+                if e.is_symlink() and SAFE_NAME.match(e.name)]
+    return []
+
+
 def module_search_path() -> list[str]:
-    """The module site, then this process's sys.path (a module installed into a developer's venv)."""
-    return [str(module_site()), *sys.path]
+    """The modules' folders, then this process's sys.path (a module installed into a developer's venv)."""
+    return [*module_folders(), *sys.path]
+
+
+def module_folder(ep) -> str | None:
+    """The folder ep's package was installed in (one of module_folders, or this process's site-packages)."""
+    return str(ep.dist.locate_file("")) if getattr(ep, "dist", None) else None
+
+
+def folder_entry_points(folder: str) -> set[str]:
+    """The module names a folder declares, '-' as '_' (find_entry_point's equality)."""
+    return {ep.name.replace("-", "_") for dist in importlib.metadata.distributions(path=[folder])
+            for ep in dist.entry_points.select(group="mirrordash.modules")}
 
 
 def module_entry_points() -> list:
@@ -79,7 +100,9 @@ def package_dir(ep) -> Path | None:
     top-level name runs no package code (a submodule's would run its parent's __init__), nor a .pth."""
     try:
         top, *rest = ep.module.split(".")
-        spec = importlib.machinery.PathFinder.find_spec(top, module_search_path())
+        # Its own folder first: another module's package of the same name lies in a folder of its own
+        folder = module_folder(ep)
+        spec = importlib.machinery.PathFinder.find_spec(top, [folder, *sys.path] if folder else module_search_path())
     except (AttributeError, TypeError, ImportError, ValueError):  # not a real entry point, or a bad name
         return None
     if not spec:
@@ -362,6 +385,10 @@ class ModuleLoader:
 
             try:
                 logger.info(f"Loading module: {module_name} (instance: {instance_id})")
+                # Only its own folder, after the core's packages: a module's copy of one (uv installs every
+                # dependency) never shadows them. addsitedir runs the folder's .pth files, so only here.
+                if (folder := module_folder(ep)) and folder not in sys.path:
+                    site.addsitedir(folder)
                 plugin_class = ep.load()
 
                 # Pre-create and inject writeable data and cache directory paths

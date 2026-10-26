@@ -172,15 +172,16 @@ async def _pinned_to_latest_release(package_name: str) -> str:
     return package_name if "@" in package_name else f"{package_name}@{tag}"
 
 
-async def _change_packages(what: str, uv_args: list[str], verify=None) -> None:
-    """Run one uv pip change in a copy of the module site (module_host.packages, ARCHITECTURE #41); keep
-    it only if uv (and `verify`, given the site) succeed."""
+async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
+    """Run uv pip changes, one module each, in the next module site (module_host.packages, ARCHITECTURE
+    #41); keep it only if uv (and `verify`, given the site) succeed."""
     try:
         async with module_host.packages() as site:
-            code, err = await site.pip(*uv_args)
-            if code != 0:
-                logger.error(f"{what} failed: {err}")
-                raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
+            for uv_args in changes:
+                code, err = await site.pip(*uv_args)
+                if code != 0:
+                    logger.error(f"{what} failed: {err}")
+                    raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
             if verify:
                 await verify(site)
     except HTTPException:
@@ -217,7 +218,8 @@ async def update_modules(*package_names: str) -> dict:
             raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
 
     logger.info(f"Upgrading packages: {', '.join(package_names)}")
-    await _change_packages("Upgrade", ["install", "--upgrade", *map(_local_target, package_names)], verify=loads_in_new_site)
+    await _change_packages("Upgrade", *(["install", "--upgrade", _local_target(p)] for p in package_names),
+                           verify=loads_in_new_site)
     return {"status": "success", "message": f"Upgraded {', '.join(package_names)}. Restarting..."}
 
 

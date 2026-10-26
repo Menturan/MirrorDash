@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Each module is now installed in a folder of its own, so one module's install can no longer change another module's code or run code in it. **After this update the mirror shows no modules until you install them again** under *Modules → Add modules*; their settings are kept.
 - Each module now runs on its own, as a user of its own: one module can no longer read another's settings, saved data or keys (like the Home Assistant token), and a module that crashes or uses up the modules' memory stops alone while the others keep running. After it stops three times in a row soon after starting, it stays off and the *Dashboard* names it, with *Start Modules Again*.
 - Changing a module's settings restarts only that module, and moving it on the screen restarts none: the other modules keep their place and what they show.
 - The *Logs* tab shows each module's lines under its own name.

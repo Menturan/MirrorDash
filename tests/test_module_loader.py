@@ -471,6 +471,8 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     (modules / "data" / "calendar").mkdir(parents=True)
     (modules / "site_a").mkdir()
     (modules / "site").symlink_to("site_a")
+    (modules / "pkgs" / "md-clock_1").mkdir(parents=True)
+    (modules / "site_a" / "md-clock").symlink_to("../pkgs/md-clock_1")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(modules))
     try:
         monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
@@ -480,70 +482,42 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
         monkeypatch.setattr(host, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
         assert holes() == [f"the mirror's own port {port}", "the router (127.0.0.1)", f"the core's data ({tmp_path})",
                            str(tmp_path / "gpiochip0"), "another module's data (calendar)",
-                           f"writing the module site ({modules / 'site'})"]
+                           f"writing the module site ({modules / 'site'})", "writing a module's own folder"]
     finally:
         listener.close()
     monkeypatch.setattr(host, "SANDBOX_PORTS", ())
     monkeypatch.setattr(host, "ROUTES", str(tmp_path / "no-route"))
     monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
-    for path in (tmp_path / "gpiochip0", modules / "data" / "calendar", modules / "site_a"):
+    for path in (tmp_path / "gpiochip0", modules / "data" / "calendar", modules / "site_a", modules / "pkgs" / "md-clock_1"):
         path.chmod(0o500 if path.is_dir() else 0)
     (modules / "data" / "calendar").chmod(0)
     try:
         assert holes() == [] and ("capabilities (none)", False) in host.sandbox_checks()
     finally:
-        (modules / "data" / "calendar").chmod(0o700)
+        for path in (modules / "data" / "calendar", modules / "site_a", modules / "pkgs" / "md-clock_1"):
+            path.chmod(0o700)
 
 
 FAKE_UV = '''#!{python}
 import pathlib, sys
 args = sys.argv[1:]
 target = pathlib.Path(args[args.index("--target") + 1])
-if args[-1] != "md_widget":
-    sys.exit("No solution found when resolving: " + args[-1])
-(target / "md_widget").mkdir()
-(target / "md_widget" / "__init__.py").write_text("")
-(target / "md_widget" / "plugin.py").write_text("class Module: pass")
-(target / "md_widget-1.0.dist-info").mkdir()
-(target / "md_widget-1.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\\nName: md-widget\\nVersion: 1.0\\n")
-(target / "md_widget-1.0.dist-info" / "entry_points.txt").write_text("[mirrordash.modules]\\nmd_widget = md_widget.plugin:Module\\n")
-(target / "evil.pth").write_text("import pathlib; pathlib.Path({marker!r}).write_text('ran')")
+name = args[-1]
+target.mkdir(parents=True, exist_ok=True)  # the forkserver makes it on a mirror
+if name not in ("md_widget", "md_other", "md_thief"):
+    sys.exit("No solution found when resolving: " + name)
+(target / name).mkdir()
+(target / name / "__init__.py").write_text("")
+(target / name / "plugin.py").write_text("class Module: pass")
+(target / f"{{name}}-1.0.dist-info").mkdir()
+(target / f"{{name}}-1.0.dist-info" / "METADATA").write_text(f"Metadata-Version: 2.1\\nName: {{name}}\\nVersion: 1.0\\n")
+module = "md_widget" if name == "md_thief" else name  # the thief claims md_widget's name
+(target / f"{{name}}-1.0.dist-info" / "entry_points.txt").write_text(f"[mirrordash.modules]\\n{{module}} = {{name}}.plugin:Module\\n")
+(target / f"{{name}}.pth").write_text(f"import pathlib; pathlib.Path({marker!r} + '-{{name}}').write_text('ran')")
+if name == "md_other":  # a package of md_widget's name too, which must shadow nothing
+    (target / "md_widget").mkdir()
+    (target / "md_widget" / "plugin.py").write_text("raise SystemExit('shadowed')")
 '''
-
-
-def test_the_site_is_copied_without_setting_a_setgid_bit(tmp_path, monkeypatch):
-    """The modules folder is setgid (2770) and its folders inherit the bit; the host's sandbox
-    (RestrictSUIDSGID=) refuses to set it, which copytree's copystat does: every module change after the
-    first failed with EPERM on the test mirror."""
-    import os
-    import shutil
-    import stat
-
-    from mirrordash_core.features.modules.host import copy_site
-
-    src = tmp_path / "site_b"
-    (src / "pkg" / "templates").mkdir(parents=True)
-    (src / "pkg" / "templates" / "widget.html").write_text("<p>hi</p>")
-    (src / "bin").mkdir()
-    (src / "bin" / "tool").write_text("#!/bin/sh\n")
-    (src / "bin" / "tool").chmod(0o750)
-    (src / "pkg-link").symlink_to("pkg")
-    for folder in (src, src / "pkg", src / "pkg" / "templates", src / "bin"):
-        folder.chmod(0o2770)
-    real_chmod = os.chmod
-
-    def sandboxed_chmod(path, mode, *args, **kwargs):
-        if mode & (stat.S_ISUID | stat.S_ISGID):
-            raise PermissionError(1, "Operation not permitted", str(path))
-        return real_chmod(path, mode, *args, **kwargs)
-    monkeypatch.setattr(os, "chmod", sandboxed_chmod)
-
-    with pytest.raises(OSError):  # what the host did
-        shutil.copytree(src, tmp_path / "copytree", symlinks=True)
-    copy_site(src, tmp_path / "site_a")
-    dst = tmp_path / "site_a"
-    assert (dst / "pkg" / "templates" / "widget.html").read_text() == "<p>hi</p>"
-    assert os.readlink(dst / "pkg-link") == "pkg" and os.access(dst / "bin" / "tool", os.X_OK)
 
 
 @pytest.mark.asyncio
@@ -588,9 +562,12 @@ async def test_a_module_that_keeps_dying_is_paused_alone(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_path, monkeypatch, host_here):
-    """uv runs in the module host (its site process), into a copy of its site that is switched in only when the change worked
-    (ARCHITECTURE #41). The core then finds the module by its files: a package's .pth never runs in it."""
+async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_its_own(tmp_path, monkeypatch, host_here):
+    """uv runs in the module host (a site process as the module's user), each module into a new folder of its
+    own, linked into the next site, which is switched in only when the change worked (ARCHITECTURE #41). One
+    module's .pth and its package of another's name reach no other module, one claiming another's name isn't
+    installed, and folders no site links to go at the next change. The core finds a module by its files:
+    a package's .pth never runs in it."""
     import os
     import sys
 
@@ -614,21 +591,29 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
     server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
     await core.start_modules()
-    site_link = tmp_path / "modules" / "site"
+    modules = tmp_path / "modules"
+    site_link, pkgs = modules / "site", modules / "pkgs"
+    ran = lambda name: (tmp_path / f"pth-ran-{name}").exists()  # noqa: E731
     try:
         await _until(lambda: core._control is not None)
         reply = await core.diagnose()  # Logs → Diagnostics: the host's own checks, as a module's user
         assert isinstance(reply["checks"], list) and reply["sandboxed"] is False and reply["gpio"] == {}
         async with core.packages(sys.executable) as site:
             assert (await site.pip("install", "md_widget"))[0] == 0
+            assert (await site.pip("install", "md_other"))[0] == 0
+            code, err = await site.pip("install", "md_thief")
+            assert code != 0 and "md_widget" in err
             code, err = await site.check(["md_widget"])
-            assert code == 0, err
+            assert code == 0, err  # md_other's md_widget would have ended it
         assert os.readlink(site_link) == "site_b"
-        marker.unlink()  # the check's own Python ran it: that one is the module host's
+        assert {e.name: os.readlink(e) for e in sorted((modules / "site_b").iterdir())} == {
+            "md-other": "../pkgs/md-other_1", "md-widget": "../pkgs/md-widget_1"}
+        assert ran("md_widget") and not ran("md_other")  # the check ran its own folder's .pth only
+        (tmp_path / "pth-ran-md_widget").unlink()
 
         ep = find_entry_point("md_widget")
-        assert ep and package_dir(ep) == site_link / "md_widget"
-        assert not marker.exists() and "md_widget" not in sys.modules
+        assert ep and package_dir(ep) == site_link / "md-widget" / "md_widget"
+        assert not ran("md_widget") and "md_widget" not in sys.modules
 
         # A change that fails is dropped: the site stays as it was
         with pytest.raises(RuntimeError):
@@ -636,8 +621,16 @@ async def test_modules_are_installed_by_the_module_host_into_its_own_site(tmp_pa
                 code, err = await site.pip("install", "md_missing")
                 assert code != 0 and "md_missing" in err
                 raise RuntimeError(err)
-        assert os.readlink(site_link) == "site_b" and not any((tmp_path / "modules" / "site_a").iterdir())
+        assert os.readlink(site_link) == "site_b" and not any((modules / "site_a").iterdir())
         assert find_entry_point("md_widget")
+
+        # An upgrade gets a new folder, an uninstall takes the link out; what no site links to goes
+        async with core.packages(sys.executable) as site:
+            assert (await site.pip("install", "--upgrade", "md_widget"))[0] == 0
+        async with core.packages(sys.executable) as site:
+            assert (await site.pip("uninstall", "-y", "md-other"))[0] == 0
+        assert sorted(e.name for e in (modules / "site_b").iterdir()) == ["md-widget"]
+        assert sorted(e.name for e in pkgs.iterdir()) == ["md-other_1", "md-widget_2"]  # md-other_1: site_a's
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)
@@ -787,13 +780,20 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
     import os
 
     from mirrordash_core.features.modules import client as client_module
-    site = tmp_path / "modules" / "site_a"
+    site = tmp_path / "modules" / "pkgs" / "md-fork_1"
+    (tmp_path / "modules" / "site_a").mkdir(parents=True)
+    (tmp_path / "modules" / "site_a" / "md-fork").symlink_to("../pkgs/md-fork_1")
     (site / "md_fork").mkdir(parents=True)
     (site / "md_fork" / "__init__.py").write_text("")
     (site / "md_fork" / "plugin.py").write_text(FORK_PLUGIN)
     (site / "md_fork-1.0.dist-info").mkdir()
     (site / "md_fork-1.0.dist-info" / "METADATA").write_text("Metadata-Version: 2.1\nName: md-fork\nVersion: 1.0\n")
     (site / "md_fork-1.0.dist-info" / "entry_points.txt").write_text("[mirrordash.modules]\nmd_fork = md_fork.plugin:Module\n")
+    # Another module's folder: its .pth runs in no process of md_fork's
+    (tmp_path / "modules" / "pkgs" / "md-evil_1").mkdir()
+    (tmp_path / "modules" / "pkgs" / "md-evil_1" / "evil.pth").write_text(
+        f"import pathlib; pathlib.Path({str(tmp_path / 'evil-ran')!r}).write_text('ran')")
+    (tmp_path / "modules" / "site_a" / "md-evil").symlink_to("../pkgs/md-evil_1")
     (tmp_path / "modules" / "site").symlink_to("site_a")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     monkeypatch.delenv("MIRRORDASH_MODULE_SOCKET", raising=False)  # the core starts the host as its child
@@ -820,6 +820,7 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
         a, b = await who("a"), await who("b")
         assert a["pid"] != b["pid"] and a["ppid"] == b["ppid"] != os.getpid()
         assert a["oom"] == "500" and a["fds"] < 12  # stdio, its two sockets, its event loop's
+        assert not (tmp_path / "evil-ran").exists()
 
         # A public event reaches every instance through the core, the sender's too; a private one stays home
         await core.call_route({"instance": "a", "method": "GET", "path": "/shout"})

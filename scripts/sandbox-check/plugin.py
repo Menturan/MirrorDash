@@ -33,6 +33,7 @@ class Module:
                 "list_other": attempt(lambda: os.listdir(other)),
                 "list_modules": attempt(lambda: os.listdir("/storage/mirrordash/modules")),
                 "write_site": attempt(lambda: (open(site + "/evil.py", "w").write("x"), "WROTE")[1]),
+                "write_code": attempt(lambda: (open(__file__, "a").write(""), "WROTE")[1]),  # its own module's
                 "read_uids": attempt(lambda: open("/storage/mirrordash/modules/uids.json").read()),
                 "parent_mem": attempt(lambda: (open(f"/proc/{os.getppid()}/mem", "rb").close(), "OPENED")[1]),
                 "home": os.environ.get("HOME"), "tmp": os.environ.get("TMPDIR"), "umask": oct(os.umask(0o007)),

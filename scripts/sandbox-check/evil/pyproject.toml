@@ -1,0 +1,9 @@
+[project]
+name = "md-evil"
+version = "1.0"
+
+# A build that runs as its module's user and tries to reach the others' code (check.py)
+[build-system]
+requires = []
+build-backend = "evil_backend"
+backend-path = ["."]

@@ -5,6 +5,7 @@ import base64
 import json
 import os
 import subprocess
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 os.environ["MIRRORDASH_MODULE_SOCKET"] = "/run/mirrordash-modules/host.sock"
@@ -47,10 +48,10 @@ async def main():
     for w in (a, b):
         assert all(int(w["caps"][k], 16) == 0 for k in ("CapInh", "CapPrm", "CapEff", "CapAmb")), w["caps"]
         assert w["setuid0"] == w["read_other"] == w["list_other"] == w["list_modules"] == "PermissionError"
-        assert w["write_site"] == w["read_uids"] == "PermissionError" and w["parent_mem"] != "OPENED"
+        assert w["write_site"] == w["write_code"] == w["read_uids"] == "PermissionError" and w["parent_mem"] != "OPENED"
         assert w["write_own"] == "ok" and w["oom"] == "500"
     assert a["append_restored"] == "ok"  # what pi restored was given back to the module
-    print(sh(f"stat -c '%u:%g %A %n' {M}/site_a {M}/site_a/md_probe/plugin.py {M}/data/*/*"))
+    print(sh(f"stat -c '%u:%g %A %n' {M}/site_a {M}/pkgs {M}/pkgs/md-probe_1/md_probe/plugin.py {M}/data/*/*"))
 
     checks = (await core.diagnose())["checks"]
     assert not [w for w, r in checks if r], [w for w, r in checks if r]
@@ -61,7 +62,23 @@ async def main():
         assert code == 0, err
         assert (await site.check(["md_probe"]))[0] == 0
     link = os.readlink(f"{M}/site")
-    print(sh(f"stat -c '%u %A %n' {M}/{link}/six.py {M}/{link}/__pycache__/six*"))
+    print(sh(f"stat -c '%u %A %n' {M}/pkgs/six_1/six.py {M}/pkgs/six_1/__pycache__/six* {M}/{link}/*"))
+    assert os.stat(f"{M}/pkgs/six_1/six.py").st_uid == 70003 and os.readlink(f"{M}/{link}/six") == "../pkgs/six_1"
+
+    # A module's build, as its own user, reaches no other module's folder nor the links
+    probe = Path(f"{M}/pkgs/md-probe_1/md_probe/plugin.py")
+    before = probe.read_text()
+    try:
+        async with core.packages("/storage/mirrordash/venv/bin/python") as site:
+            code, err = await site.pip("install", "/test/evil")
+            raise RuntimeError(err)
+    except RuntimeError as e:
+        evil = json.loads(str(e).split("EVIL ", 1)[1].splitlines()[0])
+    print("evil build:", json.dumps(evil))
+    assert evil.pop("uid") == 70004 and set(evil.values()) == {"PermissionError"}, evil
+    assert probe.read_text() == before
+    assert not os.path.exists(f"{M}/site_a/old_pkg")  # an older site's leftovers went with the change
+    print("a module's build can't change another module")
 
     pids = (a["pid"], b["pid"])
     config["modules"]["leak"] = {"module": "md_probe", "leak": True}

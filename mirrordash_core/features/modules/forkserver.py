@@ -8,7 +8,7 @@ control process (host.py's serve: the core's connection, as the unit's user, cap
 control process asks it, over a SOCK_SEQPACKET pair, for the others, one message each with their sockets:
 
   {"kind": "module", "uid": 70100.., "instance": id}   one module instance (its stream and GPIO sockets)
-  {"kind": "site", "uid": SITE_UID}                    one step of a module install (uv, its builds)
+  {"kind": "site", "uid": 70002.., "instance": folder} one step of a module install, in its folder (uv, its build)
   {"kind": "probe", "uid": PROBE_UID}                  the sandbox's self-check
 
 Each child gets its own uid, no group of the modules' folder, no capabilities (cleared by hand: changing
@@ -35,7 +35,9 @@ import traceback
 from mirrordash_core.config import get_module_dir
 from mirrordash_core.features.modules.loader import SAFE_NAME
 
-SITE_UID = 70000  # uv and what a package's build runs
+# One per installed module, for uv and what its build runs, in that module's own folders (pkgs/<name>_<n>)
+# alone; kept in package_uids.json (host.py module_uids), never given to another module
+PACKAGE_UIDS = range(70002, 70100)
 PROBE_UID = 70001  # the self-check (host.py probe_main)
 MODULE_UIDS = range(70100, 71000)  # one per instance, kept in uids.json (host.py module_uids), never reused
 UIDS = range(70000, 71000)  # all of them (mirrordash-module-network's nftables rules)
@@ -166,19 +168,25 @@ def fork(main, socks: list[socket.socket], uid: int | None, env: dict, umask: in
         os._exit(code)
 
 
-def own_site(owner: int | None) -> None:
-    """Both site folders to the site's user, readable by the modules' users (a site the host's user wrote
-    before, the first time)."""
-    for name in ("site_a", "site_b"):
-        own_folder(os.path.join(get_module_dir(), name), owner and SITE_UID, readable=True)
+def own_site() -> None:
+    """The site's two folders of links and the folder of the modules' own folders to this process's user
+    (the control process writes the links, no module's user can), readable by all; and what an older site
+    left in them, so the control process can empty them."""
+    for name, mode in (("site_a", 0o755), ("site_b", 0o755), ("pkgs", 0o751)):
+        path = os.path.join(get_module_dir(), name)
+        if name == "pkgs":  # never what is in it: each module's folders are that module's user's
+            os.makedirs(path, exist_ok=True)
+        else:
+            own_folder(path, os.getuid())
+        os.chmod(path, mode)  # without the setgid bit: RestrictSUIDSGID refuses setting it, not dropping it
 
 
 def spawn(request: dict, fds: list[int], children: dict, sandboxed: bool) -> None:
     """One child the control process asked for, if the request is one it may ask."""
     kind, uid, instance = request.get("kind"), request.get("uid"), request.get("instance")
-    uids = {"site": range(SITE_UID, SITE_UID + 1), "probe": range(PROBE_UID, PROBE_UID + 1), "module": MODULE_UIDS}
+    uids = {"site": PACKAGE_UIDS, "probe": range(PROBE_UID, PROBE_UID + 1), "module": MODULE_UIDS}
     if kind not in children or type(uid) is not int or uid not in uids[kind] or len(fds) != (2 if kind == "module" else 1) \
-            or (kind == "module" and not (isinstance(instance, str) and SAFE_NAME.match(instance))):
+            or (kind != "probe" and not (isinstance(instance, str) and SAFE_NAME.match(instance))):
         raise ValueError(f"refused: {request}")
     root = str(get_module_dir())
     owner = uid if sandboxed else None
@@ -188,8 +196,8 @@ def spawn(request: dict, fds: list[int], children: dict, sandboxed: bool) -> Non
         own_folder(cache, owner)
         env, umask = {"HOME": data, "TMPDIR": cache}, 0o007  # pi reads the data through the group (backups)
     else:
-        if kind == "site":
-            own_site(owner)
+        if kind == "site":  # its module's folder, which only it writes
+            own_folder(os.path.join(root, "pkgs", instance), owner, readable=True)
         env, umask = {"HOME": "/tmp", "TMPDIR": "/tmp"}, 0o022  # the site: every module reads it
     socks = [socket.socket(fileno=fd) for fd in fds]
     try:
@@ -210,7 +218,7 @@ def run(control, children: dict) -> None:
     if sandboxed and "CapEff" not in capabilities():
         os.environ["MIRRORDASH_NO_USERS"] = "1"  # an OS image before this: the control process says so
     elif sandboxed:
-        own_site(SITE_UID)  # before any module starts: it must read the site
+        own_site()  # before any module starts: it must read the site
     gc.freeze()  # what is loaded stays shared with every child
     ours, theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
     fork(control, [theirs], None, {}, 0o007, oom=False)
