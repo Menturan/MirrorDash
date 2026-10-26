@@ -551,6 +551,76 @@ def test_module_script_gets_its_own_shadow_root(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_every_design_component_looks_the_same_in_a_card_without_scripts(page):
+    """What /design shows a module (modules.css, Lucide icons, the Inter font) works in a card whose module
+    may not run scripts, under the screen's real CSP (ARCHITECTURE #41): each component's own styles are
+    those /design shows. Layout from the surroundings (display, gap) and /design's admin text color aside."""
+    import json
+    import re
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    from mirrordash_core.app import app
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+    with patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock, return_value=False), \
+         patch("mirrordash_core.features.kiosk.routes.load_config", return_value={"admin_auth": {"hash": "h", "salt": "s"}}):
+        index = TestClient(app, client=("127.0.0.1", 50000)).get("/")
+    types = {".html": "text/html", ".css": "text/css", ".woff2": "font/woff2"}
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/":
+            return route.fulfill(body=index.text, content_type="text/html",
+                                 headers={"Content-Security-Policy": index.headers["content-security-policy"]})
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / ("design.html" if path == "/design" else path.removeprefix("/static/"))
+        if not file.is_file():
+            return route.fulfill(status=404)
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    classes = sorted(set(re.findall(r"\.([a-z][a-z0-9_-]+)", (static / "modules.css").read_text())))
+    props = ["font-size", "font-weight", "color", "letter-spacing", "text-transform", "border-radius",
+             "flex-direction", "opacity", "background-color", "border-top-width", "border-top-color"]
+    # A component (its outermost element) and the styles of its parts
+    helpers = """const comp = el => [...el.classList].some(c => classes.includes(c));
+      const parts = el => [el, ...el.querySelectorAll('*')].filter(comp)
+        .map(e => Object.fromEntries(props.map(p => [p, getComputedStyle(e).getPropertyValue(p)])));"""
+    page.route("http://mirror.test/**", serve)
+    page.goto("http://mirror.test/design")
+    shown = page.evaluate(f"""([classes, props]) => {{ {helpers}
+      return [...document.querySelectorAll('*')].filter(el => comp(el) && !el.closest('pre')
+          && !el.parentElement.closest('*:is(' + classes.map(c => '.' + c).join(',') + ')')
+          && !el.closest('.component-card')?.querySelector('.explorer-own-ui'))  // the mirror's own UI
+        .map(el => ({{html: el.outerHTML, parts: parts(el)}}));
+    }}""", [classes, props])
+    assert len(shown) > 20
+
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    refused = []
+    page.on("console", lambda m: refused.append(m.text) if "Content Security Policy" in m.text else None)
+    page.goto("http://mirror.test/")
+    page.wait_for_function("window.__ws")
+    html = "".join(f"<div data-sample>{c['html']}</div>" for c in shown)
+    page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                  json.dumps({"module": "community", "position": "middle_center", "html": html, "scripts": False}))
+    page.wait_for_timeout(500)
+    card = "document.querySelector(\"[data-module='community']\").shadowRoot"
+    in_card = page.evaluate(f"""([classes, props]) => {{ {helpers}
+      return [...{card}.querySelectorAll('[data-sample]')].map(s => parts(s.firstElementChild));
+    }}""", [classes, props])
+    admin_text = ("rgb(248, 250, 252)", "rgb(255, 255, 255)")  # /design's body text (admin.css), the mirror's
+    differ = [(c["html"][:80], p, v, mine[p]) for c, got in zip(shown, in_card, strict=True)
+              for there, mine in zip(c["parts"], got, strict=True) for p, v in there.items()
+              if v != mine[p] and (v, mine[p]) != admin_text]
+    assert not differ, differ
+    assert page.evaluate(f"!!{card}.querySelector('svg.lucide')")  # data-lucide icons are drawn
+    assert page.evaluate("[...document.fonts].some(f => f.family === 'Inter' && f.status === 'loaded')")
+    assert not refused, refused
+
+
+@pytest.mark.only_browser("webkit")
 def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
     """After a restart the page can load before the modules run: no placeholders hold the places, and the
     card that renders first (the clock) mustn't take the place of one that waits for the network (Home
