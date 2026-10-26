@@ -47,14 +47,15 @@ async def get_index(request: Request):
     host = request.headers.get("host", "")
     if host.split(":")[0] in SETUP_HOSTS or request.query_params.get("captive") == "true":
         return RedirectResponse(url="/wifi-setup")
+    if not on_screen(request.client):
+        # The screen is the mirror's own only (ARCHITECTURE #41): a module's card never runs in a browser
+        # logged in to the admin page. A phone can send any Host header, but not a loopback address.
+        return RedirectResponse(url="/admin")
 
     if await is_wifi_hotspot_active():
-        # The password goes to the mirror's own screen only: a phone on the hotspot can send any
-        # Host header (the captive-portal redirect trusts "localhost"), but not a loopback address.
-        on_mirror = request.client.host in ("127.0.0.1", "::1")
         page = templates.TemplateResponse(request=request, name="wifi_prompt.html", context={
             "ssid": HOTSPOT_SSID,
-            "password": await get_hotspot_password() if on_mirror else "",
+            "password": await get_hotspot_password(),
         })
     elif any(setup := auth_state(load_config())):  # no admin password yet, or a broken one
         page = templates.TemplateResponse(request=request, name="admin_prompt.html",
@@ -132,13 +133,16 @@ async def get_active_modules() -> dict:
 # WebSocket communication endpoint
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
+    if not on_screen(websocket.client):  # the cards go to the mirror's own screen only, like the page
+        await websocket.close()
+        return
     await manager.connect(websocket)
     try:
         while True:
             text = await websocket.receive_text()
             manager.saw(websocket.client)
-            # Where a module's video window is, asked by features/video/window.py; only the mirror's own screen counts
-            if text.startswith("{") and on_screen(websocket.client):
+            # Where a module's video window is, asked by features/video/window.py
+            if text.startswith("{"):
                 try:
                     message = json.loads(text)
                 except ValueError:

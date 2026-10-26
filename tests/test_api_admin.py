@@ -326,7 +326,7 @@ def test_mirror_page_hears_the_version_first(client):
     from mirrordash_core.features.kiosk.ws import manager
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
     with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"), \
-         client.websocket_connect("/ws") as ws:
+         TestClient(app, client=("127.0.0.1", 50000)).websocket_connect("/ws") as ws:
         assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "boot_id": BOOT_ID, "online": True,
                                     "video_is_playing": False}
         assert ws.receive_json()["module"] == "clock"  # then the modules, as before

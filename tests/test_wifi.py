@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 from mirrordash_core.app import app
 from mirrordash_core.features.wifi.network import scan_wifi_networks
@@ -12,7 +13,7 @@ def client():
     with patch("mirrordash_core.features.wifi.routes.load_config") as mock_load, \
          patch("mirrordash_core.features.kiosk.routes.load_config", new=mock_load):
         mock_load.return_value = {}
-        yield TestClient(app)
+        yield TestClient(app, client=("127.0.0.1", 50000))  # the mirror's own screen
 
 def test_index_redirect_captive_host(client):
     response = client.get("/", headers={"host": "10.42.0.1"}, follow_redirects=False)
@@ -170,14 +171,17 @@ def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, _rel
 
 @patch("mirrordash_core.features.kiosk.routes.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
 @patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock)
-def test_index_serves_wifi_prompt_when_hotspot_active(mock_hotspot, mock_password, client):
-    """A phone on the hotspot can claim to be localhost, but never gets the hotspot password."""
+def test_the_screen_is_the_mirrors_own(mock_hotspot, mock_password, client):
+    """A phone or computer can claim to be localhost, but gets the admin page instead of the screen: never
+    the hotspot password, never the modules' cards (their scripts would run where the admin is logged in)."""
     mock_hotspot.return_value = True
-    response = client.get("/", headers={"host": "localhost:8000"})
-    assert response.status_code == 200
-    assert "Connect the mirror to Wi-Fi" in response.text
-    assert "abcde23456" not in response.text and "qrcode.js" not in response.text
+    response = TestClient(app).get("/", headers={"host": "localhost:8000"}, follow_redirects=False)
+    assert (response.status_code, response.headers["location"]) == (307, "/admin")
     mock_password.assert_not_awaited()
+    with pytest.raises(WebSocketDisconnect), TestClient(app).websocket_connect("/ws"):
+        pass
+    with client.websocket_connect("/ws") as ws:
+        assert ws.receive_json()["type"] == "hello"
 
 
 @patch("mirrordash_core.features.kiosk.routes.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
