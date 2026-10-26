@@ -9,12 +9,14 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- A module can no longer change where another module is installed from when you install or update that one.
-
 ### OS image
 
 - A module's home-network address can no longer be the mirror itself, even when it is typed in its settings.
 - A module can no longer hold on to the modules' memory with temporary files, getting the other modules stopped or slowing the whole mirror until it restarts.
+
+## [0.9.5] - 2026-10-26
+
+- A module can no longer change where another module is installed from when you install or update that one.
 
 ## [0.9.4-os1] - 2026-10-26
 
