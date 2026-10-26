@@ -1159,10 +1159,11 @@ def test_config_migration():
     assert migrate_config(cfg) is False
 
 
+@patch("mirrordash_core.features.modules.loader.module_search_path", return_value=[])  # not a dev venv's clock
 @patch("mirrordash_core.features.modules.routes.load_config")
 @patch("mirrordash_core.features.modules.routes.save_config")
 @patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
-def test_save_module_instance_config(mock_reload, mock_save, mock_load, client):
+def test_save_module_instance_config(mock_reload, mock_save, mock_load, _schema, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
         "globals": {},
