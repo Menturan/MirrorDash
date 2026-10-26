@@ -78,6 +78,13 @@ async def main():
     assert evil.pop("uid") == 70004 and set(evil.values()) == {"PermissionError"}, evil
     assert probe.read_text() == before
     assert not os.path.exists(f"{M}/site_a/old_pkg")  # an older site's leftovers went with the change
+    # It left a uv.toml and a .gitconfig in the unit's /tmp: the next module's install reads neither
+    async with core.packages("/storage/mirrordash/venv/bin/python") as site:
+        code, err = await site.pip("install", "six")
+        assert code == 0, err
+    async with core.packages("/storage/mirrordash/venv/bin/python") as site:
+        code, err = await site.pip("install", "git+https://github.com/benjaminp/six.git")
+        assert code == 0, err
     print("a module's build can't change another module")
 
     pids = (a["pid"], b["pid"])

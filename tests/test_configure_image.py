@@ -328,8 +328,11 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
                  "meta skuid { 960, 70000-70999 } ip daddr { 192.168.1.20 } reject with icmpx admin-prohibited",
                  "meta skuid { 960, 70000-70999 } ip6 daddr { fd00::5 } reject with icmpx admin-prohibited"):
         assert rule in written, rule
-    assert written.index("daddr fd00::5 accept") < written.index("reject") and written.startswith("table inet mirrordash_modules\ndelete table")
-    assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53" and "skuid" not in rules.read_text()
+    # the mirror's own addresses first, before any accept: a lan-url of the mirror itself opens nothing
+    assert written.index("fib daddr type local ip daddr != 127.0.0.53 reject") < written.index(" accept\n")
+    assert "meta nfproto ipv6 fib daddr type local reject" in written
+    assert written.index("daddr fd00::5 accept") < written.index("daddr { 192.168.1.20 } reject") and written.startswith("table inet mirrordash_modules\ndelete table")
+    assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53" and " accept\n" not in rules.read_text()
     for bad in ("192.168.1.20", "70100=8.8.8.8", "70100=127.0.0.1", "70100=0.0.0.0", "70100=224.0.0.1",
                 "70100=192.168.1.0/24", "1000=192.168.1.20", "960=192.168.1.20", "--now", "70100=::1"):
         log.unlink(missing_ok=True)

@@ -487,9 +487,10 @@ async def site_step(message: dict, folder: Path) -> tuple[int, str]:
         timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else UV_TIMEOUT
         if args[:1] != ["install"]:
             return 1, f"not a uv pip install: {args[:1]}"
-        # --no-cache: the host's folder is on /storage, which is small
+        # --no-cache: the host's folder is on /storage, which is small. --no-config: no uv.toml from the
+        # working directory or HOME (forkserver.spawn) decides where a module's code comes from
         code, err = await run("uv", "pip", "install", "--python", python, "--target", str(folder),
-                              "--no-cache", *args[1:], timeout=timeout)
+                              "--no-cache", "--no-config", *args[1:], timeout=timeout)
         if code == 0:  # a module's process can't write its folder, so its bytecode is made here
             await run(python, "-I", "-m", "compileall", "-q", str(folder), timeout=timeout)
         return code, err

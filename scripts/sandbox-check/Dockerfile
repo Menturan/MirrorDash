@@ -1,6 +1,6 @@
 FROM debian:trixie
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update -qq && apt-get install -y -qq systemd systemd-sysv curl ca-certificates nftables iproute2 sudo python3 >/dev/null \
+RUN apt-get update -qq && apt-get install -y -qq systemd systemd-sysv curl ca-certificates nftables iproute2 sudo python3 git >/dev/null \
     && rm -rf /var/lib/apt/lists/*
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin UV_NO_MODIFY_PATH=1 sh
 ENV UV_PYTHON_INSTALL_DIR=/opt/uvpython

@@ -9,6 +9,12 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A module can no longer change where another module is installed from when you install or update that one.
+
+### OS image
+
+- A module's home-network address can no longer be the mirror itself, even when it is typed in its settings.
+
 ## [0.9.4-os1] - 2026-10-26
 
 OS image with MirrorDash 0.9.4.

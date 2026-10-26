@@ -202,9 +202,13 @@ def spawn(request: dict, fds: list[int], children: dict, sandboxed: bool) -> Non
         own_folder(cache, owner)
         env, umask = {"HOME": data, "TMPDIR": cache}, 0o007  # pi reads the data through the group (backups)
     else:
+        home = "/tmp"
         if kind == "site":  # its module's folder, which only it writes
-            own_folder(os.path.join(root, "pkgs", instance), owner, readable=True)
-        env, umask = {"HOME": "/tmp", "TMPDIR": "/tmp"}, 0o022  # the site: every module reads it
+            home = os.path.join(root, "pkgs", instance)
+            own_folder(home, owner, readable=True)
+        # The site's HOME is its module's folder: uv and git read their config from HOME, and the unit's /tmp
+        # is every module's, so another module could plant one there (an index, a git insteadOf or hook)
+        env, umask = {"HOME": home, "TMPDIR": "/tmp"}, 0o022  # the site: every module reads it
     socks = [socket.socket(fileno=fd) for fd in fds]
     try:
         fork(lambda *s: children[kind](*s, instance), socks, owner, env, umask)
