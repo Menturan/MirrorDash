@@ -9,7 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### OS image
+## [0.9.4-os1] - 2026-10-26
+
+OS image with MirrorDash 0.9.4.
 
 - A module that reaches a device on your home network (like Home Assistant) reaches only its own address, not another module's.
 
