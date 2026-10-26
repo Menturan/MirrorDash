@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A module of an installed module's name from somewhere else can no longer change that module's code while it is installed, nor take over the built-in clock's place.
+
 ## [0.9.5-os2] - 2026-10-26
 
 OS image with MirrorDash 0.9.5.

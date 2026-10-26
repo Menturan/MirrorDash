@@ -37,7 +37,7 @@ starts it again, so a new venv's modules load fresh.
 
 The modules are installed in the module site (loader.module_site), in the host's own folder: each module in
 a folder of its own (pkgs/<name>_<n>), where uv runs in a process of its own as that module's user
-(site_main, forkserver.PACKAGE_UIDS), and the site is a link per module to its folder, which only the control
+(site_main, forkserver.PACKAGE_UIDS: one per module and where it comes from), and the site is a link per module to its folder, which only the control
 process writes. So a package's build, the files it installs and its .pth reach no other module's folder or
 process, and never run as the core or the forkserver.
 """
@@ -46,6 +46,7 @@ import asyncio
 import base64
 import contextlib
 import glob
+import hashlib
 import importlib.metadata
 import itertools
 import json
@@ -192,6 +193,17 @@ def package_key(target: str) -> str | None:
         name = re.split(r"[\[<>=!~;@ ]", target, maxsplit=1)[0]
     key = re.sub(r"[-_.]+", "-", name).lower()
     return key if re.fullmatch(r"[a-z0-9-]{1,56}", key) else None
+
+
+def package_user(target: str) -> str | None:
+    """The key of the user a module installs as (package_uids.json): its name and where it comes from (a
+    GitHub repository, a folder, PyPI), so a module of an installed one's name from elsewhere never builds
+    as the user whose files the installed module's code is. None for what package_key refuses."""
+    if not (name := package_key(target)):
+        return None
+    source = target.split("@")[0].rstrip("/").removesuffix(".git").lower() if target.startswith("git+") \
+        else target if "/" in target else ""
+    return f"{name}-{hashlib.sha256(source.encode()).hexdigest()[:7]}"
 
 
 def empty(folder: Path, site: bool = False) -> None:
@@ -530,7 +542,7 @@ CHILDREN = {"module": instance_main, "site": site_main, "probe": probe_main}
 
 
 def module_uids(instances: list[str], file: str = "uids.json", users: range = forkserver.MODULE_UIDS) -> dict[str, int]:
-    """Each instance's user (or each installed module's, in package_uids.json), kept in the host's folder
+    """Each instance's user (or each module's, by package_user, in package_uids.json), kept in the host's folder
     (/storage outlives the image) so its files stay its own. A new one gets the next uid, never one that was
     another's: that one's files may still be there.
     ponytail: forkserver.MODULE_UIDS holds 900 instances ever made on a mirror, PACKAGE_UIDS 98 modules ever
@@ -672,15 +684,21 @@ class Control:
             logger.warning(f"Module site {op} failed: {err.strip()}")
         await self.link.send({"t": "reply", "id": message.get("id"), "code": code, "err": err})
 
-    async def _step(self, name: str, folder: str, message: dict) -> tuple[int, str]:
-        """A site step in pkgs/folder, as the user of the module called name."""
-        uid = module_uids([name], "package_uids.json", forkserver.PACKAGE_UIDS).get(name)
-        if uid is None:
-            return 1, "no user is left for another module on this mirror"
+    async def _step(self, uid: int, folder: str, message: dict) -> tuple[int, str]:
+        """A site step in pkgs/folder, as uid (a module's user)."""
         timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else SITE_STEP_TIMEOUT
         reply = await self.child("site", uid, message, timeout + 30, folder)
         return (reply.get("code") if isinstance(reply.get("code"), int) else 1), \
             str(reply.get("err", "the step ended without an answer"))
+
+    def _folder_user(self, folder: str) -> int | None:
+        """The user a module's folder in pkgs belongs to (forkserver.own_folder gave it), whom its steps run
+        as; None if it is no module's. Off a mirror it is the developer's, and any module user passes the
+        forkserver, which then changes none."""
+        uid = os.stat(get_module_dir() / "pkgs" / folder, follow_symlinks=False).st_uid
+        if uid in forkserver.PACKAGE_UIDS:
+            return uid
+        return None if self.sandboxed else forkserver.PACKAGE_UIDS.start
 
     async def _change(self, message: dict, next_site: Path) -> tuple[int, str]:
         """uv pip install of one module, into a new folder of its own, linked in only if it worked and
@@ -700,12 +718,20 @@ class Control:
         taken = [int(e.name.rpartition("_")[2]) for e in os.scandir(pkgs)
                  if e.name.rpartition("_")[0] == name and e.name.rpartition("_")[2].isdigit()] if pkgs.is_dir() else []
         folder = f"{name}_{max(taken, default=0) + 1}"
-        code, err = await self._step(name, folder, message)
+        user = package_user(args[-1])
+        if (uid := module_uids([user], "package_uids.json", forkserver.PACKAGE_UIDS).get(user)) is None:
+            return 1, "no user is left for another module on this mirror"
+        code, err = await self._step(uid, folder, message)
         if code:
             return code, err
         claimed = folder_entry_points(str(pkgs / folder))
-        for other, other_folder in links.items():
-            if other != name and (both := claimed & folder_entry_points(str(pkgs / other_folder))):
+        # The other modules' names: the site's, and those of the core's venv (the image's clock), which the
+        # site shadows (loader.module_search_path), so only a newer version of that package may take them
+        others = [(other, folder_entry_points(str(pkgs / f))) for other, f in links.items()]
+        others += [(package_key(str(d.name)), {ep.name.replace("-", "_") for ep in d.entry_points.select(
+            group="mirrordash.modules")}) for d in importlib.metadata.distributions()]
+        for other, names in others:
+            if other != name and (both := claimed & names):
                 return 1, f"{args[-1]} has a module named {', '.join(sorted(both))}, as {other} already has"
         link_module(next_site, name, folder)
         return 0, ""
@@ -715,7 +741,9 @@ class Control:
         names = {str(n).replace("-", "_") for n in message.get("names") or []}
         for name, folder in site_links(next_site).items():
             if folder_entry_points(str(next_site / name)) & names:
-                code, err = await self._step(name, folder, {**message, "timeout": CHECK_TIMEOUT})
+                if (uid := self._folder_user(folder)) is None:
+                    return 1, f"{name}'s folder ({folder}) is no module user's"
+                code, err = await self._step(uid, folder, {**message, "timeout": CHECK_TIMEOUT})
                 if code:
                     return code, err
         return 0, ""
@@ -730,12 +758,11 @@ class Control:
                        and SAFE_NAME.match(e.name) and e.name.rpartition("_")[2].isdigit()]
         for entry in entries:
             try:
-                if entry.stat(follow_symlinks=False).st_uid in forkserver.PACKAGE_UIDS:
-                    code, err = await self._step(entry.name.rpartition("_")[0], entry.name, {"op": "clean"})
-                    if code:
-                        raise OSError(err)
-                else:  # off a mirror: the developer's own
-                    await asyncio.to_thread(empty, Path(entry.path))
+                if (uid := self._folder_user(entry.name)) is None:
+                    raise OSError("it is no module user's")
+                code, err = await self._step(uid, entry.name, {"op": "clean"})
+                if code:
+                    raise OSError(err)
                 os.rmdir(entry.path)
             except (OSError, ValueError, TimeoutError) as e:
                 logger.warning(f"An old module folder ({entry.name}) couldn't be removed: {e}")

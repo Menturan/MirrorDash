@@ -502,16 +502,16 @@ FAKE_UV = '''#!{python}
 import pathlib, sys
 args = sys.argv[1:]
 target = pathlib.Path(args[args.index("--target") + 1])
-name = args[-1]
+name = args[-1].split("@")[0].rsplit("/", 1)[-1].removesuffix(".git")  # a PyPI name or a GitHub repository's
 target.mkdir(parents=True, exist_ok=True)  # the forkserver makes it on a mirror
-if name not in ("md_widget", "md_other", "md_thief"):
+if name not in ("md_widget", "md_other", "md_thief", "md_clock", "md_clockjack"):
     sys.exit("No solution found when resolving: " + name)
 (target / name).mkdir()
 (target / name / "__init__.py").write_text("")
 (target / name / "plugin.py").write_text("class Module: pass")
 (target / f"{{name}}-1.0.dist-info").mkdir()
 (target / f"{{name}}-1.0.dist-info" / "METADATA").write_text(f"Metadata-Version: 2.1\\nName: {{name}}\\nVersion: 1.0\\n")
-module = "md_widget" if name == "md_thief" else name  # the thief claims md_widget's name
+module = {{"md_thief": "md_widget", "md_clockjack": "md_clock"}}.get(name, name)  # thieves claim others' names
 (target / f"{{name}}-1.0.dist-info" / "entry_points.txt").write_text(f"[mirrordash.modules]\\n{{module}} = {{name}}.plugin:Module\\n")
 (target / f"{{name}}.pth").write_text(f"import pathlib; pathlib.Path({marker!r} + '-{{name}}').write_text('ran')")
 if name == "md_other":  # a package of md_widget's name too, which must shadow nothing
@@ -608,8 +608,10 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     """uv runs in the module host (a site process as the module's user), each module into a new folder of its
     own, linked into the next site, which is switched in only when the change worked (ARCHITECTURE #41). One
     module's .pth and its package of another's name reach no other module, one claiming another's name isn't
-    installed, and folders no site links to go at the next change. The core finds a module by its files:
-    a package's .pth never runs in it."""
+    installed, and folders no site links to go at the next change. A module of an installed one's name from
+    elsewhere builds as a user of its own, and the core venv's modules (the image's clock) keep their names
+    but for a newer version of the same package. The core finds a module by its files: a package's .pth
+    never runs in it."""
     import os
     import sys
 
@@ -622,6 +624,19 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     (tmp_path / "bin" / "uv").write_text(FAKE_UV.format(python=sys.executable, marker=str(marker)))
     (tmp_path / "bin" / "uv").chmod(0o755)
     monkeypatch.setenv("PATH", f"{tmp_path / 'bin'}:{os.environ['PATH']}")
+    venv = tmp_path / "venv" / "md_clock-1.0.dist-info"  # a module in the core's venv
+    venv.mkdir(parents=True)
+    (venv / "METADATA").write_text("Metadata-Version: 2.1\nName: md-clock\nVersion: 1.0\n")
+    (venv / "entry_points.txt").write_text("[mirrordash.modules]\nmd_clock = md_clock.plugin:Module\n")
+    monkeypatch.syspath_prepend(str(venv.parent))
+    builds = {}  # each install's folder: the user it ran as
+    real_child = host_module.Control.child
+
+    async def child(self, kind, uid, message, timeout, folder=None):
+        if (message or {}).get("op") == "pip":
+            builds[folder] = uid
+        return await real_child(self, kind, uid, message, timeout, folder)
+    monkeypatch.setattr(host_module.Control, "child", child)
     socket_path = str(tmp_path / "host.sock")
     monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
@@ -673,6 +688,14 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
             assert (await site.pip("uninstall", "-y", "md-other"))[0] == 0
         assert sorted(e.name for e in (modules / "site_b").iterdir()) == ["md-widget"]
         assert sorted(e.name for e in pkgs.iterdir()) == ["md-other_1", "md-widget_2"]  # md-other_1: site_a's
+
+        # md_widget from someone's GitHub: not as the user that owns the installed md_widget's code
+        async with core.packages(sys.executable) as site:
+            assert (await site.pip("install", "git+https://github.com/someone/md_widget.git@v2"))[0] == 0
+            code, err = await site.pip("install", "md_clockjack")
+            assert code != 0 and "md_clock" in err
+            assert (await site.pip("install", "md_clock"))[0] == 0  # the venv's own module, newer
+        assert builds["md-widget_1"] == builds["md-widget_2"] != builds["md-widget_3"]
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

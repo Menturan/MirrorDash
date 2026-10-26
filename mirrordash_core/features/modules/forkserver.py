@@ -36,8 +36,9 @@ import traceback
 from mirrordash_core.config import get_module_dir
 from mirrordash_core.features.modules.loader import SAFE_NAME
 
-# One per installed module, for uv and what its build runs, in that module's own folders (pkgs/<name>_<n>)
-# alone; kept in package_uids.json (host.py module_uids), never given to another module
+# One per module and where it comes from (host.py package_user), for uv and what its build runs, in that
+# module's own folders (pkgs/<name>_<n>) alone; kept in package_uids.json (host.py module_uids), never
+# given to another module, nor to one of its name from elsewhere
 PACKAGE_UIDS = range(70002, 70100)
 PROBE_UID = 70001  # the self-check (host.py probe_main)
 MODULE_UIDS = range(70100, 71000)  # one per instance, kept in uids.json (host.py module_uids), never reused
