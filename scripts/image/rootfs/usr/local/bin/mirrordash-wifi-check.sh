@@ -2,13 +2,16 @@
 # At boot: no network within 30 s -> start the setup hotspot. With --watch (every 3 minutes, from
 # mirrordash-wifi-watch.timer): on the hotspot, try the saved Wi-Fi again (a router that came back
 # after a power cut); off it, a Wi-Fi that is gone for good starts the hotspot without a restart,
-# a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic), and a Wi-Fi
-# chip that didn't start is started again (see recover_wifi_chip).
+# a Wi-Fi that is connected but passes no traffic is reconnected (see check_traffic), a Wi-Fi chip
+# that hangs is started again step by step (see recover_hung_chip), and a Wi-Fi chip that didn't
+# start is started again (see recover_wifi_chip).
 INTERFACE="wlan0"
 SSID="MirrorDash-Setup"
 CACHE_FILE="/var/lib/mirrordash-wifi-scan.cache"
 # How many watch rounds in a row found no traffic (in RAM: a restart starts over)
 FAILS_FILE="/run/mirrordash-wifi-fails"
+# The last step recover_hung_chip took, so the round that finds traffic again can tell which step was enough
+RECOVERY_FILE="/run/mirrordash-wifi-recovery"
 # Overridable so tests/test_wifi.py can fake the kernel's view
 SYS=${MIRRORDASH_SYS:-/sys}
 # When the mirror last restarted because its Wi-Fi chip didn't start (on /storage: survives that restart)
@@ -66,11 +69,15 @@ traffic_flows() {
 
 # Joined but no traffic for 2 rounds in a row (about 6 minutes; one round can be a router restarting):
 # keep the log of what happened (Logs → Saved Logs, once per outage; the system log is in RAM) and
-# join the Wi-Fi again. If that doesn't help, the next rounds try again.
+# join the Wi-Fi again, or, when the Wi-Fi chip hangs, start it again. If that doesn't help, the next
+# rounds try again.
 check_traffic() {
     local fails
     if traffic_flows; then
-        rm -f "$FAILS_FILE"
+        if [ -f "$RECOVERY_FILE" ]; then
+            logger -t mirrordash-wifi "Traffic gets through again after: $(cat "$RECOVERY_FILE")."
+        fi
+        rm -f "$FAILS_FILE" "$RECOVERY_FILE"
         return 0
     fi
     fails=$(( $(cat "$FAILS_FILE" 2>/dev/null || echo 0) + 1 ))
@@ -79,6 +86,10 @@ check_traffic() {
     [ "$fails" -ge 2 ] || return 0
     if [ "$fails" -eq 2 ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
         /usr/local/lib/mirrordash/save-log wifi-lost -b -n 3000 >/dev/null || true
+    fi
+    if wifi_chip_hung; then
+        recover_hung_chip "$fails"
+        return 0
     fi
     logger -t mirrordash-wifi "Joining the Wi-Fi again..."
     nmcli device disconnect "$INTERFACE" || true
@@ -94,20 +105,76 @@ wifi_chip_failed() {
     [ -d "$SYS/module/brcmfmac" ] && [ ! -e "$SYS/class/net/$INTERFACE" ]
 }
 
-# Keep the log (once per start), then load the driver again: harmless on every model. If wlan0 still
-# doesn't come and the mirror has no network at all (not even a cable), restart it, at most once an
-# hour, so a chip that is really broken doesn't make it restart over and over.
-recover_wifi_chip() {
+# The Pi 3's bus to its Wi-Fi chip (SDIO, mmc1) locks up under long heavy traffic, like a 900 MB OS
+# update download: "mmc1: Controller never released inhibit bit(s)", then "failed backplane access",
+# and from then on the chip answers nothing (-110). A kernel bug without a fix (raspberrypi/linux#5770).
+# wlan0 stays, so joining again does nothing: a mirror stayed offline until it was unplugged.
+# ponytail: the last 30 minutes of the kernel log cover the rounds recovery takes; a lockup the chip
+# survived counts too if the traffic stops for another reason within that half hour.
+wifi_chip_hung() {
+    journalctl -k -b -q --no-pager --since "-30 min" |
+        grep -qE 'brcmf_sdio_isr: failed backplane access|brcmf_proto_bcdc_msg failed w/status -110'
+}
+
+# One step a round (round 2 is the first that acts), each stronger than the last: load the driver
+# again; restart the bus controller, which also powers the chip off and on; restart the mirror. Each
+# step is logged, and the round that finds traffic again logs which step was enough.
+recover_hung_chip() {
+    local controller driver
+    case "$1" in
+        2)
+            echo "loading the Wi-Fi driver again" > "$RECOVERY_FILE"
+            logger -t mirrordash-wifi "The Wi-Fi chip hangs; loading its driver again..."
+            reload_wifi_driver
+            ;;
+        3)
+            echo "restarting the Wi-Fi chip's bus" > "$RECOVERY_FILE"
+            # wlan0 -> mmc1:0001:1 (the chip) -> mmc1:0001 -> mmc1 -> mmc_host -> the controller
+            controller=$(realpath "$SYS/class/net/$INTERFACE/device/../../../..")
+            driver=$(realpath "$controller/driver")
+            logger -t mirrordash-wifi "The Wi-Fi chip still hangs; restarting its bus (${controller##*/})..."
+            # unbind returns once the controller is shut down, so bind can follow at once
+            echo "${controller##*/}" > "$driver/unbind"
+            echo "${controller##*/}" > "$driver/bind"
+            ;;
+        *)
+            restart_for_wifi_chip "The Wi-Fi chip still hangs"
+            ;;
+    esac
+}
+
+# brcmfmac and the maker's part loaded with it (brcmfmac_cyw, _wcc, _bca: depends on the chip). A hung
+# chip can make unloading hang; the timeout lets the rest go on (the next round's step is stronger).
+reload_wifi_driver() {
+    # shellcheck disable=SC2046
+    timeout 30 modprobe -r $(awk '$1 ~ /^brcmfmac_/ { print $1 }' /proc/modules) brcmfmac || true
+    timeout 30 modprobe brcmfmac || true
+}
+
+# Restart the mirror for its Wi-Fi chip, at most once an hour, so a chip that is really broken doesn't
+# make it restart over and over.
+restart_for_wifi_chip() {
     local last
+    last=$(cat "$CHIP_REBOOT_FILE" 2>/dev/null || echo 0)
+    if [ $(( $(date +%s) - last )) -lt 3600 ]; then
+        logger -t mirrordash-wifi "$1; restarted less than an hour ago, so not again."
+        return 0
+    fi
+    logger -t mirrordash-wifi "$1: restarting the mirror."
+    date +%s > "$CHIP_REBOOT_FILE"
+    sync
+    systemctl reboot
+}
+
+# Keep the log (once per start), then load the driver again: harmless on every model. If wlan0 still
+# doesn't come and the mirror has no network at all (not even a cable), restart it.
+recover_wifi_chip() {
     if [ ! -e /run/mirrordash-wifi-chip-logged ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
         /usr/local/lib/mirrordash/save-log wifi-chip -b -n 3000 >/dev/null || true
         touch /run/mirrordash-wifi-chip-logged
     fi
     logger -t mirrordash-wifi "The Wi-Fi chip didn't start (no $INTERFACE); loading its driver again..."
-    # brcmfmac and the maker's part loaded with it (brcmfmac_cyw, _wcc, _bca: depends on the chip)
-    # shellcheck disable=SC2046
-    modprobe -r $(awk '$1 ~ /^brcmfmac_/ { print $1 }' /proc/modules) brcmfmac || true
-    modprobe brcmfmac || true
+    reload_wifi_driver
     # The driver starts the chip in the background: wait for wlan0 to appear (up to 30 s)
     udevadm wait --timeout=30 "$SYS/class/net/$INTERFACE" || true
     if [ -e "$SYS/class/net/$INTERFACE" ]; then
@@ -117,15 +184,7 @@ recover_wifi_chip() {
     if nm-online -q -t 5; then
         return 0  # on another network (a cable): no restart for the Wi-Fi alone
     fi
-    last=$(cat "$CHIP_REBOOT_FILE" 2>/dev/null || echo 0)
-    if [ $(( $(date +%s) - last )) -lt 3600 ]; then
-        logger -t mirrordash-wifi "The Wi-Fi chip still didn't start; restarted less than an hour ago, so not again."
-        return 0
-    fi
-    logger -t mirrordash-wifi "The Wi-Fi chip still didn't start and there is no network: restarting the mirror."
-    date +%s > "$CHIP_REBOOT_FILE"
-    sync
-    systemctl reboot
+    restart_for_wifi_chip "The Wi-Fi chip still didn't start and there is no network"
 }
 
 start_hotspot() {

@@ -66,7 +66,7 @@ The time zone is taken from your phone. It also sets the country for Wi-Fi (whic
 *   **The router is off for a while** (a power cut, a restart): the mirror joins again by itself when it's back. If the mirror started first and put up `MirrorDash-Setup`, it tries your Wi-Fi again every few minutes and goes back to it.
 *   **Your Wi-Fi is gone for good** (a new router or password): within a few minutes the mirror starts `MirrorDash-Setup`; set it up as above.
 *   **The Wi-Fi chip doesn't start** (now and then on a Pi 3): within a few minutes the mirror starts it again by itself, and if that doesn't help and it has no network at all, it restarts (at most once an hour). The log is kept under *Logs → Saved Logs*.
-*   **The Wi-Fi is connected but nothing gets through** (it happens with the Pi 3's Wi-Fi now and then): within about 6 minutes the mirror notices, joins the Wi-Fi again and keeps the log under *Logs → Saved Logs*.
+*   **The Wi-Fi is connected but nothing gets through** (it happens with the Pi 3's Wi-Fi now and then): within about 6 minutes the mirror notices, joins the Wi-Fi again and keeps the log under *Logs → Saved Logs*. When it's the Wi-Fi chip that hangs (a Pi 3 can, during a long download like an OS update), the mirror starts the chip again instead, and if that doesn't help within about 12 minutes, it restarts (at most once an hour).
 
 ---
 

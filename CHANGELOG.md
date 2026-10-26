@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- A Pi 3 whose Wi-Fi chip hangs (it can during a long download, like an OS update) gets its Wi-Fi back by itself: the mirror starts the chip again, and restarts if that doesn't help, instead of staying offline until it's unplugged.
+
 ## [0.9.5-os1] - 2026-10-26
 
 OS image with MirrorDash 0.9.5.
