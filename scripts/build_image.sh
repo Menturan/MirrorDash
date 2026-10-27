@@ -6,8 +6,8 @@
 
 set -euo pipefail
 
-info() { info "$*"; }
-warn() { warn "$*"; }
+info() { echo -e "\e[34m[INFO] $*\e[0m"; }
+warn() { echo -e "\e[33m[WARN] $*\e[0m"; }
 fail() { echo -e "\e[31m[ERROR] $*\e[0m"; exit 1; }
 
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
