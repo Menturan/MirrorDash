@@ -930,6 +930,6 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
             except ProcessLookupError:
                 return True
             return False
-        await _until(lambda: gone(stuck_pid), 15)  # forkserver.STOP_GRACE after its connection closed
+        await _until(lambda: gone(stuck_pid), 15)  # forkserver.STOP_GRACE_SECONDS after its connection closed
     finally:
         await core.stop_modules()

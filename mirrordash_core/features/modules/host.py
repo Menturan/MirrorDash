@@ -155,8 +155,8 @@ def sandbox_checks(data: list[str] | None = None) -> list[tuple[str, bool]]:
                for name in (data_folders() if data is None else data)]
     checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
     checks.append(("writing a module's own folder", any(os.access(f, os.W_OK) for f in module_folders())))
-    checks.append(("capabilities (" + (", ".join(forkserver.capabilities()) or "none") + ")",
-                   bool(forkserver.capabilities())))
+    checks.append(("capabilities (" + (", ".join(forkserver.held_capability_sets()) or "none") + ")",
+                   bool(forkserver.held_capability_sets())))
     return checks
 
 
@@ -210,7 +210,7 @@ def package_user(target: str) -> str | None:
 
 def empty(folder: Path, site: bool = False) -> None:
     """Everything in folder, not the folder: a module's folder is its user's in pkgs, which it can't write
-    (forkserver.own_folder makes it). site: a site's folder of links, where what an older shared site left
+    (forkserver.give_folder_to_user makes it). site: a site's folder of links, where what an older shared site left
     and can't be removed stays (module_folders reads the links only)."""
     folder.mkdir(parents=True, exist_ok=True)
     for entry in os.scandir(folder):
@@ -487,7 +487,7 @@ class Host:
                               "body": base64.b64encode(body).decode()})
 
 
-# The processes the forkserver makes (forkserver.run's children), each an async function of its sockets
+# The processes the forkserver makes (forkserver.run_forkserver's children), each an async function of its sockets
 
 
 async def instance_main(stream: socket.socket, fds: socket.socket, instance: str) -> None:
@@ -509,7 +509,7 @@ async def site_step(message: dict, folder: Path) -> tuple[int, str]:
         if args[:1] != ["install"]:
             return 1, f"not a uv pip install: {args[:1]}"
         # --no-cache: the host's folder is on /storage, which is small. --no-config: no uv.toml from the
-        # working directory or HOME (forkserver.spawn) decides where a module's code comes from
+        # working directory or HOME (forkserver.spawn_child) decides where a module's code comes from
         code, err = await run("uv", "pip", "install", "--python", python, "--target", str(folder),
                               "--no-cache", "--no-config", *args[1:], timeout=timeout)
         if code == 0:  # a module's process can't write its folder, so its bytecode is made here
@@ -701,7 +701,7 @@ class Control:
             str(reply.get("err", "the step ended without an answer"))
 
     def _folder_user(self, folder: str) -> int | None:
-        """The user a module's folder in pkgs belongs to (forkserver.own_folder gave it), whom its steps run
+        """The user a module's folder in pkgs belongs to (forkserver.give_folder_to_user gave it), whom its steps run
         as; None if it is no module's. Off a mirror it is the developer's, and any module user passes the
         forkserver, which then changes none."""
         uid = os.stat(get_module_dir() / "pkgs" / folder, follow_symlinks=False).st_uid
@@ -832,7 +832,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     logging.getLogger().handlers[0].setLevel(logging.WARNING)  # the rest reaches the core's log (LogForward)
     path = sys.argv[1]
-    forkserver.run(lambda sock: serve(path, forkserver.Spawner(sock)), CHILDREN)
+    forkserver.run_forkserver(lambda sock: serve(path, forkserver.Spawner(sock)), CHILDREN)
 
 
 if __name__ == "__main__":

@@ -11,43 +11,75 @@ import ipaddress
 import subprocess
 import sys
 
-MODULE_USERS = range(70000, 71000)  # forkserver.UIDS
+MODULE_USERS = range(70000, 71000)  # forkserver.ALL_SANDBOX_UIDS
 HOST_USER = 960  # mirrordash-mod: the forkserver and the control process, which reach nothing at home
+MAX_ADDRESSES = 64
+RESOLVED_STUB = "127.0.0.53"  # systemd-resolved: how the modules look names up
+NFTABLES_TABLE = "inet mirrordash_modules"
+# nftables' set of every user in the module host, as "meta skuid" takes it
+ALL_HOST_USERS = f"{{ {HOST_USER}, {MODULE_USERS.start}-{MODULE_USERS.stop - 1} }}"
 
-pairs = sys.argv[1:]
-if len(pairs) > 64:
-    sys.exit("at most 64 addresses")
-allowed = []
-for pair in pairs:
-    uid, _, address = pair.partition("=")
-    try:
-        uid, ip = int(uid), ipaddress.ip_address(address)
-    except ValueError:
-        sys.exit(f"not a module user and an address: {pair}")
-    if uid not in MODULE_USERS:
-        sys.exit(f"not a module user: {uid}")
-    if not ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_multicast:
-        sys.exit(f"not a home-network address: {address}")
-    allowed.append((uid, ip))
 
-users = f"{{ {HOST_USER}, {MODULE_USERS.start}-{MODULE_USERS.stop - 1} }}"
-# Never the mirror itself, whatever address or name was typed (its own LAN address, mirrordash.local: nginx,
-# SSH, Matter): the kernel knows its addresses on every interface, a DHCP change included. resolved's stub stays.
-rules = [f"meta skuid {users} fib daddr type local ip daddr != 127.0.0.53 reject with icmpx admin-prohibited",
-         f"meta skuid {users} meta nfproto ipv6 fib daddr type local reject with icmpx admin-prohibited"]
-rules += [f"meta skuid {uid} {'ip' if ip.version == 4 else 'ip6'} daddr {ip} accept" for uid, ip in allowed]
-for version, family in ((4, "ip"), (6, "ip6")):
-    opened = sorted({str(ip) for _, ip in allowed if ip.version == version})
-    if opened:
-        # admin-prohibited, not a reset: the host's self-check counts "refused" as reached
-        rules.append(f"meta skuid {users} {family} daddr {{ {', '.join(opened)} }} reject with icmpx admin-prohibited")
-# Made (if missing), dropped and made again in one transaction: the rules are replaced at once
-ruleset = "\n".join([
-    "table inet mirrordash_modules", "delete table inet mirrordash_modules",
-    "table inet mirrordash_modules {", "  chain out {", "    type filter hook output priority 0; policy accept;",
-    *(f"    {rule}" for rule in rules), "  }", "}", ""])
-if subprocess.run(["nft", "-f", "-"], input=ruleset, text=True).returncode:
-    sys.exit("could not set the modules' nftables rules")
-allow = " ".join(["127.0.0.53", *sorted({str(ip) for _, ip in allowed})])
-sys.exit(subprocess.run(["systemctl", "set-property", "--runtime", "mirrordash-modules.service",
-                         "IPAddressAllow=", f"IPAddressAllow={allow}"]).returncode)
+def parse_allowed_addresses(arguments: list[str]) -> list[tuple[int, ipaddress.IPv4Address | ipaddress.IPv6Address]]:
+    """[(module user, home-network address)] from "uid=address" arguments; exits on anything else, as the
+    arguments come from the core through sudo."""
+    if len(arguments) > MAX_ADDRESSES:
+        sys.exit(f"at most {MAX_ADDRESSES} addresses")
+    allowed = []
+    for argument in arguments:
+        uid_text, _, address_text = argument.partition("=")
+        try:
+            uid, address = int(uid_text), ipaddress.ip_address(address_text)
+        except ValueError:
+            sys.exit(f"not a module user and an address: {argument}")
+        if uid not in MODULE_USERS:
+            sys.exit(f"not a module user: {uid}")
+        if not address.is_private or address.is_loopback or address.is_unspecified or address.is_multicast:
+            sys.exit(f"not a home-network address: {address_text}")
+        allowed.append((uid, address))
+    return allowed
+
+
+def nftables_family(address) -> str:
+    return "ip" if address.version == 4 else "ip6"
+
+
+def nftables_rules(allowed: list) -> list[str]:
+    """The output chain's rules, in the order nftables tries them (the first that matches wins)."""
+    # 1. Never the mirror itself, whatever address or name was typed (its own LAN address, mirrordash.local:
+    # nginx, SSH, Matter): "fib daddr type local" is any address the kernel has on any interface, a DHCP
+    # change included. resolved's stub stays reachable.
+    rules = [f"meta skuid {ALL_HOST_USERS} fib daddr type local ip daddr != {RESOLVED_STUB} reject with icmpx admin-prohibited",
+             f"meta skuid {ALL_HOST_USERS} meta nfproto ipv6 fib daddr type local reject with icmpx admin-prohibited"]
+    # 2. Each user's own addresses
+    rules += [f"meta skuid {uid} {nftables_family(address)} daddr {address} accept" for uid, address in allowed]
+    # 3. Those addresses for every other user of the host. IPAddressAllow opens them for the whole unit, so
+    # without this rule one module could reach another's camera
+    for version, family in ((4, "ip"), (6, "ip6")):
+        opened = sorted({str(address) for _, address in allowed if address.version == version})
+        if opened:
+            # admin-prohibited, not a reset: the host's self-check counts "refused" as reached
+            rules.append(f"meta skuid {ALL_HOST_USERS} {family} daddr {{ {', '.join(opened)} }} reject with icmpx admin-prohibited")
+    return rules
+
+
+def nftables_ruleset(rules: list[str]) -> str:
+    """The table made (if missing), dropped and made again in one transaction: the rules are replaced at once,
+    with no moment where none hold."""
+    return "\n".join([
+        f"table {NFTABLES_TABLE}", f"delete table {NFTABLES_TABLE}",
+        f"table {NFTABLES_TABLE} {{", "  chain out {", "    type filter hook output priority 0; policy accept;",
+        *(f"    {rule}" for rule in rules), "  }", "}", ""])
+
+
+def main() -> None:
+    allowed = parse_allowed_addresses(sys.argv[1:])
+    if subprocess.run(["nft", "-f", "-"], input=nftables_ruleset(nftables_rules(allowed)), text=True).returncode:
+        sys.exit("could not set the modules' nftables rules")
+    # The unit's own IP filter (cgroup BPF) lets the addresses through; nftables above sorts out which user
+    ip_address_allow = " ".join([RESOLVED_STUB, *sorted({str(address) for _, address in allowed})])
+    sys.exit(subprocess.run(["systemctl", "set-property", "--runtime", "mirrordash-modules.service",
+                             "IPAddressAllow=", f"IPAddressAllow={ip_address_allow}"]).returncode)
+
+
+main()
