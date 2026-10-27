@@ -3,6 +3,7 @@
 
 import asyncio
 import logging
+import os
 from typing import Annotated
 
 from fastapi import (
@@ -25,7 +26,7 @@ from mirrordash_core.admin import (
     start_job,
     templates,
 )
-from mirrordash_core.config import load_config
+from mirrordash_core.config import load_config, save_config
 from mirrordash_core.features.dashboard.telemetry import get_wifi_info
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
@@ -38,7 +39,12 @@ from mirrordash_core.features.wifi.network import (
     scan_wifi_networks,
     switch_wifi,
 )
-from mirrordash_core.host import reboot_system, run_in_background
+from mirrordash_core.host import (
+    apply_system_timezone,
+    is_known_timezone,
+    reboot_system,
+    run_in_background,
+)
 
 logger = logging.getLogger("mirrordash.core.wifi")
 router = APIRouter()
@@ -59,11 +65,7 @@ async def check_wifi_auth(request: Request, x_api_key: Annotated[str | None, Hea
 # On the setup hotspot every DNS name answers with the mirror (dnsmasq-shared.d in the OS image),
 # so this name works without typing an IP address.
 SETUP_HOSTS = ("mirrordash.setup", "10.42.0.1")
-
-
 SETUP_URL = "http://mirrordash.setup/wifi-setup"
-
-
 # What the setup page itself needs; everything else is redirected to it
 SETUP_PATHS = ("/wifi-setup", "/static", "/api/wifi", "/health", "/admin/auth/status")
 
@@ -93,41 +95,37 @@ async def get_wifi_scan() -> dict:
 
 @router.post("/api/wifi/setup", dependencies=[Depends(check_wifi_auth)])
 async def post_wifi_setup(body: dict) -> dict:
-    ssid = body.get("ssid")
-    password = body.get("password")
-    timezone = body.get("timezone")
-    if not ssid:
+    """Join the home network from the setup page, and take the phone's time zone along. Open to anyone on
+    the hotspot until the mirror has an admin password, so everything in `body` is checked here."""
+    ssid, password, timezone = body.get("ssid"), body.get("password"), body.get("timezone")
+    if not ssid or not isinstance(ssid, str):
         return {"status": "error", "message": "SSID is required"}
+    if password is not None and not isinstance(password, str):
+        return {"status": "error", "message": "The password must be text"}
+    if timezone and not is_known_timezone(timezone):
+        timezone = None  # the phone's time zone is a convenience: an unknown one is left out, not an error
 
     # Connecting tears the setup hotspot down first, so a phone on it gets no answer either way
     from_hotspot = await is_wifi_hotspot_active()
     success, message = await connect_wifi(ssid, password)
-    if not success and from_hotspot:
-        # Otherwise the mirror is left with neither Wi-Fi nor hotspot until it's unplugged.
-        # Bring MirrorDash-Setup back (same password) so the phone can try again; restart only if that fails.
-        logger.warning(f"Could not connect to '{ssid}' from the setup hotspot; bringing it back.")
-        if not await restore_captive_ap():
-            await reboot_system(delay_sec=3.0)
-    if success:
-        if timezone:
-            from mirrordash_core.config import load_config, save_config
-            from mirrordash_core.host import apply_system_timezone
-
-            # Save timezone to config
-            config = load_config()
-            config.setdefault("globals", {})["timezone"] = timezone
-
-            save_config(config)
-
-            # Apply system timezone
-            await apply_system_timezone(timezone)
-
-        # No restart needed: the mirror's screen notices the hotspot is gone and reloads, the clock and
-        # mirrordash.local follow the new network by themselves. Modules start over to fetch data now.
-        run_in_background(module_host.reload_modules())
-        return {"status": "success", "message": "Connected."}
-    else:
+    if not success:
+        if from_hotspot:
+            # Otherwise the mirror is left with neither Wi-Fi nor hotspot until it's unplugged.
+            # Bring MirrorDash-Setup back (same password) so the phone can try again; restart only if that fails.
+            logger.warning(f"Could not connect to '{ssid}' from the setup hotspot; bringing it back.")
+            if not await restore_captive_ap():
+                await reboot_system(delay_sec=3.0)
         return {"status": "error", "message": message}
+
+    if timezone:
+        config = load_config()
+        config.setdefault("globals", {})["timezone"] = timezone
+        save_config(config)
+        await apply_system_timezone(timezone)
+    # No restart needed: the mirror's screen notices the hotspot is gone and reloads, the clock and
+    # mirrordash.local follow the new network by themselves. Modules start over to fetch data now.
+    run_in_background(module_host.reload_modules())
+    return {"status": "success", "message": "Connected."}
 
 
 # Big enough for a backup with local modules and their data; the phone sends it over the hotspot
@@ -150,6 +148,8 @@ async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(d
         while chunk := await file.read(1024 * 1024):
             size += len(chunk)
             if size > RESTORE_MAX_BYTES:
+                out.close()
+                os.remove(temp_upload())  # never leave half a file of that size on the card
                 raise HTTPException(status_code=413, detail="That file is too big to be a backup.")
             out.write(chunk)
     try:
@@ -166,15 +166,15 @@ async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(d
 
     async def join_then_restore():
         await asyncio.sleep(1)  # let the answer reach the phone before the hotspot goes
-        for net in networks:
-            if (await connect_wifi(net["ssid"], net.get("psk") or None))[0]:
+        for network in networks:
+            if (await connect_wifi(network["ssid"], network.get("psk") or None))[0]:
                 start_job(lambda: restore_backup(password=password or None))
                 return
         logger.warning("Could not join any Wi-Fi network from the backup; bringing the setup hotspot back.")
         if not await restore_captive_ap():
             await reboot_system(delay_sec=3.0)
     run_in_background(join_then_restore())
-    return {"status": "success", "networks": [net["ssid"] for net in networks]}
+    return {"status": "success", "networks": [network["ssid"] for network in networks]}
 
 
 # Settings → Wi-Fi: change the mirror's network from the admin page
@@ -200,10 +200,10 @@ async def post_wifi_connect(request: Request):
 
     password = str(form.get("password") or "") or None
 
-    async def later():
+    async def answer_then_switch():
         await asyncio.sleep(1)  # lets this answer reach the phone first
         await switch_wifi(ssid, password)
-    _switch_task = asyncio.create_task(later())
+    _switch_task = asyncio.create_task(answer_then_switch())
     return notify(f"The mirror is switching to {ssid}. Put your phone on {ssid} too, then open "
                   "mirrordash.local. If it can't join, it goes back to the network it was on.")
 

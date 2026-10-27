@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import signal
+import zoneinfo
 from collections.abc import Coroutine
 
 logger = logging.getLogger("mirrordash.core.host")
@@ -96,8 +97,17 @@ async def poweroff_system(delay_sec: float = 2.0) -> None:
     await _schedule_power_command("poweroff", delay_sec)
 
 
+def is_known_timezone(timezone: object) -> bool:
+    """Whether this is a time zone name the system knows (Europe/Stockholm): the trust boundary for one
+    that reaches timedatectl's command line and the modules' settings."""
+    return isinstance(timezone, str) and timezone in zoneinfo.available_timezones()
+
+
 async def apply_system_timezone(timezone: str) -> bool:
     """Set the system time zone with timedatectl, and the Wi-Fi country that goes with it."""
+    if not is_known_timezone(timezone):
+        logger.warning(f"Not setting the system timezone: {timezone!r} isn't a known time zone")
+        return False
     logger.info(f"Applying system timezone: {timezone}")
     exit_code, _, error_output = await run_command("sudo", "-n", "timedatectl", "set-timezone", timezone, timeout=5)
     if exit_code != 0:

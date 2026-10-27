@@ -83,6 +83,10 @@ def validate_config(config: dict) -> None:
     against that module's config_schema. Raises ValueError on bad data."""
     if not isinstance(config, dict):
         raise ValueError("Config must be a JSON object.")
+    from mirrordash_core.host import is_known_timezone
+    timezone = (config.get("globals") or {}).get("timezone")
+    if timezone is not None and not is_known_timezone(timezone):
+        raise ValueError(f"Unknown time zone {timezone!r}: use a name like Europe/Stockholm.")
     modules = config.get("modules")
     if modules is None:
         return
