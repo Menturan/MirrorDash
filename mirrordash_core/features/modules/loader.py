@@ -32,9 +32,8 @@ from jinja2 import (
     select_autoescape,
 )
 
-from mirrordash_core.config import get_core_version, get_module_dir, load_config
+from mirrordash_core.config import get_core_version, get_module_dir
 from mirrordash_core.event_bus import event_bus
-from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.modules")
 
@@ -155,6 +154,44 @@ def load_translations(pkg_dir: Path | None, lang: str) -> dict:
     return translations
 
 
+def _request_body(json_body: object, form_data: dict | bytes | None) -> bytes | None:
+    """What fetch sends: json= as JSON, data= as a form (a dict) or as it is (bytes)."""
+    if json_body is not None:
+        return json.dumps(json_body).encode()
+    return urllib.parse.urlencode(form_data).encode() if isinstance(form_data, dict) else form_data
+
+
+def _cache_file_for(cache_dir: str | None, method: str, url: str, body: bytes | None) -> str | None:
+    """Where the last good answer to this exact request is kept (none without a cache_dir)."""
+    if not cache_dir:
+        return None
+    request_hash = hashlib.sha256(f"{method} {url}\n".encode() + (body or b"")).hexdigest()[:16]
+    return os.path.join(cache_dir, f"fetch-{request_hash}")
+
+
+def _read_cached_answer(cache_file: str | None, parse_answer, max_age: float | None = None):
+    """The saved answer, parsed; None when there is none, it doesn't parse, or it is older than max_age."""
+    try:
+        if max_age is not None and time.time() - os.path.getmtime(cache_file) >= max_age:
+            return None
+        with open(cache_file, "rb") as f:
+            return parse_answer(f.read())
+    except (TypeError, OSError, ValueError):  # no cache_dir, nothing saved yet, or a broken file
+        return None
+
+
+def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, where: str) -> None:
+    """Keep a good answer for when the next fetch fails; written whole or not at all."""
+    if not cache_file:
+        return
+    try:
+        with open(cache_file + ".tmp", "wb") as f:
+            f.write(raw_answer)
+        os.replace(cache_file + ".tmp", cache_file)
+    except OSError as e:
+        logger.debug(f"{module_name}: could not cache {where}: {e}")
+
+
 def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False):
     """A module's `self.fetch` and `self.fetch_json` -> (answer, error).
 
@@ -181,42 +218,34 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
     async def fetch(url: str, *, parse=None, method: str = "GET", headers: dict | None = None,
                     params: dict | None = None, json: object = None, data: dict | bytes | None = None,
                     timeout: float = 10, max_age: float | None = None) -> tuple[object, str | None]:
-        from json import dumps  # the json= argument hides the module
         if json is not None and data is not None:
             raise ValueError("fetch: pass json= or data=, not both")
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-        body = (dumps(json).encode() if json is not None
-                else urllib.parse.urlencode(data).encode() if isinstance(data, dict) else data)
-        accept = {"Accept": "application/json"} if parse else {}
-        parse = parse or (lambda raw: raw)
-        parts = urllib.parse.urlsplit(url)
-        where = f"{method} {parts.netloc}{parts.path}"  # never the query, headers or body: they can hold keys
-        key = hashlib.sha256(f"{method} {url}\n".encode() + (body or b"")).hexdigest()[:16]
-        cache_file = os.path.join(cache_dir, f"fetch-{key}") if cache_dir else None
+        body = _request_body(json, data)
+        parse_answer = parse or (lambda raw: raw)
+        url_parts = urllib.parse.urlsplit(url)
+        where = f"{method} {url_parts.netloc}{url_parts.path}"  # never the query, headers or body: they can hold keys
+        cache_file = _cache_file_for(cache_dir, method, url, body)
 
-        if max_age and cache_file:
-            try:
-                if time.time() - os.path.getmtime(cache_file) < max_age:
-                    with open(cache_file, "rb") as f:
-                        return parse(f.read()), None
-            except (OSError, ValueError):  # nothing saved yet, or a broken file: fetch
-                pass
+        if max_age and (fresh_answer := _read_cached_answer(cache_file, parse_answer, max_age)) is not None:
+            return fresh_answer, None
         if not keep_running:
             await awake.wait()
 
-        def get() -> bytes:
-            request = urllib.request.Request(url, data=body, method=method, headers={
-                "User-Agent": user_agent,
-                **accept,
-                **({"Content-Type": "application/json"} if json is not None else {}),
-                **(headers or {})})
+        request_headers = {"User-Agent": user_agent,
+                           **({"Accept": "application/json"} if parse else {}),
+                           **({"Content-Type": "application/json"} if json is not None else {}),
+                           **(headers or {})}
+
+        def download() -> bytes:
+            request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 return response.read()
 
         try:
-            raw = await asyncio.to_thread(get)
-            answer = parse(raw)
+            raw_answer = await asyncio.to_thread(download)
+            answer = parse_answer(raw_answer)
         except urllib.error.HTTPError as e:
             error = "rejected" if e.code in (401, 403) else f"http {e.code}"
         except (urllib.error.URLError, OSError, http.client.HTTPException):  # timeouts, cut-off answers
@@ -224,21 +253,11 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
         except ValueError:  # fetch_json: not JSON, or not UTF-8
             error = "invalid"
         else:
-            if cache_file:
-                try:
-                    with open(cache_file + ".tmp", "wb") as f:
-                        f.write(raw)
-                    os.replace(cache_file + ".tmp", cache_file)
-                except OSError as e:
-                    logger.debug(f"{module_name}: could not cache {where}: {e}")
+            _save_answer(cache_file, raw_answer, module_name, where)
             return answer, None
 
         logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
-        try:
-            with open(cache_file, "rb") as f:
-                return parse(f.read()), error
-        except (TypeError, OSError, ValueError):  # no cache_dir, nothing cached yet, or a broken file
-            return None, error
+        return _read_cached_answer(cache_file, parse_answer), error
 
     return (functools.partial(fetch, parse=None),
             functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
@@ -292,86 +311,57 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
 
     if not hasattr(plugin_instance, "render_template"):
         try:
-            loaders = []
-            try:
-                loaders.append(PackageLoader(package_name, "templates"))
-            except Exception:
-                pass
-
-            try:
-                spec = importlib.util.find_spec(package_name)
-                if spec and spec.origin:
-                    pkg_dir = os.path.dirname(spec.origin)
-                    templates_dir = os.path.join(pkg_dir, "templates")
-                    if os.path.isdir(templates_dir):
-                        loaders.append(FileSystemLoader(templates_dir))
-            except Exception:
-                pass
-
-            if not loaders:
-                return
-
-            env = Environment(
-                loader=ChoiceLoader(loaders) if len(loaders) > 1 else loaders[0],
-                autoescape=select_autoescape(["html", "xml"])
-            )
-
-            def render_template(template_name: str, **context) -> str:
-                if "translations" not in context and hasattr(plugin_instance, "translations"):
-                    context["translations"] = plugin_instance.translations
-                if "show_header" not in context:
-                    context["show_header"] = config.get("show_header", True)
-                try:
-                    return env.get_template(template_name).render(**context)
-                except Exception as render_err:
-                    logger.error(f"Failed to render template {template_name} in {package_name}: {render_err}", exc_info=True)
-                    raise
-
-            plugin_instance.render_template = render_template
-            logger.debug(f"Auto-injected render_template helper for module '{module_name}'")
+            if render_template := _make_render_template(plugin_instance, package_name, config):
+                plugin_instance.render_template = render_template
+                logger.debug(f"Auto-injected render_template helper for module '{module_name}'")
         except Exception as e:
             logger.warning(f"Could not auto-inject render_template helper for '{module_name}': {e}")
 
 
-def start_system() -> None:
-    """Apply the saved system settings once, at startup (app.py lifespan). A module reload doesn't: each
-    setting's own save applies it, and doing all of them again flickered the screen and restarted Matter."""
-    config = load_config()
-    system_cfg = config.get("system", {})
-    try:
-        if system_cfg:
-            from mirrordash_core.features.hardware.display import apply_system_settings
-            run_in_background(apply_system_settings(
-                system_cfg.get("rotation", "normal"),
-                system_cfg.get("resolution", "auto"),
-                system_cfg.get("brightness", 100),
-                system_cfg.get("volume", 80)
-            ))
+def _make_render_template(plugin_instance, package_name: str, config: dict):
+    """`self.render_template("card.html", **context)` over the module's templates/ folder, with its
+    translations and show_header filled in; None when the module has no templates."""
+    loaders = []
+    with contextlib.suppress(Exception):
+        loaders.append(PackageLoader(package_name, "templates"))
+    with contextlib.suppress(Exception):
+        spec = importlib.util.find_spec(package_name)
+        templates_dir = os.path.join(os.path.dirname(spec.origin), "templates") if spec and spec.origin else ""
+        if os.path.isdir(templates_dir):
+            loaders.append(FileSystemLoader(templates_dir))
+    if not loaders:
+        return None
+    environment = Environment(loader=ChoiceLoader(loaders), autoescape=select_autoescape(["html", "xml"]))
 
-        timezone = config.get("globals", {}).get("timezone")
-        if timezone:
-            from mirrordash_core.host import apply_system_timezone
-            run_in_background(apply_system_timezone(timezone))
+    def render_template(template_name: str, **context) -> str:
+        if "translations" not in context and hasattr(plugin_instance, "translations"):
+            context["translations"] = plugin_instance.translations
+        context.setdefault("show_header", config.get("show_header", True))
+        try:
+            return environment.get_template(template_name).render(**context)
+        except Exception as render_err:
+            logger.error(f"Failed to render template {template_name} in {package_name}: {render_err}", exc_info=True)
+            raise
 
-        if system_cfg.get("ssh") is not None:
-            from mirrordash_core.features.settings.ssh import set_ssh_status
-            run_in_background(set_ssh_status(system_cfg["ssh"]))
+    return render_template
 
-        # Matter: the core starts the node, /etc forgets `systemctl enable` (features/matter)
-        if config.get("matter", {}).get("enabled"):
-            from mirrordash_core.features.matter.routes import start_matter
-            run_in_background(start_matter())
 
-        # The pi password lives on /storage; the read-only root forgets it at every boot
-        from mirrordash_core.features.settings.ssh import PASSWORD_HASH_FILE
-        if os.path.exists(PASSWORD_HASH_FILE):
-            with open(PASSWORD_HASH_FILE, encoding="utf-8") as f:
-                pwd_hash = f.read().strip()
-            if pwd_hash:
-                from mirrordash_core.host import apply_system_password_hash
-                run_in_background(apply_system_password_hash(pwd_hash))
-    except Exception as e:
-        logger.warning(f"Failed to apply system settings on startup: {e}")
+def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: dict, translations: dict) -> dict:
+    """What a module's constructor gets: its saved settings, plus its own writable data_dir and cache_dir,
+    the event bus, where its routes are served (api_path), the global settings and its translations."""
+    instance_settings = module_cfg.copy()
+    for kind in ("data", "cache"):
+        path = os.path.join(get_module_dir(), kind, instance_id)
+        try:
+            os.makedirs(path, exist_ok=True)
+            instance_settings[f"{kind}_dir"] = path
+        except Exception as e:
+            logger.warning(f"Could not create writeable {kind} directory '{path}' for '{instance_id}': {e}")
+    instance_settings["event_bus"] = event_bus
+    instance_settings["api_path"] = f"/api/modules/{instance_id}"
+    instance_settings["globals"] = globals_config
+    instance_settings["translations"] = translations
+    return instance_settings
 
 
 class ModuleLoader:
@@ -386,73 +376,48 @@ class ModuleLoader:
         """Start an instance for each enabled entry of modules_config (the core's config["modules"])."""
         eps = module_entry_points()
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
-        lang = globals_config.get("language", "en")
 
         for instance_id, module_cfg in modules_config.items():
             if not isinstance(module_cfg, dict) or not SAFE_NAME.match(instance_id):
                 continue
-
-            module_name = module_cfg.get("module")
-            if not module_name:
-                # If no module name is set, fall back to instance_id (e.g. legacy/direct config)
-                module_name = instance_id
-
+            module_name = module_cfg.get("module") or instance_id  # an instance from before "module" existed
             ep = find_entry_point(module_name, eps)
             if ep is None:
                 logger.warning(
                     f"Configuration '{instance_id}' references module '{module_name}', which is not installed — skipping."
                 )
                 continue
-
             if not module_cfg.get("enabled", True):
                 logger.info(f"Instance '{instance_id}' is disabled in config — skipping.")
                 continue
-
             try:
-                logger.info(f"Loading module: {module_name} (instance: {instance_id})")
-                # Only its own folder, after the core's packages: a module's copy of one (uv installs every
-                # dependency) never shadows them. addsitedir runs the folder's .pth files, so only here.
-                if (folder := module_folder(ep)) and folder not in sys.path:
-                    site.addsitedir(folder)
-                plugin_class = ep.load()
-
-                # Pre-create and inject writeable data and cache directory paths
-                module_cfg_copy = module_cfg.copy()
-                for kind in ("data", "cache"):
-                    path = os.path.join(get_module_dir(), kind, instance_id)
-                    try:
-                        os.makedirs(path, exist_ok=True)
-                        module_cfg_copy[f"{kind}_dir"] = path
-                    except Exception as e:
-                        logger.warning(f"Could not create writeable {kind} directory '{path}' for '{instance_id}': {e}")
-
-                # Inject event bus for inter-module communication
-                module_cfg_copy["event_bus"] = event_bus
-
-                # Where the module's own routes are served (host.py), so it can tell its users
-                module_cfg_copy["api_path"] = f"/api/modules/{instance_id}"
-
-                # Inject global configurations
-                module_cfg_copy["globals"] = globals_config
-
-                # Load translations
-                package_name = plugin_class.__module__.split('.')[0]
-                translations = load_translations(package_dir(ep), lang)
-                module_cfg_copy["translations"] = translations
-
-                plugin_instance = plugin_class(module_cfg_copy)
-                self.instances[instance_id] = plugin_instance
-
-                _inject_module_helpers(plugin_instance, package_name, translations, instance_id, module_cfg_copy, self.link)
-
-                if hasattr(plugin_instance, "run_loop"):
-                    if not inspect.iscoroutinefunction(plugin_instance.run_loop):
-                        # A thread can't be stopped on a reload, so it would keep running with old settings
-                        logger.error(f"Module {module_name} (instance: {instance_id}): run_loop must be `async def`; not started.")
-                        continue
-                    self._start_module_task(instance_id, plugin_instance, self._make_broadcast_func(instance_id))
+                self._start_instance(instance_id, module_name, ep, module_cfg, globals_config)
             except Exception as e:
                 logger.error(f"Failed to load module {module_name} (instance: {instance_id}): {e}", exc_info=True)
+
+    def _start_instance(self, instance_id: str, module_name: str, ep, module_cfg: dict, globals_config: dict) -> None:
+        """Import the module, create its instance with its settings and helpers, and start its run_loop."""
+        logger.info(f"Loading module: {module_name} (instance: {instance_id})")
+        # Only its own folder, after the core's packages: a module's copy of one (uv installs every
+        # dependency) never shadows them. addsitedir runs the folder's .pth files, so only here.
+        if (folder := module_folder(ep)) and folder not in sys.path:
+            site.addsitedir(folder)
+        plugin_class = ep.load()
+        package_name = plugin_class.__module__.split(".")[0]
+        translations = load_translations(package_dir(ep), globals_config.get("language", "en"))
+        instance_settings = _settings_for_instance(instance_id, module_cfg, globals_config, translations)
+
+        plugin_instance = plugin_class(instance_settings)
+        self.instances[instance_id] = plugin_instance
+        _inject_module_helpers(plugin_instance, package_name, translations, instance_id, instance_settings, self.link)
+
+        if not hasattr(plugin_instance, "run_loop"):
+            return
+        if not inspect.iscoroutinefunction(plugin_instance.run_loop):
+            # A thread can't be stopped on a reload, so it would keep running with old settings
+            logger.error(f"Module {module_name} (instance: {instance_id}): run_loop must be `async def`; not started.")
+            return
+        self._start_module_task(instance_id, plugin_instance, self._make_broadcast_func(instance_id))
 
     def _make_broadcast_func(self, instance_id: str):
         """The module's broadcast_func: its HTML goes to the core, which puts it in the instance's place."""

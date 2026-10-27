@@ -1814,3 +1814,23 @@ def test_a_new_password_logs_every_other_browser_out():
     assert admin.session_valid(other) and admin.session_valid(mine)
     admin.end_all_sessions()
     assert not admin.session_valid(other) and not admin.session_valid(mine)
+
+
+def test_a_modules_traceback_stays_in_its_own_log(tmp_path, monkeypatch):
+    """A traceback's lines belong to the entry above them, and one module's log isn't another's whose
+    name starts the same."""
+    import mirrordash_core.config as config
+    from mirrordash_core.features.logs.routes import get_logs
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "mirrordash.log").write_text(
+        "2026-10-19T08:15:02.123Z [INFO] mirrordash.core.app: started\n"
+        "2026-10-19T08:15:03.000Z [ERROR] mirrordash.modules.clock: broke\n"
+        "Traceback (most recent call last):\n"
+        "ValueError: no time\n"
+        "2026-10-19T08:15:04.000Z [INFO] mirrordash.modules.clock2: fine\n")
+    monkeypatch.setattr(config, "get_base_dir", lambda: tmp_path)
+    assert asyncio.run(get_logs("system"))["logs"] == "2026-10-19T08:15:02.123Z [INFO] mirrordash.core.app: started\n"
+    assert asyncio.run(get_logs("modules", module="clock"))["logs"].splitlines() == [
+        "2026-10-19T08:15:03.000Z [ERROR] mirrordash.modules.clock: broke",
+        "Traceback (most recent call last):", "ValueError: no time"]
+    assert asyncio.run(get_logs("modules", lines=1))["logs"] == "2026-10-19T08:15:04.000Z [INFO] mirrordash.modules.clock2: fine\n"

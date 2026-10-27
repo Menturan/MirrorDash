@@ -23,7 +23,6 @@ from mirrordash_core.features.matter import routes as matter
 from mirrordash_core.features.modules import routes as modules
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host, module_routes
-from mirrordash_core.features.modules.loader import start_system
 from mirrordash_core.features.mqtt import routes as mqtt
 from mirrordash_core.features.mqtt.bridge import mqtt_bridge
 from mirrordash_core.features.power import routes as power
@@ -39,7 +38,7 @@ logger = logging.getLogger("mirrordash.core.app")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     write_local_token()
-    start_system()
+    system_settings.apply_saved_system_settings_at_startup()
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
                  mqtt_bridge.start):

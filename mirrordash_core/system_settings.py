@@ -3,6 +3,7 @@
 checks and applies them, shared by the Hardware, Power and Settings tabs and Home Assistant."""
 
 import logging
+import os
 import re
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
@@ -22,6 +23,48 @@ from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.system_settings")
 router = APIRouter(prefix="/admin")
+
+
+def apply_saved_system_settings_at_startup() -> None:
+    """Apply the saved system settings once, at startup (app.py lifespan). A module reload doesn't: each
+    setting's own save applies it, and doing all of them again flickered the screen and restarted Matter.
+    Each step on its own: one that fails mustn't keep the others from being applied."""
+    from mirrordash_core.features.matter.routes import start_matter
+    from mirrordash_core.features.settings.ssh import PASSWORD_HASH_FILE, set_ssh_status
+    from mirrordash_core.host import apply_system_password_hash, apply_system_timezone
+
+    config = load_config()
+    system_cfg = config.get("system", {})
+
+    def screen_and_sound():
+        if system_cfg:
+            run_in_background(apply_system_settings(
+                system_cfg.get("rotation", DEFAULTS["rotation"]), system_cfg.get("resolution", DEFAULTS["resolution"]),
+                system_cfg.get("brightness", DEFAULTS["brightness"]), system_cfg.get("volume", DEFAULTS["volume"])))
+
+    def time_zone():
+        if timezone := config.get("globals", {}).get("timezone"):
+            run_in_background(apply_system_timezone(timezone))
+
+    def ssh():
+        if system_cfg.get("ssh") is not None:
+            run_in_background(set_ssh_status(system_cfg["ssh"]))
+
+    def matter():  # the core starts the node, /etc forgets `systemctl enable` (features/matter)
+        if config.get("matter", {}).get("enabled"):
+            run_in_background(start_matter())
+
+    def pi_password():  # it lives on /storage; the read-only root forgets it at every boot
+        if os.path.exists(PASSWORD_HASH_FILE):
+            with open(PASSWORD_HASH_FILE, encoding="utf-8") as f:
+                if password_hash := f.read().strip():
+                    run_in_background(apply_system_password_hash(password_hash))
+
+    for step in (screen_and_sound, time_zone, ssh, matter, pi_password):
+        try:
+            step()
+        except Exception as e:
+            logger.warning(f"Failed to apply the saved {step.__name__.replace('_', ' ')} setting on startup: {e}")
 
 
 @router.get("/system", dependencies=[Depends(require_api_key)])
