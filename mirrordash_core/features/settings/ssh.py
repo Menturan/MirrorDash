@@ -26,6 +26,15 @@ async def get_ssh_status() -> bool:
         return False
 
 
+async def _sudo_systemctl_ssh(action: str) -> int:
+    """`sudo systemctl <action> ssh` (one of the sudo rules in sudoers.d/mirrordash), its exit code."""
+    process = await asyncio.create_subprocess_exec(
+        "sudo", "-n", "systemctl", action, "ssh",
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+    )
+    return await process.wait()
+
+
 async def set_ssh_status(enabled: bool) -> bool:
     """Enable/start or disable/stop the SSH service. Never starts it without the owner's own pi password
     (its hash on /storage): a stray `ssh: true` in the config once started it with the image's password."""
@@ -33,22 +42,12 @@ async def set_ssh_status(enabled: bool) -> bool:
         logger.warning("Not starting SSH: no password for pi has been set (Settings → SSH)")
         enabled = False
     try:
-        action = "enable" if enabled else "disable"
-        proc1 = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "systemctl", action, "ssh",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        rc1 = await proc1.wait()
-
-        start_stop = "start" if enabled else "stop"
-        proc2 = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "systemctl", start_stop, "ssh",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        rc2 = await proc2.wait()
-
-        if rc1 != 0 or rc2 != 0:
-            logger.error(f"systemctl {action}/{start_stop} ssh failed (exit {rc1}, {rc2})")
+        at_boot_action = "enable" if enabled else "disable"
+        enable_exit_code = await _sudo_systemctl_ssh(at_boot_action)
+        now_action = "start" if enabled else "stop"
+        start_exit_code = await _sudo_systemctl_ssh(now_action)
+        if enable_exit_code != 0 or start_exit_code != 0:
+            logger.error(f"systemctl {at_boot_action}/{now_action} ssh failed (exit {enable_exit_code}, {start_exit_code})")
             return False
         return True
     except Exception as e:
@@ -68,12 +67,12 @@ async def _set_pi_password(password: str) -> None:
     if proc.returncode != 0:
         logger.error(f"openssl hash failed: {err.decode(errors='replace').strip()}")
         raise HTTPException(status_code=500, detail="Failed to hash system password.")
-    pwd_hash = out.decode().strip()
-    if not await apply_system_password_hash(pwd_hash):
+    password_hash = out.decode().strip()
+    if not await apply_system_password_hash(password_hash):
         raise HTTPException(status_code=500, detail="Failed to update system password.")
     logger.info("Password for user 'pi' updated successfully.")
     try:
-        write_atomic(PASSWORD_HASH_FILE, pwd_hash, 0o600)
+        write_atomic(PASSWORD_HASH_FILE, password_hash, 0o600)
     except OSError as e:
         logger.error(f"Failed to write password hash to disk: {e}")
 
