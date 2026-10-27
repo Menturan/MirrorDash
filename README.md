@@ -7,11 +7,9 @@
 
 # MirrorDash
 
-[![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](pyproject.toml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-525252)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-orange.svg)](#get-started)
 [![PyPI version](https://img.shields.io/pypi/v/mirrordash.svg)](https://pypi.org/project/mirrordash/)
-[![Downloads](https://pepy.tech/badge/mirrordash)](https://pepy.tech/project/mirrordash)
 
 **A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. No touchscreen, no voice assistant, no notifications.**
 
@@ -25,6 +23,8 @@
 
 No keyboard, no terminal, no config files, now or later.
 
+> **Status: beta.** Developed and tested on a Raspberry Pi 3 B, Matter with Apple Home and Google Home included. The image also starts a Pi 4 and a Pi 5, which are less tested: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
+
 ## Why it's different from the smart mirror you built last time
 
 | | A typical DIY smart mirror | MirrorDash |
@@ -36,16 +36,25 @@ No keyboard, no terminal, no config files, now or later.
 | The screen | On all night | On when someone's there, on a schedule, or from Apple Home, Google Home and Home Assistant (Matter) |
 | New widgets | Copy code into the project | Tap *Install* in the admin page |
 
+**Coming from MagicMirror²?** Same idea, a glance at the mirror on your way out. What's different is everything around it: the setup, the phone instead of a config file, the updates that undo themselves. MagicMirror² modules (JavaScript) don't run here; a MirrorDash module is a small Python package, and the [SDK](#make-your-own) makes one with example data in a minute.
+
 ![The mirror's screen](https://raw.githubusercontent.com/Menturan/MirrorDash/master/screenshot.png)
 
 ## Get started
 
-**You need**
+**You need** (rough prices in 2026)
 
-* A Raspberry Pi 3 or newer (MirrorDash is developed and tested on a Pi 3 B).
-* An SD card of at least 8 GB.
-* The official power supply (5.1 V, 2.5 A for a Pi 3). A weaker one makes the mirror slow, and it warns you.
-* A screen behind a two-way mirror.
+| Part | About | Notes |
+|---|---|---|
+| Raspberry Pi 3 B or newer | €35–60 | Developed on a Pi 3 B; a Pi 4 or 5 works too. |
+| SD card, 8 GB or more | €8 | |
+| The official power supply | €10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
+| A screen with HDMI | €0–100 | An old computer monitor is ideal: most of them let the mirror set their brightness (DDC/CI), most TVs don't. Take it out of its case for a slim build. |
+| A two-way mirror | €30–150 | Glass is the clearest; acrylic is cheaper and lighter but can warp; mirror film on plain glass is the cheapest. A bit larger than the screen. |
+| A frame | €0–30 | Wood from the hardware store, or an old picture frame. |
+| *Optional:* a motion sensor | €3–6 | A PIR sensor (HC-SR501) or an mmWave sensor (LD2410, which also notices someone standing still), so the screen is on only when someone's there. Buttons, a light sensor and a fan can be added too. |
+
+All in, about €90–350, depending mostly on the screen and the mirror.
 
 **Then**
 
@@ -74,6 +83,11 @@ uvx mirrordash-sdk quickstart mirrordash-my-widget
 ```
 
 This creates a module with example data and starts a mirror on your computer that shows every change as you save. Put the module on GitHub as `mirrordash-<something>` and publish a GitHub Release: it then shows up under *Modules → Add modules* on every mirror. The [SDK](https://github.com/Menturan/mirrordash-sdk) and its [module guide](https://github.com/Menturan/mirrordash-sdk/blob/master/MODULE_GUIDE.md) have the details.
+
+## Help and ideas
+
+* **Questions, ideas, or a photo of your mirror:** [Discussions](https://github.com/Menturan/MirrorDash/discussions).
+* **Something wrong:** an [issue](https://github.com/Menturan/MirrorDash/issues). *Logs → Diagnostics* in the admin page gathers what helps find the fault.
 
 ## Under the hood
 
