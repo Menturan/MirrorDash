@@ -214,7 +214,11 @@ def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
 
 def test_run_command_never_raises():
     """A missing program and one that hangs come back as the shell's exit codes, not as exceptions."""
-    from mirrordash_core.host import EXIT_CODE_PROGRAM_NOT_FOUND, EXIT_CODE_TIMED_OUT, run_command
+    from mirrordash_core.host import (
+        EXIT_CODE_PROGRAM_NOT_FOUND,
+        EXIT_CODE_TIMED_OUT,
+        run_command,
+    )
     assert asyncio.run(run_command("no-such-program-anywhere"))[0] == EXIT_CODE_PROGRAM_NOT_FOUND
     assert asyncio.run(run_command("sleep", "5", timeout=0.1))[0] == EXIT_CODE_TIMED_OUT
     assert asyncio.run(run_command("cat", input_text="hello")) == (0, "hello", "")
@@ -222,7 +226,10 @@ def test_run_command_never_raises():
 
 def test_nmcli_escapes_are_undone():
     """nmcli -t writes a ':' or '\\' inside a field as '\\:' or '\\\\': an SSID like "Home:5G" stays whole."""
-    from mirrordash_core.features.wifi.network import split_nmcli_terse_line, unescape_nmcli_value
+    from mirrordash_core.features.wifi.network import (
+        split_nmcli_terse_line,
+        unescape_nmcli_value,
+    )
     assert split_nmcli_terse_line(r"yes:Home\:5G:80") == ["yes", "Home:5G", "80"]
     assert unescape_nmcli_value(r"back\\slash\:colon") == "back\\slash:colon"
 
