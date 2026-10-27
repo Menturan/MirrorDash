@@ -60,7 +60,7 @@ case "${1:-}" in
       echo "The mirror is connected by Ethernet, which goes through USB: connect it by Wi-Fi first." >&2; exit 1
     fi
     mkdir -p "$STORAGE"
-    touch "$FLAG"
+    install -m 0644 /dev/null "$FLAG"  # not touch: in a pi-owned dir that would follow a planted symlink
     apply ;;
   on)
     rm -f "$FLAG"

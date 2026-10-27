@@ -19,6 +19,7 @@ for arg in "$@"; do
   case "$type" in
     button|button_2|button_3|button_4|pir|mmwave|dht11|fan|pwm_fan)
       { [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 2 ] && [ "$value" -le 27 ]; } || die "invalid GPIO: $arg"
+      value=$((10#$value))  # "08" and "8" are one pin: the twice-check below must see them as one
       [ -z "${seen_pin[$value]:-}" ] || die "GPIO $value used twice"
       seen_pin[$value]=1 ;;
     light)
