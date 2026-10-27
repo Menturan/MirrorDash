@@ -1,4 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""Updates: MirrorDash itself from PyPI into the next A/B venv (venv.py), and the whole OS as a signed
+RAUC bundle from GitHub into the card's other half; both by hand from the Updates card and nightly."""
 
 import asyncio
 import json
@@ -29,10 +31,14 @@ router = APIRouter(prefix="/admin")
 
 @router.post("/restart", dependencies=[Depends(require_api_key)])
 async def restart_system() -> dict:
+    """Restart the app; the answer's boot_id lets the page tell when the new one is up."""
     logger.info("System restart requested by admin client.")
     from mirrordash_core.admin import BOOT_ID
     run_in_background(run_restart())
     return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
+
+
+PYPI_URL = "https://pypi.org/pypi/mirrordash/json"
 
 
 def prerelease_enabled() -> bool:
@@ -51,17 +57,18 @@ async def check_core_update() -> dict:
 
     # Fetch latest version from PyPI without blocking the event loop, and the Python it needs
     def _fetch_pypi_version(prerelease: bool) -> tuple[str, str | None]:
-        url = "https://pypi.org/pypi/mirrordash/json"
+        """(the newest version, the Python it requires)."""
         try:
-            with urllib.request.urlopen(url, timeout=8) as resp:  # noqa: S310
-                data = json.loads(resp.read())
+            with urllib.request.urlopen(PYPI_URL, timeout=8) as response:  # noqa: S310
+                package_info = json.loads(response.read())
         except Exception as exc:
             raise RuntimeError(f"PyPI request failed: {exc}") from exc
         if not prerelease:
             # PyPI's latest is always a final release
-            return data["info"]["version"], data["info"].get("requires_python")
-        version = max((v for v, files in data["releases"].items() if files), key=version_key)
-        return version, data["releases"][version][0].get("requires_python")
+            return package_info["info"]["version"], package_info["info"].get("requires_python")
+        releases = package_info["releases"]
+        newest = max((version for version, files in releases.items() if files), key=version_key)
+        return newest, releases[newest][0].get("requires_python")
 
     try:
         latest_version, requires_python = await asyncio.to_thread(_fetch_pypi_version, prerelease_enabled())
@@ -93,11 +100,12 @@ def needed_python(requires_python: str | None) -> str | None:
 # a restart forgets it, and the next attempt finds the same again.
 incompatible: dict = {}
 
-def module_target(mod: dict) -> list[str]:
+
+def module_target(module: dict) -> list[str]:
     """What `uv pip install` takes to reinstall a module from where it came (installed_modules)."""
     from mirrordash_core.features.backup.service import find_local_module_dir
-    local_dir = find_local_module_dir(mod["package_name"]) if mod["type"] == "local" else None
-    return ["-e", str(local_dir)] if local_dir else [mod.get("source") or f"{mod['package_name']}=={mod['version']}"]
+    local_dir = find_local_module_dir(module["package_name"]) if module["type"] == "local" else None
+    return ["-e", str(local_dir)] if local_dir else [module.get("source") or f"{module['package_name']}=={module['version']}"]
 
 
 async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]) -> dict:
@@ -111,25 +119,26 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
     code, _, err = await run("uv", "python", "install", python, timeout=900)
     if code != 0:
         raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
-    modules = [m for m in installed_modules() if m["name"] not in skip]  # from the running module site
-    args = ["--prerelease=allow"] if prerelease_enabled() else []
+    modules = [module for module in installed_modules() if module["name"] not in skip]  # from the running module site
+    prerelease_arguments = ["--prerelease=allow"] if prerelease_enabled() else []
     try:
         # The site is switched in with the venv; launch.sh's fallback to venv_old switches back to the old one
-        async with venv_swap(force_clean=True, python=python) as py, module_host.packages(py, fresh=True) as site:
-            code, _, err = await uv_pip(py, "install", *args, f"mirrordash=={version}")
+        async with venv_swap(force_clean=True, python=python) as new_venv_python, \
+                module_host.packages(new_venv_python, fresh=True) as site:
+            code, _, err = await uv_pip(new_venv_python, "install", *prerelease_arguments, f"mirrordash=={version}")
             if code != 0:
                 raise HTTPException(status_code=500, detail=f"Upgrade failed: {err.strip()}")
             failed = {}
-            for mod in modules:
+            for module in modules:
                 # ponytail: 10 minutes each, so a module that builds C code on the Pi can't hang the update
-                code, err = await site.pip("install", *module_target(mod), timeout=600)
-                if code != 0 and mod["type"] == "pypi":
+                code, err = await site.pip("install", *module_target(module), timeout=600)
+                if code != 0 and module["type"] == "pypi":
                     # Its newest version may have been made for the new Python already
-                    code, err = await site.pip("install", mod["package_name"], timeout=600)
+                    code, err = await site.pip("install", module["package_name"], timeout=600)
                 if code == 0:
-                    code, err = await site.check([mod["name"]])
+                    code, err = await site.check([module["name"]])
                 if code != 0:
-                    failed[mod["name"]] = (err.strip().splitlines() or ["unknown error"])[-1]
+                    failed[module["name"]] = (err.strip().splitlines() or ["unknown error"])[-1]
             if failed:
                 incompatible.update(version=version, python=python, modules=failed)
                 names = ", ".join(failed)
@@ -151,10 +160,10 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
 def turn_off_modules(names: tuple[str, ...], reason: str) -> None:
     """Turn off every instance of these modules (entry point names), keeping their settings."""
     from mirrordash_core.config import save_config
-    norm = {n.replace("-", "_") for n in names}
+    names_with_underscores = {name.replace("-", "_") for name in names}
     config = load_config()
     for instance in config.get("modules", {}).values():
-        if isinstance(instance, dict) and str(instance.get("module", "")).replace("-", "_") in norm:
+        if isinstance(instance, dict) and str(instance.get("module", "")).replace("-", "_") in names_with_underscores:
             instance.update(enabled=False, disabled_reason=reason)
     save_config(config)
 
@@ -178,10 +187,10 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
         async with venv_swap() as python:
             # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
             # cached for up to 10 minutes), or a version published moments ago isn't seen yet.
-            args = ["--upgrade", "--refresh-package", "mirrordash"]
+            install_arguments = ["--upgrade", "--refresh-package", "mirrordash"]
             if prerelease_enabled():
-                args.append("--prerelease=allow")
-            code, _, err = await uv_pip(python, "install", *args, "mirrordash")
+                install_arguments.append("--prerelease=allow")
+            code, _, err = await uv_pip(python, "install", *install_arguments, "mirrordash")
             if code != 0:
                 logger.error(f"mirrordash upgrade failed: {err}")
                 raise HTTPException(status_code=500, detail=f"Upgrade failed: {err}")
@@ -250,6 +259,7 @@ OS_BUNDLE_FILE = Path("/storage/mirrordash/os-update.raucb")
 OS_PENDING_FILE = Path("/storage/mirrordash/os-update-pending")
 # 1 while the firmware runs a new OS version on trial (see rauc-bootloader in configure_image.sh)
 TRYBOOT_FLAG = Path("/proc/device-tree/chosen/bootloader/tryboot")
+TRYBOOT_ON = b"\x00\x00\x00\x01"  # a device tree value: a 32-bit big-endian 1
 RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=30"
 BUNDLE_NAME = re.compile(r"^mirrordash-os-v.+-(\d{8}-\d{4})\.raucb$")
 
@@ -305,7 +315,7 @@ def failed_os_update(installed: str) -> str | None:
         return None  # the update is still downloading or installing
     if target == installed:
         try:
-            on_trial = TRYBOOT_FLAG.read_bytes() == b"\x00\x00\x00\x01"
+            on_trial = TRYBOOT_FLAG.read_bytes() == TRYBOOT_ON
         except OSError:
             on_trial = False
         if not on_trial:
@@ -329,8 +339,8 @@ async def check_os_update() -> dict:
         request = urllib.request.Request(RELEASES_URL, headers={"Accept": "application/vnd.github+json",
                                                                 "User-Agent": "MirrorDash"})
         try:
-            with urllib.request.urlopen(request, timeout=8) as resp:  # noqa: S310
-                return json.loads(resp.read())
+            with urllib.request.urlopen(request, timeout=8) as response:  # noqa: S310
+                return json.loads(response.read())
         except Exception as exc:
             raise RuntimeError(f"GitHub request failed: {exc}") from exc
 
@@ -352,15 +362,15 @@ async def update_os(bundle: dict) -> None:
     """Download the bundle to /storage, install it into the other slot, and restart into it on trial.
     Runs as a background job (admin.start_job); the admin page follows it across the restart."""
     free = shutil.disk_usage(OS_BUNDLE_FILE.parent).free
-    if free < bundle["size"] + 200 * 1024 * 1024:
+    if free < bundle["size"] + 200 * 1024 * 1024:  # room for the logs and settings while it installs
         raise HTTPException(status_code=507, detail=f"Not enough free space for the OS update "
                                                     f"({bundle['size'] // 1048576} MB plus some room).")
 
     def _download() -> None:
         # GitHub sends the file from another address (a redirect); urllib follows it
         partial = OS_BUNDLE_FILE.with_suffix(".part")
-        with urllib.request.urlopen(bundle["url"], timeout=60) as resp, open(partial, "wb") as out:  # noqa: S310
-            shutil.copyfileobj(resp, out, length=1024 * 1024)
+        with urllib.request.urlopen(bundle["url"], timeout=60) as response, open(partial, "wb") as out:  # noqa: S310
+            shutil.copyfileobj(response, out, length=1024 * 1024)
         partial.replace(OS_BUNDLE_FILE)
 
     logger.info(f"OS update: downloading {bundle['tag']} (build {bundle['build']})")
@@ -388,7 +398,6 @@ async def update_os(bundle: dict) -> None:
 
 async def get_disk_usage() -> dict:
     """Get persistent storage partition disk space usage."""
-    import shutil
     try:
         check_path = "/storage" if os.path.ismount("/storage") or os.path.exists("/storage") else "/"
         total, used, free = shutil.disk_usage(check_path)
@@ -410,29 +419,23 @@ async def auto_update() -> str:
     a system build whose trial boot failed isn't tried again by itself, and a newer Python that some
     modules don't work with waits for someone to choose Install Anyway. Returns what it started."""
     from mirrordash_core.admin import job_status, start_job
-    from mirrordash_core.config import save_config
-    system = load_config().get("system", {})
-    if not system.get("auto_update", True):
+    if not load_config().get("system", {}).get("auto_update", True):
         return "off"
     if job_status()["state"] == "running":
         return "busy"
     try:
-        os_info = await check_os_update()
+        os_info = await check_os_update()  # a failed trial boot is saved as auto_update_skip_build here
     except HTTPException:
         os_info = {}  # GitHub unreachable tonight: MirrorDash can still be up to date
-    if os_info.get("failed_build"):  # seen once (failed_os_update): remember it for the nights to come
-        config = load_config()
-        config.setdefault("system", {})["auto_update_skip_build"] = os_info["failed_build"]
-        save_config(config)
-        system = config["system"]
+    skipped_build = load_config().get("system", {}).get("auto_update_skip_build")
     bundle = os_info.get("bundle")
-    if os_info.get("update_available") and bundle["build"] != system.get("auto_update_skip_build"):
+    if os_info.get("update_available") and bundle["build"] != skipped_build:
         start_job(lambda: update_os(bundle))
         return "system"
-    app = await check_core_update()
-    if not app["update_available"]:
+    core_update = await check_core_update()
+    if not core_update["update_available"]:
         return "up to date"
-    if app.get("needs_python") and incompatible.get("version") == app["latest_version"]:
+    if core_update.get("needs_python") and incompatible.get("version") == core_update["latest_version"]:
         return "waiting for a choice"  # some modules don't work with the newer Python
     start_job(update_core)
     return "mirrordash"
