@@ -351,6 +351,40 @@ async def test_fetch_max_age_uses_the_saved_answer_until_it_is_old(tmp_path):
         os.utime(saved, (0, 0))
     source.write_text('{"n": 3}')
     assert await plugin.fetch_json(source.as_uri(), max_age=60) == ({"n": 3}, None)  # too old: a call
+    plugin.interval = 60
+    source.write_text('{"n": 4}')
+    assert await plugin.fetch_json(source.as_uri()) == ({"n": 3}, None)              # the interval is the default
+    assert await plugin.fetch_json(source.as_uri(), max_age=0) == ({"n": 4}, None)  # 0: always a call
+
+
+@pytest.mark.asyncio
+async def test_a_module_with_only_render_is_shown_every_interval_and_when_changed():
+    class RenderOnly:
+        interval = 3600
+
+        def __init__(self, config):
+            self.renders = 0
+
+        async def render(self):
+            self.renders += 1
+            if self.renders == 2:
+                raise ValueError("a bad turn")
+            return f"<p>{self.renders}</p>"
+
+    loader = ModuleLoader(FakeLink())
+    entry_point = MagicMock()
+    entry_point.load.return_value = RenderOnly
+    with patch("mirrordash_core.features.modules.loader.module_folder", return_value=None), \
+         patch("mirrordash_core.features.modules.loader.package_dir", return_value=None), \
+         patch("mirrordash_core.features.modules.loader.load_translations", return_value={}):
+        loader._start_instance("only", "render_only", entry_point, {}, {})
+    plugin = loader.instances["only"]
+    for renders in (1, 2, 3):
+        await asyncio.sleep(0.05)
+        assert plugin.renders == renders  # waits the hour, not a restart, after the bad turn too
+        plugin.changed.set()
+    loader.link.html.assert_any_await("only", "<p>3</p>")
+    loader.tasks["only"].cancel()
 
 
 @pytest.mark.asyncio

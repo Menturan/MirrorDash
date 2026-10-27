@@ -12,6 +12,7 @@ There are two kinds of releases:
 - MirrorDash is now open source under the GNU AGPL 3.0 (a commercial license is available too), instead of the non-commercial PolyForm license.
 - **MQTT**: the mirror can show up in Home Assistant by itself (*Settings* → *MQTT*), with its screen, brightness, sensors, buttons and CPU temperature, without any YAML. At first Home Assistant can only look; on the card you can let it turn the screen on and off, turn modules on and off, and control what a module offers. The user guide shows how to lock your broker down.
 - Modules can show values in Home Assistant and take commands from it, when you allow it for them.
+- A module keeps to its update interval across restarts by itself, so a restart or a saved setting no longer calls a paid service again. Making a module is simpler too: one that only shows something needs no loop of its own.
 - A module's video now lands exactly in its place even when it starts playing while its card is still sliding in.
 - A module of an installed module's name from somewhere else can no longer change that module's code while it is installed, nor take over the built-in clock's place.
 - If the wall that keeps modules away from the mirror and your home network ever stops holding (after a system update, say), no module runs until it holds again, and the Dashboard says so, instead of the modules running unprotected with only a line in the log.

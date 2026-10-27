@@ -192,7 +192,8 @@ def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, wh
         logger.debug(f"{module_name}: could not cache {where}: {e}")
 
 
-def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False):
+def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False,
+                default_max_age=lambda: None):
     """A module's `self.fetch` and `self.fetch_json` -> (answer, error).
 
     `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
@@ -209,7 +210,8 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
     ponytail: no retry or backoff; the module's own interval is the retry. Upgrade path: backoff here.
 
     max_age=seconds: a saved answer younger than that comes back as fresh (error None) without a call, so
-    saving a setting or a restart doesn't fetch everything again. ponytail: after a restart the next call
+    saving a setting or a restart doesn't fetch everything again. Left out, it is default_max_age() (the
+    module's interval), so a paid API keeps to its schedule by itself; max_age=0 always calls. ponytail: after a restart the next call
     can come up to two intervals after the last one, once; the cache file's mtime is the clock, so a Pi
     booting on an old time may make one extra call. Upgrade path: return the answer's age.
     """
@@ -223,6 +225,8 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
         if params:
             url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
         body = _request_body(json, data)
+        if max_age is None:
+            max_age = default_max_age()
         parse_answer = parse or (lambda raw: raw)
         url_parts = urllib.parse.urlsplit(url)
         where = f"{method} {url_parts.netloc}{url_parts.path}"  # never the query, headers or body: they can hold keys
@@ -276,11 +280,15 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
             return default if default is not None else key
         plugin_instance.translate = translate
 
-    fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, link.awake, getattr(plugin_instance, "keep_running", False))
+    fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, link.awake, getattr(plugin_instance, "keep_running", False),
+                                    lambda: getattr(plugin_instance, "interval", None))
     if not hasattr(plugin_instance, "fetch"):
         plugin_instance.fetch = fetch
     if not hasattr(plugin_instance, "fetch_json"):
         plugin_instance.fetch_json = fetch_json
+
+    if not hasattr(plugin_instance, "changed"):
+        plugin_instance.changed = asyncio.Event()  # set: the default run_loop shows render() again at once
 
     if not hasattr(plugin_instance, "video_is_playing"):
         # `async with self.video_is_playing():` around playback: meanwhile the other modules update once a
@@ -364,6 +372,21 @@ def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: d
     return instance_settings
 
 
+async def _render_loop(instance_id: str, plugin_instance, broadcast_func) -> None:
+    """The run_loop of a module with only `async def render()`: show it, wait its interval (600 s without
+    one) or until self.changed is set, repeat. An error is logged and render() tried at the next turn."""
+    while True:
+        try:
+            await broadcast_func(instance_id, await plugin_instance.render())
+        except Exception as e:
+            logger.error(f"{instance_id}: {e}", exc_info=True)
+        try:
+            await asyncio.wait_for(plugin_instance.changed.wait(), getattr(plugin_instance, "interval", 600))
+        except TimeoutError:
+            pass
+        plugin_instance.changed.clear()
+
+
 class ModuleLoader:
     """The running module instances, in the module host process. link: the way to the core (HostLink)."""
 
@@ -412,7 +435,9 @@ class ModuleLoader:
         _inject_module_helpers(plugin_instance, package_name, translations, instance_id, instance_settings, self.link)
 
         if not hasattr(plugin_instance, "run_loop"):
-            return
+            if not inspect.iscoroutinefunction(getattr(plugin_instance, "render", None)):
+                return
+            plugin_instance.run_loop = functools.partial(_render_loop, instance_id, plugin_instance)
         if not inspect.iscoroutinefunction(plugin_instance.run_loop):
             # A thread can't be stopped on a reload, so it would keep running with old settings
             logger.error(f"Module {module_name} (instance: {instance_id}): run_loop must be `async def`; not started.")
