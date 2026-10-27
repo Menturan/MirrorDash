@@ -1,4 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The Modules tab: the installed modules and where they sit, each instance's settings form, installing,
+updating and removing (service.py does the work), and the community modules to discover."""
 
 import itertools
 import logging
@@ -19,6 +21,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
+from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import (
     SAFE_NAME,
@@ -43,6 +46,7 @@ from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
     STANDARD_FIELDS,
     STANDARD_SCHEMA,
+    cast_standard_fields,
     cast_values_by_schema,
     read_form,
     render_schema_form,
@@ -59,7 +63,8 @@ async def get_panel_modules(request: Request):
         request=request,
         name="admin_modules.html",
         context={
-            "installed_modules": dict(sorted(modules.items(), key=lambda kv: (kv[1]["schema"].get("title") or kv[0]).lower())),
+            "installed_modules": dict(sorted(modules.items(), key=lambda name_and_module: (
+                name_and_module[1]["schema"].get("title") or name_and_module[0]).lower())),
             "screen_layout": screen_layout(),
             "disk_usage": await get_disk_usage(),
         }
@@ -70,15 +75,16 @@ async def get_panel_modules(request: Request):
 async def get_discover_modules(request: Request):
     # Entry points are named mirrordash_clock, the community list mirrordash-clock: compare package names
     # normalized as pip does (PEP 503)
-    norm = lambda n: re.sub(r"[-_.]+", "-", n).lower()
-    installed = {norm(meta["package_name"]) for meta in (await list_modules()).get("modules", {}).values()}
-    import mirrordash_core.features.modules.service as adm_mods
+    def normalized(package_name: str) -> str:
+        return re.sub(r"[-_.]+", "-", package_name).lower()
+    installed = {normalized(module["package_name"]) for module in (await list_modules()).get("modules", {}).values()}
     return templates.TemplateResponse(
         request=request,
         name="admin_discover_modules.html",
         context={
-            "discoverable_modules": [m for m in await list_community_modules() if norm(m.get("name", "")) not in installed],
-            "last_scan": adm_mods.LAST_SCAN_TIMESTAMP or "Never"
+            "discoverable_modules": [module for module in await list_community_modules()
+                                     if normalized(module.get("name", "")) not in installed],
+            "last_scan": modules_service.LAST_SCAN_TIMESTAMP or "Never"
         }
     )
 
@@ -92,18 +98,22 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
         raise HTTPException(status_code=400, detail="Invalid instance name")
     schema = get_module_schema(ep) or {}
     # The core's standard fields are shown separately, even if a module declared them too
-    own = {k: v for k, v in schema.get("properties", {}).items() if k not in STANDARD_FIELDS}
+    module_own_properties = {key: prop for key, prop in schema.get("properties", {}).items() if key not in STANDARD_FIELDS}
     modules_config = load_config().get("modules", {})
     instance_id = instance_id or _new_instance_id(module_name, modules_config)
-    cfg = modules_config.get(instance_id) or {}
-    prefix = f"modules[{instance_id}]"
+    instance_config = modules_config.get(instance_id) or {}
+    form_name_prefix = f"modules[{instance_id}]"
     standard = STANDARD_SCHEMA["properties"]
+    standard_without_position = {key: prop for key, prop in standard.items() if key != "position"}
+
+    def form(properties: dict) -> str:
+        return render_schema_form({"properties": properties}, instance_config, form_name_prefix, module_name)
+
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
         "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
-        "position_form": render_schema_form({"properties": {"position": standard["position"]}}, cfg, prefix, module_name),
-        "standard_form": render_schema_form({"properties": {k: v for k, v in standard.items() if k != "position"}},
-                                            cfg, prefix, module_name),
-        "module_form": render_schema_form({"properties": own}, cfg, prefix, module_name),
+        "position_form": form({"position": standard["position"]}),
+        "standard_form": form(standard_without_position),
+        "module_form": form(module_own_properties),
         "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, load_config()),
     })
 
@@ -114,10 +124,10 @@ async def set_module_scripts(module_name: str, request: Request):
     ep = find_entry_point(module_name)
     if not (name := site_name(ep) if ep else None):
         raise HTTPException(status_code=404, detail="Module not found")
-    on = (await read_form(request)).get("on") in (True, "true")
-    allow_scripts(name, on)
+    allowed = (await read_form(request)).get("on") in (True, "true")
+    allow_scripts(name, allowed)
     await module_host.reload_modules()  # the screen reloads: a script that ran keeps its timers until then
-    return notify(f"{module_name}'s scripts {'run' if on else 'no longer run'} on the mirror.")
+    return notify(f"{module_name}'s scripts {'run' if allowed else 'no longer run'} on the mirror.")
 
 
 def _new_instance_id(module_name: str, modules_config: dict) -> str:
@@ -126,46 +136,36 @@ def _new_instance_id(module_name: str, modules_config: dict) -> str:
     if find_module_config(modules_config, module_name)[0] is None and module_name not in modules_config:
         return module_name
     taken = {key.replace("-", "_") for key in modules_config}
-    return next(f"{module_name}-{n}" for n in itertools.count(2) if f"{module_name}_{n}".replace("-", "_") not in taken)
+    return next(f"{module_name}-{number}" for number in itertools.count(2)
+                if f"{module_name}_{number}".replace("-", "_") not in taken)
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
 async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
-    parsed = await read_form(request)
-
-    modules_dict = parsed.get("modules", {})
-    if not modules_dict:
-        raise HTTPException(status_code=400, detail="Invalid form data structure")
-
-    cfg_key = instance_id if instance_id else list(modules_dict.keys())[0]
-    module_cfg = modules_dict.get(cfg_key, {})
-
+    """Save one instance's settings form: its values as the module's schema types them, then checked
+    whole by validate_config (the trust boundary) before anything is saved."""
     ep = find_entry_point(module_name)
-    schema = get_module_schema(ep) if ep else None
-
-    if schema:
-        module_cfg = cast_values_by_schema(module_cfg, schema)
-
-    from mirrordash_core.forms import cast_standard_fields
-    module_cfg = cast_standard_fields(module_cfg)
-    module_cfg["module"] = module_name
+    if not ep:
+        raise HTTPException(status_code=404, detail="Module not found")
+    forms_by_instance = (await read_form(request)).get("modules", {})
+    if not forms_by_instance:
+        raise HTTPException(status_code=400, detail="Invalid form data structure")
+    instance_id = instance_id or next(iter(forms_by_instance))
+    instance_config = forms_by_instance.get(instance_id, {})
+    if schema := get_module_schema(ep):
+        instance_config = cast_values_by_schema(instance_config, schema)
+    instance_config = cast_standard_fields(instance_config)
+    instance_config["module"] = module_name
 
     config = load_config()
-    if "modules" not in config:
-        config["modules"] = {}
-
-    config["modules"][cfg_key] = module_cfg
-
+    config.setdefault("modules", {})[instance_id] = instance_config
     from mirrordash_core.features.settings.schema import validate_config
     try:
         validate_config(config)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-
     save_config(config)
-
     await module_host.reload_modules()
-
     return notify("Module configuration saved successfully.", refreshModules=True)
 
 
@@ -173,11 +173,11 @@ async def save_module_config_route(module_name: str, request: Request, instance_
 async def remove_module_config_route(module_name: str, instance_id: str = None):
     config = load_config()
     modules_config = config.get("modules", {})
-    cfg_key = instance_id or find_module_config(modules_config, module_name)[0]
-    if cfg_key not in modules_config:
+    instance_id = instance_id or find_module_config(modules_config, module_name)[0]
+    if instance_id not in modules_config:
         raise HTTPException(status_code=404, detail="Instance not found")
-    del modules_config[cfg_key]
-    config.get("mqtt", {}).get("modules", {}).pop(cfg_key, None)  # a new instance of that name starts unshared
+    del modules_config[instance_id]
+    config.get("mqtt", {}).get("modules", {}).pop(instance_id, None)  # a new instance of that name starts unshared
     save_config(config)
 
     await module_host.reload_modules()
@@ -190,7 +190,8 @@ async def set_instances_enabled(changes: dict[str, bool]) -> None:
     for all of them; one that isn't there is left out."""
     config = load_config()
     instances = config.get("modules", {})
-    changed = [i for i, on in changes.items() if isinstance(instances.get(i), dict) and instances[i].get("enabled", True) != on]
+    changed = [instance_id for instance_id, enabled in changes.items()
+               if isinstance(instances.get(instance_id), dict) and instances[instance_id].get("enabled", True) != enabled]
     for instance_id in changed:
         instances[instance_id]["enabled"] = changes[instance_id]
     if changed:
@@ -201,11 +202,11 @@ async def set_instances_enabled(changes: dict[str, bool]) -> None:
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
 async def toggle_module_instance(module_name: str, instance_id: str = None):
     modules_config = load_config().get("modules", {})
-    cfg_key = instance_id or find_module_config(modules_config, module_name)[0]
-    if cfg_key not in modules_config:
+    instance_id = instance_id or find_module_config(modules_config, module_name)[0]
+    if instance_id not in modules_config:
         raise HTTPException(status_code=404, detail="Instance not found")
-    new_state = not modules_config[cfg_key].get("enabled", True)
-    await set_instances_enabled({cfg_key: new_state})
+    new_state = not modules_config[instance_id].get("enabled", True)
+    await set_instances_enabled({instance_id: new_state})
     # No refreshModules here: it closes the settings sheet the toggle lives in
     return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
 
@@ -220,7 +221,7 @@ async def check_module_update_route(module_name: str):
 
 @router.get("/panels/modules/notes/{module_name}", dependencies=[Depends(require_api_key)])
 async def get_module_notes(module_name: str):
-
+    """The module's release notes: its PyPI description."""
     ep = find_entry_point(module_name)
     if not ep:
         return HTMLResponse(content="Module not found.")
@@ -276,7 +277,7 @@ async def upgrade_all_modules():
     updates, _ = await module_updates()
     if not updates:
         return notify("Every module is up to date.")
-    names = ", ".join(u["package_name"] for u in updates)
-    job_id = start_job(lambda: update_modules(*(u["target"] for u in updates)))
+    names = ", ".join(update["package_name"] for update in updates)
+    job_id = start_job(lambda: update_modules(*(update["target"] for update in updates)))
     return job_response(job_id, "Updating Modules", f"Updating {names}. This can take a few minutes...",
                         f"Updated {names}.", "config")
