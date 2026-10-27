@@ -108,3 +108,19 @@ def test_only_a_known_time_zone_is_saved_or_set():
     with patch("mirrordash_core.host.run_command", new_callable=AsyncMock) as run:
         assert asyncio.run(apply_system_timezone("-v")) is False
     run.assert_not_called()
+
+
+@pytest.mark.parametrize("start, accepted", [("07:00", True), ("23:59", True), ("24:00", False), ("99:99", False), ("7:00", False)])
+def test_the_screen_schedule_takes_only_real_times(start, accepted):
+    """The schedule's times are compared as clock times later: one like 99:99 must never be saved."""
+    saved = {}
+    with patch.object(system_settings, "load_config", return_value={"system": {}}), \
+         patch.object(system_settings, "save_config", side_effect=saved.update):
+        settings = {"display_control": {"mode": "interval", "interval": {"start": start, "end": "22:00"}}}
+        if accepted:
+            asyncio.run(system_settings.update_system_settings(settings=settings))
+            assert saved["system"]["display_control"]["interval"]["start"] == start
+        else:
+            with pytest.raises(HTTPException):
+                asyncio.run(system_settings.update_system_settings(settings=settings))
+            assert not saved

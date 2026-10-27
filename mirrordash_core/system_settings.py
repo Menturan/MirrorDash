@@ -95,19 +95,20 @@ async def get_system_settings() -> dict:
 # What a setting is when the config doesn't have it yet
 DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": False, "prerelease": False,
             "auto_update": True}
-HHMM = re.compile(r"^\d{2}:\d{2}$")
+HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")  # 00:00 to 23:59
 RESOLUTION = re.compile(r"^[\w.@-]+$")  # auto, 1920x1080 ...: a word, nothing a command line could read as more
 
 
 def _int_in(value, low: int, high: int) -> bool:
+    """Whether value is a whole number (not True/False) from low to high."""
     return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
 
 
-def _check(new: dict) -> None:
+def _check_system_settings(new: dict) -> None:
     """Trust boundary for everything the admin page and Home Assistant can send."""
-    dc = new["display_control"]
-    wake = dc.get("wake", {})
-    interval = dc.get("interval", {})
+    display_control = new["display_control"]
+    wake = display_control.get("wake", {})
+    interval = display_control.get("interval", {})
     if not isinstance(wake, dict) or not isinstance(interval, dict):
         raise HTTPException(status_code=400, detail="Invalid display power settings")
     checks = [
@@ -116,12 +117,13 @@ def _check(new: dict) -> None:
         (new["rotation"] in ("normal", "left", "right", "inverted"), "Invalid rotation value"),
         (_int_in(new["brightness"], 10, 100), "Brightness must be between 10 and 100"),
         (_int_in(new["volume"], 0, 100), "Volume must be between 0 and 100"),
-        (dc.get("mode", "manual") in ("manual", "interval", "wake"), "Invalid display power mode"),
+        (display_control.get("mode", "manual") in ("manual", "interval", "wake"), "Invalid display power mode"),
         (_int_in(wake.get("timeout_minutes", DEFAULT_WAKE["timeout_minutes"]), 1, 1440), "The screen timeout must be 1 to 1440 minutes"),
-        (all(isinstance(wake.get(k, True), bool) for k in ("extend", "presence")), "Invalid wake settings"),
+        (all(isinstance(wake.get(key, True), bool) for key in ("extend", "presence")), "Invalid wake settings"),
         (isinstance(new["prerelease"], bool), "Test versions must be on or off"),
         (isinstance(new["auto_update"], bool), "Automatic updates must be on or off"),
-        (dc.get("mode") != "interval" or all(HHMM.match(interval.get(k, "00:00")) for k in ("start", "end")),
+        (display_control.get("mode") != "interval"
+         or all(isinstance(interval.get(end, "00:00"), str) and HHMM.match(interval.get(end, "00:00")) for end in ("start", "end")),
          "Invalid interval time format (HH:MM)"),
     ]
     for ok, message in checks:
@@ -135,18 +137,18 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     system_cfg = load_config().get("system", {})
     new = {key: settings.get(key, system_cfg.get(key, default)) for key, default in DEFAULTS.items()}
     # display_control is merged per part: the Power tab sends only what it shows
-    dc = dict(system_cfg.get("display_control", {"mode": "manual", "interval": {"start": "07:00", "end": "22:00"},
-                                                 "wake": dict(DEFAULT_WAKE)}))
+    display_control = dict(system_cfg.get("display_control", {"mode": "manual", "interval": {"start": "07:00", "end": "22:00"},
+                                                              "wake": dict(DEFAULT_WAKE)}))
     incoming = settings.get("display_control") or {}
-    if not isinstance(incoming, dict) or not all(isinstance(incoming.get(p, {}), dict) for p in ("interval", "wake")):
+    if not isinstance(incoming, dict) or not all(isinstance(incoming.get(part, {}), dict) for part in ("interval", "wake")):
         raise HTTPException(status_code=400, detail="Invalid display power settings")
     if "mode" in incoming:
-        dc["mode"] = incoming["mode"]
+        display_control["mode"] = incoming["mode"]
     for part in ("interval", "wake"):
         if part in incoming:
-            dc[part] = {**dc.get(part, {}), **incoming[part]}
-    new["display_control"] = dc
-    _check(new)
+            display_control[part] = {**display_control.get(part, {}), **incoming[part]}
+    new["display_control"] = display_control
+    _check_system_settings(new)
 
     # Only touch SSH when this request is about it: the Power tab saves just the display
     # schedule, and re-checking SSH there failed whenever the service state differed.
@@ -159,7 +161,7 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     save_config(config)
 
     # Re-applying an unchanged rotation/resolution can make the screen flicker: only what was sent
-    if any(k in settings for k in ("rotation", "resolution", "volume")):
+    if any(key in settings for key in ("rotation", "resolution", "volume")):
         run_in_background(apply_system_settings(new["rotation"], new["resolution"], new["brightness"], new["volume"]))
     elif "brightness" in settings:  # the slider, or Home Assistant: only the brightness
         run_in_background(apply_brightness(new["brightness"]))
@@ -167,16 +169,20 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
 
 
 def _hhmm(hour, minute, ampm: str | None) -> str:
-    """The time pickers' hour, minute and AM/PM as HH:MM."""
-    hour = int(hour)
+    """The time pickers' hour, minute and AM/PM as HH:MM (24h): 10, 30, "PM" -> "22:30"."""
+    try:
+        hour, minute = int(hour), int(minute)
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid interval time format (HH:MM)")
     if ampm == "PM" and hour != 12:
         hour += 12
     elif ampm == "AM" and hour == 12:
         hour = 0
-    return f"{hour:02d}:{minute}"
+    return f"{hour:02d}:{minute:02d}"
 
 
 def _as_int(data: dict, key: str, message: str) -> None:
+    """data[key] as a whole number, when it is there; an HTTP 400 with message when it isn't one."""
     if key in data:
         try:
             data[key] = int(data[key])
@@ -189,23 +195,24 @@ def _as_int(data: dict, key: str, message: str) -> None:
 async def save_system_settings_route(request: Request):
     """Every system-settings form in the admin page posts here (Hardware, Power, Updates, Developer)."""
     parsed = await read_form(request)
-    dc = parsed.get("display_control", {})
-    picked = dc.get("interval", {})
+    display_control = parsed.get("display_control", {})
+    picked = display_control.get("interval", {})
     times = {end: _hhmm(picked[f"{end}_h"], picked[f"{end}_m"], picked.get(f"{end}_ampm"))
              for end in ("start", "end") if f"{end}_h" in picked and f"{end}_m" in picked}
     if times:
-        dc["interval"] = times
+        display_control["interval"] = times
     for key in ("prerelease", "auto_update", "ssh"):  # a lone "false" (an unchecked box) stays text in read_form
         if key in parsed:
             parsed[key] = parsed[key] in (True, "true")
     _as_int(parsed, "brightness", "Brightness must be an integer")
     _as_int(parsed, "volume", "Volume must be an integer")
-    if "wake" in dc:
-        dc["wake"].setdefault("timeout_minutes", 5)
-        _as_int(dc["wake"], "timeout_minutes", "The screen timeout must be a whole number of minutes")
+    if "wake" in display_control:
+        wake = display_control["wake"]
+        wake.setdefault("timeout_minutes", 5)
+        _as_int(wake, "timeout_minutes", "The screen timeout must be a whole number of minutes")
         for key in ("extend", "presence"):
-            if key in dc["wake"]:
-                dc["wake"][key] = dc["wake"][key] in (True, "true")
+            if key in wake:
+                wake[key] = wake[key] in (True, "true")
 
     await update_system_settings(settings=parsed)
     if "ssh" in parsed:  # only the Developer card sends it

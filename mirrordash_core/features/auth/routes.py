@@ -36,21 +36,22 @@ MIN_PASSWORD = 4
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
 
-async def _hashed(secret: str) -> dict:
+async def _hash_with_new_salt(secret: str) -> dict:
+    """{"hash", "salt"} of a password or recovery code, as admin_auth keeps them."""
     salt = secrets.token_hex(16)
     return {"hash": await asyncio.to_thread(hash_password, secret, salt), "salt": salt}
 
 
 def _normalize_code(code: str) -> str:
-    return "".join(c for c in code.upper() if c.isalnum())
+    return "".join(character for character in code.upper() if character.isalnum())  # "abcd-efgh" -> "ABCDEFGH"
 
 
 async def _new_recovery_code(auth: dict) -> str:
     """Put a new recovery code in `auth` (only its hash) and return it formatted, XXXX-XXXX-XXXX.
     12 characters of 31 is ~59 bits behind PBKDF2: guessing it over the network isn't feasible."""
-    raw = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
-    auth["recovery"] = await _hashed(raw)
-    return "-".join(raw[i:i + 4] for i in range(0, 12, 4))
+    code = "".join(secrets.choice(CODE_ALPHABET) for _ in range(12))
+    auth["recovery"] = await _hash_with_new_salt(code)
+    return "-".join(code[start:start + 4] for start in range(0, 12, 4))
 
 
 def _check_new_password(password) -> str:
@@ -113,7 +114,7 @@ async def setup_auth(body: dict = Body(...)) -> dict:
     if "admin_auth" in config:
         # Even a corrupt entry: this endpoint needs no login, so it must never overwrite one
         raise HTTPException(status_code=400, detail="Password is already set")
-    auth = await _hashed(password)
+    auth = await _hash_with_new_salt(password)
     code = await _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
@@ -128,7 +129,7 @@ async def change_password(request: Request, body: dict = Body(...)) -> JSONRespo
         raise HTTPException(status_code=401, detail="The current password is wrong.")
     new_password = _check_new_password(body.get("new_password"))
     config = load_config()
-    config["admin_auth"] = {**config["admin_auth"], **await _hashed(new_password)}
+    config["admin_auth"] = {**config["admin_auth"], **await _hash_with_new_salt(new_password)}
     save_config(config)
     end_all_sessions()
     return _logged_in({"status": "success"})
@@ -146,7 +147,7 @@ async def recover_auth(request: Request, body: dict = Body(...)) -> JSONResponse
             and secrets.compare_digest(await asyncio.to_thread(hash_password, code, stored["salt"]), stored["hash"])):
         note_failure(_client(request))
         raise HTTPException(status_code=401, detail="Wrong recovery code")
-    auth = await _hashed(_check_new_password(body.get("new_password")))
+    auth = await _hash_with_new_salt(_check_new_password(body.get("new_password")))
     new_code = await _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
