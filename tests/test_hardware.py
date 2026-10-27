@@ -112,7 +112,7 @@ def _pipe_inputs():
     inputs = hardware.GpioInputs()
     r, w = os.pipe()
     os.set_blocking(r, False)
-    inputs.fds["dev"] = r
+    inputs.file_descriptors["dev"] = r
     return inputs, r, w
 
 

@@ -30,9 +30,7 @@ from mirrordash_core.host import run_command, run_in_background
 
 logger = logging.getLogger("mirrordash.core.hardware")
 
-
 GPIO_HELPER = "/usr/local/bin/mirrordash-gpio-overlays"
-
 
 # BCM GPIO number -> physical header pin, for the usable GPIOs (0/1 are reserved for the HAT EEPROM)
 GPIO_HEADER_PINS = {
@@ -44,11 +42,9 @@ GPIO_HEADER_PINS = {
 
 I2C_PINS = (2, 3)  # SDA, SCL: taken as soon as an I2C device is added
 
-
 # Everything the Hardware tab can add. "pin": wired to one GPIO; "addresses": an I2C device.
 # The overlay lines themselves live in the root helper, which only accepts these types.
 BUTTON_WIRING = "Connect the button between the GPIO and a GND pin."
-
 
 DEVICE_TYPES = {
     "button": {"label": "Push button", "pin": True, "wiring": BUTTON_WIRING},
@@ -77,22 +73,16 @@ DEVICE_TYPES = {
                           "(+5, +12.5 and +20 °C)."},
 }
 
-
 FAN_TYPES = ("fan", "pwm_fan")
-
 
 FAN_TEMPERATURE_RANGE = (40, 80)  # °C; the Pi throttles at 80
 
-
 BUTTON_TYPES = ("button", "button_2", "button_3", "button_4")
-
 
 # KEY_PROG1..3 and KEY_MACRO1..3: keys the kiosk ignores
 KEYCODES = {"button": 148, "pir": 149, "mmwave": 150, "button_2": 656, "button_3": 657, "button_4": 658}
 
-
 PRESENCE_TYPES = ("pir", "mmwave")
-
 
 BUTTON_ACTIONS = {
     "none": "Do nothing",
@@ -103,12 +93,9 @@ BUTTON_ACTIONS = {
     "shutdown": "Shut down the mirror",
 }
 
-
 PRESS_TYPES = ("single", "double", "triple", "long")
 
-
 LONG_PRESS_CHOICES = (1.0, 1.5, 2.0, 3.0)  # seconds a button is held for a long press
-
 
 DEFAULT_LONG_PRESS = 1.5
 
@@ -118,49 +105,48 @@ def get_devices(system_cfg: dict) -> list[dict]:
 
 
 def find_device(system_cfg: dict, device_type: str) -> dict | None:
-    return next((d for d in get_devices(system_cfg) if d.get("type") == device_type), None)
+    return next((device for device in get_devices(system_cfg) if device.get("type") == device_type), None)
 
 
 def validate_devices(devices: list[dict]) -> str | None:
     """Error message if the list can't be wired like this, else None."""
-    pins: dict[int, str] = {}
-    types = [d.get("type") for d in devices]
-    for d in devices:
-        spec = DEVICE_TYPES.get(d.get("type"))
+    device_label_by_pin: dict[int, str] = {}
+    types = [device.get("type") for device in devices]
+    for device in devices:
+        spec = DEVICE_TYPES.get(device.get("type"))
         if not spec:
-            return f"Unknown device type: {d.get('type')}."
-        if types.count(d["type"]) > 1:
+            return f"Unknown device type: {device.get('type')}."
+        if types.count(device["type"]) > 1:
             return f"Only one {spec['label']} can be connected."
         if spec.get("pin"):
-            pin = d.get("pin")
+            pin = device.get("pin")
             if pin not in GPIO_HEADER_PINS:
                 return f"GPIO {pin} can't be used for the {spec['label']}."
-            if pin in pins:
-                return f"The {pins[pin]} already uses GPIO {pin}."
-            pins[pin] = spec["label"]
-        elif d.get("address") not in spec["addresses"]:
+            if pin in device_label_by_pin:
+                return f"The {device_label_by_pin[pin]} already uses GPIO {pin}."
+            device_label_by_pin[pin] = spec["label"]
+        elif device.get("address") not in spec["addresses"]:
             return f"The {spec['label']} needs address {' or '.join(spec['addresses'])}."
-    if all(t in types for t in FAN_TYPES):
+    if all(fan_type in types for fan_type in FAN_TYPES):
         return "Only one fan can be connected."
-    for d in devices:
-        if d["type"] in FAN_TYPES:
-            low, high = FAN_TEMPERATURE_RANGE
-            if not isinstance(d.get("temperature"), int) or not low <= d["temperature"] <= high:
-                return f"The fan's temperature must be between {low} and {high} °C."
-    if any("addresses" in DEVICE_TYPES[t] for t in types):
+    lowest, highest = FAN_TEMPERATURE_RANGE
+    for fan in (device for device in devices if device["type"] in FAN_TYPES):
+        if not isinstance(fan.get("temperature"), int) or not lowest <= fan["temperature"] <= highest:
+            return f"The fan's temperature must be between {lowest} and {highest} °C."
+    if any("addresses" in DEVICE_TYPES[device_type] for device_type in types):
         for pin in I2C_PINS:
-            if pin in pins:
-                return f"GPIO {pin} is needed for I²C (the light sensor); the {pins[pin]} must use another GPIO."
+            if pin in device_label_by_pin:
+                return f"GPIO {pin} is needed for I²C (the light sensor); the {device_label_by_pin[pin]} must use another GPIO."
     return None
 
 
 def overlay_args(devices: list[dict]) -> list[str]:
     """Helper arguments, e.g. ["button:17", "light:0x23", "fan:14:60"] (fans: GPIO:°C)."""
-    def value(d):
-        if d["type"] in FAN_TYPES:
-            return f"{d['pin']}:{d['temperature']}"
-        return d["pin"] if "pin" in d else d["address"]
-    return [f"{d['type']}:{value(d)}" for d in devices]
+    def where_and_how(device):
+        if device["type"] in FAN_TYPES:
+            return f"{device['pin']}:{device['temperature']}"
+        return device["pin"] if "pin" in device else device["address"]
+    return [f"{device['type']}:{where_and_how(device)}" for device in devices]
 
 
 def kernel_boot_id() -> str:
@@ -228,18 +214,20 @@ class PressClassifier:
         self.last_up = 0.0
         self.long_fired = False
 
-    def down(self, t: float) -> None:
-        if self.count and t - self.last_up < self.BOUNCE:  # the release was a bounce: the same press goes on
+    def down(self, now: float) -> None:
+        """The button went down at `now` (seconds, any monotonic clock)."""
+        if self.count and now - self.last_up < self.BOUNCE:  # the release was a bounce: the same press goes on
             self.count -= 1
             self.down_at = self.last_down
         else:
-            self.down_at = t
+            self.down_at = now
         self.long_fired = False
 
-    def up(self, t: float) -> str | None:
+    def up(self, now: float) -> str | None:
+        """The button came up: "long" if it was held long enough and poll() didn't say so yet, else None."""
         if self.down_at is None:
             return None
-        held = t - self.down_at
+        held = now - self.down_at
         self.last_down, self.down_at = self.down_at, None
         if self.long_fired:
             return None
@@ -247,29 +235,30 @@ class PressClassifier:
             self.count = 0
             return "long"
         self.count += 1
-        self.last_up = t
+        self.last_up = now
         return None
 
-    def poll(self, t: float) -> str | None:
+    def poll(self, now: float) -> str | None:
+        """The press that is finished by `now`, if any: "long" while held, or the count of short ones."""
         if self.down_at is not None:
-            if not self.long_fired and t - self.down_at >= self.long_press:
+            if not self.long_fired and now - self.down_at >= self.long_press:
                 self.long_fired = True
                 self.count = 0
                 return "long"
             return None
-        if self.count and t - self.last_up >= self.MULTI_PRESS_WINDOW:
-            n, self.count = min(self.count, 3), 0
-            return ("single", "double", "triple")[n - 1]
+        if self.count and now - self.last_up >= self.MULTI_PRESS_WINDOW:
+            press_count, self.count = min(self.count, 3), 0
+            return ("single", "double", "triple")[press_count - 1]
         return None
 
 
 def find_gpio_key_devices() -> list[str]:
     """/dev/input/eventN of every gpio-keys device (one per gpio-key overlay)."""
     devices = []
-    for ev in sorted(glob.glob("/sys/class/input/event*")):
-        driver = os.path.realpath(os.path.join(ev, "device", "device", "driver"))
+    for input_device in sorted(glob.glob("/sys/class/input/event*")):
+        driver = os.path.realpath(os.path.join(input_device, "device", "device", "driver"))
         if driver.endswith("/gpio-keys"):
-            devices.append("/dev/input/" + os.path.basename(ev))
+            devices.append("/dev/input/" + os.path.basename(input_device))
     return devices
 
 
@@ -287,13 +276,15 @@ class GpioInputs:
     """
 
     SENSOR_INTERVAL = 30.0
-    EVENT = struct.Struct("llHHi")  # struct input_event on 64-bit: timeval, type, code, value
+    # The kernel's struct input_event: time (seconds, microseconds), type, code, value. "l" is the
+    # platform's long, so the size fits both the 64-bit OS and a 32-bit one
+    EVENT = struct.Struct("llHHi")
     EV_KEY = 1
 
     def __init__(self):
         self.task: asyncio.Task | None = None
         self.sensor_task: asyncio.Task | None = None
-        self.fds: dict[str, int] = {}
+        self.file_descriptors: dict[str, int] = {}  # per open /dev/input/eventN
         self.classifiers: dict[str, PressClassifier] = {}  # per button type
         self.detected: set[str] = set()       # device types whose input device was found
         self.presence: dict[str, bool] = {}   # per presence sensor type
@@ -317,7 +308,7 @@ class GpioInputs:
                 except asyncio.CancelledError:
                     pass
         self.task = self.sensor_task = None
-        for device in list(self.fds):
+        for device in list(self.file_descriptors):
             self._close(device)
 
     async def _watch(self) -> None:
@@ -326,7 +317,7 @@ class GpioInputs:
         while True:
             try:
                 for device in find_gpio_key_devices():
-                    if device not in self.fds:
+                    if device not in self.file_descriptors:
                         self._open(device)
             except Exception as e:  # one failure must not end the watch
                 logger.warning(f"GPIO input watch failed: {e}")
@@ -338,7 +329,7 @@ class GpioInputs:
         except OSError as e:
             logger.warning(f"Cannot open GPIO input device {device}: {e}")
             return
-        self.fds[device] = fd
+        self.file_descriptors[device] = fd
         self.detected |= {t for t, code in KEYCODES.items() if self._has_key(device, code)}
         asyncio.get_running_loop().add_reader(fd, self._on_readable, device)
         logger.info(f"Listening for GPIO input on {device}")
@@ -354,22 +345,22 @@ class GpioInputs:
             return False
 
     def _close(self, device: str) -> None:
-        fd = self.fds.pop(device, None)
+        fd = self.file_descriptors.pop(device, None)
         if fd is not None:
             asyncio.get_running_loop().remove_reader(fd)
             os.close(fd)
 
     def _on_readable(self, device: str) -> None:
         try:
-            data = os.read(self.fds[device], self.EVENT.size * 32)
+            events = os.read(self.file_descriptors[device], self.EVENT.size * 32)
         except BlockingIOError:
             return
         except OSError:  # device gone
             self._close(device)
             return
-        for i in range(0, len(data) - self.EVENT.size + 1, self.EVENT.size):
-            _, _, ev_type, code, value = self.EVENT.unpack_from(data, i)
-            if ev_type != self.EV_KEY or value == 2:  # 2 = auto-repeat
+        for offset in range(0, len(events) - self.EVENT.size + 1, self.EVENT.size):
+            _, _, event_type, code, value = self.EVENT.unpack_from(events, offset)
+            if event_type != self.EV_KEY or value == 2:  # value 1 = down, 0 = up, 2 = auto-repeat
                 continue
             for button in BUTTON_TYPES:
                 if code == KEYCODES[button]:
@@ -390,7 +381,7 @@ class GpioInputs:
                         reading = await read_sensor(device_type)
                         if reading:
                             event_bus.publish(event, dict(reading))
-                if any(find_device(system_cfg, t) for t in FAN_TYPES):
+                if any(find_device(system_cfg, fan_type) for fan_type in FAN_TYPES):
                     fan = read_fan_state()
                     if fan:
                         event_bus.publish("hardware.fan", fan)
@@ -425,6 +416,7 @@ class GpioInputs:
 
 
 async def run_button_action(action: str) -> None:
+    """Do what the owner chose for a press (BUTTON_ACTIONS)."""
     from mirrordash_core.features.power.display_power import display_power_manager
     from mirrordash_core.host import poweroff_system, reboot_system, run_restart
 
@@ -441,30 +433,31 @@ async def run_button_action(action: str) -> None:
 
 
 def _find_iio_dir(driver_name: str) -> str | None:
-    for d in glob.glob("/sys/bus/iio/devices/iio:device*"):
+    """The sysfs folder of the IIO sensor this driver runs, or None."""
+    for sensor_dir in glob.glob("/sys/bus/iio/devices/iio:device*"):
         try:
-            with open(os.path.join(d, "name")) as f:
+            with open(os.path.join(sensor_dir, "name")) as f:
                 if driver_name in f.read():
-                    return d
+                    return sensor_dir
         except OSError:
             continue
     return None
 
 
-def _read_number(d: str, name: str) -> float:
-    with open(os.path.join(d, name)) as f:
+def _read_number(folder: str, name: str) -> float:
+    with open(os.path.join(folder, name)) as f:
         return float(f.read())
 
 
-def _read_dht11(d: str) -> dict:
-    return {"temperature_c": round(_read_number(d, "in_temp_input") / 1000, 1),
-            "humidity": round(_read_number(d, "in_humidityrelative_input") / 1000)}
+def _read_dht11(sensor_dir: str) -> dict:
+    # The kernel gives thousandths of a degree and of a percent
+    return {"temperature_c": round(_read_number(sensor_dir, "in_temp_input") / 1000, 1),
+            "humidity": round(_read_number(sensor_dir, "in_humidityrelative_input") / 1000)}
 
 
-def _read_bh1750(d: str) -> dict:
-    lux = _read_number(d, "in_illuminance_raw") * _read_number(d, "in_illuminance_scale")
+def _read_bh1750(sensor_dir: str) -> dict:
+    lux = _read_number(sensor_dir, "in_illuminance_raw") * _read_number(sensor_dir, "in_illuminance_scale")
     return {"lux": round(lux, 1)}
-
 
 # device type -> (IIO driver name, reader)
 IIO_SENSORS = {"dht11": ("dht11", _read_dht11), "light": ("bh1750", _read_bh1750)}
@@ -472,24 +465,23 @@ IIO_SENSORS = {"dht11": ("dht11", _read_dht11), "light": ("bh1750", _read_bh1750
 
 def _read_sensor_blocking(device_type: str) -> dict | None:
     driver_name, reader = IIO_SENSORS[device_type]
-    d = _find_iio_dir(driver_name)
-    if not d:
+    sensor_dir = _find_iio_dir(driver_name)
+    if not sensor_dir:
         return None
     for attempt in range(3):  # the DHT11 regularly fails a read with EIO/ETIMEDOUT; retry
         try:
-            return reader(d)
+            return reader(sensor_dir)
         except (OSError, ValueError):
             if attempt < 2:
                 time.sleep(1.1)  # the DHT11 needs about 1 s between reads
     return None
-
 
 # ponytail: readings are cached for 30 s per sensor, so the dashboard, every viewer and the
 # event loop together cost at most one read per 30 s (the DHT11 allows about one per second).
 SENSOR_CACHE_SECONDS = 30.0
 
 
-_sensor_cache: dict[str, tuple[float, dict]] = {}
+_sensor_cache: dict[str, tuple[float, dict]] = {}  # device type -> (when, the reading)
 
 
 async def read_sensor(device_type: str) -> dict | None:
@@ -497,24 +489,25 @@ async def read_sensor(device_type: str) -> dict | None:
 
     When a read fails, the last good reading is returned (the DHT11 misses reads regularly).
     """
-    cached = _sensor_cache.get(device_type)
-    if cached and time.monotonic() - cached[0] < SENSOR_CACHE_SECONDS:
-        return cached[1]
-    value = await asyncio.to_thread(_read_sensor_blocking, device_type)
-    if value:
-        _sensor_cache[device_type] = (time.monotonic(), value)
-        return value
-    return cached[1] if cached else None
+    read_at, last_reading = _sensor_cache.get(device_type, (None, None))
+    if read_at is not None and time.monotonic() - read_at < SENSOR_CACHE_SECONDS:
+        return last_reading
+    reading = await asyncio.to_thread(_read_sensor_blocking, device_type)
+    if reading:
+        _sensor_cache[device_type] = (time.monotonic(), reading)
+        return reading
+    return last_reading
 
 
 def read_fan_state() -> dict | None:
     """{"level", "max_level", "cpu_temperature_c"} of the gpio-fan / pwm-fan, or None if not loaded."""
-    for d in glob.glob("/sys/class/thermal/cooling_device*"):
+    for cooling_device in glob.glob("/sys/class/thermal/cooling_device*"):
         try:
-            with open(os.path.join(d, "type")) as f:
+            with open(os.path.join(cooling_device, "type")) as f:
                 if f.read().strip() not in ("gpio-fan", "pwm-fan"):
                     continue
-            state = {"level": int(_read_number(d, "cur_state")), "max_level": int(_read_number(d, "max_state"))}
+            state = {"level": int(_read_number(cooling_device, "cur_state")),
+                     "max_level": int(_read_number(cooling_device, "max_state"))}
             state["cpu_temperature_c"] = round(_read_number("/sys/class/thermal/thermal_zone0", "temp") / 1000, 1)
             return state
         except (OSError, ValueError):
