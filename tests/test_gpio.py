@@ -112,7 +112,7 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
         assert results["lines"].fd == -1 and results["again"].fd >= 0
         # A connection speaks for its own instance only, whatever its message names; one of no instance gets none
         stranger = client_module.Connection(MagicMock(), MagicMock(), None, "elsewhere")
-        assert core._gpio({"id": 99, "instance": "relay", "pins": [27]}, stranger) == "not an instance of this mirror"
+        assert core._hand_over_gpio_lines({"id": 99, "instance": "relay", "pins": [27]}, stranger) == "not an instance of this mirror"
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

@@ -53,13 +53,14 @@ BODY_LIMIT = 1024 * 1024  # a call to a module's route
 REQUEST_TIMEOUT = 35  # a little over the host's own
 LAN_HELPER = "/usr/local/bin/mirrordash-module-network"  # an OS image file; the home-network addresses per module
 LAN_REFRESH = 600  # seconds between looking up the lan-url hosts again (a DHCP address can change)
-LAN_LIMIT = 64  # the helper's
+LAN_ADDRESS_LIMIT = 64  # the helper's
 EVENT_NAME = re.compile(r"[A-Za-z0-9_]+\.[A-Za-z0-9_.:-]{1,100}")  # a public event's: "<module>.<what>"
 EVENT_LIMIT = 64 * 1024  # a public event's data, as JSON
-EVENT_RATE = 20  # public events an instance may send a second; more are dropped
+EVENT_RATE_PER_SECOND = 20  # public events an instance may send a second; more are dropped
 HTML_LIMIT = 512 * 1024  # a card; a bigger one isn't shown (every open screen gets each card)
 HTML_INTERVAL = 0.5  # seconds between a card's sends to the screen: one sent sooner waits, and only the last goes
 LOG_BURST, LOG_WINDOW = 100, 10  # log lines an instance may send in LOG_WINDOW seconds; more are counted, not logged
+LOG_LINE_LIMIT = 4000  # characters of one log message from a module
 # An instance's process ending this soon after its start, this many times in a row, pauses it: one that
 # runs out of memory (the kernel kills it first, oom_score_adj) or crashes would start again forever
 CRASH_WINDOW = 300
@@ -75,6 +76,41 @@ RESPONSE_HEADERS_DROPPED = {"set-cookie", "content-length", "transfer-encoding",
                             "content-security-policy", "x-content-type-options",
                             "service-worker-allowed", "clear-site-data"}
 LOG_NAME = re.compile(r"^[\w.-]{1,100}$")
+GPIO_OPTIONS = ("output", "initial", "pull", "edge", "active_low", "debounce_ms")  # features/hardware/gpio.py request_lines
+HEADER_INJECTION_CHARACTERS = "\r\n\0"  # would end a header and start another, or end the headers
+
+
+def is_over_rate_limit(recent_times: collections.deque, window_seconds: float, now: float) -> bool:
+    """Whether one more would be too many: recent_times (a deque with a maxlen, the limit) is full and its
+    oldest is still inside the window. The caller appends now when it lets one through."""
+    is_full = len(recent_times) == recent_times.maxlen
+    return is_full and now - recent_times[0] < window_seconds
+
+
+def gpio_request_problem(pins, options: dict) -> str | None:
+    """Why a module's GPIO request is malformed, or None. Whether the pins are free is checked after."""
+    if not isinstance(pins, list) or not pins or len(set(pins)) != len(pins) or any(type(p) is not int for p in pins):
+        return "pins must be a list of GPIO numbers"
+    flags_are_booleans = all(type(options.get(flag, False)) is bool for flag in ("output", "active_low"))
+    initial_is_a_level = options.get("initial", 0) in (0, 1)
+    debounce_is_a_number = type(options.get("debounce_ms", 0)) is int
+    if not (flags_are_booleans and initial_is_a_level and debounce_is_a_number):
+        return "output and active_low are true or false, initial 0 or 1, debounce_ms a number"
+    return None
+
+
+def safe_response_headers(headers) -> list[tuple[str, str]]:
+    """A module route's answer's headers that may reach the browser: [name, value] pairs, none of
+    RESPONSE_HEADERS_DROPPED, none that could smuggle in a header of its own."""
+    safe = []
+    for item in headers or []:
+        if not (isinstance(item, list) and len(item) == 2):
+            continue
+        name, value = str(item[0]), str(item[1])
+        if name.lower() in RESPONSE_HEADERS_DROPPED or any(c in name + value for c in HEADER_INJECTION_CHARACTERS):
+            continue
+        safe.append((name, value))
+    return safe
 
 
 def placement(module_cfg: dict, instance_id: str) -> dict:
@@ -151,8 +187,10 @@ class Connection:
     """One connection to the module host: the control process's, or an instance's own process's."""
 
     def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter,
-                 fds: socket.socket | None = None, instance: str | None = None):
-        self.reader, self.writer, self.fds, self.instance = reader, writer, fds, instance
+                 descriptor_socket: socket.socket | None = None, instance: str | None = None):
+        self.reader, self.writer, self.instance = reader, writer, instance
+        # Where file descriptors go to the host (SOCK_SEQPACKET): a GPIO request's lines, or an instance's sockets
+        self.descriptor_socket = descriptor_socket
         self.pending: dict[int, asyncio.Future] = {}
         self.windows: dict[int, asyncio.Event] = {}  # its video windows the core holds
         self.key: str | None = None  # an instance's settings_key
@@ -160,7 +198,7 @@ class Connection:
         self.running = False
         self.started = time.monotonic()
         self.module = ""  # an instance's module (its package name): the start of its public events' names
-        self.published: collections.deque[float] = collections.deque(maxlen=EVENT_RATE)  # when, the last ones
+        self.published: collections.deque[float] = collections.deque(maxlen=EVENT_RATE_PER_SECOND)  # when, the last ones
         self.logged: collections.deque[float] = collections.deque(maxlen=LOG_BURST)  # when, the last log lines
         self.dropped = 0  # log lines left out since the last one logged
         self.shown = 0.0  # when its card was last sent to the screen
@@ -185,8 +223,8 @@ class Connection:
 
     def close(self) -> None:
         self.writer.close()
-        if self.fds:
-            self.fds.close()
+        if self.descriptor_socket:
+            self.descriptor_socket.close()
         for event in self.windows.values():
             event.set()
         for future in self.pending.values():
@@ -375,14 +413,14 @@ class ModuleHost:
                 await asyncio.sleep(0.1)
         reader, writer = await asyncio.open_unix_connection(path, limit=LINE_LIMIT)
         # The second connection, for the instances' sockets (host.py)
-        fds = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        descriptor_socket = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         try:
-            fds.connect(path + ".fds")
+            descriptor_socket.connect(path + ".fds")
         except OSError:
-            fds.close()
+            descriptor_socket.close()
             writer.close()
             raise
-        return Connection(reader, writer, fds)
+        return Connection(reader, writer, descriptor_socket)
 
     async def _run(self) -> None:
         while True:
@@ -464,20 +502,20 @@ class ModuleHost:
 
     async def _start(self, instance_id: str, cfg: dict, globals_cfg: dict, awake: bool) -> None:
         """A process for the instance: one end of its two socket pairs to the host, which runs it as its user."""
-        ours, theirs = socket.socketpair()
-        fds_ours, fds_theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+        messages_ours, messages_theirs = socket.socketpair()
+        descriptors_ours, descriptors_theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         try:
-            socket.send_fds(self._control.fds, [json.dumps({"instance": instance_id}).encode()],
-                            [theirs.fileno(), fds_theirs.fileno()])
+            socket.send_fds(self._control.descriptor_socket, [json.dumps({"instance": instance_id}).encode()],
+                            [messages_theirs.fileno(), descriptors_theirs.fileno()])
         except OSError:
-            ours.close()
-            fds_ours.close()
+            messages_ours.close()
+            descriptors_ours.close()
             raise
         finally:
-            theirs.close()
-            fds_theirs.close()
-        reader, writer = await asyncio.open_unix_connection(sock=ours, limit=LINE_LIMIT)
-        conn = Connection(reader, writer, fds_ours, instance_id)
+            messages_theirs.close()
+            descriptors_theirs.close()
+        reader, writer = await asyncio.open_unix_connection(sock=messages_ours, limit=LINE_LIMIT)
+        conn = Connection(reader, writer, descriptors_ours, instance_id)
         conn.key = settings_key(cfg, globals_cfg)
         conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
         self._instances[instance_id] = conn
@@ -525,23 +563,7 @@ class ModuleHost:
             if future and not future.done():
                 future.set_result(message)
         elif kind == "log":
-            now = time.monotonic()
-            if len(conn.logged) == LOG_BURST and now - conn.logged[0] < LOG_WINDOW:
-                conn.dropped += 1  # a flood would rotate the core's own lines out of its log, and wear the card
-                return
-            conn.logged.append(now)
-            name = str(message.get("name", ""))
-            if instance_id:
-                name = f"mirrordash.modules.{instance_id}"
-            elif not (LOG_NAME.match(name) and name.startswith("mirrordash.modules")):
-                name = "mirrordash.modules.host"
-            level = message.get("level") if isinstance(message.get("level"), int) else logging.INFO
-            # Each further line (a traceback) carries the name too: a line of its own can't pass for the core's
-            text = str(message.get("text", ""))[:4000].replace("\r", "").replace("\n", f"\n    {name}: ")
-            if conn.dropped:
-                logging.getLogger(name).warning(f"{conn.dropped} log lines left out: more than {LOG_BURST} in {LOG_WINDOW} s")
-                conn.dropped = 0
-            logging.getLogger(name).log(min(max(level, logging.DEBUG), logging.CRITICAL), text)
+            self._log_from_module(message, conn)
         elif instance_id is None or self._instances.get(instance_id) is not conn or instance_id not in self._placement:
             return  # the control process sends replies and logs only; a stopped instance nothing
         elif kind == "html":
@@ -556,18 +578,7 @@ class ModuleHost:
             if conn.showing is None:
                 conn.showing = asyncio.create_task(self._show(conn))
         elif kind == "publish":
-            # A module's public event, to every instance (its own too) but never the core's own subscribers:
-            # named after its module, so it can't pass for the hardware's or another module's
-            name, data, now = message.get("name"), message.get("data"), time.monotonic()
-            if len(conn.published) == EVENT_RATE and now - conn.published[0] < 1:
-                return  # over EVENT_RATE a second: dropped without a log line, which a flood would flood too
-            conn.published.append(now)
-            if not (isinstance(name, str) and name.startswith(conn.module + ".") and EVENT_NAME.fullmatch(name)):
-                logger.warning(f"{instance_id}: a public event's name must start with '{conn.module}.': {str(name)[:100]!r}")
-            elif len(json.dumps(data)) > EVENT_LIMIT:
-                logger.warning(f"{instance_id}: public event {name} is over {EVENT_LIMIT // 1024} kB, dropped")
-            else:
-                self._post({"t": "event", "name": name, "data": data})
+            self._publish_public_event(message, conn)
         elif kind == "status":
             if isinstance(message.get("running"), list):
                 conn.running = instance_id in message["running"]
@@ -586,25 +597,59 @@ class ModuleHost:
             elif isinstance(request, int):
                 await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})  # the module gets an error
         elif kind == "gpio":
-            if isinstance(message.get("id"), int) and (error := self._gpio(message, conn)):
+            if isinstance(message.get("id"), int) and (error := self._hand_over_gpio_lines(message, conn)):
                 logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
                 await self._send_quietly(conn, {"t": "reply", "id": message["id"], "error": error})
         elif kind == "video_window_end":
             if message.get("id") in conn.windows:
                 conn.windows[message["id"]].set()
 
-    def _gpio(self, message: dict, conn: Connection) -> str | None:
+    def _log_from_module(self, message: dict, conn: Connection) -> None:
+        """A log line from the host: under the instance's own name (or the host's), at most LOG_BURST in
+        LOG_WINDOW seconds, so it can't pass for the core's line or flood the core's log."""
+        now = time.monotonic()
+        if is_over_rate_limit(conn.logged, LOG_WINDOW, now):
+            conn.dropped += 1  # a flood would rotate the core's own lines out of its log, and wear the card
+            return
+        conn.logged.append(now)
+        name = str(message.get("name", ""))
+        if conn.instance:
+            name = f"mirrordash.modules.{conn.instance}"
+        elif not (LOG_NAME.match(name) and name.startswith("mirrordash.modules")):
+            name = "mirrordash.modules.host"
+        level = message.get("level") if isinstance(message.get("level"), int) else logging.INFO
+        level = min(max(level, logging.DEBUG), logging.CRITICAL)
+        # Each further line (a traceback) carries the name too: a line of its own can't pass for the core's
+        text = str(message.get("text", ""))[:LOG_LINE_LIMIT].replace("\r", "").replace("\n", f"\n    {name}: ")
+        if conn.dropped:
+            logging.getLogger(name).warning(f"{conn.dropped} log lines left out: more than {LOG_BURST} in {LOG_WINDOW} s")
+            conn.dropped = 0
+        logging.getLogger(name).log(level, text)
+
+    def _publish_public_event(self, message: dict, conn: Connection) -> None:
+        """A module's public event, to every instance (its own too) but never the core's own subscribers:
+        named after its module, so it can't pass for the hardware's or another module's."""
+        name, data, now = message.get("name"), message.get("data"), time.monotonic()
+        if is_over_rate_limit(conn.published, 1, now):
+            return  # dropped without a log line, which a flood would flood too
+        conn.published.append(now)
+        is_named_after_its_module = isinstance(name, str) and name.startswith(conn.module + ".") and EVENT_NAME.fullmatch(name)
+        if not is_named_after_its_module:
+            logger.warning(f"{conn.instance}: a public event's name must start with '{conn.module}.': {str(name)[:100]!r}")
+        elif len(json.dumps(data)) > EVENT_LIMIT:
+            logger.warning(f"{conn.instance}: public event {name} is over {EVENT_LIMIT // 1024} kB, dropped")
+        else:
+            self._post({"t": "event", "name": name, "data": data})
+
+    def _hand_over_gpio_lines(self, message: dict, conn: Connection) -> str | None:
         """An instance's GPIO request (features/hardware/gpio.py): its lines' file descriptor sent to its
         process over its own descriptor socket, or why not. Only free header pins, whatever it asks."""
         instance_id, pins = conn.instance, message.get("pins")
-        options = {k: message[k] for k in ("output", "initial", "pull", "edge", "active_low", "debounce_ms") if k in message}
+        options = {option: message[option] for option in GPIO_OPTIONS if option in message}
         if instance_id not in self._placement:
             return "not an instance of this mirror"
-        if not isinstance(pins, list) or not pins or len(set(pins)) != len(pins) or any(type(p) is not int for p in pins):
-            return "pins must be a list of GPIO numbers"
-        if any(type(options.get(k, False)) is not bool for k in ("output", "active_low")) \
-                or options.get("initial", 0) not in (0, 1) or type(options.get("debounce_ms", 0)) is not int:
-            return "output and active_low are true or false, initial 0 or 1, debounce_ms a number"
+        if problem := gpio_request_problem(pins, options):
+            return problem
         if taken := sorted(set(pins) - free_pins(load_config())):
             return f"GPIO {', '.join(map(str, taken))} isn't free for modules (not on the header, or a device in the Hardware tab uses it)"
         if not (chip := header_chip()):
@@ -614,7 +659,7 @@ class ModuleHost:
         except (OSError, ValueError) as e:
             return str(e)
         try:
-            socket.send_fds(conn.fds, [struct.pack("<Q", message["id"])], [fd])
+            socket.send_fds(conn.descriptor_socket, [struct.pack("<Q", message["id"])], [fd])
         except OSError as e:
             return f"couldn't hand the pins over: {e}"
         finally:
@@ -646,18 +691,23 @@ class ModuleHost:
         if not os.environ.get("MIRRORDASH_MODULE_SOCKET") or not os.path.exists(LAN_HELPER):
             return
         async with self._lan_lock:  # a start and the refresh: the later one's addresses must win
-            hosts = {i: names for i, names in lan_hosts(modules).items() if i in self._uids}
-            found = await lan_addresses(set().union(*hosts.values()))
-            allowed = sorted({(i, a) for i, names in hosts.items() for name in names for a in found.get(name, [])})[:LAN_LIMIT]
-            pairs = [f"{self._uids[i]}={a}" for i, a in allowed]
-            if pairs == self.lan:
+            host_names_per_instance = {instance_id: names for instance_id, names in lan_hosts(modules).items()
+                                       if instance_id in self._uids}
+            addresses_per_host_name = await lan_addresses(set().union(*host_names_per_instance.values()))
+            allowed = sorted({(instance_id, address)
+                              for instance_id, names in host_names_per_instance.items()
+                              for name in names
+                              for address in addresses_per_host_name.get(name, [])})[:LAN_ADDRESS_LIMIT]
+            helper_arguments = [f"{self._uids[instance_id]}={address}" for instance_id, address in allowed]
+            if helper_arguments == self.lan:
                 return
-            process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *pairs,
+            process = await asyncio.create_subprocess_exec("sudo", "-n", LAN_HELPER, *helper_arguments,
                                                            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
             _, err = await process.communicate()
             if process.returncode == 0:
-                self.lan = pairs
-                logger.info("Modules may reach on the home network: " + (", ".join(f"{i} {a}" for i, a in allowed) or "nothing"))
+                self.lan = helper_arguments
+                logger.info("Modules may reach on the home network: "
+                            + (", ".join(f"{instance_id} {address}" for instance_id, address in allowed) or "nothing"))
             else:
                 logger.error(f"Could not set the modules' home-network addresses: {err.decode(errors='replace').strip()}")
 
@@ -718,13 +768,12 @@ async def module_routes(scope, receive, send) -> None:
         return
 
     response = Response(content, status)
-    for item in reply.get("headers") or []:
-        if (isinstance(item, list) and len(item) == 2 and str(item[0]).lower() not in RESPONSE_HEADERS_DROPPED
-                and not any(c in str(item[0]) + str(item[1]) for c in "\r\n\0")):
-            try:
-                response.headers.append(str(item[0]), str(item[1]))
-            except (ValueError, UnicodeEncodeError):
-                pass
+    for name, value in safe_response_headers(reply.get("headers")):
+        try:
+            response.headers.append(name, value)
+        except (ValueError, UnicodeEncodeError):
+            pass
+    # sandbox: the browser runs the answer as a page of no site, so a module's HTML can't act as the admin page
     response.headers["Content-Security-Policy"] = "sandbox"
     response.headers["X-Content-Type-Options"] = "nosniff"
     await response(scope, receive, send)
