@@ -947,3 +947,36 @@ def test_the_page_says_where_a_modules_video_window_is(page):
                         ".shadowRoot.querySelector('div').getBoundingClientRect())")
     assert answers[0] == {"type": "video_window", "module": "tv", "rect": [round(box[0]), round(box[1]), 480, 270]}
     assert answers[1] == {"type": "video_window", "module": "clock", "rect": None}  # no window on its card
+
+
+@pytest.mark.only_browser("webkit")
+def test_a_carousel_group_name_with_quotes_and_a_title_with_markup_stay_text(page):
+    """The carousel group is the owner's free text and a title comes from a module's translations: a quote
+    in the group once broke the page's selector (the card never drew), and a title went in as markup."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+    group = 'Kitchen "A"]'
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": [{"name": "clock", "position": "top_left", "carousel_group": group,
+                                                    "title": "<b id='injected'>Clock</b>"}]})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_selector("[data-module='clock'].module-loading-placeholder")
+    assert page.evaluate("document.getElementById('injected')") is None
+    assert "<b id='injected'>" in page.locator("[data-module='clock']").text_content()
+    page.wait_for_function("window.__ws")
+    page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                  json.dumps({"module": "clock", "position": "top_left", "carousel_group": group, "html": "<p class='time'>12:00</p>"}))
+    assert page.locator("[data-module='clock']").evaluate("e => e.shadowRoot.querySelector('.time').textContent") == "12:00"
+    assert page.evaluate("document.querySelectorAll('.carousel-group-container').length") == 1

@@ -20,6 +20,7 @@ There are two kinds of releases:
 - Restoring a backup made without a password no longer forgets the mirror's MQTT broker password.
 - In *Logs*, a module's error shows whole in that module's log (not half of it in the system log), and a module's log no longer shows another module whose name starts the same.
 - If one saved setting can't be applied when the mirror starts, the others still are (the pi user's password, SSH, Matter).
+- A carousel group whose name has a `"` in it no longer keeps its modules off the mirror.
 
 ## [0.9.5-os2] - 2026-10-26
 
