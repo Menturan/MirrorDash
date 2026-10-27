@@ -223,13 +223,17 @@ start_hotspot() {
     fi
 }
 
+# Started by the watch timer (every 3 minutes) rather than once at boot
+WATCHING=false
+if [ "${1:-}" = "--watch" ]; then WATCHING=true; fi
+
 # First: a Wi-Fi chip that didn't start leaves nothing for the rest to work with
-if [ "${1:-}" = "--watch" ] && wifi_chip_failed; then
+if $WATCHING && wifi_chip_failed; then
     recover_wifi_chip
     exit 0
 fi
 
-if [ "${1:-}" = "--watch" ] && hotspot_active; then
+if $WATCHING && hotspot_active; then
     if ! has_saved_wifi || phone_on_hotspot; then
         exit 0
     fi
@@ -250,10 +254,10 @@ fi
 # nm-online waits on NetworkManager's own state: startup finished, then a connection (or the
 # timeout). Any connection counts, also one without internet. --watch waits longer, so a Wi-Fi
 # change from the admin page (a few seconds without a connection) never starts the hotspot.
-if nm-online -q -t "$([ "${1:-}" = "--watch" ] && echo 60 || echo 30)"; then
-    if [ "${1:-}" = "--watch" ]; then check_traffic; fi
+if nm-online -q -t "$($WATCHING && echo 60 || echo 30)"; then
+    if $WATCHING; then check_traffic; fi
     exit 0
 fi
 start_hotspot
-[ "${1:-}" = "--watch" ] && tell_mirrordash
+$WATCHING && tell_mirrordash
 exit 0
