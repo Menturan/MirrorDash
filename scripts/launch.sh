@@ -28,9 +28,12 @@ EXIT_CODE=$?
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 
-# Standard SIGTERM exit code is 143, SIGINT is 130. Exit code 0 is clean shutdown.
-# If python exited with a crash code and lasted less than 10 seconds, trigger rollback.
-if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne 143 ] && [ "$EXIT_CODE" -ne 130 ] && [ "$DURATION" -lt 10 ]; then
+# A start that fails within this long is a broken install, not a crash later on: roll back
+CRASH_WITHIN_SECONDS=10
+EXIT_STOPPED_BY_SIGTERM=143  # systemd stopping it, or the app restarting itself
+EXIT_STOPPED_BY_SIGINT=130
+if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne "$EXIT_STOPPED_BY_SIGTERM" ] && [ "$EXIT_CODE" -ne "$EXIT_STOPPED_BY_SIGINT" ] \
+        && [ "$DURATION" -lt "$CRASH_WITHIN_SECONDS" ]; then
     echo "Boot crash detected (Exit Code: $EXIT_CODE, Duration: ${DURATION}s)."
 
     # On the trial boot of a new OS version the crash is the new OS's doing, not the app's: leave the

@@ -8,11 +8,11 @@ mkdir -p "$STATE"
 # Counts up the failure $1 and says yes on every second round in a row. The log ($3) is saved the first
 # time only, so a fault that stays doesn't push the other saved logs out (save-log keeps 5).
 act() {
-    local n=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 ))
-    echo "$n" > "$STATE/$1"
-    [ $(( n % 2 )) -eq 0 ] || return 1
+    local failed_rounds=$(( $(cat "$STATE/$1" 2>/dev/null || echo 0) + 1 ))
+    echo "$failed_rounds" > "$STATE/$1"
+    [ $(( failed_rounds % 2 )) -eq 0 ] || return 1
     logger -t mirrordash-app-watch "$2"
-    if [ "$n" -eq 2 ]; then /usr/local/lib/mirrordash/save-log "$3" -b -n 2000 >/dev/null || true; fi
+    if [ "$failed_rounds" -eq 2 ]; then /usr/local/lib/mirrordash/save-log "$3" -b -n 2000 >/dev/null || true; fi
 }
 
 if ! health=$(curl -fsS -m 10 http://127.0.0.1:8000/health); then
