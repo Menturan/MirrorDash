@@ -361,7 +361,7 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
     if (uninstallBtn) {
         if (packageName) {
             uninstallBtn.style.display = 'inline-flex';
-            uninstallBtn.setAttribute('hx-vals', `{"package_name": "${packageName}"}`);
+            uninstallBtn.setAttribute('hx-vals', JSON.stringify({ package_name: packageName }));
             uninstallBtn.setAttribute('hx-confirm', `Are you sure you want to uninstall ${title}? This will remove the package and restart the mirror.`);
             htmx.process(uninstallBtn);
         } else {
@@ -483,11 +483,6 @@ window.closeConfigSheet = function() {
     document.getElementById('configOverlay').classList.remove('open');
     const fields = document.getElementById('config-fields-global');
     if (fields) fields.innerHTML = '';
-};
-
-// Keep backwards compatibility for toggle/open calls
-window.toggleConfigureModule = function(name) {
-    window.openConfigureModule(name);
 };
 
 window.openConfigureModule = function(name, packageName, activeInstanceId) {
