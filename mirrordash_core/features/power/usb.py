@@ -6,11 +6,12 @@ The work is done by /usr/local/bin/mirrordash-usb (scripts/image/rootfs/usr/loca
 `status` runs as the app, on and off through sudo; the setting is a file on /storage it applies at boot.
 """
 
-import asyncio
 import logging
 import os
 
 from fastapi import HTTPException
+
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.power")
 
@@ -18,13 +19,13 @@ HELPER = "/usr/local/bin/mirrordash-usb"
 
 
 async def _run(*command: str) -> str:
-    proc = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    out, err = await asyncio.wait_for(proc.communicate(), timeout=30)
-    if proc.returncode != 0:
-        message = err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
+    """The command's output; an HTTP error with its reason when it fails."""
+    exit_code, output, error_output = await run_command(*command, timeout=30)
+    if exit_code != 0:
+        message = error_output.strip() or f"exit code {exit_code}"
         logger.error(f"{' '.join(command)} failed: {message}")
         raise HTTPException(status_code=400, detail=message)
-    return out.decode().strip()
+    return output.strip()
 
 
 async def usb_status() -> str | None:

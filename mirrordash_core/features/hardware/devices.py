@@ -26,7 +26,7 @@ import time
 
 from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
-from mirrordash_core.host import run_in_background
+from mirrordash_core.host import run_command, run_in_background
 
 logger = logging.getLogger("mirrordash.core.hardware")
 
@@ -180,13 +180,9 @@ async def write_gpio_overlays(args: list[str]) -> str | None:
     """
     if not os.path.exists(GPIO_HELPER):
         return "This mirror's OS image is too old for GPIO settings. Flash the latest MirrorDash OS image."
-    proc = await asyncio.create_subprocess_exec(
-        "sudo", "-n", GPIO_HELPER, *args, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    _, stderr = await proc.communicate()
-    if proc.returncode != 0:
-        error = stderr.decode(errors="replace")
-        logger.error(f"GPIO overlay helper failed ({proc.returncode}): {error}")
+    exit_code, _, error = await run_command("sudo", "-n", GPIO_HELPER, *args, timeout=30)
+    if exit_code != 0:
+        logger.error(f"GPIO overlay helper failed ({exit_code}): {error}")
         if "unknown device type" in error:  # e.g. button_2 on an image from before it existed
             return "This mirror's OS image is too old for this device. Flash the latest MirrorDash OS image."
         return "Could not save the GPIO settings. See the logs for details."

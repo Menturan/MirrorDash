@@ -6,13 +6,14 @@ run through sudo. Whether it's on is a file on /storage holding when it turns of
 read it at boot before the app runs; this module only reads that file and calls the script.
 """
 
-import asyncio
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
+
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.settings")
 
@@ -48,12 +49,11 @@ def saved_journal_mb() -> int:
     return -(-total // 1048576)
 
 
-async def _run(action: str) -> None:
-    proc = await asyncio.create_subprocess_exec("sudo", "-n", HELPER, action,
-                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    _, err = await asyncio.wait_for(proc.communicate(), timeout=60)
-    if proc.returncode != 0:
-        message = err.decode(errors="replace").strip() or f"exit code {proc.returncode}"
+async def _run_helper(action: str) -> None:
+    """`sudo mirrordash-dev-logging <action>`; an HTTP error with the helper's reason when it fails."""
+    exit_code, _, error_output = await run_command("sudo", "-n", HELPER, action, timeout=60)
+    if exit_code != 0:
+        message = error_output.strip() or f"exit code {exit_code}"
         logger.error(f"mirrordash-dev-logging {action} failed: {message}")
         raise HTTPException(status_code=500, detail=f"Developer logging: {message}")
 
@@ -62,10 +62,10 @@ async def set_dev_logging(on: bool) -> None:
     """Turn it on (for 7 days from now, also when it was on already) or off."""
     if not dev_logging_available():
         raise HTTPException(status_code=400, detail="Developer logging is only available on a MirrorDash image.")
-    await _run("on" if on else "off")
+    await _run_helper("on" if on else "off")
     logger.info(f"Developer logging turned {'on' if on else 'off'}")
 
 
 async def clear_saved_journal() -> None:
     """Delete the saved system log (the script refuses while developer logging is on)."""
-    await _run("clear")
+    await _run_helper("clear")

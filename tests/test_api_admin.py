@@ -1451,7 +1451,7 @@ def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
         else:
             (tmp_path / "dev-logging-until").unlink(missing_ok=True)
 
-    with patch.object(dev_logging, "_run", AsyncMock(side_effect=fake_run)) as run:
+    with patch.object(dev_logging, "_run_helper", AsyncMock(side_effect=fake_run)) as run:
         page = client.post("/admin/panels/system/dev-logging", data={"on": ["false", "true"]}, headers=key)
         assert run.call_args.args == ("on",) and "On until" in page.text
         (tmp_path / "journal").mkdir()

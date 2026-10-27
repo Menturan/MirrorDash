@@ -17,9 +17,10 @@ EXIT_CODE_PROGRAM_NOT_FOUND = 127
 EXIT_CODE_TIMED_OUT = 124
 
 
-async def run_command(*command: str, timeout: float = 10, input_text: str | None = None) -> tuple[int, str, str]:
+async def run_command(*command: str, timeout: float | None = 10, input_text: str | None = None) -> tuple[int, str, str]:
     """Run a program and wait for it: (exit_code, output, error_output). Never raises: a program that
-    isn't installed gives 127 and one still running after `timeout` seconds is killed and gives 124.
+    isn't installed gives 127 and one still running after `timeout` seconds is killed and gives 124
+    (timeout None: wait as long as it takes).
 
     The program gets this process's environment (wlr-randr needs WAYLAND_DISPLAY); for one that must
     not see the server's secrets, use venv.run, which strips it."""

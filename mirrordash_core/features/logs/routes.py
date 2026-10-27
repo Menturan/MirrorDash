@@ -1,6 +1,5 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import asyncio
 import html
 import logging
 import os
@@ -16,6 +15,7 @@ from mirrordash_core.features.logs.saved import (
     saved_logs,
 )
 from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.logs")
 router = APIRouter(prefix="/admin")
@@ -70,19 +70,12 @@ async def get_logs(type: str = "system", lines: int = 100, module: str | None = 
 
     elif type == "raspberry":
         # Run journalctl to get system logs
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                # -m: with developer logging on, every earlier start is its own folder (its own machine-id)
-                # --utc -o short-iso: the same time format as the app's log (main.py) and the saved logs
-                "journalctl", "-m", "-n", str(lines), "--no-pager", "--utc", "-o", "short-iso",
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode == 0:
-                return {"logs": stdout.decode("utf-8", errors="ignore")}
-        except Exception:
-            pass
+        # -m: with developer logging on, every earlier start is its own folder (its own machine-id)
+        # --utc -o short-iso: the same time format as the app's log (main.py) and the saved logs
+        exit_code, output, _ = await run_command(
+            "journalctl", "-m", "-n", str(lines), "--no-pager", "--utc", "-o", "short-iso", timeout=30)
+        if exit_code == 0:
+            return {"logs": output}
 
         # Fallback to /var/log/syslog
         try:

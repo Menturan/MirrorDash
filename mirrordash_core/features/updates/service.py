@@ -15,7 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
-from mirrordash_core.host import reboot_system, run_in_background, run_restart
+from mirrordash_core.host import (
+    reboot_system,
+    run_command,
+    run_in_background,
+    run_restart,
+)
 from mirrordash_core.venv import get_venv_paths, run, running_python, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.updates")
@@ -368,16 +373,15 @@ async def update_os(bundle: dict) -> None:
     # RAUC checks the signature, writes the other slot and arms the trial boot (rauc-bootloader)
     OS_PENDING_FILE.write_text(bundle["build"])
     logger.info("OS update: installing")
-    proc = await asyncio.create_subprocess_exec("sudo", "-n", "rauc", "install", str(OS_BUNDLE_FILE),
-                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    _, stderr = await proc.communicate()
+    # No timeout: writing a slot takes minutes on a slow card, and stopping RAUC halfway helps nobody
+    exit_code, _, error_output = await run_command("sudo", "-n", "rauc", "install", str(OS_BUNDLE_FILE), timeout=None)
     OS_BUNDLE_FILE.unlink(missing_ok=True)
-    if proc.returncode != 0:
+    if exit_code != 0:
         OS_PENDING_FILE.unlink(missing_ok=True)
         await save_log("os-install", "-u", "rauc", "-b", "-n", "300")  # RAUC's own account of the failure
-        error = stderr.decode(errors="replace").strip().splitlines()
-        logger.error(f"OS update failed: {stderr.decode(errors='replace')}")
-        raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {error[-1] if error else 'unknown error'}")
+        last_error_line = (error_output.strip().splitlines() or ["unknown error"])[-1]
+        logger.error(f"OS update failed: {error_output}")
+        raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {last_error_line}")
     logger.info("OS update installed. Restarting into it on trial...")
     run_in_background(reboot_system())
 

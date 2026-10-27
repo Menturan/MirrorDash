@@ -1,6 +1,5 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import asyncio
 import json
 import logging
 import re
@@ -38,7 +37,7 @@ from mirrordash_core.features.updates.service import (
     installed_os_version,
 )
 from mirrordash_core.forms import cast_values_by_schema, read_form
-from mirrordash_core.host import apply_system_timezone, run_in_background
+from mirrordash_core.host import apply_system_timezone, run_command, run_in_background
 
 logger = logging.getLogger("mirrordash.core.settings")
 router = APIRouter(prefix="/admin")
@@ -179,11 +178,9 @@ async def factory_reset(confirm: str = Form("")):
         return notify("Type RESET to reset the mirror.", "error")
 
     async def work() -> None:
-        proc = await asyncio.create_subprocess_exec("sudo", "-n", RESET_HELPER, "--yes",
-                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        _, err = await proc.communicate()
-        if proc.returncode != 0:  # e.g. a development machine, which has no such helper
-            raise HTTPException(status_code=500, detail=f"Reset failed: {err.decode(errors='replace').strip()}")
+        exit_code, _, error_output = await run_command("sudo", "-n", RESET_HELPER, "--yes", timeout=120)
+        if exit_code != 0:  # e.g. a development machine, which has no such helper
+            raise HTTPException(status_code=500, detail=f"Reset failed: {error_output.strip()}")
 
     logger.warning("Factory reset requested from the admin page")
     return job_response(start_job(work), "Resetting the Mirror",

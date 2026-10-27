@@ -3,7 +3,6 @@
 The node is a Node.js sidecar (matter/index.mjs, mirrordash-matter.service) that runs the screen
 through /api/v1. The core starts it: /etc is a RAM overlay, so `systemctl enable` wouldn't last."""
 
-import asyncio
 import json
 import logging
 import secrets
@@ -13,6 +12,7 @@ from fastapi import APIRouter, Depends, Request
 
 from mirrordash_core.admin import events_header, require_api_key, templates, token_hash
 from mirrordash_core.config import get_base_dir, load_config, save_config, write_atomic
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.matter")
 router = APIRouter(prefix="/admin")
@@ -26,16 +26,11 @@ FORBIDDEN_PASSCODES = {0, 11111111, 22222222, 33333333, 44444444, 55555555, 6666
 
 
 async def _systemctl(action: str) -> bool:
-    try:
-        proc = await asyncio.create_subprocess_exec("sudo", "-n", "systemctl", action, "mirrordash-matter",
-                                                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        _, err = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except Exception as e:
-        logger.error(f"systemctl {action} mirrordash-matter failed: {e}")
-        return False
-    if proc.returncode:
-        logger.error(f"systemctl {action} mirrordash-matter failed: {err.decode(errors='replace').strip()}")
-    return proc.returncode == 0
+    """`sudo systemctl <action> mirrordash-matter`: whether it worked."""
+    exit_code, _, error_output = await run_command("sudo", "-n", "systemctl", action, "mirrordash-matter", timeout=30)
+    if exit_code != 0:
+        logger.error(f"systemctl {action} mirrordash-matter failed: {error_output.strip()}")
+    return exit_code == 0
 
 
 async def start_matter() -> bool:
