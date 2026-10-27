@@ -77,55 +77,63 @@ def migrate_config(data: dict) -> bool:
             changed = True
     return changed
 
+def default_config() -> dict:
+    """A new mirror's settings: the clock in the top left corner."""
+    return {
+        "globals": get_default_globals(),
+        "modules": {
+            "mirrordash-clock": {
+                "module": "mirrordash-clock",
+                "enabled": True,
+                "position": "top_left",
+                "show_seconds": True,
+                "show_header": False
+            }
+        }
+    }
+
+
+def _read_config_or_last_good_copy(config_path: Path) -> tuple[dict | None, bool]:
+    """(the settings on disk, whether they must be saved again). A file that doesn't read is never
+    overwritten with defaults: it is kept for a person to look at, and the last good copy save_config
+    kept is used instead. A power cut mid-write or a bad hand edit ends up here."""
+    if not config_path.exists():
+        return None, False
+    try:
+        return json.loads(config_path.read_text()), False
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        broken = config_path.with_name(f"{config_path.name}.broken-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}")
+        config_path.rename(broken)
+        last_good_copy = _read_json(_backup_path(config_path))
+        logger.error(f"{config_path.name} is malformed: {e}. Kept as {broken.name}; "
+                     + ("using the last good copy." if last_good_copy is not None else "no good copy, using defaults."))
+        return last_good_copy, last_good_copy is not None
+
+
+def _fill_in_missing_sections(data) -> tuple[dict, bool]:
+    """(the settings with "modules" and "globals" always there, whether anything had to change)."""
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("modules", {})
+    data.setdefault("globals", get_default_globals())
+    return data, migrate_config(data)
+
+
 def load_config() -> dict:
     """Load config from memory cache, or disk if cache is cold. Returns a deep copy."""
     global _config_cache
-    need_save = False
     with _config_lock:
         if _config_cache is not None:
             return copy.deepcopy(_config_cache)
+        data, needs_saving = _read_config_or_last_good_copy(get_config_path())
+        if data is None:
+            data, needs_saving = default_config(), True
+        else:
+            data, migrated = _fill_in_missing_sections(data)
+            needs_saving = needs_saving or migrated
+        _config_cache = data
 
-        config_path = get_config_path()
-        data = None
-        if config_path.exists():
-            try:
-                data = json.loads(config_path.read_text())
-            except (json.JSONDecodeError, UnicodeDecodeError) as e:
-                # Never overwrite it with defaults: keep it for a person to look at, take the last good
-                # one save_config kept. A power cut mid-write or a bad hand edit ends up here.
-                broken = config_path.with_name(f"{config_path.name}.broken-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}")
-                config_path.rename(broken)
-                data = _read_json(_backup_path(config_path))
-                logger.error(f"{config_path.name} is malformed: {e}. Kept as {broken.name}; "
-                             + ("using the last good copy." if data is not None else "no good copy, using defaults."))
-                need_save = data is not None
-        if data is not None:
-            if not isinstance(data, dict):
-                data = {}
-            if "modules" not in data:
-                data["modules"] = {}
-            if "globals" not in data:
-                data["globals"] = get_default_globals()
-            if migrate_config(data):
-                need_save = True
-            _config_cache = data
-
-        if _config_cache is None:
-            _config_cache = {
-                "globals": get_default_globals(),
-                "modules": {
-                    "mirrordash-clock": {
-                        "module": "mirrordash-clock",
-                        "enabled": True,
-                        "position": "top_left",
-                        "show_seconds": True,
-                        "show_header": False
-                    }
-                }
-            }
-            need_save = True
-
-    if need_save:
+    if needs_saving:
         try:
             save_config(_config_cache)
         except Exception as e:
@@ -133,6 +141,7 @@ def load_config() -> dict:
 
     with _config_lock:
         return copy.deepcopy(_config_cache)
+
 
 def save_config(config: dict) -> None:
     """Atomically save config to disk and update cache thread-safely."""
@@ -200,16 +209,15 @@ def find_module_config(modules_config: dict, module_name: str) -> tuple[str | No
     if not isinstance(modules_config, dict):
         return None, None
     
-    norm_target = module_name.replace('-', '_')
-    for key, cfg in modules_config.items():
-        if not isinstance(cfg, dict):
+    def same_module(name: str) -> bool:  # "mirrordash-clock" and "mirrordash_clock" are one module
+        return name.replace("-", "_") == module_name.replace("-", "_")
+
+    for instance_id, instance_config in modules_config.items():
+        if not isinstance(instance_config, dict):
             continue
-        mod_type = cfg.get("module")
-        if mod_type and (mod_type == module_name or mod_type.replace('-', '_') == norm_target):
-            return key, cfg
-        # Fallback in case migration hasn't happened yet in this dict instance
-        elif not mod_type and (key == module_name or key.replace('-', '_') == norm_target):
-            return key, cfg
+        # An instance not migrated yet has no "module": its key is the module's name (migrate_config)
+        if same_module(instance_config.get("module") or instance_id):
+            return instance_id, instance_config
 
     return None, None
 
@@ -229,10 +237,12 @@ def version_key(version: str) -> tuple:
     # ponytail: only the version shapes MirrorDash publishes, not all of PEP 440 (no epochs, .post or .dev);
     # the mirror has no `packaging` to lean on.
     import re
-    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-?(a|b|rc)(\d+))?", version.strip())
-    if not m:
+    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-?(a|b|rc)(\d+))?", version.strip())
+    if not match:
         return (0,)
-    major, minor, patch, pre, num = m.groups()
-    return (int(major), int(minor), int(patch), ("a", "b", "rc").index(pre) if pre else 3, int(num or 0))
+    major, minor, patch, prerelease_kind, prerelease_number = match.groups()
+    # a < b < rc < the release itself (3)
+    prerelease_rank = ("a", "b", "rc").index(prerelease_kind) if prerelease_kind else 3
+    return (int(major), int(minor), int(patch), prerelease_rank, int(prerelease_number or 0))
 
 
