@@ -12,7 +12,8 @@ FILE=${MIRRORDASH_CLOCK_FILE:-/storage/mirrordash/clock}  # overridable for test
 case "${1:-}" in
   save)
     [ "$(timedatectl show -p NTPSynchronized --value 2>/dev/null)" = yes ] || exit 0
-    touch "$FILE" ;;
+    # A new empty file: its time is now. Not touch: this runs as root in pi's folder, and touch follows a link
+    install -m 644 /dev/null "$FILE" ;;
   restore)
     saved=$(stat -c %Y "$FILE" 2>/dev/null) || exit 0
     if [ "$saved" -gt "$(date +%s)" ]; then
