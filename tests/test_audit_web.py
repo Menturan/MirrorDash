@@ -82,3 +82,13 @@ def test_a_stalled_screen_does_not_delay_the_others():
     asyncio.run(go())
     good.send_json.assert_awaited_once_with({"x": 1})
     assert manager.active_connections == [good]
+
+
+@pytest.mark.parametrize("package_name", ["-r/storage/requirements.txt", "--editable", "../evil", "a b"])
+def test_a_package_name_cant_be_an_option_or_a_path_out(package_name):
+    """uv reads a name starting with - as an option: "-r/file" would install whatever that file lists."""
+    from fastapi import HTTPException
+
+    from mirrordash_core.features.modules.service import check_package_name
+    with pytest.raises(HTTPException):
+        check_package_name(package_name)
