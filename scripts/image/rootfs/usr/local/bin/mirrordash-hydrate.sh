@@ -1,5 +1,18 @@
 #!/bin/bash
+# At every boot, as root, before MirrorDash starts: /storage mounted (repaired if it has to be), its
+# folders there with the right owners, the venv and its Python, and the SSH host keys.
 set -euo pipefail
+
+# A folder root gives an owner and mode at every boot. Most lie in folders pi (or the module host) owns,
+# where one could have been swapped for a symlink: chown and chmod would then act on whatever it points
+# to (/etc/sudoers.d made pi's is root for pi). So a link there is removed first, never followed.
+owned_folder() {  # owned_folder OWNER:GROUP MODE PATH
+    local owner=$1 mode=$2 path=$3
+    if [ -L "$path" ]; then rm -f "$path"; fi
+    mkdir -p "$path"
+    chown -h "$owner" "$path"
+    chmod "$mode" "$path"
+}
 
 # Defensive mount check: if the partition exists but is not mounted (fstab's nofail lets the boot go
 # on when its fsck wants a person, e.g. after a power cut mid-write), repair it and mount it
@@ -22,15 +35,12 @@ if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage; the
     exit 1
 fi
 
-# Ensure parent directory and subdirectories exist on mounted /storage
-mkdir -p /storage/mirrordash/data
-mkdir -p /storage/mirrordash/system-connections
-chown pi:pi /storage/mirrordash
-chown pi:pi /storage/mirrordash/data
+owned_folder pi:pi 755 /storage/mirrordash
 # The core's data (every setting and key, the logins, the Matter token) is pi's alone; the modules,
 # as their own users, have a folder of their own (mirrordash-modules.service, ARCHITECTURE #41), which
 # pi reaches through their group (backups)
-chmod 700 /storage/mirrordash/data
+owned_folder pi:pi 700 /storage/mirrordash/data
+if [ -L /storage/mirrordash/modules ]; then rm -f /storage/mirrordash/modules; fi
 mkdir -p /storage/mirrordash/modules
 # On an image the modules' folder is a file system of its own, in a sparse file on /storage: a module
 # that fills it can't fill the card (ARCHITECTURE #41). A quarter of /storage, at most 8 GB, made once,
@@ -62,12 +72,11 @@ if id mirrordash-mod >/dev/null 2>&1; then
     # Each module instance runs as a user of its own (features/modules/forkserver.py), in no group of the
     # folder: it may pass through these (o+x), not list them, to its own data folder and the site. Set
     # here, as root: the host's sandbox refuses a setgid mode (RestrictSUIDSGID).
-    mkdir -p "$MODULES/data" "$MODULES/cache"
-    chown mirrordash-mod:mirrordash-mod "$MODULES/data" "$MODULES/cache"
-    chmod 2771 "$MODULES" "$MODULES/data" "$MODULES/cache"
+    chmod 2771 "$MODULES"  # a link there was removed above, before it was mounted on
+    owned_folder mirrordash-mod:mirrordash-mod 2771 "$MODULES/data"
+    owned_folder mirrordash-mod:mirrordash-mod 2771 "$MODULES/cache"
 fi
-chown root:root /storage/mirrordash/system-connections
-chmod 700 /storage/mirrordash/system-connections
+owned_folder root:root 700 /storage/mirrordash/system-connections
 
 # Bind mount the NetworkManager connections directory to bypass symlink security restrictions
 if ! mountpoint -q /etc/NetworkManager/system-connections; then
@@ -127,6 +136,8 @@ chown -h pi:pi /storage/mirrordash /storage/mirrordash/venv  # -h: pi controls t
 
 # SSH host keys live here: every mirror boots the same root image, and changes to it are gone at reboot.
 # Only the missing ones are made (the first boot).
+# root's own folder, so pi can't swap the keys in it for others
+owned_folder root:root 755 /storage/mirrordash/ssh
 mkdir -p /storage/mirrordash/ssh/etc/ssh
 ssh-keygen -A -f /storage/mirrordash/ssh
 
@@ -134,8 +145,7 @@ ssh-keygen -A -f /storage/mirrordash/ssh
 mkdir -p /storage/rauc
 
 # Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
-mkdir -p /storage/mirrordash/logs
-chown pi:pi /storage/mirrordash/logs
+owned_folder pi:pi 755 /storage/mirrordash/logs
 
 # The repair above happened before /storage was there to save its log in
 if [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then

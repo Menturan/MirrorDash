@@ -299,7 +299,7 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
     assert 'mount -o loop,discard,nosuid,nodev "$MODULES_IMG" "$MODULES"' in hydrate
     # mounted first, then passable (not listable) for the modules' users, who are in none of its groups
-    assert hydrate.index("$MODULES_IMG\" \"$MODULES\"") < hydrate.index('chmod 2771 "$MODULES" "$MODULES/data" "$MODULES/cache"')
+    assert hydrate.index("$MODULES_IMG\" \"$MODULES\"") < hydrate.index('owned_folder mirrordash-mod:mirrordash-mod 2771 "$MODULES/data"')
     # MemoryMax needs the memory controller, which the Pi's firmware turns off
     assert "MemoryMax=30%" in host and "ProcSubset=pid" in host and '"cgroup_enable=memory"' in SETUP
     assert 'Environment="MIRRORDASH_MODULE_SOCKET=/run/mirrordash-modules/host.sock"' in unit("/etc/systemd/system/mirrordash.service")
@@ -338,3 +338,20 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
                 "70100=192.168.1.0/24", "1000=192.168.1.20", "960=192.168.1.20", "--now", "70100=::1"):
         log.unlink(missing_ok=True)
         assert run(bad) != 0 and not log.exists(), bad
+
+
+def test_hydrate_never_follows_a_link_pi_planted(tmp_path):
+    """hydrate (root, every boot) gives folders in pi's own folder an owner and mode: one pi swapped for a
+    symlink to /etc/sudoers.d must be replaced by a folder, not have the link's target made pi's."""
+    import os
+    import subprocess
+    hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
+    start = hydrate.index("owned_folder() {")
+    function = hydrate[start:hydrate.index("\n}\n", start) + 3]
+    target, link = tmp_path / "sudoers.d", tmp_path / "logs"
+    target.mkdir(mode=0o750)
+    link.symlink_to(target)
+    me = f"{os.getuid()}:{os.getgid()}"
+    subprocess.run(["bash", "-c", f'{function}\nowned_folder {me} 700 "$1"', "_", str(link)], check=True)
+    assert not link.is_symlink() and link.is_dir()
+    assert oct(target.stat().st_mode & 0o777) == "0o750"
