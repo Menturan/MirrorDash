@@ -1,12 +1,34 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The Hardware tab: the screen and sound settings, and the sensors and inputs on the GPIO header."""
 
 import logging
+import time
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.admin import events_header, notify, require_api_key, templates
 from mirrordash_core.config import get_core_version, load_config, save_config
+from mirrordash_core.features.hardware.devices import (
+    BUTTON_ACTIONS,
+    BUTTON_TYPES,
+    DEFAULT_LONG_PRESS,
+    DEVICE_TYPES,
+    FAN_TYPES,
+    GPIO_HEADER_PINS,
+    I2C_PINS,
+    IIO_SENSORS,
+    LONG_PRESS_CHOICES,
+    PRESENCE_TYPES,
+    PRESS_TYPES,
+    find_device,
+    get_devices,
+    gpio_inputs,
+    kernel_boot_id,
+    read_fan_state,
+    read_sensor,
+    sync_gpio_overlays,
+)
 from mirrordash_core.system_settings import get_system_settings
 
 logger = logging.getLogger("mirrordash.core.hardware")
@@ -23,38 +45,12 @@ async def get_panel_system(request: Request):
     settings = settings_data.get("settings", {})
     resolutions = settings_data.get("resolutions", [])
 
-    # Parse current active times
-    display_control = settings.get("display_control", {})
-    interval = display_control.get("interval", {"start": "07:00", "end": "22:00"})
-    start_time_str = interval.get("start", "07:00")
-    end_time_str = interval.get("end", "22:00")
-
-    # Helper to parse 24h string to (hour, minute, ampm)
-    def parse_time_to_format(time_str: str, fmt: str):
-        try:
-            h_str, m_str = time_str.split(":")
-            h = int(h_str)
-            m = int(m_str)
-        except Exception:
-            h, m = 7, 0
-
-        if fmt == "12h":
-            ampm = "PM" if h >= 12 else "AM"
-            h_12 = h % 12
-            if h_12 == 0:
-                h_12 = 12
-            return h_12, m, ampm
-        else:
-            return h, m, None
-
-    start_h, start_m, start_ampm = parse_time_to_format(start_time_str, time_format)
-    end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
-
-    # Hours list
+    # When the screen is on in the scheduled mode, shown as the owner's clock (24h or 12h) has it
+    interval = settings.get("display_control", {}).get("interval", {"start": "07:00", "end": "22:00"})
+    start_h, start_m, start_ampm = _clock_parts(interval.get("start", "07:00"), time_format)
+    end_h, end_m, end_ampm = _clock_parts(interval.get("end", "22:00"), time_format)
     hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
-
     minutes_list = list(range(0, 60))
-
     current_version = get_core_version()
 
     return templates.TemplateResponse(
@@ -77,6 +73,17 @@ async def get_panel_system(request: Request):
     )
 
 
+def _clock_parts(time_text: str, time_format: str) -> tuple[int, int, str | None]:
+    """"22:30" as (hour, minute, AM/PM): (10, 30, "PM") on a 12h clock, (22, 30, None) on a 24h one."""
+    try:
+        hour, minute = (int(part) for part in time_text.split(":"))
+    except ValueError:
+        hour, minute = 7, 0
+    if time_format != "12h":
+        return hour, minute, None
+    return hour % 12 or 12, minute, "PM" if hour >= 12 else "AM"
+
+
 def _format_temperature(celsius: float) -> str:
     if load_config().get("globals", {}).get("temperature_unit", "C") == "F":
         return f"{celsius * 9 / 5 + 32:.1f} °F"
@@ -85,8 +92,6 @@ def _format_temperature(celsius: float) -> str:
 
 async def _sensor_texts(device_type: str) -> list[tuple[str, str]]:
     """(label, value) pairs for an IIO sensor's latest reading, or [] without a reading."""
-    from mirrordash_core.features.hardware.devices import read_sensor
-
     reading = await read_sensor(device_type)
     if not reading:
         return []
@@ -96,8 +101,6 @@ async def _sensor_texts(device_type: str) -> list[tuple[str, str]]:
 
 
 def _fan_text() -> str | None:
-    from mirrordash_core.features.hardware.devices import read_fan_state
-
     fan = read_fan_state()
     if not fan:
         return None
@@ -113,23 +116,11 @@ def _fan_text() -> str | None:
 def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: str = "success",
                   restart_needed: bool = False):
     """The Sensors & Inputs card, plus the page events that report what happened."""
-    from mirrordash_core.features.hardware.devices import (
-        BUTTON_ACTIONS,
-        BUTTON_TYPES,
-        DEFAULT_LONG_PRESS,
-        DEVICE_TYPES,
-        FAN_TYPES,
-        GPIO_HEADER_PINS,
-        I2C_PINS,
-        LONG_PRESS_CHOICES,
-        get_devices,
-    )
-
     devices = get_devices(system_cfg)
-    used_types = {d["type"] for d in devices}
-    next_button = next((t for t in BUTTON_TYPES if t not in used_types), None)  # offer one button at a time
-    used_pins = {d["pin"] for d in devices if "pin" in d}
-    if any("address" in d for d in devices):
+    used_types = {device["type"] for device in devices}
+    next_button = next((button for button in BUTTON_TYPES if button not in used_types), None)  # offer one button at a time
+    used_pins = {device["pin"] for device in devices if "pin" in device}
+    if any("address" in device for device in devices):
         used_pins |= set(I2C_PINS)
     events = {}
     if message:
@@ -142,9 +133,9 @@ def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: s
         context={
             "devices": devices,
             "device_types": DEVICE_TYPES,
-            "available_types": [t for t in DEVICE_TYPES if t not in used_types
-                                and (t not in BUTTON_TYPES or t == next_button)
-                                and not (t in FAN_TYPES and any(d["type"] in FAN_TYPES for d in devices))],
+            "available_types": [device_type for device_type in DEVICE_TYPES if device_type not in used_types
+                                and (device_type not in BUTTON_TYPES or device_type == next_button)
+                                and not (device_type in FAN_TYPES and used_types & set(FAN_TYPES))],
             "free_pins": [(bcm, header) for bcm, header in sorted(GPIO_HEADER_PINS.items()) if bcm not in used_pins],
             "header_pins": GPIO_HEADER_PINS,
             "button_types": BUTTON_TYPES,
@@ -160,8 +151,6 @@ def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: s
 
 async def _save_devices(request: Request, config: dict, devices: list[dict], done_message: str):
     """Validate, write the overlays and save; answer with the updated card."""
-    from mirrordash_core.features.hardware.devices import sync_gpio_overlays
-
     system_cfg = config.setdefault("system", {})
     previous = system_cfg.get("devices", [])
     system_cfg["devices"] = devices
@@ -182,13 +171,6 @@ async def get_devices_card(request: Request):
 
 @router.post("/panels/system/devices/add", dependencies=[Depends(require_api_key)])
 async def add_device(request: Request):
-    from mirrordash_core.features.hardware.devices import (
-        BUTTON_TYPES,
-        DEFAULT_LONG_PRESS,
-        DEVICE_TYPES,
-        PRESS_TYPES,
-    )
-
     form = await request.form()
     device_type = form.get("type", "")
     config = load_config()
@@ -207,36 +189,26 @@ async def add_device(request: Request):
         temperature = form.get("temperature", "")
         device["temperature"] = int(temperature) if temperature.isdigit() else -1
     if device_type in BUTTON_TYPES:
-        device["actions"] = {p: "none" for p in PRESS_TYPES}
+        device["actions"] = {press: "none" for press in PRESS_TYPES}
         device["long_press"] = DEFAULT_LONG_PRESS
     return await _save_devices(request, config, devices + [device], f"{spec['label']} added.")
 
 
 @router.post("/panels/system/devices/remove", dependencies=[Depends(require_api_key)])
 async def remove_device(request: Request):
-    from mirrordash_core.features.hardware.devices import DEVICE_TYPES
 
     device_type = (await request.form()).get("type", "")
     config = load_config()
-    devices = [d for d in config.get("system", {}).get("devices", []) if d.get("type") != device_type]
+    devices = [device for device in config.get("system", {}).get("devices", []) if device.get("type") != device_type]
     label = DEVICE_TYPES.get(device_type, {}).get("label", "Device")
     return await _save_devices(request, config, devices, f"{label} removed.")
 
 
 @router.post("/panels/system/devices/button-actions", dependencies=[Depends(require_api_key)])
 async def save_button_actions(request: Request):
-    from mirrordash_core.features.hardware.devices import (
-        BUTTON_ACTIONS,
-        BUTTON_TYPES,
-        DEFAULT_LONG_PRESS,
-        LONG_PRESS_CHOICES,
-        PRESS_TYPES,
-        find_device,
-    )
-
     form = await request.form()
-    actions = {p: form.get(f"action_{p}", "none") for p in PRESS_TYPES}
-    if any(a not in BUTTON_ACTIONS for a in actions.values()):
+    actions = {press: form.get(f"action_{press}", "none") for press in PRESS_TYPES}
+    if any(action not in BUTTON_ACTIONS for action in actions.values()):
         return notify("Unknown button action.", "error")
     try:
         long_press = float(form.get("long_press", DEFAULT_LONG_PRESS))
@@ -257,40 +229,30 @@ async def save_button_actions(request: Request):
 
 @router.get("/panels/system/gpio-status", dependencies=[Depends(require_api_key)])
 async def get_gpio_status():
-    import time
-
-    from mirrordash_core.features.hardware.devices import (
-        BUTTON_TYPES,
-        DEVICE_TYPES,
-        PRESENCE_TYPES,
-        get_devices,
-        gpio_inputs,
-        kernel_boot_id,
-    )
-
     system_cfg = load_config().get("system", {})
     if system_cfg.get("gpio_pending_boot_id") == kernel_boot_id():
         return HTMLResponse(content=templates.get_template("hardware_status.html").render(restart_needed=True))
 
     lines = []
-    for d in get_devices(system_cfg):
-        label = DEVICE_TYPES[d["type"]]["label"]
-        if d["type"] in BUTTON_TYPES:
-            status = "Ready" if d["type"] in gpio_inputs.detected else "Not detected. Restart the mirror to load the driver."
-        elif d["type"] in PRESENCE_TYPES:
-            if d["type"] not in gpio_inputs.detected:
+    for device in get_devices(system_cfg):
+        device_type = device["type"]
+        label = DEVICE_TYPES[device_type]["label"]
+        if device_type in BUTTON_TYPES:
+            status = "Ready" if device_type in gpio_inputs.detected else "Not detected. Restart the mirror to load the driver."
+        elif device_type in PRESENCE_TYPES:
+            if device_type not in gpio_inputs.detected:
                 status = "Not detected. Restart the mirror to load the driver."
-            elif gpio_inputs.presence.get(d["type"]):
+            elif gpio_inputs.presence.get(device_type):
                 status = "Someone is there right now"
             elif gpio_inputs.last_motion_at:
                 minutes = int((time.monotonic() - gpio_inputs.last_motion_at) // 60)
                 status = "Last motion just now" if minutes < 1 else f"Last motion {minutes} min ago"
             else:
                 status = "No motion seen since MirrorDash started"
-        elif d["type"] in ("fan", "pwm_fan"):
+        elif device_type in FAN_TYPES:
             status = _fan_text() or "Not detected. Restart the mirror to load the driver."
         else:
-            texts = await _sensor_texts(d["type"])
+            texts = await _sensor_texts(device_type)
             status = " · ".join(value for _, value in texts) if texts else "No reading. Check the wiring."
         lines.append((label, status))
     return HTMLResponse(content=templates.get_template("hardware_status.html").render(lines=lines))
@@ -298,17 +260,11 @@ async def get_gpio_status():
 
 @router.get("/panels/dashboard/sensor", dependencies=[Depends(require_api_key)])
 async def get_dashboard_sensor():
-    from mirrordash_core.features.hardware.devices import (
-        FAN_TYPES,
-        IIO_SENSORS,
-        find_device,
-    )
-
     system_cfg = load_config().get("system", {})
     tiles = []
     for device_type in IIO_SENSORS:
         if find_device(system_cfg, device_type):
             tiles += await _sensor_texts(device_type)
-    if any(find_device(system_cfg, t) for t in FAN_TYPES) and (fan := _fan_text()):
+    if any(find_device(system_cfg, fan_type) for fan_type in FAN_TYPES) and (fan := _fan_text()):
         tiles.append(("Fan", fan))
     return HTMLResponse(content=templates.get_template("sensor_tiles.html").render(tiles=tiles))
