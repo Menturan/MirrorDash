@@ -1,4 +1,7 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""Backups: a .mirror file is a zip of the settings, the data dir, the modules' data and the source of
+local modules, with a manifest of the installed modules to reinstall. With a password the whole zip is
+encrypted with openssl and also carries what logs in (the admin password, the pi user's, the Wi-Fi)."""
 
 import asyncio
 import contextlib
@@ -32,35 +35,31 @@ from mirrordash_core.host import reboot_system, run_in_background, run_restart
 logger = logging.getLogger("mirrordash.core.backup")
 
 
-# Paths
+# The source checkout's root, where a developer's local modules sit in modules/
 ROOT_DIR = Path(__file__).parent.parent.parent.resolve()
-
-
 BASE_DIR = get_base_dir()
-
-
 DATA_DIR = os.path.join(BASE_DIR, "data")
-
-
 BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
-
 
 # Files in the data dir that never go in a backup nor come back from one: the config goes in on its
 # own (sanitized unless encrypted), its last good copy and a broken one hold the credentials a plain
 # backup leaves out, and a login cookie must not work on another mirror.
 NEVER_BACKED_UP = ("config.json", "config.json.bak", "config.json.broken-*", "sessions.json", "backups")
-
+# Files a database or an editor keeps only while it works: never worth restoring
+TEMPORARY_FILES = ("*.tmp", "*.lock", "*-journal", "*-wal", "*-shm")
+# What a local module's folder holds that isn't its source
+NOT_MODULE_SOURCE = (".git", "__pycache__", ".venv", "dist", "build", "*.pyc", ".idea")
+# The zip's own encryption, which only MirrorDash versions before openssl used (zipfile can't read it)
+ZIP_ENTRY_IS_ENCRYPTED = 0x1
 
 # In a plain backup only: the pi user's password (an encrypted one carries it, and the Wi-Fi)
 SECRET_FILES = ("pi_password.hash",)
-
 
 # openssl enc's header: the backup is encrypted. ponytail: AES-256-CBC with PBKDF2, no MAC; a changed
 # file fails to unpack as a zip rather than being detected. Upgrade path: openssl's -aead modes (3.x).
 ENCRYPTED_MAGIC = b"Salted__"
 
 
-# Helper to find or restore a local module directory
 def get_modules_dir() -> Path:
     """Get the directory where local modules live or should be restored: on a mirror the module host's
     folder, where it can build them (ARCHITECTURE #41)."""
@@ -71,11 +70,13 @@ def get_modules_dir() -> Path:
 
 
 def find_local_module_dir(package_name: str) -> Path | None:
-    norm_pkg = package_name.lower().replace("_", "-")
+    """The folder of a module installed from a local folder (not from GitHub or PyPI), or None."""
+    def same_name(name: str) -> bool:
+        return name.lower().replace("_", "-") == package_name.lower().replace("_", "-")
     for base_dir in [ROOT_DIR / "modules", get_module_dir() / "local"]:
         if base_dir.exists():
             for child in base_dir.iterdir():
-                if child.is_dir() and child.name.lower().replace("_", "-") == norm_pkg:
+                if child.is_dir() and same_name(child.name):
                     return child
     return None
 
@@ -88,47 +89,50 @@ def venv_distributions(venv_dir: Path | None = None, **kwargs):
     return importlib.metadata.distributions(**kwargs)
 
 
+# Open a folder, and fail (ELOOP/ENOTDIR) rather than follow a link in its place
 DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
-def copy_out(src: Path, dst: Path, skip) -> None:
-    """shutil.copytree(src, dst, ignore=skip) out of a folder the module host writes, through file
+def copy_out_of_module_folder(src: Path, dst: Path, ignore) -> None:
+    """shutil.copytree(src, dst, ignore=ignore) out of a folder the module host writes, through file
     descriptors (os.fwalk, O_NOFOLLOW): no symlink is followed, not even one swapped in while it copies,
     so the host can't carry the core's data into a backup. Links themselves are left out."""
     for root, dirs, files, root_fd in os.fwalk(src, follow_symlinks=False):
         target = dst / os.path.relpath(root, src)
         target.mkdir(parents=True, exist_ok=True)
-        ignored = skip(root, dirs + files)
+        ignored = ignore(root, dirs + files)
         dirs[:] = [d for d in dirs if d not in ignored]
         for name in files:
             if name in ignored:
                 continue
             try:
-                fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
+                # O_NONBLOCK: a FIFO put there opens at once instead of hanging, and is then skipped below
+                file_descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
             except OSError:  # a link (ELOOP), or gone meanwhile
                 continue
-            with open(fd, "rb") as f:
-                if stat.S_ISREG(os.fstat(fd).st_mode):
-                    with open(target / name, "wb") as out:
-                        shutil.copyfileobj(f, out)
+            with open(file_descriptor, "rb") as source_file:
+                if stat.S_ISREG(os.fstat(file_descriptor).st_mode):
+                    with open(target / name, "wb") as copy:
+                        shutil.copyfileobj(source_file, copy)
 
 
 def _open_dir(root: Path, parts: tuple[str, ...]) -> int:
     """root/parts... opened as a directory, each part made if missing and none followed if it is a link."""
-    fd = os.open(root, DIR_FLAGS)
+    folder_descriptor = os.open(root, DIR_FLAGS)
     try:
         for part in parts:
             with contextlib.suppress(FileExistsError):
-                os.mkdir(part, dir_fd=fd)
-            fd, parent = os.open(part, DIR_FLAGS, dir_fd=fd), fd
-            os.close(parent)
+                os.mkdir(part, dir_fd=folder_descriptor)
+            parent_descriptor = folder_descriptor
+            folder_descriptor = os.open(part, DIR_FLAGS, dir_fd=parent_descriptor)
+            os.close(parent_descriptor)
     except OSError:
-        os.close(fd)
+        os.close(folder_descriptor)
         raise
-    return fd
+    return folder_descriptor
 
 
-def _copy_in(src: Path, dir_fd: int) -> None:
+def _copy_into_open_folder(src: Path, dir_fd: int) -> None:
     """src's files into the open directory, group-writable for the module host (pi writes them); links
     left out. Nothing at dir_fd is followed: made with O_EXCL and O_NOFOLLOW."""
     for entry in os.scandir(src):
@@ -139,7 +143,7 @@ def _copy_in(src: Path, dir_fd: int) -> None:
             fd = os.open(entry.name, DIR_FLAGS, dir_fd=dir_fd)
             try:
                 os.fchmod(fd, 0o2770)
-                _copy_in(Path(entry.path), fd)
+                _copy_into_open_folder(Path(entry.path), fd)
             finally:
                 os.close(fd)
         else:
@@ -171,7 +175,7 @@ def _replace_in_module_folder(src: Path, dest: Path) -> bool:
         fd = os.open(dest.name, DIR_FLAGS, dir_fd=parent)
         try:
             os.fchmod(fd, 0o2770)
-            _copy_in(src, fd)
+            _copy_into_open_folder(src, fd)
         finally:
             os.close(fd)
     finally:
@@ -216,6 +220,7 @@ def backup_file(filename: str) -> str:
 
 
 def is_encrypted(path: str) -> bool:
+    """Whether a backup file is encrypted (made with a password)."""
     with open(path, "rb") as f:
         return f.read(len(ENCRYPTED_MAGIC)) == ENCRYPTED_MAGIC
 
@@ -256,7 +261,7 @@ async def read_manifest(path: str, password: str | None = None) -> dict | None:
         if zip_path is None:
             return None
         with zipfile.ZipFile(zip_path) as zf:
-            if zf.getinfo("backup_manifest.json").flag_bits & 0x1:
+            if zf.getinfo("backup_manifest.json").flag_bits & ZIP_ENTRY_IS_ENCRYPTED:
                 raise ValueError("This backup was made by an older MirrorDash version and can't be read.")
             return json.loads(zf.read("backup_manifest.json").decode("utf-8"))
 
@@ -275,9 +280,9 @@ async def list_backups() -> dict:
     backups = []
     for entry in os.scandir(BACKUPS_DIR) if os.path.isdir(BACKUPS_DIR) else []:
         if entry.is_file() and entry.name.endswith(".mirror"):
-            stat = entry.stat()
-            backups.append({"filename": entry.name, "created_at": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                            "size_bytes": stat.st_size, "encrypted": is_encrypted(entry.path)})
+            file_info = entry.stat()
+            backups.append({"filename": entry.name, "created_at": datetime.fromtimestamp(file_info.st_mtime).isoformat(),
+                            "size_bytes": file_info.st_size, "encrypted": is_encrypted(entry.path)})
     backups.sort(key=lambda b: b["created_at"], reverse=True)
     return {"backups": backups}
 
@@ -292,7 +297,6 @@ async def create_backup(password: str | None = None) -> dict:
 
     logger.info(f"Creating backup: {backup_filename} (encrypted: {bool(password)})")
 
-    # We will build the archive inside a secure temporary directory
     os.makedirs(BACKUPS_DIR, exist_ok=True)  # a new mirror's storage has no backups folder yet
     with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as temp_dir_path:
         temp_dir = Path(temp_dir_path)
@@ -315,15 +319,15 @@ async def create_backup(password: str | None = None) -> dict:
             logger.error(f"Failed to copy config: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to package configuration: {e}")
 
-        # 2. Copy data_dir files (excluding cache_dir)
+        # 2. The core's data dir, without what never goes in a backup (that only at its top level)
         temp_data_dir = content / "data"
-        skip = shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm')
+        ignore_temporary_files = shutil.ignore_patterns(*TEMPORARY_FILES)
         if os.path.exists(DATA_DIR):
             try:
-                top = shutil.ignore_patterns(*NEVER_BACKED_UP, *(() if password else SECRET_FILES))
+                ignore_at_top = shutil.ignore_patterns(*NEVER_BACKED_UP, *(() if password else SECRET_FILES))
                 def ignore(directory, names):
-                    ignored = skip(directory, names)
-                    return ignored | top(directory, names) if Path(directory) == Path(DATA_DIR) else ignored
+                    ignored = ignore_temporary_files(directory, names)
+                    return ignored | ignore_at_top(directory, names) if Path(directory) == Path(DATA_DIR) else ignored
                 await asyncio.to_thread(shutil.copytree, DATA_DIR, temp_data_dir, ignore=ignore)
             except Exception as e:
                 logger.error(f"Failed to copy data dir: {e}")
@@ -334,8 +338,8 @@ async def create_backup(password: str | None = None) -> dict:
         module_data = get_module_dir() / "data"
         if module_data.is_dir() and not module_data.is_symlink():
             try:
-                await asyncio.to_thread(copy_out, module_data, content / "module_data",
-                                        shutil.ignore_patterns('*.tmp', '*.lock', '*-journal', '*-wal', '*-shm'))
+                await asyncio.to_thread(copy_out_of_module_folder, module_data, content / "module_data",
+                                        ignore_temporary_files)
             except Exception as e:
                 logger.error(f"Failed to copy the modules' data: {e}")
                 raise HTTPException(status_code=500, detail=f"Failed to package the modules' data: {e}")
@@ -343,13 +347,13 @@ async def create_backup(password: str | None = None) -> dict:
         # 3. Discover and process modules; a local module's source code goes in the archive
         try:
             modules_list = installed_modules()
-            for mod in modules_list:
-                if mod["type"] == "local":
+            for module in modules_list:
+                if module["type"] == "local":
                     await asyncio.to_thread(
-                        copy_out,
-                        find_local_module_dir(mod["package_name"]),
-                        content / "local_modules" / mod["folder_name"],
-                        shutil.ignore_patterns('.git', '__pycache__', '.venv', 'dist', 'build', '*.pyc', '.idea')
+                        copy_out_of_module_folder,
+                        find_local_module_dir(module["package_name"]),
+                        content / "local_modules" / module["folder_name"],
+                        shutil.ignore_patterns(*NOT_MODULE_SOURCE)
                     )
         except Exception as e:
             logger.error(f"Failed to package modules metadata: {e}")
@@ -386,17 +390,18 @@ async def create_backup(password: str | None = None) -> dict:
 
 
 async def delete_backup(filename: str) -> None:
+    """Delete a saved backup."""
     os.remove(backup_file(filename))
     logger.info(f"Backup deleted: {filename}")
 
 
-async def _restore_module(mod: dict, extract_dir: Path, site) -> None:
+async def _restore_module(module: dict, extract_dir: Path, site) -> None:
     """Install one module from the manifest into the module site being changed (module_host.packages):
     a GitHub module at its commit, a PyPI module at its version (or the latest if that fails), a local
     module from the copy in the backup."""
-    package_name, version = mod.get("package_name"), mod.get("version")
-    if mod.get("type", "pypi") == "pypi":
-        source = mod.get("source") or ""
+    package_name, version = module.get("package_name"), module.get("version")
+    if module.get("type", "pypi") == "pypi":
+        source = module.get("source") or ""
         target = source if source.startswith("git+https://github.com/") else f"{package_name}=={version}"
         logger.info(f"Restoring module: {package_name} from {target}")
         if (await site.pip("install", target))[0] != 0:
@@ -404,7 +409,7 @@ async def _restore_module(mod: dict, extract_dir: Path, site) -> None:
             if (await site.pip("install", package_name))[0] != 0:
                 logger.error(f"Could not restore module {package_name}: install failed")
         return
-    folder = mod.get("folder_name")
+    folder = module.get("folder_name")
     # Trust boundary: the manifest names a folder; a path ("/home/pi", "../..") would be emptied below
     if not isinstance(folder, str) or Path(folder).name != folder or folder in ("", ".", ".."):
         logger.error(f"Local module {package_name}: invalid folder name {folder!r} in the backup, skipped")
@@ -435,10 +440,14 @@ async def _restore_config(extract_dir: Path) -> bool:
     if not restored["admin_auth"]:
         del restored["admin_auth"]  # a mirror still being set up: the admin page asks for one
     if isinstance(restored.get("mqtt"), dict):
+        current_mqtt = current.get("mqtt", {})
         # This mirror's own MQTT ids, never the backup's: two mirrors under one id would share their commands,
         # and under one client ID throw each other off the broker
-        restored["mqtt"]["id"] = current.get("mqtt", {}).get("id") or new_id()
-        restored["mqtt"]["client_id"] = current.get("mqtt", {}).get("client_id") or new_client_id()
+        restored["mqtt"]["id"] = current_mqtt.get("id") or new_id()
+        restored["mqtt"]["client_id"] = current_mqtt.get("client_id") or new_client_id()
+        # A plain backup leaves the broker's password out: keep this mirror's, as with the admin password
+        if "password" not in restored["mqtt"] and current_mqtt.get("password"):
+            restored["mqtt"]["password"] = current_mqtt["password"]
     save_config(restored)
     logger.info("Configuration files restored successfully.")
     return reboot_needed
@@ -446,9 +455,9 @@ async def _restore_config(extract_dir: Path) -> bool:
 
 def _restore_data(src_data_dir: Path) -> None:
     """Module data back into the data dir, replacing what's there."""
-    never = shutil.ignore_patterns(*NEVER_BACKED_UP)
+    never_restored = shutil.ignore_patterns(*NEVER_BACKED_UP)
     items = list(src_data_dir.iterdir()) if src_data_dir.exists() else []
-    skipped = never(str(src_data_dir), [item.name for item in items])
+    skipped = never_restored(str(src_data_dir), [item.name for item in items])
     for item in items:
         if item.name in skipped:
             continue
@@ -483,7 +492,7 @@ async def restore_backup(password: str | None = None) -> dict:
         with tempfile.TemporaryDirectory(dir=BACKUPS_DIR) as extract_dir:
             async with plain_zip(upload, password) as zip_path:
                 if zip_path is None:
-                    raise Exception("Failed to decrypt the backup: wrong password.")
+                    raise HTTPException(status_code=400, detail="Failed to decrypt the backup: wrong password.")
                 def extract():
                     with zipfile.ZipFile(zip_path) as zf:
                         zf.extractall(extract_dir)
@@ -495,8 +504,8 @@ async def restore_backup(password: str | None = None) -> dict:
             extract_dir = Path(extract_dir)
             manifest = json.loads((extract_dir / "backup_manifest.json").read_text(encoding="utf-8"))
             async with module_host.packages() as site:
-                for mod in manifest.get("modules", []):
-                    await _restore_module(mod, extract_dir, site)
+                for module in manifest.get("modules", []):
+                    await _restore_module(module, extract_dir, site)
             reboot_needed = await _restore_config(extract_dir)
             await asyncio.to_thread(_restore_data, extract_dir / "data")
             await asyncio.to_thread(_restore_module_data, extract_dir / "module_data")

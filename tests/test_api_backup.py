@@ -430,7 +430,7 @@ def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, modul
                return_value=(False, None)), \
          patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock), \
          patch("mirrordash_core.features.backup.service.save_config") as mock_save:
-        assert call(restore_backup, "wrong").status_code == 500
+        assert call(restore_backup, "wrong").status_code == 400
         r = call(restore_backup, password)
         assert r.status_code == 200, r.json()
     assert mock_save.call_args[0][0]["admin_auth"]["hash"] == "old-hash"
@@ -462,3 +462,15 @@ def test_a_backup_file_can_only_show_text_never_markup():
     with patch.object(routes, "read_manifest", new_callable=AsyncMock, return_value=None):  # encrypted, wrong password
         page = asyncio.run(routes._summary_or_password_prompt(f"x{evil}.mirror", is_local=True, password="nope")).body.decode()
     assert "Invalid backup password." in page and "<script>" not in page and 'name="is_local" value="true"' in page
+
+
+def test_a_plain_backup_keeps_this_mirrors_broker_password(tmp_path):
+    """A plain backup leaves the MQTT password out; restoring it must not wipe the one this mirror has."""
+    from mirrordash_core.features.backup import service
+    (tmp_path / "config.json").write_text(json.dumps({"mqtt": {"host": "broker.lan", "username": "mirror"}}))
+    saved = {}
+    with patch.object(service, "load_config", return_value={"mqtt": {"id": "a1", "client_id": "c1", "password": "kept"}}), \
+         patch.object(service, "save_config", side_effect=saved.update), \
+         patch.object(service, "sync_gpio_overlays", new_callable=AsyncMock, return_value=(False, None)):
+        asyncio.run(service._restore_config(tmp_path))
+    assert saved["mqtt"] == {"host": "broker.lan", "username": "mirror", "id": "a1", "client_id": "c1", "password": "kept"}
