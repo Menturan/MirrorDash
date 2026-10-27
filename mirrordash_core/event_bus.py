@@ -6,6 +6,8 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from mirrordash_core.host import run_in_background
+
 logger = logging.getLogger("mirrordash.core.event_bus")
 
 class EventBus:
@@ -65,7 +67,7 @@ class EventBus:
         for callback in list(subscribers):
             if inspect.iscoroutinefunction(callback):
                 if running:
-                    running.create_task(self._safe_await(callback, data, event_type))
+                    run_in_background(self._safe_await(callback, data, event_type))
                 elif self._loop and not self._loop.is_closed():
                     asyncio.run_coroutine_threadsafe(self._safe_await(callback, data, event_type), self._loop)
                 else:

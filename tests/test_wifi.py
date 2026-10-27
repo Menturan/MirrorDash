@@ -90,7 +90,7 @@ def test_wifi_setup_failure_restarts_if_the_hotspot_wont_come_back(mock_reboot, 
     mock_reboot.assert_called_once_with(delay_sec=3.0)
 
 
-@patch("mirrordash_core.features.wifi.network.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
 def test_restore_captive_ap_starts_the_same_profile(mock_exec):
     """The hotspot comes back with nmcli up on the kept profile, so its password stays the same."""
     import asyncio
@@ -110,7 +110,7 @@ def test_wifi_setup_missing_ssid(client):
 
 
 @patch("mirrordash_core.features.wifi.network._load_cached_scan")
-@patch("mirrordash_core.features.wifi.network.asyncio.create_subprocess_exec")
+@patch("asyncio.create_subprocess_exec")
 def test_wifi_scan_fallback_to_cache(mock_subprocess, mock_cache, client):
     """When nmcli fails, scan_wifi_networks should fall back to the cached file."""
     mock_proc = AsyncMock()
@@ -126,7 +126,7 @@ def test_wifi_scan_fallback_to_cache(mock_subprocess, mock_cache, client):
 
 
 @patch("mirrordash_core.features.wifi.network._load_cached_scan", return_value=["CachedNet", "MirrorDash-Setup"])
-@patch("mirrordash_core.features.wifi.network.asyncio.create_subprocess_exec")
+@patch("asyncio.create_subprocess_exec")
 def test_wifi_scan_empty_while_hotspot_uses_cache(mock_subprocess, _cache, client):
     """In hotspot mode nmcli can succeed with nothing (the radio can't scan): use the saved list,
     and never offer the mirror's own setup network."""
@@ -138,7 +138,7 @@ def test_wifi_scan_empty_while_hotspot_uses_cache(mock_subprocess, _cache, clien
 
 
 @patch("mirrordash_core.features.wifi.network._load_cached_scan")
-@patch("mirrordash_core.features.wifi.network.asyncio.create_subprocess_exec")
+@patch("asyncio.create_subprocess_exec")
 def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
     """When nmcli fails and there is no cache file, return an empty list."""
     mock_cache.return_value = []
@@ -195,11 +195,11 @@ def test_wifi_prompt_shows_password_and_qr_on_the_mirror(mock_hotspot, mock_pass
     assert '"WIFI:T:WPA;S:MirrorDash-Setup;P:abcde23456;;"' in response.text
 
 
-@patch("mirrordash_core.features.wifi.network.asyncio.create_subprocess_exec", new_callable=AsyncMock)
+@patch("asyncio.create_subprocess_exec", new_callable=AsyncMock)
 def test_teardown_keeps_the_hotspot_profile(mock_exec):
     """Setup only takes the hotspot down; deleting it would give the mirror a new password every time."""
     import asyncio
-
+    mock_exec.return_value.communicate = AsyncMock(return_value=(b"", b""))
     from mirrordash_core.features.wifi.network import _teardown_captive_ap
     mock_exec.return_value.wait = AsyncMock(return_value=0)
     mock_exec.return_value.returncode = 0

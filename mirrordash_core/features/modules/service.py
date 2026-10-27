@@ -22,7 +22,7 @@ from mirrordash_core.features.modules.loader import (
 )
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
-from mirrordash_core.host import run_restart
+from mirrordash_core.host import run_in_background, run_restart
 
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
@@ -189,7 +189,7 @@ async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"{what} failed: {e}")
-    asyncio.create_task(run_restart())
+    run_in_background(run_restart())
 
 
 def allow_scripts(name: str | None, allowed: bool) -> None:

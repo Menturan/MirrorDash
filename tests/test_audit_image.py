@@ -63,7 +63,7 @@ def test_wifi_country_failure_is_not_a_time_zone_failure(monkeypatch):
     class Proc:
         returncode = 0
 
-        async def communicate(self):
+        async def communicate(self, input=None):
             return b"", b""
 
     async def fake_exec(*a, **k):

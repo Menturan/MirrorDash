@@ -38,7 +38,7 @@ from mirrordash_core.features.wifi.network import (
     scan_wifi_networks,
     switch_wifi,
 )
-from mirrordash_core.host import reboot_system
+from mirrordash_core.host import reboot_system, run_in_background
 
 logger = logging.getLogger("mirrordash.core.wifi")
 router = APIRouter()
@@ -124,7 +124,7 @@ async def post_wifi_setup(body: dict) -> dict:
 
         # No restart needed: the mirror's screen notices the hotspot is gone and reloads, the clock and
         # mirrordash.local follow the new network by themselves. Modules start over to fetch data now.
-        asyncio.create_task(module_host.reload_modules())
+        run_in_background(module_host.reload_modules())
         return {"status": "success", "message": "Connected."}
     else:
         return {"status": "error", "message": message}
@@ -173,7 +173,7 @@ async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(d
         logger.warning("Could not join any Wi-Fi network from the backup; bringing the setup hotspot back.")
         if not await restore_captive_ap():
             await reboot_system(delay_sec=3.0)
-    asyncio.create_task(join_then_restore())
+    run_in_background(join_then_restore())
     return {"status": "success", "networks": [net["ssid"] for net in networks]}
 
 

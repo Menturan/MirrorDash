@@ -100,7 +100,7 @@ async def test_connect_wifi_success(mock_subproc):
     # The last call should be the actual connection command containing the password
     args = mock_subproc.call_args_list[-1][0]
     assert "MyPassword" in args
-    mock_proc.communicate.assert_called_with()
+    mock_proc.communicate.assert_called_with(input=None)
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
@@ -195,7 +195,7 @@ def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
     cmdline = tmp_path / "cmdline.txt"
     cmdline.write_text("overlayroot=tmpfs:recurse=0 root=PARTUUID=x rootwait cfg80211.ieee80211_regdom=US console=tty3\n")
     monkeypatch.setattr(system_os, "ZONE_TAB", str(tmp_path / "zone.tab"))
-    monkeypatch.setattr(system_os, "CMDLINE", str(cmdline))
+    monkeypatch.setattr(system_os, "KERNEL_COMMAND_LINE_FILE", str(cmdline))
 
     assert system_os.wifi_country_for("Europe/Stockholm") == "SE"
     assert system_os.wifi_country_for("America/New_York") == "US"
@@ -210,3 +210,27 @@ def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
         run.assert_not_awaited()
         assert asyncio.run(system_os.apply_wifi_country("SE")) is True
     assert run.await_args.args == ("sudo", "-n", "/usr/local/bin/mirrordash-wifi-country", "SE")
+
+
+def test_run_command_never_raises():
+    """A missing program and one that hangs come back as the shell's exit codes, not as exceptions."""
+    from mirrordash_core.host import EXIT_CODE_PROGRAM_NOT_FOUND, EXIT_CODE_TIMED_OUT, run_command
+    assert asyncio.run(run_command("no-such-program-anywhere"))[0] == EXIT_CODE_PROGRAM_NOT_FOUND
+    assert asyncio.run(run_command("sleep", "5", timeout=0.1))[0] == EXIT_CODE_TIMED_OUT
+    assert asyncio.run(run_command("cat", input_text="hello")) == (0, "hello", "")
+
+
+def test_nmcli_escapes_are_undone():
+    """nmcli -t writes a ':' or '\\' inside a field as '\\:' or '\\\\': an SSID like "Home:5G" stays whole."""
+    from mirrordash_core.features.wifi.network import split_nmcli_terse_line, unescape_nmcli_value
+    assert split_nmcli_terse_line(r"yes:Home\:5G:80") == ["yes", "Home:5G", "80"]
+    assert unescape_nmcli_value(r"back\\slash\:colon") == "back\\slash:colon"
+
+
+@pytest.mark.parametrize("throttled, undervoltage", [("0x0", False), ("0x1", True), ("0x10000", True),
+                                                      ("0x4", False), ("0x40000", False), ("0x50005", True)])
+def test_only_the_undervoltage_bits_warn_about_the_power_supply(throttled, undervoltage):
+    """Throttling (bits 2 and 18) also comes from heat: only bits 0 and 16 are about the supply."""
+    from mirrordash_core.features.dashboard import telemetry
+    with patch.object(telemetry, "run_command", AsyncMock(return_value=(0, f"throttled={throttled}\n", ""))):
+        assert asyncio.run(telemetry.get_undervoltage_detected()) is undervoltage

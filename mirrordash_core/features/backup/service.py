@@ -27,7 +27,7 @@ from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import SAFE_NAME, module_entry_points
 from mirrordash_core.features.mqtt.bridge import new_client_id, new_id
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
-from mirrordash_core.host import reboot_system, run_restart
+from mirrordash_core.host import reboot_system, run_in_background, run_restart
 
 logger = logging.getLogger("mirrordash.core.backup")
 
@@ -510,5 +510,5 @@ async def restore_backup(password: str | None = None) -> dict:
         raise HTTPException(status_code=500, detail=f"Restoration failed: {e}")
 
     logger.info(f"Restoration completed successfully! {'Rebooting to load the GPIO overlays' if reboot_needed else 'Restarting mirror server'}...")
-    asyncio.create_task(reboot_system() if reboot_needed else run_restart())
+    run_in_background(reboot_system() if reboot_needed else run_restart())
     return {"status": "success", "message": "Restoration completed successfully. System restarting..."}

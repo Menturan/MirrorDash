@@ -1,16 +1,18 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""Wi-Fi through NetworkManager's nmcli: scanning, joining, the saved networks, and the setup hotspot
+(MirrorDash-Setup) the mirror opens when it has no network."""
 
-import asyncio
 import logging
 import os
 import time
 
+from mirrordash_core.host import EXIT_CODE_TIMED_OUT, run_command
+
 logger = logging.getLogger("mirrordash.core.wifi")
 
 
+# Where NetworkManager keeps its saved networks; on the read-only root it is a link to /storage
 NM_CONN_DIR = "/etc/NetworkManager/system-connections"
-
-
 NM_PERSISTENT_LINK = "/storage/mirrordash/system-connections"
 
 
@@ -56,6 +58,35 @@ def ensure_nm_wifi_persistence() -> None:
 
 
 HOTSPOT_SSID = "MirrorDash-Setup"
+# The networks seen just before the hotspot started (mirrordash-wifi-check.sh writes it): while the
+# hotspot is up the Pi's single radio can't scan
+SCAN_BEFORE_HOTSPOT_FILE = "/var/lib/mirrordash-wifi-scan.cache"
+
+
+async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
+    """`nmcli <args>`: (exit_code, its output, or its error when it failed)."""
+    exit_code, output, error_output = await run_command("nmcli", *args, timeout=timeout)
+    return exit_code, (output if exit_code == 0 else error_output).strip()
+
+
+def split_nmcli_terse_line(line: str) -> list[str]:
+    """One line of `nmcli -t` output as its fields: ':' separates them, and nmcli writes a ':' or '\\'
+    inside a field as '\\:' or '\\\\' (an SSID like "Home:5G")."""
+    fields, current_field, characters = [], "", iter(line)
+    for character in characters:
+        if character == "\\":
+            current_field += next(characters, "")
+        elif character == ":":
+            fields.append(current_field)
+            current_field = ""
+        else:
+            current_field += character
+    return [*fields, current_field]
+
+
+def unescape_nmcli_value(value: str) -> str:
+    """One value from `nmcli -t` or `nmcli -g`, which write a ':' or '\\' in it as '\\:' or '\\\\'."""
+    return ":".join(split_nmcli_terse_line(value))
 
 
 async def scan_wifi_networks() -> list[str]:
@@ -69,123 +100,57 @@ async def scan_wifi_networks() -> list[str]:
 
 
 async def _scan_live() -> list[str]:
-    """Scan with nmcli; [] when scanning isn't possible."""
+    """Scan with nmcli: each name once, in nmcli's order (strongest first); [] when scanning isn't possible."""
     logger.info("Scanning for WiFi networks...")
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "-t", "-f", "SSID", "dev", "wifi", "list",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
-        if proc.returncode != 0:
-            logger.warning(f"WiFi scan failed: {stderr.decode().strip()}")
-            return []
-
-        # Parse SSIDs, filter duplicates and empty lines
-        ssids = []
-        for line in stdout.decode("utf-8", errors="ignore").splitlines():
-            ssid = line.strip()
-            if ssid and ssid not in ssids:
-                ssids.append(ssid)
-        return ssids
-    except Exception as e:
-        logger.error(f"Error scanning WiFi: {e}")
+    exit_code, output = await _nmcli("-t", "-f", "SSID", "dev", "wifi", "list")
+    if exit_code != 0:
+        logger.warning(f"WiFi scan failed: {output}")
         return []
+    ssids = [unescape_nmcli_value(line) for line in output.splitlines()]
+    return list(dict.fromkeys(ssid for ssid in ssids if ssid.strip()))
 
 
 def _load_cached_scan() -> list[str]:
-    """Return the pre-AP scan cache if it exists."""
-    cache_path = "/var/lib/mirrordash-wifi-scan.cache"
+    """The networks seen just before the hotspot started, or [] when there is no such list."""
     try:
-        with open(cache_path, encoding="utf-8") as f:
-            content = f.read().strip()
-        if not content:
-            return []
-        ssids = [line.strip() for line in content.splitlines() if line.strip()]
-        logger.info(f"Loaded {len(ssids)} cached WiFi networks from {cache_path}")
-        return ssids
+        with open(SCAN_BEFORE_HOTSPOT_FILE, encoding="utf-8") as f:
+            ssids = [unescape_nmcli_value(line.strip()) for line in f if line.strip()]
     except FileNotFoundError:
         logger.warning("No cached WiFi scan found. AP may be active and scanning is unavailable.")
         return []
     except Exception as e:
         logger.error(f"Failed to read cached WiFi scan: {e}")
         return []
+    logger.info(f"Loaded {len(ssids)} cached WiFi networks from {SCAN_BEFORE_HOTSPOT_FILE}")
+    return ssids
 
 
 async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, str]:
-    """Connect to a WiFi network.
-
-    1. Remount filesystem read-write.
-    2. Delete the captive-portal AP profile so wlan0 can connect as a client.
-    3. Connect using NetworkManager.
-    4. Remount filesystem read-only.
-    Returns (success_bool, message_str).
-    """
+    """Join a Wi-Fi network: (joined, nmcli's message). The setup hotspot is taken down first, since
+    the Pi's single radio can't be a hotspot and a client at once."""
     logger.info(f"Attempting to connect to WiFi SSID: {ssid}")
-
-    try:
-        await _teardown_captive_ap()
-    except Exception as e:
-        logger.warning(f"Captive AP teardown encountered an issue (continuing): {e}")
+    await _teardown_captive_ap()
 
     # ponytail: the password shows in `ps` while nmcli runs (local only); passwd-file would close that.
-    # nmcli gives up by itself before our timeout, so a slow join isn't cut off while it still runs
-    cmd = ["nmcli", "--wait", "30", "dev", "wifi", "connect", ssid]
-    if password:
-        cmd.extend(["password", password])
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        try:
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=40)
-        except TimeoutError:
-            proc.kill()
-            await proc.wait()
-            raise
-
-        if proc.returncode == 0:
-            msg = stdout.decode().strip()
-            logger.info(f"WiFi connection successful: {msg}")
-            return True, msg
-        else:
-            msg = stderr.decode().strip() or stdout.decode().strip()
-            logger.warning(f"WiFi connection failed (code {proc.returncode}): {msg}")
-            return False, msg
-
-    except TimeoutError:
+    # nmcli gives up by itself (--wait 30) before our timeout, so a slow join isn't cut off while it still runs
+    password_arguments = ["password", password] if password else []
+    exit_code, message = await _nmcli("--wait", "30", "dev", "wifi", "connect", ssid, *password_arguments, timeout=40)
+    if exit_code == 0:
+        logger.info(f"WiFi connection successful: {message}")
+        return True, message
+    if exit_code == EXIT_CODE_TIMED_OUT:
         logger.error("WiFi connection timed out.")
         return False, "Connection timed out after 40 seconds."
-    except Exception as e:
-        logger.error(f"WiFi connection error: {e}")
-        return False, str(e)
-
-
-async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
-    """`nmcli <args>`: (returncode, output or error); (1, reason) when it can't run."""
-    try:
-        proc = await asyncio.create_subprocess_exec("nmcli", *args, stdout=asyncio.subprocess.PIPE,
-                                                    stderr=asyncio.subprocess.PIPE)
-        out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except Exception as e:
-        return 1, str(e)
-    return proc.returncode, (out if proc.returncode == 0 else err).decode(errors="replace").strip()
+    logger.warning(f"WiFi connection failed (code {exit_code}): {message}")
+    return False, message
 
 
 async def _wifi_profiles(*flags: str) -> list[str]:
     """Names of the saved client Wi-Fi profiles (flags: "--active" for the one in use)."""
-    _, out = await _nmcli("-t", "-f", "NAME,TYPE", "connection", "show", *flags)
-    names = [line.rpartition(":") for line in out.splitlines()]
-    return [name.replace("\\:", ":") for name, _, kind in names if kind == "802-11-wireless" and name != HOTSPOT_SSID]
-
-
-def _unescape(value: str) -> str:
-    """A value from `nmcli -g`, which escapes ':' and '\\'."""
-    return value.replace("\\:", ":").replace("\\\\", "\\")
+    _, output = await _nmcli("-t", "-f", "NAME,TYPE", "connection", "show", *flags)
+    profiles = [split_nmcli_terse_line(line) for line in output.splitlines()]
+    return [fields[0] for fields in profiles
+            if len(fields) == 2 and fields[1] == "802-11-wireless" and fields[0] != HOTSPOT_SSID]
 
 
 async def saved_wifi() -> list[dict]:
@@ -193,11 +158,11 @@ async def saved_wifi() -> list[dict]:
     (psk "" for an open one). -s shows the secrets: polkit's settings.modify.system allows pi that."""
     networks = []
     for name in await _wifi_profiles():
-        code, out = await _nmcli("-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk",
-                                 "connection", "show", "id", name)
-        if code == 0 and out:
-            ssid, _, psk = out.partition("\n")
-            networks.append({"ssid": _unescape(ssid), "psk": _unescape(psk)})
+        exit_code, output = await _nmcli("-s", "-g", "802-11-wireless.ssid,802-11-wireless-security.psk",
+                                         "connection", "show", "id", name)
+        if exit_code == 0 and output:
+            ssid, _, psk = output.partition("\n")  # -g writes one field per line
+            networks.append({"ssid": unescape_nmcli_value(ssid), "psk": unescape_nmcli_value(psk)})
     return networks
 
 
@@ -205,14 +170,14 @@ async def add_wifi(networks: list[dict]) -> None:
     """Save Wi-Fi networks (from a backup) without joining them; one already saved is left alone.
     ponytail: the password shows in `ps` while nmcli runs, as in connect_wifi."""
     saved = await _wifi_profiles()
-    for net in networks:
-        ssid, psk = str(net.get("ssid") or ""), str(net.get("psk") or "")
+    for network in networks:
+        ssid, psk = str(network.get("ssid") or ""), str(network.get("psk") or "")
         if not ssid or ssid in saved or ssid == HOTSPOT_SSID:
             continue
-        security = ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", psk] if psk else []
-        code, out = await _nmcli("connection", "add", "type", "wifi", "con-name", ssid, "ssid", ssid, *security)
-        if code != 0:
-            logger.warning(f"Could not save the Wi-Fi network '{ssid}' from the backup: {out}")
+        security_arguments = ["wifi-sec.key-mgmt", "wpa-psk", "wifi-sec.psk", psk] if psk else []
+        exit_code, output = await _nmcli("connection", "add", "type", "wifi", "con-name", ssid, "ssid", ssid, *security_arguments)
+        if exit_code != 0:
+            logger.warning(f"Could not save the Wi-Fi network '{ssid}' from the backup: {output}")
 
 
 # The last change from the admin page that failed, shown on the Wi-Fi card until the next one
@@ -234,16 +199,17 @@ async def switch_wifi(ssid: str, password: str | None) -> None:
     failed_switch.update(ssid=ssid, reason=message, previous=active[0] if active else "")
 
 
-_hotspot_active_cached = None
-
-
-_hotspot_checked_at = 0.0
-
-
-# ponytail: short TTL so the captive-portal middleware doesn't spawn nmcli on every request.
+# ponytail: a short cache so the captive-portal middleware doesn't run nmcli on every request.
 # It must never be permanent: the hotspot comes up ~40 s after boot, and a cached early
 # "False" kept the kiosk on the admin setup page. Upgrade path: NM D-Bus signal subscription.
 HOTSPOT_CACHE_TTL = 5.0
+_hotspot_active_cached: bool | None = None  # None: ask NetworkManager at the next check
+_hotspot_checked_at = 0.0
+
+
+def _remember_hotspot_state(active: bool) -> None:
+    global _hotspot_active_cached, _hotspot_checked_at
+    _hotspot_active_cached, _hotspot_checked_at = active, time.monotonic()
 
 
 def forget_hotspot_state() -> None:
@@ -254,61 +220,34 @@ def forget_hotspot_state() -> None:
 
 async def is_wifi_hotspot_active() -> bool:
     """Check if the MirrorDash-Setup WiFi hotspot is currently active in NetworkManager."""
-    global _hotspot_active_cached, _hotspot_checked_at
     if _hotspot_active_cached is not None and time.monotonic() - _hotspot_checked_at < HOTSPOT_CACHE_TTL:
         return _hotspot_active_cached
-
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "-t", "-f", "NAME", "connection", "show", "--active",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-        if proc.returncode == 0:
-            active = HOTSPOT_SSID in stdout.decode("utf-8", errors="ignore").splitlines()
-            _hotspot_active_cached = active
-            _hotspot_checked_at = time.monotonic()
-            return active
-    except Exception:
-        pass
-    logger.error("Timed out or failed checking WiFi hotspot status")
-    return False
+    exit_code, output = await _nmcli("-t", "-f", "NAME", "connection", "show", "--active", timeout=10)
+    if exit_code != 0:
+        logger.error(f"Checking the WiFi hotspot failed: {output}")
+        return False
+    active = HOTSPOT_SSID in output.splitlines()
+    _remember_hotspot_state(active)
+    return active
 
 
 async def get_hotspot_password() -> str:
     """The setup hotspot's password, read from its NetworkManager profile; "" if it can't be read."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-        if proc.returncode == 0:
-            return stdout.decode("utf-8", errors="ignore").strip()
-    except Exception as e:
-        logger.debug(f"Reading the hotspot password failed: {e}")
-    return ""
+    exit_code, output = await _nmcli("-s", "-g", "802-11-wireless-security.psk", "connection", "show", HOTSPOT_SSID, timeout=10)
+    if exit_code != 0:
+        logger.debug(f"Reading the hotspot password failed: {output}")
+        return ""
+    return output
 
 
 async def restore_captive_ap() -> bool:
     """Bring the setup hotspot back after a failed connection, with the same profile and password.
     Returns False if NetworkManager couldn't start it."""
-    global _hotspot_active_cached, _hotspot_checked_at
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "connection", "up", HOTSPOT_SSID,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=30)
-    except Exception as e:
-        logger.warning(f"Bringing the setup hotspot back failed: {e}")
+    exit_code, output = await _nmcli("connection", "up", HOTSPOT_SSID, timeout=30)
+    if exit_code != 0:
+        logger.warning(f"Bringing the setup hotspot back failed: {output}")
         return False
-    if proc.returncode != 0:
-        logger.warning(f"Bringing the setup hotspot back failed: {stderr.decode(errors='replace').strip()}")
-        return False
-    _hotspot_active_cached, _hotspot_checked_at = True, time.monotonic()
+    _remember_hotspot_state(True)
     logger.info("The setup hotspot is back.")
     return True
 
@@ -319,20 +258,9 @@ async def _teardown_captive_ap() -> None:
     The profile is kept (it doesn't autoconnect), so the mirror's hotspot password stays the same
     the next time Wi-Fi setup is needed.
     """
-    global _hotspot_active_cached, _hotspot_checked_at
-    _hotspot_active_cached = False
-    _hotspot_checked_at = time.monotonic()
-    cmd = ["nmcli", "connection", "down", HOTSPOT_SSID]
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.wait()
-        if proc.returncode == 0:
-            logger.info(f"Executed: {' '.join(cmd)}")
-        else:
-            logger.debug(f"AP teardown: {' '.join(cmd)} returned {proc.returncode}")
-    except Exception as e:
-        logger.debug(f"AP teardown: {' '.join(cmd)} failed: {e}")
+    _remember_hotspot_state(False)
+    exit_code, output = await _nmcli("connection", "down", HOTSPOT_SSID)
+    if exit_code == 0:
+        logger.info("The setup hotspot is down.")
+    else:
+        logger.debug(f"AP teardown: nmcli connection down returned {exit_code}: {output}")

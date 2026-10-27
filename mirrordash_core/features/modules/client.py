@@ -44,6 +44,7 @@ from mirrordash_core.features.modules.loader import (
     module_entry_points,
     scripts_allowed,
 )
+from mirrordash_core.host import run_in_background
 from mirrordash_core.venv import get_venv_paths
 
 logger = logging.getLogger("mirrordash.core.modules.client")
@@ -270,7 +271,7 @@ class ModuleHost:
         self._loop = asyncio.get_running_loop()
         event_bus.forward = self.forward_event
         self._tasks = [asyncio.create_task(self._run(), name="module-host"),
-                       asyncio.create_task(self._refresh_lan(), name="module-host-lan")]
+                       run_in_background(self._refresh_lan(), name="module-host-lan")]
 
     async def stop_modules(self) -> None:
         """At shutdown: each instance stops when its connection ends, the host when the control's does."""
@@ -529,7 +530,7 @@ class ModuleHost:
         conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
         self._instances[instance_id] = conn
         await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
-        asyncio.create_task(self._serve(conn), name=f"module-{instance_id}")
+        run_in_background(self._serve(conn), name=f"module-{instance_id}")
 
     async def _serve(self, conn: Connection) -> None:
         """An instance's connection until it ends; then, unless the core stopped it, start it again or,
@@ -602,7 +603,7 @@ class ModuleHost:
             if isinstance(request, int) and request not in conn.windows and (
                     hz is None or (isinstance(hz, int) and 1 <= hz <= 240)):
                 conn.windows[request] = asyncio.Event()  # here, not in the task: the end can come first
-                asyncio.create_task(self._hold_window(conn, request, bool(message.get("fullscreen")), hz))
+                run_in_background(self._hold_window(conn, request, bool(message.get("fullscreen")), hz))
             elif isinstance(request, int):
                 await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})  # the module gets an error
         elif kind == "gpio":

@@ -2,7 +2,6 @@
 """The mirror's system settings (screen, sound, screen schedule, SSH, test versions): one place that
 checks and applies them, shared by the Hardware, Power and Settings tabs and Home Assistant."""
 
-import asyncio
 import logging
 import re
 
@@ -19,6 +18,7 @@ from mirrordash_core.features.hardware.display import (
 from mirrordash_core.features.power.display_power import DEFAULT_WAKE
 from mirrordash_core.features.settings.ssh import apply_ssh, get_ssh_status
 from mirrordash_core.forms import read_form
+from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.system_settings")
 router = APIRouter(prefix="/admin")
@@ -117,9 +117,9 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
 
     # Re-applying an unchanged rotation/resolution can make the screen flicker: only what was sent
     if any(k in settings for k in ("rotation", "resolution", "volume")):
-        asyncio.create_task(apply_system_settings(new["rotation"], new["resolution"], new["brightness"], new["volume"]))
+        run_in_background(apply_system_settings(new["rotation"], new["resolution"], new["brightness"], new["volume"]))
     elif "brightness" in settings:  # the slider, or Home Assistant: only the brightness
-        asyncio.create_task(apply_brightness(new["brightness"]))
+        run_in_background(apply_brightness(new["brightness"]))
     return {"status": "success", "message": "System settings saved and applied successfully"}
 
 

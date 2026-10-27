@@ -34,6 +34,7 @@ from jinja2 import (
 
 from mirrordash_core.config import get_core_version, get_module_dir, load_config
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.modules")
 
@@ -340,7 +341,7 @@ def start_system() -> None:
     try:
         if system_cfg:
             from mirrordash_core.features.hardware.display import apply_system_settings
-            asyncio.create_task(apply_system_settings(
+            run_in_background(apply_system_settings(
                 system_cfg.get("rotation", "normal"),
                 system_cfg.get("resolution", "auto"),
                 system_cfg.get("brightness", 100),
@@ -350,16 +351,16 @@ def start_system() -> None:
         timezone = config.get("globals", {}).get("timezone")
         if timezone:
             from mirrordash_core.host import apply_system_timezone
-            asyncio.create_task(apply_system_timezone(timezone))
+            run_in_background(apply_system_timezone(timezone))
 
         if system_cfg.get("ssh") is not None:
             from mirrordash_core.features.settings.ssh import set_ssh_status
-            asyncio.create_task(set_ssh_status(system_cfg["ssh"]))
+            run_in_background(set_ssh_status(system_cfg["ssh"]))
 
         # Matter: the core starts the node, /etc forgets `systemctl enable` (features/matter)
         if config.get("matter", {}).get("enabled"):
             from mirrordash_core.features.matter.routes import start_matter
-            asyncio.create_task(start_matter())
+            run_in_background(start_matter())
 
         # The pi password lives on /storage; the read-only root forgets it at every boot
         from mirrordash_core.features.settings.ssh import PASSWORD_HASH_FILE
@@ -368,7 +369,7 @@ def start_system() -> None:
                 pwd_hash = f.read().strip()
             if pwd_hash:
                 from mirrordash_core.host import apply_system_password_hash
-                asyncio.create_task(apply_system_password_hash(pwd_hash))
+                run_in_background(apply_system_password_hash(pwd_hash))
     except Exception as e:
         logger.warning(f"Failed to apply system settings on startup: {e}")
 

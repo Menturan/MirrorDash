@@ -26,6 +26,7 @@ import time
 
 from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.hardware")
 
@@ -424,7 +425,7 @@ class GpioInputs:
         action = device.get("actions", {}).get(press, "none")
         logger.info(f"{button} {press} press -> {action}")
         event_bus.publish("hardware.button", {"press": press, "action": action, "button": button})
-        asyncio.create_task(run_button_action(action))
+        run_in_background(run_button_action(action))
 
 
 async def run_button_action(action: str) -> None:

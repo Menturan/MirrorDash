@@ -1,66 +1,43 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The screen and the sound: resolution, rotation, brightness, volume and power.
+
+The mirror runs Wayland (labwc), where wlr-randr sets the screen; the xrandr and xset steps are for a
+development machine on X11. Every step tries its tools in turn and gives up quietly when none is there."""
 
 import asyncio
 import glob
 import logging
 import re
 
+from mirrordash_core.host import run_command
+
 logger = logging.getLogger("mirrordash.core.hardware")
+
+# What a headless development machine offers, where no tool lists the screen's own modes
+COMMON_RESOLUTIONS = ["1920x1080", "1280x720", "1024x768", "800x600", "1080x1920", "720x1280"]
+# The ALSA mixer controls tried in turn when there is no PipeWire/PulseAudio: names differ per sound card
+ALSA_VOLUME_CONTROLS = ["Master", "Speaker", "HDMI", "Headphone", "Audio Out"]
+# The admin page's rotation names as wlr-randr's --transform values
+WAYLAND_TRANSFORM_FOR_ROTATION = {"normal": "normal", "left": "90", "inverted": "180", "right": "270"}
+# At boot the settings are applied while the compositor may still be starting: wait this long for it
+SECONDS_TO_WAIT_FOR_WAYLAND = 60
 
 
 async def get_available_resolutions() -> list[str]:
-    """Scans xrandr or wlr-randr for display resolutions, falling back to defaults if headless."""
-    resolutions = {"auto"}
+    """The screen's resolutions, largest first, after "auto"; common ones when no screen tool answers."""
+    resolutions = set()
+    for screen_tool in ("xrandr", "wlr-randr"):
+        exit_code, output, _ = await run_command(screen_tool)
+        if exit_code == 0:
+            resolutions |= set(re.findall(r"^\s*(\d+x\d+)", output, re.MULTILINE))
+    if not resolutions:
+        return ["auto", *COMMON_RESOLUTIONS]
 
-    # Try xrandr
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "xrandr",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            lines = stdout.decode("utf-8", errors="ignore").splitlines()
-            for line in lines:
-                match = re.search(r"^\s*(\d+x\d+)", line)
-                if match:
-                    resolutions.add(match.group(1))
-    except Exception as e:
-        logger.debug(f"Failed to query resolutions via xrandr: {e}")
+    def pixel_count(resolution: str) -> int:
+        width, height = resolution.split("x")
+        return int(width) * int(height)
 
-    # Try wlr-randr
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "wlr-randr",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            lines = stdout.decode("utf-8", errors="ignore").splitlines()
-            for line in lines:
-                match = re.search(r"^\s*(\d+x\d+)", line)
-                if match:
-                    resolutions.add(match.group(1))
-    except Exception as e:
-        logger.debug(f"Failed to query resolutions via wlr-randr: {e}")
-
-    # If no resolutions found (e.g. headless dev machine), return standard common resolutions
-    if len(resolutions) <= 1:
-        return ["auto", "1920x1080", "1280x720", "1024x768", "800x600", "1080x1920", "720x1280"]
-
-    # Sort resolutions numerically by total pixels
-    res_list = list(resolutions)
-    res_list.remove("auto")
-
-    def res_key(r):
-        try:
-            w, h = map(int, r.split('x'))
-            return w * h
-        except Exception:
-            return 0
-
-    res_list.sort(key=res_key, reverse=True)
-    return ["auto"] + res_list
+    return ["auto", *sorted(resolutions, key=pixel_count, reverse=True)]
 
 
 # False once neither a backlight nor DDC/CI took the brightness (the admin page then says so).
@@ -77,44 +54,31 @@ async def apply_brightness(brightness: int) -> bool:
 
 
 async def _set_backlight(brightness: int) -> bool:
-    backlight_paths = glob.glob("/sys/class/backlight/*/brightness")
-    max_backlight_paths = glob.glob("/sys/class/backlight/*/max_brightness")
-    if not (backlight_paths and max_backlight_paths):
+    brightness_files = glob.glob("/sys/class/backlight/*/brightness")
+    max_brightness_files = glob.glob("/sys/class/backlight/*/max_brightness")
+    if not (brightness_files and max_brightness_files):
         return False
     try:
-        with open(max_backlight_paths[0]) as f:
-            max_val = int(f.read().strip())
-        target_val = int((brightness / 100.0) * max_val)
+        with open(max_brightness_files[0]) as f:
+            max_value = int(f.read().strip())
+        target_value = int((brightness / 100.0) * max_value)
         # Writable for the video group (udev: 90-mirrordash-backlight.rules), so no sudo
-        with open(backlight_paths[0], "w") as f:
-            f.write(f"{target_val}\n")
+        with open(brightness_files[0], "w") as f:
+            f.write(f"{target_value}\n")
     except Exception as e:
-        logger.warning(f"Failed to write to backlight device {backlight_paths[0]}: {e}")
+        logger.warning(f"Failed to write to backlight device {brightness_files[0]}: {e}")
         return False
-    logger.info(f"Applied hardware brightness {target_val}/{max_val} via {backlight_paths[0]}")
+    logger.info(f"Applied hardware brightness {target_value}/{max_value} via {brightness_files[0]}")
     return True
 
 
 async def _set_ddc_brightness(brightness: int) -> bool:
     # ponytail: VCP 0x10 is written as a percentage; nearly every monitor's maximum is 100. One
     # with another maximum would need `ddcutil getvcp 10` first to scale the value.
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-    except OSError as e:
-        logger.warning(f"Cannot run ddcutil for the HDMI brightness: {e}")
-        return False
-    try:
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
-        logger.warning("ddcutil didn't answer within 10 s; the screen doesn't take brightness over HDMI")
-        return False
-    if proc.returncode != 0:
-        reason = (stderr.decode(errors='replace').strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
+    exit_code, _, error_output = await run_command(
+        "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), timeout=10)
+    if exit_code != 0:
+        reason = (error_output.strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
         logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {reason}")
         return False
     logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI")
@@ -122,176 +86,93 @@ async def _set_ddc_brightness(brightness: int) -> bool:
 
 
 async def apply_system_settings(rotation: str, resolution: str, brightness: int, volume: int) -> None:
-    """Asynchronously applies screen rotation, screen mode/resolution, display brightness, and system audio volume."""
+    """Apply the screen's brightness, the sound's volume and the screen's rotation and resolution."""
     logger.info(f"Applying system settings: rotation={rotation}, resolution={resolution}, brightness={brightness}%, volume={volume}%")
-
-    # A. Apply Brightness
     await apply_brightness(brightness)
+    await _apply_volume(volume)
+    await _apply_x11_rotation_and_resolution(rotation, resolution)
+    await _apply_wayland_rotation_and_resolution(rotation, resolution)
 
-    # B. Apply Volume
-    # Try PulseAudio / PipeWire first via pactl
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{volume}%",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        await proc.wait()
-        if proc.returncode == 0:
-            logger.info(f"Applied system volume {volume}% via pactl")
-        else:
-            # Try ALSA fallback via amixer
-            alsa_controls = ["Master", "Speaker", "HDMI", "Headphone", "Audio Out"]
-            for ctrl in alsa_controls:
-                proc_alsa = await asyncio.create_subprocess_exec(
-                    "amixer", "sset", ctrl, f"{volume}%",
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await proc_alsa.wait()
-                if proc_alsa.returncode == 0:
-                    logger.info(f"Applied system volume {volume}% via amixer control '{ctrl}'")
-                    break
-    except Exception as e:
-        logger.debug(f"Audio volume setting failed or skipped: {e}")
 
-    # C. Apply Rotation & Resolution
-    # On X11 (xrandr)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "xrandr",
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            displays = re.findall(r"(\S+)\s+connected", stdout.decode("utf-8", errors="ignore"))
-            if displays:
-                display = displays[0]
-                res_args = []
-                if resolution and resolution != "auto":
-                    res_args = ["--mode", resolution]
+async def _apply_volume(volume: int) -> None:
+    """PipeWire/PulseAudio's default output, or else the first ALSA control the sound card has."""
+    if (await run_command("pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{volume}%"))[0] == 0:
+        logger.info(f"Applied system volume {volume}% via pactl")
+        return
+    for control in ALSA_VOLUME_CONTROLS:
+        if (await run_command("amixer", "sset", control, f"{volume}%"))[0] == 0:
+            logger.info(f"Applied system volume {volume}% via amixer control '{control}'")
+            return
+    logger.debug("No sound tool took the volume")
 
-                cmd = ["xrandr", "--output", display, "--rotate", rotation] + res_args
-                proc_rot = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await proc_rot.wait()
-                logger.info(f"Applied xrandr display configuration for {display}: rotate={rotation}, resolution={resolution}")
-    except Exception as e:
-        logger.debug(f"xrandr display settings skipped or failed: {e}")
 
-    # On Wayland (wlr-randr)
-    try:
-        wlr_rot_map = {
-            "normal": "normal",
-            "left": "90",
-            "inverted": "180",
-            "right": "270"
-        }
-        wlr_rot = wlr_rot_map.get(rotation, "normal")
+def _mode_arguments(resolution: str) -> list[str]:
+    """xrandr's and wlr-randr's resolution argument; none for "auto" (the screen's preferred mode)."""
+    return ["--mode", resolution] if resolution and resolution != "auto" else []
 
-        # Retry query up to 60 times to handle compositor startup timing
-        for attempt in range(60):
-            proc = await asyncio.create_subprocess_exec(
-                "wlr-randr",
-                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-            )
-            stdout, _ = await proc.communicate()
-            if proc.returncode == 0:
-                displays = re.findall(r"^(\S+)\s+", stdout.decode("utf-8", errors="ignore"), re.MULTILINE)
-                if displays:
-                    display = displays[0]
-                    res_args = []
-                    if resolution and resolution != "auto":
-                        res_args = ["--mode", resolution]
 
-                    cmd = ["wlr-randr", "--output", display, "--transform", wlr_rot] + res_args
-                    proc_wlr = await asyncio.create_subprocess_exec(
-                        *cmd,
-                        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                    )
-                    await proc_wlr.wait()
-                    logger.info(f"Applied wlr-randr display configuration for {display}: transform={wlr_rot}, resolution={resolution}")
-                    break
-            else:
-                logger.debug(f"wlr-randr query failed on attempt {attempt + 1}/60 (Wayland might not be ready yet)")
-                if attempt < 59:
-                    await asyncio.sleep(1)
-    except Exception as e:
-        logger.debug(f"wlr-randr display settings skipped or failed: {e}")
+async def _first_x11_screen() -> str | None:
+    """The first connected output xrandr lists (e.g. HDMI-1), or None without X11."""
+    exit_code, output, _ = await run_command("xrandr")
+    screens = re.findall(r"(\S+)\s+connected", output) if exit_code == 0 else []
+    return screens[0] if screens else None
+
+
+async def _first_wayland_screen() -> str | None:
+    """The first output wlr-randr lists (its lines that don't start with a space), or None without Wayland."""
+    exit_code, output, _ = await run_command("wlr-randr")
+    screens = re.findall(r"^(\S+)\s+", output, re.MULTILINE) if exit_code == 0 else []
+    return screens[0] if screens else None
+
+
+async def _apply_x11_rotation_and_resolution(rotation: str, resolution: str) -> None:
+    screen = await _first_x11_screen()
+    if not screen:
+        return
+    await run_command("xrandr", "--output", screen, "--rotate", rotation, *_mode_arguments(resolution))
+    logger.info(f"Applied xrandr display configuration for {screen}: rotate={rotation}, resolution={resolution}")
+
+
+async def _apply_wayland_rotation_and_resolution(rotation: str, resolution: str) -> None:
+    transform = WAYLAND_TRANSFORM_FOR_ROTATION.get(rotation, "normal")
+    for attempt in range(1, SECONDS_TO_WAIT_FOR_WAYLAND + 1):
+        screen = await _first_wayland_screen()
+        if screen:
+            await run_command("wlr-randr", "--output", screen, "--transform", transform, *_mode_arguments(resolution))
+            logger.info(f"Applied wlr-randr display configuration for {screen}: transform={transform}, resolution={resolution}")
+            return
+        logger.debug(f"No Wayland screen yet, attempt {attempt}/{SECONDS_TO_WAIT_FOR_WAYLAND} (the compositor may still be starting)")
+        if attempt < SECONDS_TO_WAIT_FOR_WAYLAND:
+            await asyncio.sleep(1)
 
 
 async def set_screen_power(on: bool) -> bool:
-    """Asynchronously controls display power state (ON or OFF) via xrandr/xset, wlr-randr, or vcgencmd."""
-    state_str = "on" if on else "off"
-    logger.info(f"Setting screen power state: {state_str}")
+    """Turn the screen on or off with the first tool that works: wlr-randr (the mirror's Wayland),
+    xset or xrandr (X11), or vcgencmd (a Pi's older firmware)."""
+    logger.info(f"Setting screen power state: {'on' if on else 'off'}")
 
-    # 1. Try wlr-randr (Wayland)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "wlr-randr", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            displays = re.findall(r"^(\S+)\s+", stdout.decode("utf-8", errors="ignore"), re.MULTILINE)
-            if displays:
-                display = displays[0]
-                action = "--on" if on else "--off"
-                cmd = ["wlr-randr", "--output", display, action]
-                proc_w = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await proc_w.wait()
-                logger.info(f"Set wlr-randr output {display} to {action}")
-                return proc_w.returncode == 0
-    except Exception as e:
-        logger.debug(f"wlr-randr power control failed or skipped: {e}")
+    wayland_screen = await _first_wayland_screen()
+    if wayland_screen:
+        switch = "--on" if on else "--off"
+        exit_code, _, error_output = await run_command("wlr-randr", "--output", wayland_screen, switch)
+        if exit_code != 0:
+            logger.warning(f"wlr-randr couldn't set {wayland_screen} {switch}: {error_output.strip()}")
+            return False
+        logger.info(f"Set wlr-randr output {wayland_screen} to {switch}")
+        return True
 
-    # 2. Try xset DPMS (highly compatible X11 method)
-    try:
-        cmd = ["xset", "dpms", "force", state_str]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        await proc.wait()
-        if proc.returncode == 0:
-            logger.info(f"Turned screen {state_str} via xset dpms")
-            return True
-    except Exception as e:
-        logger.debug(f"xset dpms control failed or skipped: {e}")
+    if (await run_command("xset", "dpms", "force", "on" if on else "off"))[0] == 0:
+        logger.info(f"Turned screen {'on' if on else 'off'} via xset dpms")
+        return True
 
-    # 3. Try xrandr output display off/on (X11)
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "xrandr", stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await proc.communicate()
-        if proc.returncode == 0:
-            displays = re.findall(r"(\S+)\s+connected", stdout.decode("utf-8", errors="ignore"))
-            if displays:
-                display = displays[0]
-                action = "--auto" if on else "--off"
-                cmd = ["xrandr", "--output", display, action]
-                proc_x = await asyncio.create_subprocess_exec(
-                    *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-                )
-                await proc_x.wait()
-                logger.info(f"Set xrandr output {display} to {action}")
-                return True
-    except Exception as e:
-        logger.debug(f"xrandr power control failed or skipped: {e}")
+    x11_screen = await _first_x11_screen()
+    if x11_screen:
+        switch = "--auto" if on else "--off"
+        await run_command("xrandr", "--output", x11_screen, switch)
+        logger.info(f"Set xrandr output {x11_screen} to {switch}")
+        return True
 
-    # 4. Try vcgencmd (Raspberry Pi legacy firmware)
-    try:
-        val = "1" if on else "0"
-        proc = await asyncio.create_subprocess_exec(
-            "vcgencmd", "display_power", val,
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-        await proc.wait()
-        if proc.returncode == 0:
-            logger.info(f"Set Raspberry Pi screen power to {val} via vcgencmd")
-            return True
-    except Exception as e:
-        logger.debug(f"vcgencmd display power control failed or skipped: {e}")
-
+    if (await run_command("vcgencmd", "display_power", "1" if on else "0"))[0] == 0:
+        logger.info(f"Set Raspberry Pi screen power to {'on' if on else 'off'} via vcgencmd")
+        return True
     return False

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
-from mirrordash_core.host import reboot_system, run_restart
+from mirrordash_core.host import reboot_system, run_in_background, run_restart
 from mirrordash_core.venv import get_venv_paths, run, running_python, uv_pip, venv_swap
 
 logger = logging.getLogger("mirrordash.core.updates")
@@ -26,7 +26,7 @@ router = APIRouter(prefix="/admin")
 async def restart_system() -> dict:
     logger.info("System restart requested by admin client.")
     from mirrordash_core.admin import BOOT_ID
-    asyncio.create_task(run_restart())
+    run_in_background(run_restart())
     return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
 
 
@@ -139,7 +139,7 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
         turn_off_modules(skip, f"doesn't work with Python {python}")
     incompatible.clear()
     logger.info(f"mirrordash upgraded to {version} on Python {python}. Restarting server...")
-    asyncio.create_task(run_restart())
+    run_in_background(run_restart())
     return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
 
 
@@ -191,7 +191,7 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Core upgrade failed: {e}")
     logger.info(f"mirrordash upgraded to {installed}. Restarting server...")
-    asyncio.create_task(run_restart())
+    run_in_background(run_restart())
     return {"status": "success", "message": "Core upgraded successfully. Restarting..."}
 
 
@@ -223,7 +223,7 @@ async def rebuild_venv() -> dict:
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Rebuild failed: {e}")
     logger.info("Fresh venv rebuild completed successfully. Restarting...")
-    asyncio.create_task(run_restart())
+    run_in_background(run_restart())
     return {"status": "success", "message": "Environment rebuilt successfully. Restarting..."}
 
 
@@ -379,7 +379,7 @@ async def update_os(bundle: dict) -> None:
         logger.error(f"OS update failed: {stderr.decode(errors='replace')}")
         raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {error[-1] if error else 'unknown error'}")
     logger.info("OS update installed. Restarting into it on trial...")
-    asyncio.create_task(reboot_system())
+    run_in_background(reboot_system())
 
 
 async def get_disk_usage() -> dict:

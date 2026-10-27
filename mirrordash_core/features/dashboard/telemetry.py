@@ -1,10 +1,14 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
 
-import asyncio
 import logging
 import os
 
 from mirrordash_core.config import get_core_version
+from mirrordash_core.features.wifi.network import (
+    is_wifi_hotspot_active,
+    split_nmcli_terse_line,
+)
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.dashboard")
 
@@ -88,89 +92,48 @@ def get_ram_usage() -> dict:
 
 
 async def get_ntp_status() -> bool:
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "timedatectl", "show", "--property=NTPSynchronized",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
-        if proc.returncode == 0:
-            output = stdout.decode("utf-8", errors="ignore").strip()
-            return "NTPSynchronized=yes" in output
-    except Exception:
-        pass
-    return True # Default to True in dev mode to avoid false alarms
+    """Whether the clock is set from the internet; True where timedatectl can't say (development machine),
+    so no false alarm."""
+    exit_code, output, _ = await run_command("timedatectl", "show", "--property=NTPSynchronized", timeout=3)
+    return exit_code != 0 or "NTPSynchronized=yes" in output
 
 
 async def get_wifi_info() -> dict:
-    try:
-        # Check active Wi-Fi connection
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "-t", "-f", "active,ssid,signal", "dev", "wifi",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
-        if proc.returncode == 0:
-            lines = stdout.decode("utf-8", errors="ignore").splitlines()
-            for line in lines:
-                parts = line.split(":")
-                if len(parts) >= 3 and parts[0] == "yes" and parts[1]:
-                    try:
-                        signal = int(parts[2])
-                    except ValueError:
-                        signal = 100
-                    return {"ssid": parts[1], "signal": signal, "type": "wifi"}
-    except Exception:
-        pass
-        
-    # Check if there is an active Ethernet connection
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "nmcli", "-t", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
-        if proc.returncode == 0:
-            lines = stdout.decode("utf-8", errors="ignore").splitlines()
-            for line in lines:
-                parts = line.split(":")
-                if len(parts) >= 2 and "ethernet" in parts[1].lower():
-                    return {"ssid": parts[0], "signal": 100, "type": "ethernet"}
-    except Exception:
-        pass
+    """The connection the mirror is on: its Wi-Fi (with signal), its Ethernet, or the setup hotspot."""
+    exit_code, output, _ = await run_command("nmcli", "-t", "-f", "active,ssid,signal", "dev", "wifi", timeout=3)
+    for line in output.splitlines() if exit_code == 0 else []:
+        fields = split_nmcli_terse_line(line)
+        if len(fields) >= 3 and fields[0] == "yes" and fields[1]:
+            signal = int(fields[2]) if fields[2].isdigit() else 100
+            return {"ssid": fields[1], "signal": signal, "type": "wifi"}
 
-    # Check if captive portal hotspot is active
-    try:
-        from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
-        if await is_wifi_hotspot_active():
-            return {"ssid": "MirrorDash-Setup (Hotspot)", "signal": 100, "type": "hotspot"}
-    except Exception:
-        pass
+    exit_code, output, _ = await run_command("nmcli", "-t", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active", timeout=3)
+    for line in output.splitlines() if exit_code == 0 else []:
+        fields = split_nmcli_terse_line(line)
+        if len(fields) >= 2 and "ethernet" in fields[1].lower():
+            return {"ssid": fields[0], "signal": 100, "type": "ethernet"}
+
+    if await is_wifi_hotspot_active():
+        return {"ssid": "MirrorDash-Setup (Hotspot)", "signal": 100, "type": "hotspot"}
 
     return {"ssid": "N/A (Dev Mode)", "signal": 0, "type": "none"}
 
 
+# The bits of `vcgencmd get_throttled` that are about the power supply: bit 0 "under-voltage now" and bit 16
+# "under-voltage since boot". Bits 2 and 18 (throttled) also come from heat, so they say nothing about the supply.
+UNDERVOLTAGE_NOW_OR_SINCE_BOOT = 0x10001
+
+
 async def get_undervoltage_detected() -> bool:
+    """Whether the Pi's power supply has dropped too low since it started (the firmware keeps count)."""
+    exit_code, output, _ = await run_command("vcgencmd", "get_throttled", timeout=3)
+    if exit_code != 0 or "=" not in output:
+        return False
     try:
-        proc = await asyncio.create_subprocess_exec(
-            "vcgencmd", "get_throttled",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=3)
-        if proc.returncode == 0:
-            output = stdout.decode("utf-8", errors="ignore").strip()
-            if "=" in output:
-                val_str = output.split("=")[1].strip()
-                val = int(val_str, 16)
-                # Check bits: val & 0x50005 != 0 (indicates current or historical under-voltage)
-                return (val & 0x50005) != 0
-    except Exception:
-        pass
-    return False
+        throttled_bits = int(output.split("=")[1].strip(), 16)  # "throttled=0x50005"
+    except ValueError:
+        return False
+    return bool(throttled_bits & UNDERVOLTAGE_NOW_OR_SINCE_BOOT)
 
 
 async def check_all_updates() -> dict:

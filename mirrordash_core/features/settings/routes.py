@@ -38,7 +38,7 @@ from mirrordash_core.features.updates.service import (
     installed_os_version,
 )
 from mirrordash_core.forms import cast_values_by_schema, read_form
-from mirrordash_core.host import apply_system_timezone
+from mirrordash_core.host import apply_system_timezone, run_in_background
 
 logger = logging.getLogger("mirrordash.core.settings")
 router = APIRouter(prefix="/admin")
@@ -119,7 +119,7 @@ async def save_panel_config_visual(request: Request):
     save_config(config)
 
     if globals_data.get("timezone") and globals_data["timezone"] != old_timezone:
-        asyncio.create_task(apply_system_timezone(globals_data["timezone"]))
+        run_in_background(apply_system_timezone(globals_data["timezone"]))
     await module_host.reload_modules()
 
     return notify("Saved.")
