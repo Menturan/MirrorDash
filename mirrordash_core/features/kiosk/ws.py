@@ -1,4 +1,6 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The mirror's screen's WebSocket: every module's HTML goes out through here, the latest kept for a
+screen that connects (or reloads) later."""
 
 import asyncio
 import logging
@@ -14,21 +16,25 @@ SEND_TIMEOUT = 5  # seconds a client gets to take a message
 
 
 def on_screen(client) -> bool:
-    """Whether a client is the mirror's own screen (a loopback address)."""
+    """Whether a client is the mirror's own screen (a loopback address).
+
+    Everything from the home network comes through nginx on 127.0.0.1, so this leans on uvicorn's proxy
+    headers: it trusts X-Forwarded-For from 127.0.0.1 and takes the right-most address in it, the one
+    nginx added. A phone that sends "X-Forwarded-For: 127.0.0.1" itself is still its own address."""
     return bool(client) and client.host in ("127.0.0.1", "::1")
 
 
 class ConnectionManager:
     def __init__(self):
         self.active_connections: list[WebSocket] = []
-        self.latest_messages: dict[str, dict] = {}
+        self.latest_messages: dict[str, dict] = {}  # each module instance's last HTML message
         # When the mirror's own screen last showed it's alive (mirrordash-app-watch restarts the kiosk
         # when it stops). A start counts, so the screen has time to load.
         self.screen_seen = time.monotonic()
         # While a module plays a video (its video_is_playing()), the other modules' updates wait for the
         # next whole minute, so the page redraws once a minute instead of under the video (ARCHITECTURE #33)
         self.video_players: set[str] = set()
-        self.pending: set[str] = set()
+        self.pending: set[str] = set()  # the instances whose update waits for the next whole minute
         self._minute_task: asyncio.Task | None = None
 
     def saw(self, client) -> None:
@@ -97,7 +103,7 @@ class ConnectionManager:
                 except Exception:
                     pass
 
-        await asyncio.gather(*(send(c) for c in connections))
+        await asyncio.gather(*(send(connection) for connection in connections))
 
     async def set_video_playing(self, instance_id: str, playing: bool) -> None:
         """A module starts or stops playing a video. The page hears when the first starts and the last
