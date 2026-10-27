@@ -366,7 +366,8 @@ class MqttBridge:
                 if now - cpu_at >= CPU_INTERVAL:
                     cpu_at = now
                 pending, self._pending = self._pending, {}
-                for topic, (payload, retain) in {**{t: (p, True) for t, p in states.items()}, **pending}.items():
+                retained_states = {topic: (payload, True) for topic, payload in states.items()}
+                for topic, (payload, retain) in {**retained_states, **pending}.items():
                     await self._publish(client, topic, payload, retain)
             except aiomqtt.MqttError:
                 raise
@@ -380,95 +381,130 @@ class MqttBridge:
         """The devices' discovery, again when the settings or the hardware changed, every DISCOVERY_INTERVAL
         (an updated module's declarations) and after Home Assistant started (its birth message)."""
         from mirrordash_core.features.hardware import display
+        mqtt_config, system, modules = config.get("mqtt", {}), config.get("system", {}), config.get("modules", {})
+        fingerprint = json.dumps([mqtt_config, system.get("devices"), display.brightness_supported,
+                                  {instance: instance_config.get("module") for instance, instance_config in modules.items()
+                                   if isinstance(instance_config, dict)}], sort_keys=True, default=str)
+        if fingerprint == self._fingerprint and now - self._discovered_at < DISCOVERY_INTERVAL:
+            return
+        self._fingerprint, self._discovered_at = fingerprint, now
+        base, mirror_id = self._base(), mqtt_config["id"]
+        origin = {"name": "MirrorDash", "sw_version": get_core_version(), "support_url": "https://github.com/Menturan/MirrorDash"}
+        devices = {f"{DISCOVERY}/device/{mirror_id}/config": {
+            "device": {"identifiers": [mirror_id], "name": "MirrorDash", "manufacturer": "MirrorDash",
+                       "sw_version": get_core_version()},
+            "origin": origin, "availability_topic": f"{base}/status",
+            "components": self._mirror_components(mqtt_config, system, modules)}}
+        shared_module_devices, self._modules = self._shared_module_devices(mqtt_config, modules, origin)
+        devices.update(shared_module_devices)
+        # A value it sent just before the owner stopped sharing it must not follow the clearing below
+        self._pending = {topic: value for topic, value in self._pending.items()
+                         if not topic.startswith(f"{base}/m/") or topic.split("/")[3] in self._modules}
+        await self._send_discovery(client, devices)
+        await self._clear_unshared_module_states(client, modules)
+
+    def _mirror_components(self, mqtt_config: dict, system: dict, modules: dict) -> dict:
+        """The mirror's own entities: its screen, CPU temperature, brightness, the sensors and buttons on its
+        GPIO header, and (when the owner allows it) a switch per module instance."""
+        from mirrordash_core.features.hardware import display
         from mirrordash_core.features.hardware.devices import (
             BUTTON_TYPES,
             PRESENCE_TYPES,
             PRESS_TYPES,
             find_device,
         )
-        from mirrordash_core.features.modules.loader import find_entry_point
-        from mirrordash_core.features.settings.schema import get_module_schema
-        cfg, system, modules = config.get("mqtt", {}), config.get("system", {}), config.get("modules", {})
-        fingerprint = json.dumps([cfg, system.get("devices"), display.brightness_supported,
-                                  {i: m.get("module") for i, m in modules.items() if isinstance(m, dict)}], sort_keys=True, default=str)
-        if fingerprint == self._fingerprint and now - self._discovered_at < DISCOVERY_INTERVAL:
-            return
-        self._fingerprint, self._discovered_at = fingerprint, now
-        base, mid, version = self._base(), cfg["id"], get_core_version()
-        control = cfg.get("control_screen") is True
-        has = lambda *types: any(find_device(system, t) for t in types)  # noqa: E731
-        comps = {
-            "screen": component(f"{mid}_screen", "switch" if control else "binary_sensor", "Screen", f"{base}/screen/state",
-                                f"{base}/screen/set" if control else None, **({} if control else {"device_class": "power"})),
-            "cpu_temperature": component(f"{mid}_cpu_temperature", "sensor", "CPU temperature", f"{base}/cpu_temperature/state",
-                                         device_class="temperature", unit_of_measurement="°C", entity_category="diagnostic"),
+        base, mirror_id = self._base(), mqtt_config["id"]
+        control = mqtt_config.get("control_screen") is True  # Home Assistant may turn the screen on/off
+
+        def has_device(*device_types: str) -> bool:
+            return any(find_device(system, device_type) for device_type in device_types)
+
+        components = {
+            "screen": component(f"{mirror_id}_screen", "switch" if control else "binary_sensor", "Screen",
+                                f"{base}/screen/state", f"{base}/screen/set" if control else None,
+                                **({} if control else {"device_class": "power"})),
+            "cpu_temperature": component(f"{mirror_id}_cpu_temperature", "sensor", "CPU temperature",
+                                         f"{base}/cpu_temperature/state", device_class="temperature",
+                                         unit_of_measurement="°C", entity_category="diagnostic"),
         }
         if display.brightness_supported is not False:
-            comps["brightness"] = component(f"{mid}_brightness", "number" if control else "sensor", "Brightness",
-                                            f"{base}/brightness/state", f"{base}/brightness/set" if control else None,
-                                            unit_of_measurement="%", **({"min": 10, "max": 100, "step": 1} if control else {}))
-        if has(*PRESENCE_TYPES):
-            comps["motion"] = component(f"{mid}_motion", "binary_sensor", "Motion", f"{base}/motion/state", device_class="motion")
-        if has("dht11"):
-            comps["temperature"] = component(f"{mid}_temperature", "sensor", "Temperature", f"{base}/temperature/state",
-                                             device_class="temperature", unit_of_measurement="°C")
-            comps["humidity"] = component(f"{mid}_humidity", "sensor", "Humidity", f"{base}/humidity/state",
-                                          device_class="humidity", unit_of_measurement="%")
-        if has("light"):
-            comps["lux"] = component(f"{mid}_lux", "sensor", "Light", f"{base}/lux/state", device_class="illuminance",
-                                     unit_of_measurement="lx")
+            components["brightness"] = component(f"{mirror_id}_brightness", "number" if control else "sensor", "Brightness",
+                                                 f"{base}/brightness/state", f"{base}/brightness/set" if control else None,
+                                                 unit_of_measurement="%", **({"min": 10, "max": 100, "step": 1} if control else {}))
+        if has_device(*PRESENCE_TYPES):
+            components["motion"] = component(f"{mirror_id}_motion", "binary_sensor", "Motion", f"{base}/motion/state",
+                                             device_class="motion")
+        if has_device("dht11"):
+            components["temperature"] = component(f"{mirror_id}_temperature", "sensor", "Temperature",
+                                                  f"{base}/temperature/state", device_class="temperature",
+                                                  unit_of_measurement="°C")
+            components["humidity"] = component(f"{mirror_id}_humidity", "sensor", "Humidity", f"{base}/humidity/state",
+                                               device_class="humidity", unit_of_measurement="%")
+        if has_device("light"):
+            components["lux"] = component(f"{mirror_id}_lux", "sensor", "Light", f"{base}/lux/state",
+                                          device_class="illuminance", unit_of_measurement="lx")
         for button in BUTTON_TYPES:
-            if has(button):
-                comps[button] = component(f"{mid}_{button}", "event", button.replace("_", " ").capitalize(),
-                                          f"{base}/{button}/state", device_class="button", event_types=list(PRESS_TYPES))
-        if cfg.get("control_modules") is True:
+            if has_device(button):
+                components[button] = component(f"{mirror_id}_{button}", "event", button.replace("_", " ").capitalize(),
+                                               f"{base}/{button}/state", device_class="button", event_types=list(PRESS_TYPES))
+        if mqtt_config.get("control_modules") is True:
             for instance in modules:
                 if SAFE_NAME.match(instance):
-                    comps[f"enabled_{instance}"] = component(f"{mid}_enabled_{instance}", "switch", f"Module {instance}",
-                                                             f"{base}/enabled/{instance}/state", f"{base}/enabled/{instance}/set",
-                                                             entity_category="config")
-        origin = {"name": "MirrorDash", "sw_version": version, "support_url": "https://github.com/Menturan/MirrorDash"}
-        devices = {f"{DISCOVERY}/device/{mid}/config": {
-            "device": {"identifiers": [mid], "name": "MirrorDash", "manufacturer": "MirrorDash", "sw_version": version},
-            "origin": origin, "availability_topic": f"{base}/status", "components": comps}}
+                    components[f"enabled_{instance}"] = component(
+                        f"{mirror_id}_enabled_{instance}", "switch", f"Module {instance}",
+                        f"{base}/enabled/{instance}/state", f"{base}/enabled/{instance}/set", entity_category="config")
+        return components
 
-        shared = {}
-        for instance, choice in (cfg.get("modules") or {}).items():
-            module_cfg = modules.get(instance)
-            if not (isinstance(choice, dict) and choice.get("share") is True and isinstance(module_cfg, dict)
-                    and SAFE_NAME.match(instance) and module_cfg.get("enabled", True)):
+    def _shared_module_devices(self, mqtt_config: dict, modules: dict, origin: dict) -> tuple[dict, dict]:
+        """(a discovery device per module instance the owner shares, what each shares): the entities its
+        config_schema.json "exposes", with the controls the owner allowed."""
+        from mirrordash_core.features.modules.loader import find_entry_point
+        from mirrordash_core.features.settings.schema import get_module_schema
+        base, mirror_id = self._base(), mqtt_config["id"]
+        devices, shared = {}, {}
+        for instance, choice in (mqtt_config.get("modules") or {}).items():
+            instance_config = modules.get(instance)
+            if not (isinstance(choice, dict) and choice.get("share") is True and isinstance(instance_config, dict)
+                    and SAFE_NAME.match(instance) and instance_config.get("enabled", True)):
                 continue
-            ep = find_entry_point(str(module_cfg.get("module", instance)))
+            ep = find_entry_point(str(instance_config.get("module", instance)))
             if not (entities := declarations(get_module_schema(ep) if ep else None)):
                 continue
             shared[instance] = entities
-            allowed = {n for n in choice.get("control") or [] if isinstance(n, str)}
+            allowed_controls = {name for name in choice.get("control") or [] if isinstance(name, str)}
             # Under the mirror's id (node id/object id): one ACL line, homeassistant/device/<id>/#, covers all
-            devices[f"{DISCOVERY}/device/{mid}/{instance}/config"] = {
-                "device": {"identifiers": [f"{mid}_{instance}"], "name": f"MirrorDash {instance}", "via_device": mid},
+            devices[f"{DISCOVERY}/device/{mirror_id}/{instance}/config"] = {
+                "device": {"identifiers": [f"{mirror_id}_{instance}"], "name": f"MirrorDash {instance}", "via_device": mirror_id},
                 "origin": origin, "availability_topic": f"{base}/status",
-                "components": module_components(base, mid, instance, entities, allowed)}
-        self._modules = shared
-        # A value it sent just before the owner stopped sharing it must not follow the clearing below
-        self._pending = {t: v for t, v in self._pending.items() if not t.startswith(f"{base}/m/") or t.split("/")[3] in shared}
+                "components": module_components(base, mirror_id, instance, entities, allowed_controls)}
+        return devices, shared
 
+    async def _send_discovery(self, client: aiomqtt.Client, devices: dict) -> None:
+        """Publish each device's discovery, and remove the devices no longer there."""
         for topic, payload in devices.items():
-            old = json.loads(self._published[topic])["components"] if self._published.get(topic) else {}
-            new = payload["components"]
+            old_components = json.loads(self._published[topic])["components"] if self._published.get(topic) else {}
+            new_components = payload["components"]
             # Home Assistant removes a component it is sent as its platform alone, and never changes one's
             # platform (a sensor that may now be controlled): those go first, then come back as they are now
-            if gone := {n: {"platform": c["platform"]} for n, c in old.items() if new.get(n, {}).get("platform") != c["platform"]}:
-                await self._publish(client, topic, json.dumps({**payload, "components": {**new, **gone}}))
+            changed_platform = {name: {"platform": old["platform"]} for name, old in old_components.items()
+                                if new_components.get(name, {}).get("platform") != old["platform"]}
+            if changed_platform:
+                await self._publish(client, topic, json.dumps({**payload, "components": {**new_components, **changed_platform}}))
             await self._publish(client, topic, json.dumps(payload))
-        for topic in [t for t in self._published if t.startswith(f"{DISCOVERY}/") and t not in devices]:
+        for topic in [topic for topic in self._published if topic.startswith(f"{DISCOVERY}/") and topic not in devices]:
             await self._publish(client, topic, "")  # a device no longer shared: Home Assistant removes it
             del self._published[topic]
-        # What a module no longer shared said stays on the broker (retained) for any client to read: cleared,
-        # once a connection for each entity it declares (an empty retained message deletes one)
-        for instance, module_cfg in modules.items():
-            if instance in shared or not (isinstance(module_cfg, dict) and SAFE_NAME.match(instance)):
+
+    async def _clear_unshared_module_states(self, client: aiomqtt.Client, modules: dict) -> None:
+        """What a module no longer shared said stays on the broker (retained) for any client to read: cleared,
+        once a connection for each entity it declares (an empty retained message deletes one)."""
+        from mirrordash_core.features.modules.loader import find_entry_point
+        from mirrordash_core.features.settings.schema import get_module_schema
+        base = self._base()
+        for instance, instance_config in modules.items():
+            if instance in self._modules or not (isinstance(instance_config, dict) and SAFE_NAME.match(instance)):
                 continue
-            ep = find_entry_point(str(module_cfg.get("module", instance)))
+            ep = find_entry_point(str(instance_config.get("module", instance)))
             for name in declarations(get_module_schema(ep) if ep else None):
                 await self._publish(client, f"{base}/m/{instance}/{name}/state", "")
 
@@ -479,16 +515,16 @@ class MqttBridge:
             gpio_inputs,
         )
         from mirrordash_core.features.power.display_power import display_power_manager
-        base, cfg, system = self._base(), config.get("mqtt", {}), config.get("system", {})
+        base, mqtt_config, system = self._base(), config.get("mqtt", {}), config.get("system", {})
         states = {f"{base}/screen/state": "ON" if display_power_manager.is_on else "OFF",
                   f"{base}/brightness/state": str(system.get("brightness", 100))}
-        if any(find_device(system, t) for t in PRESENCE_TYPES):
+        if any(find_device(system, presence_type) for presence_type in PRESENCE_TYPES):
             states[f"{base}/motion/state"] = "ON" if gpio_inputs.motion_active else "OFF"
         if cpu:
             from mirrordash_core.features.dashboard.telemetry import get_cpu_temperature
             if (temperature := get_cpu_temperature()) is not None:
                 states[f"{base}/cpu_temperature/state"] = f"{temperature:.1f}"
-        if cfg.get("control_modules") is True:
+        if mqtt_config.get("control_modules") is True:
             for instance, module_cfg in config.get("modules", {}).items():
                 if isinstance(module_cfg, dict) and SAFE_NAME.match(instance):
                     states[f"{base}/enabled/{instance}/state"] = "ON" if module_cfg.get("enabled", True) else "OFF"
@@ -501,13 +537,15 @@ class MqttBridge:
 
     def _event_states(self, data: dict) -> None:
         base = self._base()
-        number = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)  # noqa: E731
+        def is_number(value) -> bool:
+            return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+
         if "press" in data and isinstance(data.get("button"), str) and SAFE_KEY.match(data["button"]):
             self._pending[f"{base}/{data['button']}/state"] = (json.dumps({"event_type": str(data["press"])}), False)
         if isinstance(data.get("motion"), bool):
             self._pending[f"{base}/motion/state"] = ("ON" if data["motion"] else "OFF", True)
         for key, topic in (("temperature_c", "temperature"), ("humidity", "humidity"), ("lux", "lux")):
-            if number(data.get(key)):
+            if is_number(data.get(key)):
                 self._pending[f"{base}/{topic}/state"] = (str(data[key]), True)
 
     # Commands
@@ -515,7 +553,8 @@ class MqttBridge:
     async def _on_message(self, topic: str, payload, retain: bool) -> None:
         if topic == f"{DISCOVERY}/status":
             if payload == b"online":  # Home Assistant started: it wants the discovery again
-                self._published = {t: p for t, p in self._published.items() if not t.startswith(DISCOVERY + "/")}
+                self._published = {topic: payload for topic, payload in self._published.items()
+                                   if not topic.startswith(DISCOVERY + "/")}
                 self._discovered_at = 0.0
             return
         if retain:  # one the broker kept, delivered again at a reconnect: never carried out
