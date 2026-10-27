@@ -22,12 +22,14 @@ for that one instance (Host):
                     http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
                     diagnose {id}                           its GPIO lines (Logs → Diagnostics)
                     reply {id, window}                      the answer to video_window
+                    control {name, value}                   a command for what it exposes, checked (on_control)
   instance -> core  html {gen, instance, html}              its card (the core places it)
                     status {gen, running}                   whether its run_loop runs
                     video_playing {instance, on}
                     video_window {id, instance, fullscreen, hz}, video_window_end {id}
                     gpio {id, instance, pins, output, ...}  lines for it (features/hardware/gpio.py)
                     log {name, level, text}
+                    state {name, value}                     a value of what it exposes (expose, MQTT)
                     reply {id, ...}                         the answer to http or diagnose
 
 A GPIO request's answer is a file descriptor, sent over the instance's descriptor socket as one message
@@ -260,6 +262,11 @@ class HostLink:
     async def html(self, instance_id: str, html: str) -> None:
         await self.send({"t": "html", "gen": self.gen, "instance": instance_id, "html": str(html)})
 
+    async def state(self, instance_id: str, name: str, value) -> None:
+        """`await self.expose("now_playing", title)` in a module: a value of something its config_schema.json's
+        "exposes" declares, published if the owner shares it (ARCHITECTURE #42)."""
+        await self.send({"t": "state", "instance": instance_id, "name": str(name), "value": value})
+
     async def video_playing(self, instance_id: str, playing: bool) -> None:
         await self.send({"t": "video_playing", "instance": instance_id, "on": bool(playing)})
 
@@ -443,6 +450,8 @@ class Host:
             event_bus.publish(str(message.get("name")), message.get("data"))
         elif kind == "http":
             self._spawn(self._http(message))
+        elif kind == "control":
+            self._spawn(self.loader.control(str(message.get("name")), message.get("value")))
         elif kind == "diagnose":
             gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
             self._spawn(self.link.send({"t": "reply", "id": message.get("id"), "gpio": gpio}))

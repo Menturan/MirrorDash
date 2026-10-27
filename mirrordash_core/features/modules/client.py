@@ -327,6 +327,15 @@ class ModuleHost:
         if self._control:
             await self._sync()
 
+    async def control(self, instance_id: str, name: str, value) -> bool:
+        """A command for something the instance exposes, checked by the caller (mqtt/bridge.py); False if it
+        isn't running."""
+        conn = self._instances.get(instance_id)
+        if conn is None:
+            return False
+        await conn.send({"t": "control", "name": name, "value": value})
+        return True
+
     def knows(self, instance_id: str) -> bool:
         return instance_id in self._instances and instance_id in self._placement
 
@@ -562,6 +571,10 @@ class ModuleHost:
         elif kind == "status":
             if isinstance(message.get("running"), list):
                 conn.running = instance_id in message["running"]
+        elif kind == "state":
+            # Something it exposes (ARCHITECTURE #42): published only if the owner shares it and it is declared
+            from mirrordash_core.features.mqtt.bridge import mqtt_bridge
+            mqtt_bridge.module_state(instance_id, message.get("name"), message.get("value"))
         elif kind == "video_playing":
             await manager.set_video_playing(instance_id, bool(message.get("on")))
         elif kind == "video_window":

@@ -279,6 +279,11 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         # player, whose window has window.app_id: it lands over the card's data-video-window element
         plugin_instance.video_window = functools.partial(link.video_window, module_name)
 
+    if not hasattr(plugin_instance, "expose"):
+        # `await self.expose("now_playing", title)`: a value of what config_schema.json's "exposes" declares,
+        # in Home Assistant if the owner shares it (MQTT, ARCHITECTURE #42). Commands come to on_control.
+        plugin_instance.expose = lambda name, value: link.state(module_name, name, value)
+
     if not hasattr(plugin_instance, "gpio"):
         # `lines = await self.gpio([17], output=True)`, then lines.set(17, 1): free header pins only, given by
         # the core (features/hardware/gpio.py); options: output, initial, pull, edge, active_low, debounce_ms
@@ -484,6 +489,21 @@ class ModuleLoader:
 
         task = asyncio.create_task(run_with_recovery(), name=f"module-{instance_id}")
         self.tasks[instance_id] = task
+
+    async def control(self, name: str, value) -> None:
+        """A command from Home Assistant for what the instance exposes, already checked by the core against
+        its declaration and the owner's choice: the module's `on_control(name, value)`, sync or async."""
+        for instance_id, plugin_instance in self.instances.items():
+            handler = getattr(plugin_instance, "on_control", None)
+            if not callable(handler):
+                logger.warning(f"{instance_id} exposes {name} for control but has no on_control")
+                continue
+            try:
+                result = handler(name, value)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as e:
+                logger.error(f"{instance_id}: on_control({name!r}) failed: {e}", exc_info=True)
 
     async def stop_modules(self) -> None:
         logger.info("Stopping all module tasks...")

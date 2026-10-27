@@ -1,0 +1,92 @@
+<!-- MQTT card (Settings tab, ARCHITECTURE #42): the broker, and what Home Assistant may see and control. Re-rendered after every change. -->
+<section class="card" id="mqtt-card" style="margin-top: 24px;">
+    <h2><i class="fas fa-tower-broadcast" aria-hidden="true"></i> MQTT</h2>
+    <p class="panel-subtitle">Show the mirror in Home Assistant through your MQTT broker (such as the Mosquitto add-on): the screen, the sensors, the buttons and what your modules share, without any YAML. Home Assistant can only look until you let it control something below.</p>
+
+    {% if cfg.enabled %}
+    <p style="font-size: 0.85rem; margin: 0 0 14px 0;">
+        {% if status == "connected" %}<i class="fas fa-circle-check" aria-hidden="true"></i> Connected to {{ cfg.host }}.
+        {% else %}<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> {{ status | capitalize }}{% endif %}
+    </p>
+    {% endif %}
+
+    <form hx-post="/admin/panels/system/mqtt/save" hx-target="#mqtt-card" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">
+        <div style="display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));">
+            <label style="font-size: 0.85rem;">Broker
+                <input type="text" name="host" class="form-control" required value="{{ cfg.host or '' }}" placeholder="homeassistant.local or 192.168.1.10" autocomplete="off">
+            </label>
+            <label style="font-size: 0.85rem;">Port
+                <input type="number" name="port" class="form-control" min="1" max="65535" value="{{ cfg.port or '' }}" placeholder="1883, or 8883 with TLS">
+            </label>
+            <label style="font-size: 0.85rem;">User
+                <input type="text" name="username" class="form-control" value="{{ cfg.username or '' }}" autocomplete="off">
+            </label>
+            <label style="font-size: 0.85rem;">Password
+                <span class="pw-field" style="display: block;">
+                    <input type="password" id="mqtt-password" name="password" class="form-control" autocomplete="new-password" placeholder="{{ 'Saved: empty keeps it' if has_password else '' }}">
+                    <button type="button" class="pw-reveal" data-reveal="mqtt-password" aria-controls="mqtt-password" aria-pressed="false">Show</button>
+                </span>
+            </label>
+        </div>
+        <label style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; margin-top: 10px;">
+            <input type="checkbox" name="tls" {% if cfg.tls %}checked{% endif %}> TLS (the broker's certificate must be one a browser would trust)
+        </label>
+
+        <h3 style="font-size: 0.95rem; margin: 18px 0 6px 0;">What Home Assistant may control</h3>
+        <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0 0 8px 0;">Anyone who can write to your broker can do what you allow here. Never more: no settings, installs or restarts.</p>
+        <label style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem;">
+            <input type="checkbox" name="control_screen" {% if cfg.control_screen %}checked{% endif %}> Turn the screen on and off, and set its brightness
+        </label>
+        <label style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; margin-top: 6px;">
+            <input type="checkbox" name="control_modules" {% if cfg.control_modules %}checked{% endif %}> Turn modules on and off
+        </label>
+
+        {% if modules %}
+        <h3 style="font-size: 0.95rem; margin: 18px 0 6px 0;">What modules share</h3>
+        {% for module in modules %}
+        {% set choice = choices.get(module.id, {}) %}
+        <div style="border-top: 1px solid var(--card-border); padding: 8px 0;">
+            <label style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: white;">
+                <input type="checkbox" name="share[{{ module.id }}]" {% if choice.share %}checked{% endif %}> {{ module.id }}: show in Home Assistant
+            </label>
+            <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 26px;">
+                {% for name, entity in module.entities.items() %}{{ entity.title }}{% if not loop.last %}, {% endif %}{% endfor %}
+            </p>
+            {% for name, entity in module.entities.items() if entity.control %}
+            <label style="display: flex; gap: 8px; align-items: center; font-size: 0.85rem; margin: 4px 0 0 26px;">
+                <input type="checkbox" name="control[{{ module.id }}]" value="{{ name }}" {% if name in (choice.control or []) %}checked{% endif %}>
+                Let Home Assistant control: {{ entity.title }}{% if entity.url %} (a web address it plays or shows){% endif %}
+            </label>
+            {% endfor %}
+        </div>
+        {% endfor %}
+        {% endif %}
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px;">
+            <button type="submit" class="btn primary"><i class="fas fa-floppy-disk" aria-hidden="true"></i> {% if cfg.enabled %}Save{% else %}Save and Connect{% endif %}</button>
+            {% if cfg.enabled %}
+            <button type="button" class="btn danger" hx-post="/admin/panels/system/mqtt/off" hx-target="#mqtt-card" hx-swap="outerHTML"
+                    hx-confirm="Turn MQTT off? The mirror disappears from Home Assistant.">
+                <i class="fas fa-power-off" aria-hidden="true"></i> Turn Off
+            </button>
+            {% endif %}
+        </div>
+    </form>
+
+    {% if cfg.enabled and cfg.id %}
+    <details style="margin-top: 14px; font-size: 0.85rem;">
+        <summary>Lock the broker down (recommended)</summary>
+        <p style="margin: 8px 0;">Without this, every device logged in to your broker could send the mirror what you allow above, and take over its connection. In the Mosquitto add-on, turn on <code>customize</code> and put these in its folder (<code>/share/mosquitto</code>): an ACL file with the lines below, and <code>use_username_as_clientid true</code> in a <code>.conf</code> file. Give your other devices their own users and lines too.</p>
+        <pre style="font-family: var(--mono-family); font-size: 0.75rem; white-space: pre-wrap; margin: 0;">user {{ cfg.username or "<the mirror's user>" }}
+topic write mirrordash/{{ cfg.id }}/#
+topic read mirrordash/{{ cfg.id }}/+/set
+topic read mirrordash/{{ cfg.id }}/enabled/+/set
+topic read mirrordash/{{ cfg.id }}/m/+/+/set
+topic write homeassistant/device/{{ cfg.id }}/#
+topic read homeassistant/status</pre>
+    </details>
+    {% endif %}
+    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 12px 0 0 0;">
+        Step by step in the <a href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md#mqtt" target="_blank" rel="noopener">user guide</a>.
+    </p>
+</section>

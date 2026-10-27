@@ -25,6 +25,7 @@ from mirrordash_core.config import (
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import SAFE_NAME, module_entry_points
+from mirrordash_core.features.mqtt.bridge import new_id
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
 from mirrordash_core.host import reboot_system, run_restart
 
@@ -298,11 +299,13 @@ async def create_backup(password: str | None = None) -> dict:
         content = temp_dir / "content"
         content.mkdir()
 
-        # 1. The config; a plain backup leaves out the admin credentials
+        # 1. The config; a plain backup leaves out the admin credentials and the MQTT broker's password
         try:
             config = load_config().copy()
             if not password:
                 config.pop("admin_auth", None)
+                if isinstance(config.get("mqtt"), dict):
+                    config["mqtt"] = {k: v for k, v in config["mqtt"].items() if k != "password"}
             with open(content / "config.json", "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
             if password:
@@ -427,9 +430,13 @@ async def _restore_config(extract_dir: Path) -> bool:
     reboot_needed, gpio_error = await sync_gpio_overlays(system_cfg)
     if gpio_error:
         logger.error(f"Could not restore GPIO settings: {gpio_error}")
-    restored["admin_auth"] = restored.get("admin_auth") or load_config().get("admin_auth")
+    current = load_config()
+    restored["admin_auth"] = restored.get("admin_auth") or current.get("admin_auth")
     if not restored["admin_auth"]:
         del restored["admin_auth"]  # a mirror still being set up: the admin page asks for one
+    if isinstance(restored.get("mqtt"), dict):
+        # This mirror's own MQTT id, never the backup's: two mirrors under one id would share their commands
+        restored["mqtt"]["id"] = current.get("mqtt", {}).get("id") or new_id()
     save_config(restored)
     logger.info("Configuration files restored successfully.")
     return reboot_needed

@@ -132,6 +132,39 @@ With Matter, the mirror's screen shows up as a light in Apple Home, Google Home,
 
 **Starting over:** *Reset Pairing* on the card removes the mirror from every home app and shows a code again. Turning Matter off keeps the pairing for when you turn it on again; it costs about 100 MB of memory while on.
 
+### MQTT
+
+With MQTT the mirror appears in Home Assistant by itself, as a device with its screen, brightness, CPU temperature, the sensors and buttons you connected under *Hardware*, and what your modules share. Nothing to paste into `configuration.yaml`. You need an MQTT broker; the **Mosquitto broker** add-on in Home Assistant is the usual one, with its MQTT integration set up.
+
+1.  **A user for the mirror**: in Home Assistant, *Settings* → *People* → *Users*, add a user (for example `mirrordash`). Mosquitto lets Home Assistant's users log in.
+2.  **Connect**: in the mirror's admin page, *Settings* → *MQTT*, type the broker (`homeassistant.local` or Home Assistant's IP address), the user and the password, and **Save and Connect**. The card says *Connected*, and the mirror shows up in Home Assistant under *Settings* → *Devices*.
+3.  **Choose what Home Assistant may do.** At first it can only look. On the card you can let it turn the screen on and off and set the brightness, turn modules on and off, and, for each module that offers it, show the module and let Home Assistant control what it offers (a TV module's channel, say). Save after each change.
+
+Buttons show up as events (single, double, triple, long press) that you can use as automation triggers.
+
+**Lock the broker down.** MQTT can't tell who sent a message: without more, every device logged in to your broker (a Zigbee bridge, a smart plug) could send the mirror what you allowed, and take over its connection. The card's *Lock the broker down* shows the lines for it. In the Mosquitto add-on's configuration, turn on `customize` (`active: true`, `folder: mosquitto`), then make two files in Home Assistant's `/share/mosquitto` folder (the *File editor* or *Samba* add-on can):
+
+- `acl.conf`:
+  ```
+  acl_file /share/mosquitto/accesscontrollist
+  use_username_as_clientid true
+  ```
+- `accesscontrollist`: the card's lines for the mirror, and lines for everyone else that uses the broker, or they lose their access:
+  ```
+  user homeassistant
+  topic readwrite #
+
+  user zigbee2mqtt
+  topic readwrite zigbee2mqtt/#
+  topic readwrite homeassistant/#
+  ```
+
+Restart the add-on. Each device then needs a user of its own (with `use_username_as_clientid`, two on one user throw each other off).
+
+**TLS**: tick it on the card when your broker has a certificate a browser would trust (port 8883). A self-signed one isn't accepted.
+
+**Turning it off** (*Turn Off* on the card) removes the mirror from Home Assistant. A backup without a password leaves the broker password out; type it again after restoring one.
+
 ### The API
 
 Other systems can read the mirror's status and sensors, turn its screen on and off and set its brightness. They need a token: in the admin page, *Settings* → *API* → **Create Token**. Every call is described, and can be tried with your token, at `http://mirrordash.local/api/v1/docs`.
@@ -255,5 +288,6 @@ The system part of the SD card is read-only: everything written there during use
 
 - **The admin page uses plain HTTP**, like most devices at home (printers, routers). On your own Wi-Fi that is fine, but someone who can listen in on that network could see the admin password. Don't use the same password anywhere else, and don't make the mirror reachable from the internet (no port forwarding to it).
 - **A module is a small program that runs on the mirror.** Each one runs apart, as a user of its own: it can't read MirrorDash's settings or passwords, another module's settings or keys (like the Home Assistant token), or reach your home network, except the address you type in its settings (like Home Assistant's). Each one is also installed in a folder of its own, so one module's install can't change another's code. A module can still send what it reads to the internet, so under *Modules → Add modules*, the ones made by MirrorDash are marked **Official**; install others only from people you trust, and read their README first.
+- **MQTT is only as closed as your broker.** Home Assistant can only look at the mirror until you allow more on the MQTT card, and it can never change settings, install anything or restart it. But anyone who can write to your broker can do what you allowed, so give each device its own user and lock the broker down as in [MQTT](#mqtt).
 - **A guest network is the safest place** for the mirror if your router has one: the mirror only needs the internet, and then a module can't reach your computers.
 - **SSH is off** unless you turn it on under *Settings*, with a password of your own.

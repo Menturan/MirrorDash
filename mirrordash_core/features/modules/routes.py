@@ -177,6 +177,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     if cfg_key not in modules_config:
         raise HTTPException(status_code=404, detail="Instance not found")
     del modules_config[cfg_key]
+    config.get("mqtt", {}).get("modules", {}).pop(cfg_key, None)  # a new instance of that name starts unshared
     save_config(config)
 
     await module_host.reload_modules()
@@ -184,24 +185,29 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     return notify("Module removed from mirror display.", refreshModules=True)
 
 
+async def set_instance_enabled(instance_id: str, on: bool) -> bool:
+    """Turn a module instance on or off (the admin page's toggle, MQTT's switch); False if there is none."""
+    config = load_config()
+    cfg = config.get("modules", {}).get(instance_id)
+    if not isinstance(cfg, dict):
+        return False
+    if cfg.get("enabled", True) != on:
+        cfg["enabled"] = on
+        save_config(config)
+        await module_host.reload_modules()
+    return True
+
+
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
 async def toggle_module_instance(module_name: str, instance_id: str = None):
-    config = load_config()
-    modules_config = config.get("modules", {})
+    modules_config = load_config().get("modules", {})
     cfg_key = instance_id or find_module_config(modules_config, module_name)[0]
-    if cfg_key in modules_config:
-        current_state = modules_config[cfg_key].get("enabled", True)
-        new_state = not current_state
-        modules_config[cfg_key]["enabled"] = new_state
-
-        save_config(config)
-
-        await module_host.reload_modules()
-
-        # No refreshModules here: it closes the settings sheet the toggle lives in
-        return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
-    else:
+    if cfg_key not in modules_config:
         raise HTTPException(status_code=404, detail="Instance not found")
+    new_state = not modules_config[cfg_key].get("enabled", True)
+    await set_instance_enabled(cfg_key, new_state)
+    # No refreshModules here: it closes the settings sheet the toggle lives in
+    return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
 
 
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])

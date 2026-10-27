@@ -940,7 +940,7 @@ def test_the_page_says_where_a_modules_video_window_is(page):
     send({"module": "tv", "position": "top_left", "html": "<div data-video-window style='width:480px;height:270px'></div>"})
     send({"module": "clock", "position": "top_right", "html": "<p>12:00</p>"})
 
-    send({"type": "video_window", "module": "tv"})
+    send({"type": "video_window", "module": "tv"})  # within the card's entrance (fadeIn): where it ends up, not where it is
     send({"type": "video_window", "module": "clock"})
     answers = [json.loads(t) for t in page.evaluate("window.__sent") if t.startswith("{")]
     box = page.evaluate("(b => [b.left, b.top])(document.querySelector('[data-module=tv]')"

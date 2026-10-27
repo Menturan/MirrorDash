@@ -729,7 +729,13 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
 
         async def run_loop(self, broadcast_fn):
             await broadcast_fn("garage", "<p>closed</p>")
+            await self.expose("door", "closed")  # MQTT (ARCHITECTURE #42)
             await asyncio.Event().wait()
+
+        async def on_control(self, name, value):
+            controlled.append((name, value))
+
+    controlled = []
 
     class EntryPoint:
         name = "md_garage"
@@ -752,6 +758,9 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
     monkeypatch.setattr(client_module, "manager", manager)
     monkeypatch.setattr(client_module, "module_host", client_module.ModuleHost())
     core = client_module.module_host
+    from mirrordash_core.features.mqtt.bridge import mqtt_bridge
+    states = []
+    monkeypatch.setattr(mqtt_bridge, "module_state", lambda *args: states.append(args))
 
     server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
@@ -795,6 +804,14 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         with caplog.at_level(logging.INFO):
             await core._handle({"t": "log", "name": "mirrordash.core.auth", "level": 40, "text": "forged"}, garage)
         assert [r.name for r in caplog.records if r.message == "forged"] == ["mirrordash.modules.garage"]
+
+        # What it exposes reaches the bridge as its own, whatever it names; a command reaches its on_control
+        await _until(lambda: ("garage", "door", "closed") in states)
+        await core._handle({"t": "state", "instance": "elsewhere", "name": "door", "value": "open"}, garage)
+        await core._handle({"t": "state", "name": "door", "value": "x"}, core._control)
+        assert states[-1] == ("garage", "door", "open")
+        assert await core.control("garage", "door", "open") and not await core.control("gone", "door", "open")
+        await _until(lambda: controlled == [("door", "open")])
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

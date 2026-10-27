@@ -165,6 +165,7 @@ function connect() {
         // its card, in CSS pixels, which are the screen's (features/video/window.py places the module's player there)
         if (data.type === 'video_window') {
             const host = document.querySelector(`[data-module="${CSS.escape(data.module)}"]`);
+            host?.getAnimations().forEach(a => a.finish());  // a new card slides in (fadeIn): its place is where it ends
             const box = host?.shadowRoot?.querySelector('[data-video-window]')?.getBoundingClientRect();
             const rect = box && box.width > 0 && box.height > 0
                 ? [box.left, box.top, box.width, box.height].map(Math.round) : null;

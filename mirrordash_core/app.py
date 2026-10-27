@@ -24,6 +24,8 @@ from mirrordash_core.features.modules import routes as modules
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host, module_routes
 from mirrordash_core.features.modules.loader import start_system
+from mirrordash_core.features.mqtt import routes as mqtt
+from mirrordash_core.features.mqtt.bridge import mqtt_bridge
 from mirrordash_core.features.power import routes as power
 from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
@@ -39,13 +41,14 @@ async def lifespan(app: FastAPI):
     write_local_token()
     start_system()
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
-    for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start):
+    for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
+                 mqtt_bridge.start):
         try:
             await step()
         except Exception as e:
             logger.error(f"Error during startup ({step.__qualname__}): {e}", exc_info=True)
     yield
-    for step in (internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
+    for step in (mqtt_bridge.stop, internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
         try:
             await step()
         except Exception as e:
@@ -61,7 +64,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 app.middleware("http")(wifi.captive_portal_redirect)
 
 for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
-                kiosk, logs, matter, modules, modules_service, power, settings, updates, updates_service, wifi):
+                kiosk, logs, matter, modules, modules_service, mqtt, power, settings, updates, updates_service, wifi):
     app.include_router(feature.router)
 app.mount("/api/v1", api_v1.api)
 app.mount("/api/modules", module_routes)
