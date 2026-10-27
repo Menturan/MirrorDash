@@ -95,7 +95,8 @@ CHECK = ("import site, sys; site.addsitedir(sys.argv[1]); from importlib.metadat
 
 
 SANDBOX_PORTS = (80, 8000)  # the mirror's own site (nginx) and the core behind it
-ROUTES = "/proc/self/net/route"  # the router, the way into the home network (/proc/net is hidden by ProcSubset=pid)
+# The kernel's route table, to find the router, the way into the home network (/proc/net is hidden by ProcSubset=pid)
+ROUTE_TABLE_FILE = "/proc/self/net/route"
 # mirrordash-modules.service's InaccessiblePaths and ProtectHome
 SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirrordash/ssh": "the SSH keys",
                  "/storage/mirrordash/system-connections": "the Wi-Fi passwords", "/storage/rauc": "the OS update keys",
@@ -105,7 +106,7 @@ SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", 
 MODULE_DEVICES = {"/dev/i2c-1"}  # the header's I2C bus
 
 
-def reaches(host: str, port: int) -> bool:
+def can_connect_to(host: str, port: int) -> bool:
     """A connection gets through, or an answer comes back (refused): the address is in reach. A filter says EPERM."""
     try:
         socket.create_connection((host, port), timeout=1).close()
@@ -116,7 +117,7 @@ def reaches(host: str, port: int) -> bool:
     return True
 
 
-def opens(path: str) -> bool:
+def can_open_for_reading_and_writing(path: str) -> bool:
     try:
         os.close(os.open(path, os.O_RDWR | os.O_NONBLOCK))
     except OSError:
@@ -125,34 +126,40 @@ def opens(path: str) -> bool:
 
 
 def default_gateway() -> str | None:
-    with contextlib.suppress(OSError, ValueError, IndexError), open(ROUTES) as f:
-        for fields in (line.split() for line in f.readlines()[1:]):
-            if fields[1] == "00000000" and fields[2] != "00000000":
-                return socket.inet_ntoa(struct.pack("<L", int(fields[2], 16)))
+    """The router's address, from the kernel's route table: a header line, then a line per route whose
+    Destination 00000000 is the default route, and whose Gateway is an IPv4 address as a hex number in the
+    machine's byte order (little-endian on a Pi: 0100A8C0 is 192.168.0.1)."""
+    with contextlib.suppress(OSError, ValueError, IndexError), open(ROUTE_TABLE_FILE) as route_table:
+        for columns in (line.split() for line in route_table.readlines()[1:]):
+            destination, gateway = columns[1], columns[2]
+            if destination == "00000000" and gateway != "00000000":
+                return socket.inet_ntoa(struct.pack("<L", int(gateway, 16)))
     return None
 
 
 def data_folders() -> list[str]:
     """The instances' data folders, as the control process sees them (a module's user can't list them)."""
     with contextlib.suppress(OSError):
-        return sorted(e.name for e in os.scandir(get_module_dir() / "data") if SAFE_NAME.match(e.name))
+        return sorted(entry.name for entry in os.scandir(get_module_dir() / "data") if SAFE_NAME.match(entry.name))
     return []
 
 
-def sandbox_checks(data: list[str] | None = None) -> list[tuple[str, bool]]:
+def sandbox_checks(data_folder_names: list[str] | None = None) -> list[tuple[str, bool]]:
     """What the sandbox keeps from a module, looked at as one (probe_main): (what, reachable), each should
     be False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
     device cgroup, namespaces), and a user per module holds only if its capabilities are gone and the
     folders' modes are right, so the host looks: when the core connects, and from Logs → Diagnostics.
-    data: the instances' data folders (default: those this process can list)."""
-    checks = [(f"the mirror's own port {port}", reaches("127.0.0.1", port)) for port in SANDBOX_PORTS]
+    data_folder_names: the instances' data folders (default: those this process can list)."""
+    if data_folder_names is None:
+        data_folder_names = data_folders()
+    checks = [(f"the mirror's own port {port}", can_connect_to("127.0.0.1", port)) for port in SANDBOX_PORTS]
     if gateway := default_gateway():
-        checks.append((f"the router ({gateway})", reaches(gateway, 53)))
+        checks.append((f"the router ({gateway})", can_connect_to(gateway, 53)))
     checks += [(f"{what} ({path})", os.access(path, os.R_OK)) for path, what in SANDBOX_PATHS.items()]
-    devices = sorted({p for pattern in SANDBOX_DEVICES for p in glob.glob(pattern)} - MODULE_DEVICES)
-    checks += [(path, opens(path)) for path in devices]
+    present_devices = {device for pattern in SANDBOX_DEVICES for device in glob.glob(pattern)}
+    checks += [(device, can_open_for_reading_and_writing(device)) for device in sorted(present_devices - MODULE_DEVICES)]
     checks += [(f"another module's data ({name})", os.access(get_module_dir() / "data" / name, os.R_OK))
-               for name in (data_folders() if data is None else data)]
+               for name in data_folder_names]
     checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
     checks.append(("writing a module's own folder", any(os.access(f, os.W_OK) for f in module_folders())))
     checks.append(("capabilities (" + (", ".join(forkserver.held_capability_sets()) or "none") + ")",
@@ -184,6 +191,40 @@ def link_module(site_dir: Path, name: str, folder: str) -> None:
     os.replace(tmp, site_dir / name)
 
 
+def folder_holds_package(folder: Path, package: str) -> bool:
+    """Whether a module's folder has the package of that package_key installed."""
+    return any(package_key(d.name) == package for d in importlib.metadata.distributions(path=[str(folder)]))
+
+
+def next_module_folder_name(package: str) -> str:
+    """A new folder in pkgs for an install of package: <package>_<n>, n one past the highest there, so an
+    install never writes into the folder the running version uses."""
+    pkgs = get_module_dir() / "pkgs"
+    used_numbers = []
+    if pkgs.is_dir():
+        for entry in os.scandir(pkgs):
+            prefix, _, number = entry.name.rpartition("_")
+            if prefix == package and number.isdigit():
+                used_numbers.append(int(number))
+    return f"{package}_{max(used_numbers, default=0) + 1}"
+
+
+def module_name_clash(package: str, new_folder: Path, links: dict[str, str]) -> tuple[str, set[str]] | None:
+    """(the other package, the module names both have) when the modules in new_folder take a name another
+    package has: one in the site (links), or in the core's venv (the image's clock), which the site shadows
+    (loader.module_search_path), so only a newer version of that package may take them. None if no clash."""
+    claimed_names = folder_entry_points(str(new_folder))
+    pkgs = get_module_dir() / "pkgs"
+    others = [(other, folder_entry_points(str(pkgs / folder))) for other, folder in links.items()]
+    for distribution in importlib.metadata.distributions():
+        names = {ep.name.replace("-", "_") for ep in distribution.entry_points.select(group="mirrordash.modules")}
+        others.append((package_key(str(distribution.name)), names))
+    for other_package, names in others:
+        if other_package != package and (shared_names := claimed_names & names):
+            return other_package, shared_names
+    return None
+
+
 def package_key(target: str) -> str | None:
     """The name a module's folder and user go by, from what uv installs: a GitHub repository's name, a
     local folder's or a PyPI requirement's, lowercase with '-' between words. None for anything else."""
@@ -203,15 +244,20 @@ def package_user(target: str) -> str | None:
     as the user whose files the installed module's code is. None for what package_key refuses."""
     if not (name := package_key(target)):
         return None
-    source = target.split("@")[0].rstrip("/").removesuffix(".git").lower() if target.startswith("git+") \
-        else target if "/" in target else ""
-    return f"{name}-{hashlib.sha256(source.encode()).hexdigest()[:7]}"
+    if target.startswith("git+"):
+        source = target.split("@")[0].rstrip("/").removesuffix(".git").lower()  # the repository, any version
+    elif "/" in target:
+        source = target  # a local folder
+    else:
+        source = ""  # PyPI
+    short_source_hash = hashlib.sha256(source.encode()).hexdigest()[:7]
+    return f"{name}-{short_source_hash}"
 
 
-def empty(folder: Path, site: bool = False) -> None:
+def empty_folder(folder: Path, keep_what_cannot_be_removed: bool = False) -> None:
     """Everything in folder, not the folder: a module's folder is its user's in pkgs, which it can't write
-    (forkserver.give_folder_to_user makes it). site: a site's folder of links, where what an older shared site left
-    and can't be removed stays (module_folders reads the links only)."""
+    (forkserver.give_folder_to_user makes it). keep_what_cannot_be_removed: for a site's folder of links,
+    where what an older shared site left and can't be removed stays (module_folders reads the links only)."""
     folder.mkdir(parents=True, exist_ok=True)
     for entry in os.scandir(folder):
         try:
@@ -220,11 +266,11 @@ def empty(folder: Path, site: bool = False) -> None:
             else:
                 os.unlink(entry.path)
         except OSError:
-            if not site:
+            if not keep_what_cannot_be_removed:
                 raise
 
 
-async def run(*cmd: str, timeout: float) -> tuple[int, str]:
+async def run_command(*cmd: str, timeout: float) -> tuple[int, str]:
     """(returncode, the end of stderr); 124 after timeout seconds, like timeout(1)."""
     try:
         process = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL,
@@ -510,16 +556,16 @@ async def site_step(message: dict, folder: Path) -> tuple[int, str]:
             return 1, f"not a uv pip install: {args[:1]}"
         # --no-cache: the host's folder is on /storage, which is small. --no-config: no uv.toml from the
         # working directory or HOME (forkserver.spawn_child) decides where a module's code comes from
-        code, err = await run("uv", "pip", "install", "--python", python, "--target", str(folder),
+        code, err = await run_command("uv", "pip", "install", "--python", python, "--target", str(folder),
                               "--no-cache", "--no-config", *args[1:], timeout=timeout)
         if code == 0:  # a module's process can't write its folder, so its bytecode is made here
-            await run(python, "-I", "-m", "compileall", "-q", str(folder), timeout=timeout)
+            await run_command(python, "-I", "-m", "compileall", "-q", str(folder), timeout=timeout)
         return code, err
     elif op == "check":
         names = [n for n in message.get("names", []) if isinstance(n, str) and SAFE_NAME.match(n)]
-        return await run(python, "-I", "-c", CHECK, str(folder), *names, timeout=CHECK_TIMEOUT)
+        return await run_command(python, "-I", "-c", CHECK, str(folder), *names, timeout=CHECK_TIMEOUT)
     elif op == "clean":
-        await asyncio.to_thread(empty, folder)
+        await asyncio.to_thread(empty_folder, folder)
     else:
         return 1, f"unknown site step {op!r}"
     return 0, ""
@@ -550,28 +596,28 @@ async def probe_main(stream: socket.socket, _instance=None) -> None:
 CHILDREN = {"module": instance_main, "site": site_main, "probe": probe_main}
 
 
-def module_uids(instances: list[str], file: str = "uids.json", users: range = forkserver.MODULE_UIDS) -> dict[str, int]:
+def module_uids(names: list[str], file_name: str = "uids.json", uid_range: range = forkserver.MODULE_UIDS) -> dict[str, int]:
     """Each instance's user (or each module's, by package_user, in package_uids.json), kept in the host's folder
     (/storage outlives the image) so its files stay its own. A new one gets the next uid, never one that was
     another's: that one's files may still be there.
     ponytail: forkserver.MODULE_UIDS holds 900 instances ever made on a mirror, PACKAGE_UIDS 98 modules ever
     installed; past that a new one doesn't start or install."""
-    path = get_module_dir() / file
+    path = get_module_dir() / file_name
     try:
-        uids = {k: v for k, v in json.loads(path.read_text()).items() if type(v) is int and v in users}
+        uids = {name: uid for name, uid in json.loads(path.read_text()).items() if type(uid) is int and uid in uid_range}
     except (OSError, ValueError, AttributeError):
         uids = {}
-    new = [i for i in instances if i not in uids and SAFE_NAME.match(i)]
-    for instance in new:
-        uid = max(uids.values(), default=users.start - 1) + 1
-        if uid in users:
-            uids[instance] = uid
-    if new:
+    new_names = [name for name in names if name not in uids and SAFE_NAME.match(name)]
+    for name in new_names:
+        next_uid = max(uids.values(), default=uid_range.start - 1) + 1  # never one given before, even if freed
+        if next_uid in uid_range:
+            uids[name] = next_uid
+    if new_names:
         path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_name(file + ".tmp")
+        tmp = path.with_name(file_name + ".tmp")
         tmp.write_text(json.dumps(uids, indent=1))
         os.replace(tmp, path)
-    return {i: uids[i] for i in instances if i in uids}
+    return {name: uids[name] for name in names if name in uids}
 
 
 class Control:
@@ -615,7 +661,7 @@ class Control:
         elif kind == "diagnose":
             self._spawn(self._diagnose(request))
 
-    def instance(self, data: bytes, fds: list[int]) -> None:
+    def start_instance(self, data: bytes, fds: list[int]) -> None:
         """The core's request to start an instance (receive_spawns): its sockets go to its process."""
         socks = [socket.socket(fileno=fd) for fd in fds]
         try:
@@ -630,7 +676,7 @@ class Control:
             return
         self.spawn("module", uid, instance, socks)
 
-    async def child(self, kind: str, uid: int, message: dict | None, timeout: float, folder: str | None = None) -> dict:
+    async def run_in_child_process(self, kind: str, uid: int, message: dict | None, timeout: float, folder: str | None = None) -> dict:
         """Run a site step (in a module's folder) or the probe in a process of its own: the message in, its
         answer out."""
         ours, theirs = socket.socketpair()
@@ -647,7 +693,7 @@ class Control:
     async def probe(self) -> list:
         """sandbox_checks as the self-check's user, told the data folders it can't list."""
         try:
-            reply = await self.child("probe", forkserver.PROBE_UID, {"data": data_folders()}, PROBE_TIMEOUT)
+            reply = await self.run_in_child_process("probe", forkserver.PROBE_UID, {"data": data_folders()}, PROBE_TIMEOUT)
             return reply.get("checks") or []
         except (OSError, ValueError, TimeoutError) as e:
             return [(f"the self-check, which didn't finish ({e!r})", True)]
@@ -670,17 +716,17 @@ class Control:
         link, active, next_site = site_paths()
         try:
             if op == "prepare":
-                await asyncio.to_thread(empty, next_site, True)
+                await asyncio.to_thread(empty_folder, next_site, True)
                 for name, folder in ({} if message.get("fresh") else site_links(active)).items():
                     link_module(next_site, name, folder)
-                await self._collect()
+                await self._remove_unlinked_module_folders()
                 code, err = 0, ""
             elif op == "pip":
-                code, err = await self._change(message, next_site)
+                code, err = await self._install_or_uninstall(message, next_site)
             elif op == "check":
                 code, err = await self._check_modules(message, next_site)
             elif op == "revert":
-                await asyncio.to_thread(empty, next_site, True)
+                await asyncio.to_thread(empty_folder, next_site, True)
                 code, err = 0, ""
             elif op == "commit":
                 point_link(link, next_site)
@@ -693,14 +739,14 @@ class Control:
             logger.warning(f"Module site {op} failed: {err.strip()}")
         await self.link.send({"t": "reply", "id": message.get("id"), "code": code, "err": err})
 
-    async def _step(self, uid: int, folder: str, message: dict) -> tuple[int, str]:
+    async def _site_step_as(self, uid: int, folder: str, message: dict) -> tuple[int, str]:
         """A site step in pkgs/folder, as uid (a module's user)."""
         timeout = message.get("timeout") if isinstance(message.get("timeout"), int) else SITE_STEP_TIMEOUT
-        reply = await self.child("site", uid, message, timeout + 30, folder)
+        reply = await self.run_in_child_process("site", uid, message, timeout + 30, folder)
         return (reply.get("code") if isinstance(reply.get("code"), int) else 1), \
             str(reply.get("err", "the step ended without an answer"))
 
-    def _folder_user(self, folder: str) -> int | None:
+    def _owner_of_module_folder(self, folder: str) -> int | None:
         """The user a module's folder in pkgs belongs to (forkserver.give_folder_to_user gave it), whom its steps run
         as; None if it is no module's. Off a mirror it is the developer's, and any module user passes the
         forkserver, which then changes none."""
@@ -709,40 +755,31 @@ class Control:
             return uid
         return None if self.sandboxed else forkserver.PACKAGE_UIDS.start
 
-    async def _change(self, message: dict, next_site: Path) -> tuple[int, str]:
+    async def _install_or_uninstall(self, message: dict, next_site: Path) -> tuple[int, str]:
         """uv pip install of one module, into a new folder of its own, linked in only if it worked and
         claims no other module's name; or uninstall: its link taken out."""
         args = [str(a) for a in message.get("args") or []]
-        name = package_key(args[-1]) if len(args) > 1 else None
-        if args[:1] not in (["install"], ["uninstall"]) or not name:
+        target = args[-1] if len(args) > 1 else ""
+        package = package_key(target) if target else None
+        if args[:1] not in (["install"], ["uninstall"]) or not package:
             return 1, f"not one module to install or uninstall: {args}"
         links = site_links(next_site)
         if args[0] == "uninstall":
-            gone = [k for k, f in links.items() if any(package_key(d.name) == name for d in
-                    importlib.metadata.distributions(path=[str(next_site / k)]))]
-            for k in gone:
-                (next_site / k).unlink()
-            return (0, "") if gone else (1, f"{args[-1]} is not installed")
-        pkgs = get_module_dir() / "pkgs"
-        taken = [int(e.name.rpartition("_")[2]) for e in os.scandir(pkgs)
-                 if e.name.rpartition("_")[0] == name and e.name.rpartition("_")[2].isdigit()] if pkgs.is_dir() else []
-        folder = f"{name}_{max(taken, default=0) + 1}"
-        user = package_user(args[-1])
+            removed = [link for link in links if folder_holds_package(next_site / link, package)]
+            for link in removed:
+                (next_site / link).unlink()
+            return (0, "") if removed else (1, f"{target} is not installed")
+        folder = next_module_folder_name(package)
+        user = package_user(target)
         if (uid := module_uids([user], "package_uids.json", forkserver.PACKAGE_UIDS).get(user)) is None:
             return 1, "no user is left for another module on this mirror"
-        code, err = await self._step(uid, folder, message)
+        code, err = await self._site_step_as(uid, folder, message)
         if code:
             return code, err
-        claimed = folder_entry_points(str(pkgs / folder))
-        # The other modules' names: the site's, and those of the core's venv (the image's clock), which the
-        # site shadows (loader.module_search_path), so only a newer version of that package may take them
-        others = [(other, folder_entry_points(str(pkgs / f))) for other, f in links.items()]
-        others += [(package_key(str(d.name)), {ep.name.replace("-", "_") for ep in d.entry_points.select(
-            group="mirrordash.modules")}) for d in importlib.metadata.distributions()]
-        for other, names in others:
-            if other != name and (both := claimed & names):
-                return 1, f"{args[-1]} has a module named {', '.join(sorted(both))}, as {other} already has"
-        link_module(next_site, name, folder)
+        if clash := module_name_clash(package, get_module_dir() / "pkgs" / folder, links):
+            other_package, shared_names = clash
+            return 1, f"{target} has a module named {', '.join(sorted(shared_names))}, as {other_package} already has"
+        link_module(next_site, package, folder)
         return 0, ""
 
     async def _check_modules(self, message: dict, next_site: Path) -> tuple[int, str]:
@@ -750,14 +787,14 @@ class Control:
         names = {str(n).replace("-", "_") for n in message.get("names") or []}
         for name, folder in site_links(next_site).items():
             if folder_entry_points(str(next_site / name)) & names:
-                if (uid := self._folder_user(folder)) is None:
+                if (uid := self._owner_of_module_folder(folder)) is None:
                     return 1, f"{name}'s folder ({folder}) is no module user's"
-                code, err = await self._step(uid, folder, {**message, "timeout": CHECK_TIMEOUT})
+                code, err = await self._site_step_as(uid, folder, {**message, "timeout": CHECK_TIMEOUT})
                 if code:
                     return code, err
         return 0, ""
 
-    async def _collect(self) -> None:
+    async def _remove_unlinked_module_folders(self) -> None:
         """Remove the module folders neither site links to (an older version, an uninstalled module, a
         failed install), each emptied as its user. One that won't go stays until the next change."""
         used = {f for s in site_paths()[1:] for f in site_links(s).values()}
@@ -767,9 +804,9 @@ class Control:
                        and SAFE_NAME.match(e.name) and e.name.rpartition("_")[2].isdigit()]
         for entry in entries:
             try:
-                if (uid := self._folder_user(entry.name)) is None:
+                if (uid := self._owner_of_module_folder(entry.name)) is None:
                     raise OSError("it is no module user's")
-                code, err = await self._step(uid, entry.name, {"op": "clean"})
+                code, err = await self._site_step_as(uid, entry.name, {"op": "clean"})
                 if code:
                     raise OSError(err)
                 os.rmdir(entry.path)
@@ -791,7 +828,7 @@ def receive_spawns(listener: socket.socket, control: Control, loop: asyncio.Abst
                 return
             if not data:
                 return
-            loop.call_soon_threadsafe(control.instance, data, fds)
+            loop.call_soon_threadsafe(control.start_instance, data, fds)
 
 
 async def serve(path: str, spawn) -> None:

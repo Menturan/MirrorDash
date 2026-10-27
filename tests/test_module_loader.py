@@ -476,7 +476,7 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(modules))
     try:
         monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
-        monkeypatch.setattr(host, "ROUTES", str(tmp_path / "route"))
+        monkeypatch.setattr(host, "ROUTE_TABLE_FILE", str(tmp_path / "route"))
         monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path): "the core's data"})
         monkeypatch.setattr(host, "SANDBOX_DEVICES", (str(tmp_path / "gpiochip*"), str(tmp_path / "i2c-*")))
         monkeypatch.setattr(host, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
@@ -486,7 +486,7 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     finally:
         listener.close()
     monkeypatch.setattr(host, "SANDBOX_PORTS", ())
-    monkeypatch.setattr(host, "ROUTES", str(tmp_path / "no-route"))
+    monkeypatch.setattr(host, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
     monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
     for path in (tmp_path / "gpiochip0", modules / "data" / "calendar", modules / "site_a", modules / "pkgs" / "md-clock_1"):
         path.chmod(0o500 if path.is_dir() else 0)
@@ -630,13 +630,13 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     (venv / "entry_points.txt").write_text("[mirrordash.modules]\nmd_clock = md_clock.plugin:Module\n")
     monkeypatch.syspath_prepend(str(venv.parent))
     builds = {}  # each install's folder: the user it ran as
-    real_child = host_module.Control.child
+    real_child = host_module.Control.run_in_child_process
 
-    async def child(self, kind, uid, message, timeout, folder=None):
+    async def run_in_child_process(self, kind, uid, message, timeout, folder=None):
         if (message or {}).get("op") == "pip":
             builds[folder] = uid
         return await real_child(self, kind, uid, message, timeout, folder)
-    monkeypatch.setattr(host_module.Control, "child", child)
+    monkeypatch.setattr(host_module.Control, "run_in_child_process", run_in_child_process)
     socket_path = str(tmp_path / "host.sock")
     monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
