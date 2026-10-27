@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Diagnostics (Logs → Diagnostics): what helps find a fault without SSH, behind the admin login like the rest.
 
 Nothing here needs more rights than the app has: the module host checks its own sandbox (host.py's

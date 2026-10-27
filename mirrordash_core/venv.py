@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The A/B virtual environments on /storage, and running uv in them.
 
 Every change of the core's packages (a MirrorDash update, a rebuild) goes into the *next* environment while the active one keeps running; `venv_swap` switches the link,

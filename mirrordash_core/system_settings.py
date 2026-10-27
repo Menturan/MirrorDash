@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The mirror's system settings (screen, sound, screen schedule, SSH, test versions): one place that
 checks and applies them, shared by the Hardware, Power and Settings tabs and Home Assistant."""
 

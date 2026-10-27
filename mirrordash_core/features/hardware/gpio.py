@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """GPIO pins for modules (ARCHITECTURE #41), through the kernel's GPIO character device (linux/gpio.h, v2).
 
 The module host can't open a GPIO chip: the whole chip would be its, the SD card's and the core's pins too

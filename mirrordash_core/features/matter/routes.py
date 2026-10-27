@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Matter (ARCHITECTURE #35): the screen as an on/off light in Apple Home, Google Home and the rest.
 The node is a Node.js sidecar (matter/index.mjs, mirrordash-matter.service) that runs the screen
 through /api/v1. The core starts it: /etc is a RAM overlay, so `systemctl enable` wouldn't last."""

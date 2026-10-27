@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Wi-Fi through NetworkManager's nmcli: scanning, joining, the saved networks, and the setup hotspot
 (MirrorDash-Setup) the mirror opens when it has no network."""
 

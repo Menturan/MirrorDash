@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Runs the modules. ModuleLoader lives in the module host process (host.py), as its own user, never in
 the core's: the core reads a module's files (schema, icon, translations) with the helpers at the top of
 this file, which import nothing of the module (ARCHITECTURE #41)."""

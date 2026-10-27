@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Logs saved when an update fails.
 
 The system log lives in RAM on a mirror (nothing is written to the SD card all day, so it doesn't wear

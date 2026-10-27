@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Licensed under the PolyForm Noncommercial License 1.0.0.
+// SPDX-License-Identifier: AGPL-3.0-only
 // The mirror as a Matter device: the screen is an on/off light. It only talks to MirrorDash's /api/v1,
 // with its own token. Paired over the network (the mirror is already on Wi-Fi), no Bluetooth.
 // Run by mirrordash-matter.service, which the core starts and stops (Settings > Matter, ARCHITECTURE #35):

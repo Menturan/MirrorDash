@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The screen and the sound: resolution, rotation, brightness, volume and power.
 
 The mirror runs Wayland (labwc), where wlr-randr sets the screen; the xrandr and xset steps are for a

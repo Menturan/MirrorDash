@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The module host (ARCHITECTURE #41): `python -m mirrordash_core.features.modules.host <socket>`.
 
 Every module runs apart from the core: on a mirror in its own sandbox (mirrordash-modules.service), each

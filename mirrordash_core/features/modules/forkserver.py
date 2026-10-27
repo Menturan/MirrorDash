@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The module host's first process (ARCHITECTURE #41): it holds what it takes to give every module a user
 of its own (the unit's ambient CAP_SETUID, CAP_SETGID and CAP_CHOWN) and does nothing but fork.
 

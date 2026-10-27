@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The Hardware tab: the screen and sound settings, and the sensors and inputs on the GPIO header."""
 
 import logging

@@ -6,14 +6,14 @@ readme = "README.md"
 authors = [
     { name = "Jonas Öhlander" }
 ]
-license = { file = "LICENSE.md" }
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: End Users/Desktop",
     "Topic :: Home Automation",
     "Programming Language :: Python :: 3.14",
-    "License :: Other/Proprietary License",
 ]
 keywords = ["magicmirror", "raspberrypi", "kiosk", "fastapi", "dashboard"]
 dependencies = [

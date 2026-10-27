@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Admin forms built from a JSON schema (a module's config_schema, the global settings), and the
 posted form read back into nested data. One small render function per kind of field."""
 

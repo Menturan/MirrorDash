@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Puts the app together: each feature under features/ brings its own routes (a vertical slice)."""
 
 import logging

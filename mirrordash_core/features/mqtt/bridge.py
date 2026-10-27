@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """MQTT (ARCHITECTURE #42): the mirror as a Home Assistant device, through the owner's own broker.
 
 One connection from the core: device discovery (homeassistant/device/<id>/config for the mirror,

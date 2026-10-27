@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Backups: a .mirror file is a zip of the settings, the data dir, the modules' data and the source of
 local modules, with a manifest of the installed modules to reinstall. With a password the whole zip is
 encrypted with openssl and also carries what logs in (the admin password, the pi user's, the Wi-Fi)."""

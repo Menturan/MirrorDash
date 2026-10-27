@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Updates: MirrorDash itself from PyPI into the next A/B venv (venv.py), and the whole OS as a signed
 RAUC bundle from GitHub into the card's other half; both by hand from the Updates card and nightly."""
 

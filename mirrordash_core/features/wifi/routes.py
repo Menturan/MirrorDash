@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Wi-Fi setup: the captive portal on the mirror's own hotspot and joining the home network."""
 
 import asyncio

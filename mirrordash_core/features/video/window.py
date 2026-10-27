@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """A module's video window (ARCHITECTURE #34): `async with self.video_window() as window:` places the
 module's own player over the element with `data-video-window` on its card, or lets it play fullscreen.
 

@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Installing, updating and removing modules (into the module host's site, ARCHITECTURE #41), checking
 them for updates, and the list of community modules found on PyPI and GitHub."""
 

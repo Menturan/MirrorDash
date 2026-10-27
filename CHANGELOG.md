@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- MirrorDash is now open source under the GNU AGPL 3.0 (a commercial license is available too), instead of the non-commercial PolyForm license.
 - **MQTT**: the mirror can show up in Home Assistant by itself (*Settings* → *MQTT*), with its screen, brightness, sensors, buttons and CPU temperature, without any YAML. At first Home Assistant can only look; on the card you can let it turn the screen on and off, turn modules on and off, and control what a module offers. The user guide shows how to lock your broker down.
 - Modules can show values in Home Assistant and take commands from it, when you allow it for them.
 - A module's video now lands exactly in its place even when it starts playing while its card is still sliding in.

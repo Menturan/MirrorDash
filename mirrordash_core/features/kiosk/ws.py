@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The mirror's screen's WebSocket: every module's HTML goes out through here, the latest kept for a
 screen that connects (or reloads) later."""
 

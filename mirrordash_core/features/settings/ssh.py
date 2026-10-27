@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """SSH on or off (Settings → Developer), and the pi user's password it needs."""
 
 import logging

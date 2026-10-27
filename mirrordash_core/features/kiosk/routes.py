@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The mirror's own screen: the page, its WebSocket and what it asks the server for."""
 
 import json

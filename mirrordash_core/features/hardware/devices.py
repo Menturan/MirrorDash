@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Sensors and inputs on the GPIO header, all through Raspberry Pi kernel drivers.
 
 The app's Python (uv, 3.14) has no GPIO library, and lgpio can't be built on the device, so

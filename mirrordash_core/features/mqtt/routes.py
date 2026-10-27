@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The MQTT card (Settings tab, ARCHITECTURE #42): the owner's broker, and what Home Assistant may see and do.
 Everything starts as read-only: control of the screen, of which modules run and of what a module exposes is
 turned on here, one by one."""

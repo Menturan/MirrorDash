@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The admin password, and the recovery code that resets it.
 
 The recovery code is shown once, when the password is set up (and again after each use, as a new

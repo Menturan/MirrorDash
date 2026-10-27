@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 
 """The machine the core runs on: running its programs, restarting, rebooting, and the system settings
 that need sudo (time zone, Wi-Fi country, the pi user's password)."""

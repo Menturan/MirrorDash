@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The core's side of the module host (host.py, ARCHITECTURE #41).
 
 On a mirror the host is its own service (mirrordash-modules.service) and MIRRORDASH_MODULE_SOCKET says

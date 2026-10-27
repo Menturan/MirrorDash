@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The API for other systems (scripts, Home Assistant, the Matter bridge): /api/v1, with the token
 from the API card (`Authorization: Bearer <token>`). It can read the status and run the screen,
 nothing else. Its own app, so only this API has a description: /api/v1/docs and /api/v1/openapi.json."""

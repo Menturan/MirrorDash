@@ -8,7 +8,7 @@
 # MirrorDash
 
 [![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)](pyproject.toml)
-[![License: PolyForm_NC_1.0.0](https://img.shields.io/badge/license-PolyForm_NC_1.0.0-525252)](LICENSE.md)
+[![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-525252)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Raspberry%20Pi-orange.svg)](#get-started)
 [![PyPI version](https://img.shields.io/pypi/v/mirrordash.svg)](https://pypi.org/project/mirrordash/)
 [![Downloads](https://pepy.tech/badge/mirrordash)](https://pepy.tech/project/mirrordash)
@@ -92,4 +92,9 @@ This creates a module with example data and starts a mirror on your computer tha
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE.md): free to use and change for personal, non-commercial use.
+Copyright (C) 2026 Jonas Öhlander. MirrorDash is dual-licensed:
+
+* [GNU AGPL 3.0](LICENSE): free to use, change and share. If you share it, or let others use a changed version over the network, you share your source under the AGPL too.
+* A commercial license for products that can't share their source: [ask Menturan on GitHub](https://github.com/Menturan).
+
+Modules are separate projects with their own licenses; the [SDK](https://github.com/Menturan/mirrordash-sdk) is MIT.

@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """USB on or off (Power → USB): on a Pi 1, 2, 3 and Zero the USB controller wakes the CPU about 8000 times
 a second even with nothing plugged in, and a Pi 3's hub and Ethernet chip draw power all the time.
 

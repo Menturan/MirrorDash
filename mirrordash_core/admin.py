@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """What every admin feature shares: the page shell, login, templates, background jobs and page events."""
 
 import asyncio

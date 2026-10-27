@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The Power tab: the screen's schedule and timeout, turning it on and off, USB, shutting down and restarting."""
 
 import html

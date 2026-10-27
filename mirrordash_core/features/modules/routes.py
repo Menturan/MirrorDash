@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """The Modules tab: the installed modules and where they sit, each instance's settings form, installing,
 updating and removing (service.py does the work), and the community modules to discover."""
 

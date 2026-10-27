@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Checks for the web-side audit fixes: password hashing off the event loop, SSH results, system
 settings validation, form booleans, and a stalled screen not delaying the rest."""
 

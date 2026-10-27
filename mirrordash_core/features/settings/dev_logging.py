@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Developer logging (Settings → Developer): the whole system log kept on /storage for 7 days.
 
 The work is done by /usr/local/bin/mirrordash-dev-logging (scripts/image/rootfs/usr/local/bin/mirrordash-dev-logging),

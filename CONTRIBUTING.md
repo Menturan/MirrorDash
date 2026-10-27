@@ -53,3 +53,7 @@ Logic that isn't trivial gets one small test that fails if the logic breaks.
 - **Commits** follow `type(scope): what changed` (`fix(admin): …`, `feat(kiosk): …`, `docs: …`). Anything a user notices also gets a line in [CHANGELOG.md](CHANGELOG.md) under *Unreleased*.
 
 The detailed rules are in `.agents/rules/`.
+
+## License of contributions
+
+MirrorDash is offered under the AGPL and under a commercial license (see the [README](README.md#license)). By sending a contribution you agree that Jonas Öhlander may distribute it under both, and you confirm it is yours to give.

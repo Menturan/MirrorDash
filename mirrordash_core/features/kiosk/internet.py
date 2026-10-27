@@ -1,4 +1,4 @@
-# Licensed under the PolyForm Noncommercial License 1.0.0.
+# SPDX-License-Identifier: AGPL-3.0-only
 """Is the mirror on the internet? Shown on the mirror as the Offline badge (index.html, js/kiosk/core.js).
 
 The browser can't tell: navigator.onLine in Cog (WebKit) said offline after a start while the mirror
