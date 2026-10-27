@@ -12,15 +12,17 @@ kind=${1:-}
 shift || true
 case "$kind" in ""|*[!a-z0-9-]*) echo "save-log: invalid kind: $kind" >&2; exit 2 ;; esac
 
+# pi owns this folder's parent and the folder (this runs as root): a link in its place is never followed
+if [ -L "$LOG_DIR" ]; then rm -f "$LOG_DIR"; fi
 mkdir -p "$LOG_DIR"
 # UTC: a start without the app (a trial boot) hasn't got the time zone yet; the admin page shows local time
 file="$LOG_DIR/$kind-$(date -u +%Y%m%d-%H%M%S).log"
 # Written under another name first, so the admin page never lists half a file
 # --utc -o short-iso: every log time in UTC, the same format as the app's log and the Logs tab
-# mktemp, not a fixed name: pi owns this directory and could plant a symlink there (this runs as root)
-part=$(mktemp "$file.XXXXXX")
-journalctl --no-pager --utc -o short-iso "$@" > "$part" 2>&1 || true
-chmod 644 "$part"
+# pi owns this directory and could plant a symlink there: install replaces what is at the name and
+# creates the file with O_EXCL, so the log never goes through a link, and mv renames whatever is there
+part=$(mktemp -u "$file.XXXXXX")
+{ journalctl --no-pager --utc -o short-iso "$@" 2>&1 || true; } | install -m 644 /dev/stdin "$part"
 mv "$part" "$file"
 
 # Only the newest $KEEP: a mirror that fails over and over still uses only a few MB
