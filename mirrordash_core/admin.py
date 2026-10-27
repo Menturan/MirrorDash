@@ -4,6 +4,7 @@
 import asyncio
 import binascii
 import hashlib
+import ipaddress
 import json
 import logging
 import os
@@ -52,7 +53,7 @@ def hash_password(password: str, salt: str) -> str:
 # The admin page logs in with the password (features/auth: /admin/auth/login) and gets a random
 # session token as an HttpOnly cookie; only its sha256 is kept, next to config.json, so a restart
 # (every update ends with one) doesn't log anyone out. X-API-Key with the password still works for
-# scripts and tests. A wrong password from one address 5 times in a minute is refused for a minute.
+# scripts and tests. A wrong password from one address (an IPv6 /64) 5 times in a minute is refused for a minute.
 SESSION_COOKIE = "mirrordash_session"
 SESSION_SECONDS = 30 * 24 * 3600
 MAX_FAILURES, FAILURE_WINDOW = 5, 60
@@ -112,10 +113,25 @@ def set_session_cookie(response, token: str) -> None:
     response.set_cookie(SESSION_COOKIE, token, max_age=SESSION_SECONDS, httponly=True, samesite="strict", path="/")
 
 
+def _throttled_as(client: str) -> str:
+    """Who the wrong tries count against: an IPv4 address, or an IPv6 address's /64 network, since a
+    device picks itself new IPv6 addresses inside its /64 at will (privacy addresses)."""
+    try:
+        address = ipaddress.ip_address(client)
+    except ValueError:
+        return client
+    if isinstance(address, ipaddress.IPv4Address):
+        return str(address)
+    if address.ipv4_mapped:  # ::ffff:192.0.2.7 is the IPv4 address
+        return str(address.ipv4_mapped)
+    return str(ipaddress.ip_network(f"{address}/64", strict=False))
+
+
 def check_throttle(client: str) -> None:
     """429 when this address got the password (or the recovery code) wrong too often lately."""
+    client = _throttled_as(client)
     now = time.time()
-    recent = _failures[client] = [t for t in _failures.get(client, []) if now - t < FAILURE_WINDOW]
+    recent = _failures[client] = [failed_at for failed_at in _failures.get(client, []) if now - failed_at < FAILURE_WINDOW]
     if len(recent) >= MAX_FAILURES:
         wait = int(FAILURE_WINDOW - (now - recent[0])) + 1
         raise HTTPException(status_code=429, detail=f"Too many wrong tries. Try again in {wait} seconds.")
@@ -123,7 +139,7 @@ def check_throttle(client: str) -> None:
 
 def note_failure(client: str) -> None:
     # ponytail: in memory, so a restart starts the count over; enough against guessing on a home network
-    _failures.setdefault(client, []).append(time.time())
+    _failures.setdefault(_throttled_as(client), []).append(time.time())
 
 
 async def check_password(password: str, client: str) -> bool:

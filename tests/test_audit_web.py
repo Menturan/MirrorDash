@@ -124,3 +124,14 @@ def test_the_screen_schedule_takes_only_real_times(start, accepted):
             with pytest.raises(HTTPException):
                 asyncio.run(system_settings.update_system_settings(settings=settings))
             assert not saved
+
+
+def test_wrong_passwords_count_per_ipv6_network():
+    """A phone can take a new IPv6 address in its /64 for every try: the lockout counts the whole /64."""
+    for host in range(admin.MAX_FAILURES):
+        admin.note_failure(f"2001:db8:1:2::{host + 1}")
+    with pytest.raises(HTTPException) as refused:
+        admin.check_throttle("2001:db8:1:2::ffff")
+    assert refused.value.status_code == 429
+    admin.check_throttle("2001:db8:1:3::1")  # another network
+    admin.check_throttle("192.0.2.7")

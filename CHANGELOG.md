@@ -21,6 +21,8 @@ There are two kinds of releases:
 - In *Logs*, a module's error shows whole in that module's log (not half of it in the system log), and a module's log no longer shows another module whose name starts the same.
 - If one saved setting can't be applied when the mirror starts, the others still are (the pi user's password, SSH, Matter).
 - A carousel group whose name has a `"` in it no longer keeps its modules off the mirror.
+- A new admin password, and a backup's password, must be at least 8 characters (one you already have keeps working).
+- After 5 wrong passwords in a minute, a phone on IPv6 can no longer just take a new address and go on guessing: the lockout covers its whole network.
 
 ## [0.9.5-os2] - 2026-10-26
 

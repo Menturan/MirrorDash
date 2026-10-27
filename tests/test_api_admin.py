@@ -120,7 +120,7 @@ def test_auth_setup_failures(mock_save, mock_load, client):
     # Password too short
     response = client.post("/admin/auth/setup", json={"password": "123"})
     assert response.status_code == 400
-    assert "must be at least 4 characters" in response.json()["detail"]
+    assert "must be at least 8 characters" in response.json()["detail"]
 
     # Password already set (valid entry) — blocked
     mock_load.return_value = {"admin_auth": {"hash": "abc", "salt": "123"}}
@@ -198,26 +198,26 @@ def test_the_recovery_code_resets_the_password_once(client):
     store = {}
     with patch("mirrordash_core.features.auth.routes.load_config", side_effect=lambda: json.loads(json.dumps(store))), \
          patch("mirrordash_core.features.auth.routes.save_config", side_effect=lambda c: store.update(c)):
-        code = client.post("/admin/auth/setup", json={"password": "first"}).json()["recovery_code"]
+        code = client.post("/admin/auth/setup", json={"password": "first-one"}).json()["recovery_code"]
         assert len(code) == 14 and code.count("-") == 2
         assert code.replace("-", "") not in json.dumps(store)
 
-        r = client.post("/admin/auth/recover", json={"code": "AAAA-AAAA-AAAA", "new_password": "second"})
-        assert r.status_code == 401 and store["admin_auth"]["hash"] == hash_password("first", store["admin_auth"]["salt"])
+        r = client.post("/admin/auth/recover", json={"code": "AAAA-AAAA-AAAA", "new_password": "second-one"})
+        assert r.status_code == 401 and store["admin_auth"]["hash"] == hash_password("first-one", store["admin_auth"]["salt"])
 
         # Typed back in lower case without dashes still works
-        r = client.post("/admin/auth/recover", json={"code": code.replace("-", "").lower(), "new_password": "second"})
+        r = client.post("/admin/auth/recover", json={"code": code.replace("-", "").lower(), "new_password": "second-one"})
         assert r.status_code == 200 and r.json()["recovery_code"] != code
-        assert store["admin_auth"]["hash"] == hash_password("second", store["admin_auth"]["salt"])
+        assert store["admin_auth"]["hash"] == hash_password("second-one", store["admin_auth"]["salt"])
 
-        r = client.post("/admin/auth/recover", json={"code": code, "new_password": "third"})
+        r = client.post("/admin/auth/recover", json={"code": code, "new_password": "third-one"})
         assert r.status_code == 401
 
 
 def test_recovery_without_a_code_on_file_is_refused(client):
     for config in ({}, {"admin_auth": {}}, MOCK_CONFIG):
         with patch("mirrordash_core.features.auth.routes.load_config", return_value=config):
-            r = client.post("/admin/auth/recover", json={"code": "ABCD-EFGH-JKMN", "new_password": "newpass"})
+            r = client.post("/admin/auth/recover", json={"code": "ABCD-EFGH-JKMN", "new_password": "new-password"})
         assert r.status_code == 401
 
 
@@ -226,7 +226,7 @@ def test_change_password_keeps_the_recovery_code(mock_save, client):
     recovery = {"hash": "h", "salt": "s"}
     config = {"admin_auth": {"hash": mock_hash, "salt": mock_salt, "recovery": recovery}}
     with patch("mirrordash_core.features.auth.routes.load_config", return_value=config):
-        r = client.post("/admin/auth/change-password", json={"current_password": "secret", "new_password": "newpass"},
+        r = client.post("/admin/auth/change-password", json={"current_password": "secret", "new_password": "new-password"},
                         headers={"X-API-Key": "secret"})
     assert r.status_code == 200
     assert mock_save.call_args[0][0]["admin_auth"]["recovery"] == recovery

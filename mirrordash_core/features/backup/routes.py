@@ -15,6 +15,7 @@ from mirrordash_core.admin import (
     start_job,
     templates,
 )
+from mirrordash_core.features.auth.routes import MIN_PASSWORD
 from mirrordash_core.features.backup.service import (
     backup_file,
     create_backup,
@@ -130,8 +131,8 @@ async def create_panel_backup(request: Request):
     encrypt = form_data.get("encrypt") == "true"
     password = form_data.get("password")
 
-    if encrypt and (not password or len(password) < 4):
-        return notify("Password must be at least 4 characters for encryption.", "error")
+    if encrypt and (not password or len(password) < MIN_PASSWORD):
+        return notify(f"Password must be at least {MIN_PASSWORD} characters for encryption.", "error")
 
     res = await create_backup(password if encrypt else None)
     filename = res.get("filename")

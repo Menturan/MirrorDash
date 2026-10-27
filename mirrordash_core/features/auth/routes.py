@@ -31,7 +31,7 @@ from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
 logger = logging.getLogger("mirrordash.core.auth")
 router = APIRouter(prefix="/admin")
 
-MIN_PASSWORD = 4
+MIN_PASSWORD = 8  # also the backup password and SSH's; the admin page checks the same (admin.js)
 # No 0/O, 1/I/L: the code is read off a screen and typed back
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 

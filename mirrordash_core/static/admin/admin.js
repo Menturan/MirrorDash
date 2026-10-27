@@ -102,7 +102,7 @@ const AUTH_MODES = {
     },
     setup: {
         title: 'Welcome to MirrorDash',
-        desc: 'Create an admin password to secure your mirror (at least 4 characters).',
+        desc: 'Create an admin password to secure your mirror (at least 8 characters).',
         parts: ['password'],
         button: 'Create Password',
     },
@@ -185,8 +185,8 @@ async function handleAuthSubmit(event) {
         authPromiseResolve(true);
         return;
     }
-    if (mode !== 'login' && (mode === 'setup' ? password : newPassword).length < 4) {
-        showAuthError('Password must be at least 4 characters.');
+    if (mode !== 'login' && (mode === 'setup' ? password : newPassword).length < 8) {  // MIN_PASSWORD in features/auth/routes.py
+        showAuthError('Password must be at least 8 characters.');
         return;
     }
 
