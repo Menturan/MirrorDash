@@ -3,7 +3,7 @@
 # Configure a fresh Debian Trixie (Raspberry Pi OS) installation into a production MirrorDash kiosk.
 #
 # This script is designed for production IoT appliances. It installs the application
-# from PyPI — no source code is cloned onto the device (AGENTS.md Rule 29).
+# from PyPI: no source code is cloned onto the device.
 
 set -e
 
@@ -20,7 +20,7 @@ if [ "$EUID" -ne 0 ]; then
 fi
 
 echo "=== Setting up Container Build Policy ==="
-# Officiell Debian-metod för att hindra tjänster (som Plymouth) från att starta under byggfasen
+# Debian's own way to keep services (Plymouth, say) from starting while the image is built
 cat << 'EOF' > /usr/sbin/policy-rc.d
 #!/bin/sh
 exit 101
@@ -291,7 +291,7 @@ step_setting_up_wayland() {
   mkdir -p /etc/systemd/system/seatd.service.d
   put 0644 /etc/systemd/system/seatd.service.d/group.conf
 
-  # Ta bort högerklick/terminal-åtkomst på skärmen
+  # No right-click menu on the screen (it would open a terminal)
   mkdir -p "$PI_HOME/.config/labwc"
   cat << 'EOF' > "$PI_HOME/.config/labwc/rc.xml"
 <?xml version="1.0"?><labwc_config><mouse><context name="Root"><mousebind button="Right" action="Press"><action name="None" /></mousebind></context></mouse></labwc_config>
@@ -490,11 +490,12 @@ EOF
       target_opts+=("rootfstype=squashfs" "overlayroot=tmpfs:recurse=0" "systemd.condition_first_boot=false" "rootdelay=20")
     fi
 
+    # Each wanted option replaces the one of the same name (the part before =), or is added
     for target in "${target_opts[@]}"; do
-      prefix="${target%%=*}"
+      key="${target%%=*}"
       found=0
       for i in "${!new_opts[@]}"; do
-        if [[ "${new_opts[i]}" == "$prefix"* ]]; then
+        if [[ "${new_opts[i]%%=*}" == "$key" ]]; then
           new_opts[i]="$target"
           found=1
           break
