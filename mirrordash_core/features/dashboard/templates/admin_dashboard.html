@@ -29,6 +29,21 @@
         </div>
         {% endif %}
 
+        <!-- The module host's self-check found its sandbox open (host.py sandbox_checks): no module runs -->
+        {% if sandbox_open %}
+        <div id="sandbox-open" style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <i class="fas fa-shield-alt" style="font-size: 1.6rem; color: #f87171;" aria-hidden="true"></i>
+            <div style="flex: 1; min-width: 200px;">
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">Modules stopped for safety</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    The wall that keeps modules away from the mirror and your home network isn't holding, so no module
+                    runs. Install the system update (Settings → Updates), or go back to the system before the last
+                    update. Open: {{ sandbox_open | join("; ") }}.
+                </p>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Instances whose process died again and again (client.py CRASH_LIMIT): they don't run -->
         {% if modules_paused %}
         <div id="modules-paused" style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">

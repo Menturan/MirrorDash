@@ -36,6 +36,13 @@ mkdir -p /etc/systemd/system/mirrordash-modules.service.d
 dns=$(awk '/^nameserver/ {print $2; exit}' /etc/resolv.conf)  # no systemd-resolved stub in here
 printf '[Service]\nMemoryMax=400M\nIPAddressAllow=%s\n' "$dns" > /etc/systemd/system/mirrordash-modules.service.d/test.conf
 systemctl daemon-reload
+# A directive this systemd doesn't know or can't parse is only a warning at start: the sandbox would run
+# without it. systemd-analyze reports those as <file>:<line>; a program missing in here is no such line.
+unit_warnings=$(systemd-analyze verify --man=no /etc/systemd/system/mirrordash-modules.service 2>&1 || true)
+if grep -E '\.service:[0-9]+: ' <<< "$unit_warnings"; then
+  echo "mirrordash-modules.service has directives this systemd ignores" >&2
+  exit 1
+fi
 systemctl start mirrordash-modules.service
 sleep 3
 systemctl is-active mirrordash-modules.service

@@ -240,6 +240,8 @@ class ModuleHost:
         self.lan: list[str] | None = None  # what the instances may reach on the home network, once applied
         # ponytail: in memory, so a restart of the core tries them again (CRASH_LIMIT more crashes)
         self.paused: set[str] = set()  # instances that kept dying soon after their start: not started (resume)
+        # What the host's self-check found open (host.py sandbox_checks): no module runs while there is any
+        self.sandbox_open: list[str] = []
         self._crashes: dict[str, int] = {}
         self._control: Connection | None = None
         self._instances: dict[str, Connection] = {}
@@ -480,7 +482,14 @@ class ModuleHost:
                                    find_entry_point(cfg.get("module", instance_id), eps), config)}
                                for i, (instance_id, cfg) in enumerate(modules.items())}
             wanted = {i: cfg for i, cfg in modules.items() if cfg.get("enabled", True) and i not in self.paused}
-            reply = await self._request({"t": "uids", "instances": list(wanted)}, 10)
+            # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
+            reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)
+            holes = reply.get("sandbox_open")
+            self.sandbox_open = [str(hole) for hole in holes] if isinstance(holes, list) else []
+            if self.sandbox_open:
+                logger.error("No module runs while the module sandbox is open (see the errors above): "
+                             "install the system update, or go back to the system before it")
+                wanted = {}  # fail closed: the running ones stop, the home network closes
             uids = reply.get("uids") if isinstance(reply.get("uids"), dict) else {}
             self._uids = {i: uid for i, uid in uids.items() if i in wanted and type(uid) is int and uid in MODULE_UIDS}
             await self._apply_lan(wanted)  # before they start, so their first call gets through

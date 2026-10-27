@@ -498,6 +498,54 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
             path.chmod(0o700)
 
 
+@pytest.mark.asyncio
+async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, host_here):
+    """A hole the self-check finds (here: no memory limit, the memory controller off) stops every module:
+    the host refuses to start one, the core asks for none and says so on the Dashboard (fail closed)."""
+    from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.features.modules import host as host_module
+
+    (tmp_path / "cgroup").write_text("0::/system.slice/mirrordash-modules.service\n")
+    limit = tmp_path / "tree" / "system.slice" / "mirrordash-modules.service" / "memory.max"
+    monkeypatch.setattr(host_module, "OWN_CGROUP_FILE", str(tmp_path / "cgroup"))
+    monkeypatch.setattr(host_module, "CGROUP_TREE", str(tmp_path / "tree"))
+    assert host_module.memory_limit_missing()  # no memory.max: the controller is off
+    limit.parent.mkdir(parents=True)
+    limit.write_text("max\n")
+    assert host_module.memory_limit_missing()
+    limit.write_text("291504128\n")
+    assert not host_module.memory_limit_missing()
+    limit.write_text("max\n")
+
+    socket_path = str(tmp_path / "host.sock")
+    monkeypatch.setenv("MIRRORDASH_SANDBOX", "1")
+    monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
+    monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
+    monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
+    monkeypatch.setattr(host_module.Control, "probe", lambda self: asyncio.sleep(0, host_module.sandbox_checks([])))
+    monkeypatch.setattr(host_module, "SANDBOX_PORTS", ())
+    monkeypatch.setattr(host_module, "SANDBOX_PATHS", {})
+    monkeypatch.setattr(host_module, "SANDBOX_DEVICES", ())
+    monkeypatch.setattr(host_module, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
+    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {"w": {"module": "md_w"}}, "globals": {}})
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    core = client_module.ModuleHost()
+    started = []
+    monkeypatch.setattr(core, "_start", AsyncMock(side_effect=lambda *args: started.append(args[0])))
+    server = host_here(socket_path)
+    await _until(lambda: (tmp_path / "host.sock").exists())
+    await core.start_modules()
+    try:
+        await _until(lambda: core.sandbox_open)
+        assert len(core.sandbox_open) == 1 and core.sandbox_open[0].startswith("unlimited memory")
+        await asyncio.sleep(0.2)
+        assert started == []
+    finally:
+        await core.stop_modules()
+        await asyncio.wait_for(server, 5)
+
+
 FAKE_UV = '''#!{python}
 import pathlib, sys
 args = sys.argv[1:]

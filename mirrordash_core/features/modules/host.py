@@ -104,6 +104,9 @@ SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirror
 # Its DevicePolicy=closed and the I2C rule (90-mirrordash-i2c.rules): GPIO only through the core, no other I2C bus
 SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", "/dev/input/event*", "/dev/video*")
 MODULE_DEVICES = {"/dev/i2c-1"}  # the header's I2C bus
+# Where the unit's memory limit is: this process's cgroup (v2: one line "0::<path>") under the cgroup tree
+OWN_CGROUP_FILE = "/proc/self/cgroup"
+CGROUP_TREE = "/sys/fs/cgroup"
 
 
 def can_connect_to(host: str, port: int) -> bool:
@@ -137,6 +140,19 @@ def default_gateway() -> str | None:
     return None
 
 
+def memory_limit_missing() -> bool:
+    """Whether the unit's MemoryMax doesn't hold. It needs the kernel's memory controller (cgroup_enable=memory
+    in cmdline.txt, off in the Pi's firmware by default), and without it systemd starts the unit anyway with a
+    mere warning: one module could then use up the whole mirror's memory."""
+    try:
+        with open(OWN_CGROUP_FILE) as cgroup_file:
+            cgroup = next(line.strip().removeprefix("0::") for line in cgroup_file if line.startswith("0::"))
+        with open(f"{CGROUP_TREE}{cgroup}/memory.max") as memory_max:  # missing when the controller is off
+            return memory_max.read().strip() == "max"
+    except (OSError, StopIteration):
+        return True
+
+
 def data_folders() -> list[str]:
     """The instances' data folders, as the control process sees them (a module's user can't list them)."""
     with contextlib.suppress(OSError):
@@ -164,6 +180,9 @@ def sandbox_checks(data_folder_names: list[str] | None = None) -> list[tuple[str
     checks.append(("writing a module's own folder", any(os.access(f, os.W_OK) for f in module_folders())))
     checks.append(("capabilities (" + (", ".join(forkserver.held_capability_sets()) or "none") + ")",
                    bool(forkserver.held_capability_sets())))
+    if os.environ.get("MIRRORDASH_SANDBOX"):  # only the unit has a memory limit
+        checks.append(("unlimited memory (MemoryMax doesn't hold: cgroup_enable=memory missing from cmdline.txt?)",
+                       memory_limit_missing()))
     return checks
 
 
@@ -628,6 +647,9 @@ class Control:
         self.link = HostLink(writer)
         self.spawn = spawn  # forkserver.Spawner, or a stand-in that runs CHILDREN here (the tests)
         self.sandboxed = bool(os.environ.get("MIRRORDASH_SANDBOX"))
+        # What the self-check found open, once it ran: while anything is, no module instance starts
+        self.sandbox_holes: list[str] = []
+        self._sandbox_checked = asyncio.Event()
         self._tasks: set[asyncio.Task] = set()
 
     async def run(self) -> None:
@@ -636,8 +658,11 @@ class Control:
         if os.environ.get("MIRRORDASH_NO_USERS"):  # said once the core reads the log
             logger.error("This OS image can't give each module a user of its own, so no module runs: "
                          "install the system update (Settings → Updates)")
+            self._sandbox_checked.set()
         elif self.sandboxed:
             self._spawn(self._check())
+        else:
+            self._sandbox_checked.set()  # off a mirror there is no sandbox to check
         try:
             await read_lines(self.reader, self._handle)
         finally:
@@ -655,16 +680,25 @@ class Control:
         kind, request = message.get("t"), message.get("id")
         if kind == "uids":
             instances = [i for i in message.get("instances") or [] if isinstance(i, str)]
-            self._spawn(self.link.send({"t": "reply", "id": request, "uids": module_uids(instances)}))
+            self._spawn(self._reply_uids(request, instances))
         elif kind == "site":
             self._spawn(self._site(message))
         elif kind == "diagnose":
             self._spawn(self._diagnose(request))
 
+    async def _reply_uids(self, request, instances: list[str]) -> None:
+        """Each instance's user, once the self-check ran, and what it found open: the core starts nothing then."""
+        await self._sandbox_checked.wait()
+        await self.link.send({"t": "reply", "id": request, "uids": module_uids(instances),
+                              "sandbox_open": self.sandbox_holes})
+
     def start_instance(self, data: bytes, fds: list[int]) -> None:
-        """The core's request to start an instance (receive_spawns): its sockets go to its process."""
+        """The core's request to start an instance (receive_spawns): its sockets go to its process. Refused
+        until the self-check ran, and while it found the sandbox open (fail closed)."""
         socks = [socket.socket(fileno=fd) for fd in fds]
         try:
+            if not self._sandbox_checked.is_set() or self.sandbox_holes:
+                raise ValueError("the module sandbox isn't known to be closed")
             instance = json.loads(data).get("instance")
             uid = module_uids([instance]).get(instance) if isinstance(instance, str) else None
             if uid is None or len(socks) != 2:
@@ -699,9 +733,10 @@ class Control:
             return [(f"the self-check, which didn't finish ({e!r})", True)]
 
     async def _check(self) -> None:
-        for what, reachable in await self.probe():
-            if reachable:
-                logger.error(f"The module sandbox is open: modules can reach {what}")
+        self.sandbox_holes = [str(what) for what, reachable in await self.probe() if reachable]
+        for what in self.sandbox_holes:
+            logger.error(f"The module sandbox is open: modules can reach {what}")
+        self._sandbox_checked.set()
 
     async def _diagnose(self, request) -> None:
         await self.link.send({"t": "reply", "id": request, "checks": await self.probe(), "sandboxed": self.sandboxed})

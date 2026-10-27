@@ -129,6 +129,15 @@ if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/bin/ddcutil; then
     exit 1
 fi
 
+# A unit directive the image's systemd doesn't know or can't parse (renamed in a newer systemd, a typo) is only
+# a warning at boot: the module sandbox, say, would start without it. systemd-analyze reports those as
+# <file>:<line>; a program that only exists on a running mirror (/storage) is no such line.
+unit_warnings=$(systemd-nspawn -q -D "$MOUNT_DIR" bash -c 'cd /etc/systemd/system && systemd-analyze verify --man=no cog-kiosk.service labwc-kiosk.service mirrordash*.service mirrordash*.timer 2>&1' || true)
+if grep -E '\.(service|timer|path):[0-9]+: ' <<< "$unit_warnings"; then
+    echo -e "\e[31m[ERROR] The image's systemd ignores directives in the units above.\e[0m"
+    exit 1
+fi
+
 # --- Build identity ---
 # Which OS build this is: the admin page compares it with the newest bundle on GitHub (the bundle's
 # file name ends in the same stamp) to offer an OS update. UTC date and time, so newer sorts higher.

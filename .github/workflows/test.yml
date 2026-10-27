@@ -49,3 +49,18 @@ jobs:
           for f in scripts/*.sh $installed; do bash -n "$f"; done
           shellcheck -S error scripts/*.sh
           shellcheck -S warning $installed
+
+  # The module host's real unit under Debian's systemd in a container (scripts/sandbox-check): what each
+  # module's user can and can't reach, its self-check, an OOM and an install. On arm64, as the Pi; the
+  # kernel is the runner's, not the Pi's, so the self-check on a mirror still has the last word.
+  sandbox:
+    name: Module sandbox under systemd
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run the sandbox check
+        run: scripts/sandbox-check/run.sh

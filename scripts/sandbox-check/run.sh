@@ -5,7 +5,9 @@
 # module's user can and can't do, the self-check, a leak's OOM, a site install and a restart of one
 # instance. Needs docker; the kernel is this machine's, not the Pi's.
 #   scripts/sandbox-check/run.sh
-set -e
+# CI runs it on every push (.github/workflows/test.yml), on arm64 like the Pi.
+# pipefail: check.py's failure must fail the run, not the grep it is piped through
+set -eo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 docker build -q -t mirrordash-sandbox-check "$here" >/dev/null

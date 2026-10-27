@@ -60,6 +60,7 @@ async def get_panel_dashboard(request: Request):
             "local_ip": local_ip,
             "active_count": len(module_host.running),
             "modules_paused": sorted(module_host.paused),
+            "sandbox_open": module_host.sandbox_open,
             "uptime_str": uptime_str,
             "ram_usage": ram_usage,
             "ntp_synchronized": ntp_synchronized,

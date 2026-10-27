@@ -13,6 +13,7 @@ There are two kinds of releases:
 - Modules can show values in Home Assistant and take commands from it, when you allow it for them.
 - A module's video now lands exactly in its place even when it starts playing while its card is still sliding in.
 - A module of an installed module's name from somewhere else can no longer change that module's code while it is installed, nor take over the built-in clock's place.
+- If the wall that keeps modules away from the mirror and your home network ever stops holding (after a system update, say), no module runs until it holds again, and the Dashboard says so, instead of the modules running unprotected with only a line in the log.
 
 ## [0.9.5-os2] - 2026-10-26
 
