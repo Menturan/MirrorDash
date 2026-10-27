@@ -79,9 +79,9 @@ def _bridge(cfg, modules=None):
 
 @pytest.mark.asyncio
 async def test_nothing_runs_that_the_owner_didnt_turn_on():
-    screen, enabled, control = AsyncMock(), AsyncMock(return_value=True), AsyncMock(return_value=True)
+    screen, enabled, control = AsyncMock(), AsyncMock(), AsyncMock(return_value=True)
     with patch("mirrordash_core.features.power.routes.update_screen_state", screen), \
-         patch("mirrordash_core.features.modules.routes.set_instance_enabled", enabled), \
+         patch("mirrordash_core.features.modules.routes.set_instances_enabled", enabled), \
          patch("mirrordash_core.features.modules.client.module_host.control", control):
         b, cfg = _bridge({"modules": {"tv": {"share": True, "control": ["channel"]}}})
         with cfg:
@@ -89,11 +89,14 @@ async def test_nothing_runs_that_the_owner_didnt_turn_on():
                                    ("m/tv/now_playing/set", b"x"), ("m/other/channel/set", b"SVT1"), ("../screen/set", b"OFF")):
                 await b._on_message(f"mirrordash/m1/{topic}", payload, False)
             await b._on_message("mirrordash/m2/screen/set", b"OFF", False)  # another mirror's
+            await b._apply_pending(1e9)
             assert not screen.await_count and not enabled.await_count and not control.await_count
             await b._on_message("mirrordash/m1/m/tv/channel/set", b"SVT2", False)
             control.assert_awaited_once_with("tv", "channel", "SVT2")
             await b._on_message("mirrordash/m1/m/tv/channel/set", b"SVT3", False)  # not an option
             assert control.await_count == 1
+            control.side_effect = ConnectionError("the module went away")  # never ends the connection
+            await b._on_message("mirrordash/m1/m/tv/channel/set", b"SVT1", False)
 
         b, cfg = _bridge({"control_screen": True, "control_modules": True})
         with cfg:
@@ -101,22 +104,74 @@ async def test_nothing_runs_that_the_owner_didnt_turn_on():
             assert not screen.await_count
             await b._on_message("mirrordash/m1/screen/set", b"OFF", False)
             screen.assert_awaited_once_with({"state": "off"})
-            await b._on_message("mirrordash/m1/enabled/tv/set", b"OFF", False)
-            enabled.assert_awaited_once_with("tv", False)
-            await b._on_message("mirrordash/m1/brightness/set", b"5", False)  # below the screen's 10
+            await b._on_message("mirrordash/m1/enabled/gone/set", b"OFF", False)  # no such instance
+            b._commands.clear()
+            for _ in range(4):  # flipped back and forth: one reload, with the last of each
+                await b._on_message("mirrordash/m1/enabled/tv/set", b"ON", False)
+                await b._on_message("mirrordash/m1/enabled/tv/set", b"OFF", False)
+            b._commands.clear()  # the ones above count against COMMAND_RATE (tested on its own below)
+            for payload in (b"5", b"\xc2\xb2", b"40", b"55"):  # below the screen's 10, a superscript 2, then a slider
+                await b._on_message("mirrordash/m1/brightness/set", payload, False)
             with patch("mirrordash_core.system_settings.update_system_settings", AsyncMock()) as brightness:
-                await b._on_message("mirrordash/m1/brightness/set", b"55", False)
+                await b._apply_pending(1e9)
+                await b._apply_pending(1e9 + 0.5)
                 brightness.assert_awaited_once_with(settings={"brightness": 55})
+            enabled.assert_awaited_once_with({"tv": False})
+            await b._on_message("mirrordash/m1/enabled/tv/set", b"ON", False)
+            await b._apply_pending(1e9 + 2)  # within MODULE_CHANGE_INTERVAL of the last change: waits
+            assert enabled.await_count == 1
+            await b._apply_pending(1e9 + mqtt.MODULE_CHANGE_INTERVAL)
+            enabled.assert_awaited_with({"tv": True})
 
 
 @pytest.mark.asyncio
-async def test_a_flood_of_commands_is_cut_to_the_rate():
+async def test_a_flood_of_commands_is_cut_to_the_rate_and_logs_one_line(caplog):
     screen = AsyncMock()
     with patch("mirrordash_core.features.power.routes.update_screen_state", screen):
         b, cfg = _bridge({"control_screen": True})
-        with cfg:
+        with cfg, caplog.at_level("WARNING", logger="mirrordash.core.mqtt"):
             await asyncio.gather(*(b._on_message("mirrordash/m1/screen/set", b"ON", False) for _ in range(50)))
+            await b._on_message("mirrordash/m1/enabled/x\nINFO mirrordash.core.auth: forged/set", b"ON", False)
     assert screen.await_count == mqtt.COMMAND_RATE
+    assert len(caplog.records) == 1  # refused ones at most every 10 s, with a count
+    assert "\n" not in caplog.text.strip()  # a topic's line break is shown, never a line of its own
+
+
+@pytest.mark.asyncio
+async def test_a_packet_over_the_limit_ends_the_connection_unread():
+    """paho would read a packet of any size (up to 256 MB) whatever MaximumPacketSize says; a broker that
+    ignores it, or someone in between on plain MQTT, ends the connection instead (guard_packet_size)."""
+    import aiomqtt
+
+    async def broker(reader, writer):
+        await reader.read(1024)  # CONNECT
+        writer.write(b"\x20\x03\x00\x00\x00")  # CONNACK
+        writer.write(b"\x30\x80\x80\x40\x00\x01t")  # PUBLISH of 1 MB (remaining length 0x100000)
+        sent = 0
+        try:
+            while sent < 1024 * 1024:
+                writer.write(b"x" * 65536)
+                await writer.drain()
+                sent += 65536
+        except ConnectionError:
+            pass
+        received.append(sent)
+
+    received = []
+    server = await asyncio.start_server(broker, "127.0.0.1", 0)
+    port = server.sockets[0].getsockname()[1]
+    b = MqttBridge()
+    with patch.object(mqtt, "load_config", return_value={"mqtt": {"id": "m1", "client_id": "secret-id"}}):
+        client = b._client_for({"host": "127.0.0.1", "port": port, "id": "m1", "client_id": "secret-id"})
+    assert client._client._client_id == b"secret-id"  # not the id every topic shows
+    with pytest.raises(aiomqtt.MqttError):
+        async with client:
+            async with asyncio.timeout(5):
+                async for _ in client.messages:
+                    pass
+    server.close()
+    assert client._client._in_packet["remaining_length"] == 1024 * 1024
+    assert len(client._client._in_packet["packet"]) == 0  # not one byte of it was kept
 
 
 @pytest.mark.asyncio
@@ -129,6 +184,47 @@ async def test_a_modules_state_reaches_mqtt_only_when_shared_and_declared():
         b.module_state("tv", "ding", "ring")
     assert b._pending == {"mirrordash/m1/m/tv/now_playing/state": ("News", True),
                           "mirrordash/m1/m/tv/ding/state": ('{"event_type": "ring"}', False)}  # an event isn't retained
+
+
+@pytest.mark.asyncio
+async def test_what_a_module_no_longer_shares_leaves_nothing_on_the_broker():
+    """Retained values stay on the broker for any client to read: a module the owner stops sharing has its
+    device removed and its values cleared, a control allowed later replaces its sensor (Home Assistant never
+    changes a component's platform), and turning MQTT off clears everything the mirror left."""
+    from types import SimpleNamespace
+    sent = []
+
+    class Broker:
+        async def publish(self, topic, payload, qos=0, retain=False, **_):
+            sent.append((topic, payload.decode() if isinstance(payload, bytes) else payload, retain))
+
+    shared = {"id": "m1", "modules": {"tv": {"share": True, "control": []}}}
+    config = {"mqtt": shared, "modules": {"tv": {"module": "tv"}}, "system": {}}
+    b = MqttBridge()
+    with patch.object(mqtt, "load_config", return_value=config), \
+         patch("mirrordash_core.features.modules.loader.find_entry_point", return_value=SimpleNamespace()), \
+         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=TV):
+        await b._discover(Broker(), config, 1000.0)
+        b.module_state("tv", "now_playing", "Secret meeting")
+        await b._publish(Broker(), *next(iter((t, v[0]) for t, v in b._pending.items())))
+        topic = "homeassistant/device/m1/tv/config"
+        assert json.loads(sent[-2][1])["components"]["play_url"]["platform"] == "sensor"
+
+        shared["modules"]["tv"]["control"] = ["play_url"]
+        await b._discover(Broker(), config, 1001.0)
+        stub, now = (json.loads(p) for t, p, _ in sent[-2:])
+        assert stub["components"]["play_url"] == {"platform": "sensor"} and now["components"]["play_url"]["platform"] == "text"
+
+        b.module_state("tv", "now_playing", "Another secret")  # sent just before the owner stops sharing
+        shared["modules"]["tv"]["share"] = False
+        await b._discover(Broker(), config, 1002.0)
+        assert (topic, "", True) in sent and ("mirrordash/m1/m/tv/now_playing/state", "", True) in sent
+        assert not b._pending
+
+        b._client = Broker()
+        b._published = {"mirrordash/m1/screen/state": "ON"}
+        assert await b.forget()
+    assert ("mirrordash/m1/screen/state", "", True) in sent and sent[-1] == ("mirrordash/m1/status", "offline", True)
 
 
 def test_the_card_keeps_the_saved_password_and_checks_the_broker():

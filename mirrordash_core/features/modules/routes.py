@@ -185,17 +185,17 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
     return notify("Module removed from mirror display.", refreshModules=True)
 
 
-async def set_instance_enabled(instance_id: str, on: bool) -> bool:
-    """Turn a module instance on or off (the admin page's toggle, MQTT's switch); False if there is none."""
+async def set_instances_enabled(changes: dict[str, bool]) -> None:
+    """Turn module instances on or off (the admin page's toggle, MQTT's switches): one save and one reload
+    for all of them; one that isn't there is left out."""
     config = load_config()
-    cfg = config.get("modules", {}).get(instance_id)
-    if not isinstance(cfg, dict):
-        return False
-    if cfg.get("enabled", True) != on:
-        cfg["enabled"] = on
+    instances = config.get("modules", {})
+    changed = [i for i, on in changes.items() if isinstance(instances.get(i), dict) and instances[i].get("enabled", True) != on]
+    for instance_id in changed:
+        instances[instance_id]["enabled"] = changes[instance_id]
+    if changed:
         save_config(config)
         await module_host.reload_modules()
-    return True
 
 
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
@@ -205,7 +205,7 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
     if cfg_key not in modules_config:
         raise HTTPException(status_code=404, detail="Instance not found")
     new_state = not modules_config[cfg_key].get("enabled", True)
-    await set_instance_enabled(cfg_key, new_state)
+    await set_instances_enabled({cfg_key: new_state})
     # No refreshModules here: it closes the settings sheet the toggle lives in
     return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
 

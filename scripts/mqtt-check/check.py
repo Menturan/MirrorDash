@@ -13,11 +13,12 @@ from mirrordash_core.features.mqtt import bridge as mqtt
 TV = {"exposes": {"now_playing": {"type": "sensor"}, "channel": {"type": "select", "options": ["SVT1", "SVT2"], "control": True},
                   "play_url": {"type": "text", "format": "url", "control": True}}}
 BASE = "mirrordash/check"
+CLIENT_ID = "mirrordash-0123456789abcdef01234567"  # the bridge's secret one (routes.py new_client_id)
 
 
 def config(port: int) -> dict:
     return {"mqtt": {"enabled": True, "id": "check", "host": "127.0.0.1", "port": port, "username": "mirror",
-                     "password": "pw-mirror", "control_screen": True, "control_modules": True,
+                     "password": "pw-mirror", "client_id": CLIENT_ID, "control_screen": True, "control_modules": True,
                      "modules": {"tv": {"share": True, "control": ["channel"]}}},
             "modules": {"tv": {"module": "tv"}}, "system": {}}
 
@@ -59,7 +60,7 @@ async def run(name: str, port: int) -> list[str]:
 
     with patch.object(mqtt, "load_config", return_value=config(port)), \
          patch("mirrordash_core.features.power.routes.update_screen_state", screen), \
-         patch("mirrordash_core.features.modules.routes.set_instance_enabled", enabled), \
+         patch("mirrordash_core.features.modules.routes.set_instances_enabled", enabled), \
          patch("mirrordash_core.features.modules.client.module_host.control", control), \
          patch("mirrordash_core.features.modules.loader.find_entry_point", return_value=SimpleNamespace()), \
          patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=TV):
@@ -91,10 +92,12 @@ async def run(name: str, port: int) -> list[str]:
         expect("a control the owner didn't allow, and a 100 kB one, don't", control.await_count == 1)
 
         await send("ha", f"{BASE}/enabled/tv/set", b"OFF", retain=True)
+        await asyncio.sleep(mqtt.MODULE_CHANGE_INTERVAL + 1)  # the live one is carried out on a pass
+        expect("Home Assistant turns a module off", enabled.await_args_list[-1].args == ({"tv": False},))
         enabled.reset_mock()
         await b.restart()  # a reconnect: the broker would deliver the retained command again
         await until(lambda: b.status == "connected")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(1.5)
         expect("a retained command isn't carried out after a reconnect", not enabled.await_count)
         await send("ha", f"{BASE}/enabled/tv/set", b"", retain=True)
 
@@ -103,15 +106,20 @@ async def run(name: str, port: int) -> list[str]:
         expect("Home Assistant's restart gets the discovery again",
                await until(lambda: len(discovery("homeassistant/device/check/config")) > before))
 
-        connection = b._client
-        try:
-            async with client(port, "zigbee", "check"):
-                await asyncio.sleep(1)
-        except aiomqtt.MqttError:
-            pass
-        kept = b._client is connection
-        expect("another client with the mirror's client ID " + ("throws it off (no ACL)" if name == "open" else "doesn't"),
-               kept == (name == "hard"))
+        async def takeover(ident: str) -> bool:
+            """Does another client connecting with ident throw the mirror off?"""
+            await until(lambda: b.status == "connected")
+            connection = b._client
+            try:
+                async with client(port, "zigbee", ident):
+                    await asyncio.sleep(1)
+            except aiomqtt.MqttError:
+                pass
+            return b._client is not connection
+
+        expect("another client with the id the topics show can't throw the mirror off", not await takeover("check"))
+        expect("one that knows its secret client ID " + ("can (no ACL)" if name == "open" else "can't"),
+               await takeover(CLIENT_ID) == (name == "open"))
 
         await until(lambda: b.status == "connected")
         await b.forget()

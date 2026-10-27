@@ -47,14 +47,40 @@ TEXT_MAX = 255  # Home Assistant's text entities and states
 RETRY_FIRST, RETRY_MAX = 2, 60  # seconds between connection attempts, doubling
 CPU_INTERVAL = 60
 DISCOVERY_INTERVAL = 60  # the modules' declarations read again (an update may change them)
+MODULE_CHANGE_INTERVAL = 5  # seconds between turning modules on or off (each change reloads them all)
 EXPOSES_MAX = 32  # entities a module may expose
 EXPOSE_TYPES = {"sensor", "binary_sensor", "event", "text", "select", "number", "button", "switch"}
 CONTROL_TYPES = {"text", "select", "number", "button", "switch"}
 UNIT = re.compile(r"[\w %°/.²³µ-]{1,16}")
 
 
+CLIENT_LOG = logging.getLogger("mirrordash.core.mqtt.client")
+CLIENT_LOG.setLevel(logging.ERROR)
+
+
 def new_id() -> str:
     return f"mirrordash-{secrets.token_hex(4)}"
+
+
+def new_client_id() -> str:
+    return f"mirrordash-{secrets.token_hex(12)}"
+
+
+def guard_packet_size(client: aiomqtt.Client) -> None:
+    """paho reads whatever packet comes (up to 256 MB), whatever the MaximumPacketSize the mirror asked for:
+    a broker that ignores it, or someone in between on plain MQTT, could fill the core's memory (200 MB
+    measured). A packet over MAX_PACKET ends the connection instead, as a failed read.
+    ponytail: paho's private _sock_recv and _in_packet (paho 2.1, pinned in uv.lock); test_mqtt.py fails if
+    they change."""
+    paho = client._client
+    read = paho._sock_recv
+
+    def guarded(size: int) -> bytes:
+        packet = paho._in_packet
+        if packet.get("have_remaining") and packet.get("remaining_length", 0) > MAX_PACKET:
+            raise OSError(f"the broker sent a packet over {MAX_PACKET // 1024} kB")
+        return read(size)
+    paho._sock_recv = guarded
 
 
 def declarations(schema: dict | None) -> dict[str, dict]:
@@ -178,6 +204,10 @@ class MqttBridge:
         self._refused = 0
         self._fingerprint = ""
         self._discovered_at = 0.0
+        self._brightness: int | None = None  # waiting for the next pass (_apply_pending)
+        self._brightness_at = 0.0
+        self._enable: dict[str, bool] = {}
+        self._enable_at = 0.0
 
     # The rest of the core
 
@@ -206,19 +236,21 @@ class MqttBridge:
         if cfg.get("enabled") and cfg.get("host") and cfg.get("id"):
             self._task = asyncio.create_task(self._run(), name="mqtt")
 
-    async def forget(self) -> None:
+    async def forget(self) -> bool:
         """Turned off by the owner: Home Assistant removes the devices (an empty retained discovery), and
-        the mirror shows offline."""
-        client = self._client
+        the mirror shows offline. False if it wasn't connected, so they stay there (unavailable)."""
+        client, removed = self._client, False
         if client:
             try:
-                for topic in [t for t in self._published if t.startswith(DISCOVERY + "/")]:
+                for topic in self._published:  # the devices, and every state it left on the broker
                     await client.publish(topic, b"", qos=1, retain=True)
                 await client.publish(f"{self._base()}/status", "offline", qos=1, retain=True)
+                removed = True
             except aiomqtt.MqttError as e:
                 logger.warning(f"MQTT: couldn't remove the mirror from Home Assistant: {e}")
         self._published = {}
         await self.stop()
+        return removed
 
     def module_state(self, instance: str, name, value) -> None:
         """A module instance's value of something it exposes (client.py): published if it is shared and the
@@ -237,12 +269,18 @@ class MqttBridge:
         props = Properties(PacketTypes.CONNECT)
         props.MaximumPacketSize = MAX_PACKET
         tls = ssl.create_default_context() if cfg.get("tls") else None  # the broker's certificate checked
-        return aiomqtt.Client(
+        client = aiomqtt.Client(
             cfg["host"], int(cfg.get("port") or (8883 if tls else 1883)), username=cfg.get("username") or None,
-            password=cfg.get("password") or None, identifier=cfg["id"], protocol=aiomqtt.ProtocolVersion.V5,
+            password=cfg.get("password") or None, protocol=aiomqtt.ProtocolVersion.V5,
+            # Its own secret, not the id every topic shows: another client must know it to take the connection
+            # over (on a broker without use_username_as_clientid, which ignores it)
+            identifier=cfg.get("client_id") or cfg["id"],
             clean_start=True,  # no session: nothing the broker queued while the mirror was away is run later
             will=aiomqtt.Will(f"{self._base()}/status", "offline", qos=1, retain=True), timeout=10,
-            properties=props, tls_context=tls, max_queued_incoming_messages=MAX_QUEUED)
+            properties=props, tls_context=tls, max_queued_incoming_messages=MAX_QUEUED,
+            logger=CLIENT_LOG)  # a flood would log every message it drops: our own lines say what matters
+        guard_packet_size(client)
+        return client
 
     async def _run(self) -> None:
         delay = RETRY_FIRST
@@ -257,6 +295,9 @@ class MqttBridge:
             except aiomqtt.MqttError as e:
                 self.status = f"not connected: {e}"
                 logger.warning(f"MQTT: {e}; trying again in {delay} s")
+            except Exception as e:  # anything else ends this connection, never MQTT until the next restart
+                self.status = "not connected: an error, see Logs"
+                logger.error(f"MQTT: {e!r}; trying again in {delay} s", exc_info=True)
             finally:
                 self._client = None
             await asyncio.sleep(delay)
@@ -290,7 +331,9 @@ class MqttBridge:
         cpu_at = 0.0
         while True:
             try:
-                config, now = load_config(), time.monotonic()
+                now = time.monotonic()
+                await self._apply_pending(now)
+                config = load_config()
                 await self._discover(client, config, now)
                 states = self._states(config, now - cpu_at >= CPU_INTERVAL)
                 if now - cpu_at >= CPU_INTERVAL:
@@ -379,17 +422,28 @@ class MqttBridge:
                 "origin": origin, "availability_topic": f"{base}/status",
                 "components": module_components(base, mid, instance, entities, allowed)}
         self._modules = shared
+        # A value it sent just before the owner stopped sharing it must not follow the clearing below
+        self._pending = {t: v for t, v in self._pending.items() if not t.startswith(f"{base}/m/") or t.split("/")[3] in shared}
 
         for topic, payload in devices.items():
-            if (old := self._published.get(topic)) and (gone := set(json.loads(old)["components"]) - set(payload["components"])):
-                # Home Assistant removes a component it is sent as its platform alone (then left out)
-                stub = {**payload, "components": {**payload["components"],
-                                                  **{n: {"platform": json.loads(old)["components"][n]["platform"]} for n in gone}}}
-                await self._publish(client, topic, json.dumps(stub))
+            old = json.loads(self._published[topic])["components"] if self._published.get(topic) else {}
+            new = payload["components"]
+            # Home Assistant removes a component it is sent as its platform alone, and never changes one's
+            # platform (a sensor that may now be controlled): those go first, then come back as they are now
+            if gone := {n: {"platform": c["platform"]} for n, c in old.items() if new.get(n, {}).get("platform") != c["platform"]}:
+                await self._publish(client, topic, json.dumps({**payload, "components": {**new, **gone}}))
             await self._publish(client, topic, json.dumps(payload))
         for topic in [t for t in self._published if t.startswith(f"{DISCOVERY}/") and t not in devices]:
             await self._publish(client, topic, "")  # a device no longer shared: Home Assistant removes it
             del self._published[topic]
+        # What a module no longer shared said stays on the broker (retained) for any client to read: cleared,
+        # once a connection for each entity it declares (an empty retained message deletes one)
+        for instance, module_cfg in modules.items():
+            if instance in shared or not (isinstance(module_cfg, dict) and SAFE_NAME.match(instance)):
+                continue
+            ep = find_entry_point(str(module_cfg.get("module", instance)))
+            for name in declarations(get_module_schema(ep) if ep else None):
+                await self._publish(client, f"{base}/m/{instance}/{name}/state", "")
 
     def _states(self, config: dict, cpu: bool) -> dict[str, str]:
         from mirrordash_core.features.hardware.devices import (
@@ -452,13 +506,16 @@ class MqttBridge:
         except (ValueError, PermissionError) as e:
             self._refuse(topic, str(e))
             return
-        logger.info(f"MQTT: {what} ({topic})")
+        except Exception as e:  # a module going away meanwhile, say: one command never ends the connection
+            logger.error(f"MQTT: {topic!r} failed: {e!r}")
+            return
+        logger.info(f"MQTT: {what} ({topic!r})")  # repr: a topic may hold a line break, which would forge a log line
 
     def _refuse(self, topic: str, why: str) -> None:
         """Logged, but at most every 10 s: a flood of refused commands would otherwise flood the log."""
         self._refused += 1
         if time.monotonic() - self._refused_logged >= 10:
-            logger.warning(f"MQTT: refused {topic}: {why}" + (f" (and {self._refused - 1} more)" if self._refused > 1 else ""))
+            logger.warning(f"MQTT: refused {topic!r}: {why}" + (f" (and {self._refused - 1} more)" if self._refused > 1 else ""))
             self._refused_logged, self._refused = time.monotonic(), 0
 
     async def _command(self, parts: list[str], payload: str) -> str:
@@ -472,18 +529,17 @@ class MqttBridge:
                 await update_screen_state({"state": payload.lower()})
                 return f"screen {payload}"
             case ["brightness", "set"] if cfg.get("control_screen") is True:
-                if not payload.isdigit() or not 10 <= int(payload) <= 100:
+                if not (payload.isascii() and payload.isdigit()) or not 10 <= int(payload) <= 100:
                     raise ValueError("not a brightness from 10 to 100")
-                from mirrordash_core.system_settings import update_system_settings
-                await update_system_settings(settings={"brightness": int(payload)})
+                self._brightness = int(payload)  # the last one, on the next pass (a slider sends many)
                 return f"brightness {payload}"
             case ["enabled", instance, "set"] if cfg.get("control_modules") is True:
                 if payload not in ("ON", "OFF"):
                     raise ValueError("not ON or OFF")
-                from mirrordash_core.features.modules.routes import set_instance_enabled
-                if not await set_instance_enabled(instance, payload == "ON"):
+                if not isinstance(load_config().get("modules", {}).get(instance), dict):
                     raise ValueError("no such module instance")
-                return f"module {instance} {payload}"
+                self._enable[instance] = payload == "ON"  # together, at most every MODULE_CHANGE_INTERVAL
+                return f"module {instance!r} {payload}"
             case ["m", instance, name, "set"]:
                 entity = self._modules.get(instance, {}).get(name)
                 choice = (cfg.get("modules") or {}).get(instance) or {}
@@ -495,6 +551,19 @@ class MqttBridge:
                     raise ValueError("the module isn't running")
                 return f"{instance} {name} = {payload[:80]!r}"
         raise PermissionError("not something the owner lets Home Assistant control")
+
+    async def _apply_pending(self, now: float) -> None:
+        """The commands that are heavy to carry out, coalesced: brightness writes the settings to the card
+        (at most once a second), a module on or off reloads every module (all waiting ones at once, at most
+        every MODULE_CHANGE_INTERVAL), so a flood can't wear the card or keep the modules restarting."""
+        if self._brightness is not None and now - self._brightness_at >= 1:
+            value, self._brightness, self._brightness_at = self._brightness, None, now
+            from mirrordash_core.system_settings import update_system_settings
+            await update_system_settings(settings={"brightness": value})
+        if self._enable and now - self._enable_at >= MODULE_CHANGE_INTERVAL:
+            changes, self._enable, self._enable_at = self._enable, {}, now
+            from mirrordash_core.features.modules.routes import set_instances_enabled
+            await set_instances_enabled(changes)
 
 
 mqtt_bridge = MqttBridge()

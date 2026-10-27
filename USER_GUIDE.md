@@ -136,11 +136,11 @@ With Matter, the mirror's screen shows up as a light in Apple Home, Google Home,
 
 With MQTT the mirror appears in Home Assistant by itself, as a device with its screen, brightness, CPU temperature, the sensors and buttons you connected under *Hardware*, and what your modules share. Nothing to paste into `configuration.yaml`. You need an MQTT broker; the **Mosquitto broker** add-on in Home Assistant is the usual one, with its MQTT integration set up.
 
-1.  **A user for the mirror**: in Home Assistant, *Settings* → *People* → *Users*, add a user (for example `mirrordash`). Mosquitto lets Home Assistant's users log in.
+1.  **A login for the mirror**: in the Mosquitto add-on's *Configuration*, under `logins`, add one (for example `username: mirrordash` and a long password of its own). Use a login of the add-on, not a Home Assistant user: plain MQTT sends the password unencrypted on your network, and a Home Assistant user's password also opens Home Assistant itself.
 2.  **Connect**: in the mirror's admin page, *Settings* → *MQTT*, type the broker (`homeassistant.local` or Home Assistant's IP address), the user and the password, and **Save and Connect**. The card says *Connected*, and the mirror shows up in Home Assistant under *Settings* → *Devices*.
 3.  **Choose what Home Assistant may do.** At first it can only look. On the card you can let it turn the screen on and off and set the brightness, turn modules on and off, and, for each module that offers it, show the module and let Home Assistant control what it offers (a TV module's channel, say). Save after each change.
 
-Buttons show up as events (single, double, triple, long press) that you can use as automation triggers.
+Buttons show up as events (single, double, triple, long press) that you can use as automation triggers. Until the broker is locked down (below), any device on it could fake a press or the motion sensor, so don't let them unlock a door or turn an alarm off before that.
 
 **Lock the broker down.** MQTT can't tell who sent a message: without more, every device logged in to your broker (a Zigbee bridge, a smart plug) could send the mirror what you allowed, and take over its connection. The card's *Lock the broker down* shows the lines for it. In the Mosquitto add-on's configuration, turn on `customize` (`active: true`, `folder: mosquitto`), then make two files in Home Assistant's `/share/mosquitto` folder (the *File editor* or *Samba* add-on can):
 
@@ -149,19 +149,19 @@ Buttons show up as events (single, double, triple, long press) that you can use 
   acl_file /share/mosquitto/accesscontrollist
   use_username_as_clientid true
   ```
-- `accesscontrollist`: the card's lines for the mirror, and lines for everyone else that uses the broker, or they lose their access:
+- `accesscontrollist`: the card's lines for the mirror, and lines for everyone else that uses the broker, or they lose their access. Home Assistant logs in as `homeassistant`, and add-ons that find the broker by themselves (Zigbee2MQTT, for one) as `addons`; a device with a login of its own gets its own lines:
   ```
   user homeassistant
   topic readwrite #
 
-  user zigbee2mqtt
+  user addons
   topic readwrite zigbee2mqtt/#
   topic readwrite homeassistant/#
   ```
 
-Restart the add-on. Each device then needs a user of its own (with `use_username_as_clientid`, two on one user throw each other off).
+Restart the add-on and check that everything still reports in Home Assistant; the add-on's log names a login that was refused. Each device needs a login of its own (with `use_username_as_clientid`, two on one login throw each other off). The mirror connects with a client ID of its own that nobody else knows, so even before this, another client can only throw it off if it guesses that.
 
-**TLS**: tick it on the card when your broker has a certificate a browser would trust (port 8883). A self-signed one isn't accepted.
+**TLS**: tick it on the card when your broker has a certificate a browser would trust (port 8883). A self-signed one isn't accepted. Without TLS, someone on your network can read the mirror's MQTT password and what it sends, and pass for the broker; keep the mirror's login for the mirror alone.
 
 **Turning it off** (*Turn Off* on the card) removes the mirror from Home Assistant. A backup without a password leaves the broker password out; type it again after restoring one.
 

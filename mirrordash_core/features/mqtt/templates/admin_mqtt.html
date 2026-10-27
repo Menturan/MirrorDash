@@ -8,6 +8,9 @@
         {% if status == "connected" %}<i class="fas fa-circle-check" aria-hidden="true"></i> Connected to {{ cfg.host }}.
         {% else %}<i class="fas fa-triangle-exclamation" aria-hidden="true"></i> {{ status | capitalize }}{% endif %}
     </p>
+    {% if not cfg.username %}
+    <p style="font-size: 0.85rem; margin: 0 0 14px 0; color: var(--warning-color);"><i class="fas fa-triangle-exclamation" aria-hidden="true"></i> No user: a broker that lets the mirror in without one lets anyone in, and they can do all you allow below. Give the mirror a login of its own.</p>
+    {% endif %}
     {% endif %}
 
     <form hx-post="/admin/panels/system/mqtt/save" hx-target="#mqtt-card" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]">

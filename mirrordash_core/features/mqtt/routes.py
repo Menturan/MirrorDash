@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from mirrordash_core.admin import events_header, require_api_key, templates
 from mirrordash_core.config import load_config, save_config
-from mirrordash_core.features.mqtt.bridge import declarations, mqtt_bridge, new_id
+from mirrordash_core.features.mqtt.bridge import (
+    declarations,
+    mqtt_bridge,
+    new_client_id,
+    new_id,
+)
 from mirrordash_core.forms import read_form
 
 router = APIRouter(prefix="/admin")
@@ -74,7 +79,7 @@ async def save_mqtt(request: Request):
             "share": isinstance(shared, dict) and shared.get(module["id"]) in ("on", "true"),
             "control": sorted(n for n in allowed if n in module["entities"] and module["entities"][n]["control"])}
     config["mqtt"] = {
-        "enabled": True, "id": old.get("id") or new_id(), "host": host, "port": int(port) if port else None,
+        "enabled": True, "id": old.get("id") or new_id(), "client_id": old.get("client_id") or new_client_id(), "host": host, "port": int(port) if port else None,
         "username": _printable(form.get("username"), 128), "password": password or old.get("password", ""),
         "tls": form.get("tls") in ("on", "true"),
         "control_screen": form.get("control_screen") in ("on", "true"),
@@ -87,8 +92,11 @@ async def save_mqtt(request: Request):
 
 @router.post("/panels/system/mqtt/off", dependencies=[Depends(require_api_key)])
 async def mqtt_off(request: Request):
-    await mqtt_bridge.forget()  # Home Assistant removes the devices while the connection is still up
+    removed = await mqtt_bridge.forget()  # Home Assistant removes the devices while the connection is still up
     config = load_config()
     config.setdefault("mqtt", {})["enabled"] = False
     save_config(config)
-    return _mqtt_card(request, "MQTT is off, and the mirror is gone from Home Assistant.")
+    if removed:
+        return _mqtt_card(request, "MQTT is off, and the mirror is gone from Home Assistant.")
+    return _mqtt_card(request, "MQTT is off. The mirror wasn't connected, so delete it in Home Assistant "
+                               "(Settings → Devices) if it is still there.", "warning")

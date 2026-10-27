@@ -25,7 +25,7 @@ from mirrordash_core.config import (
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import SAFE_NAME, module_entry_points
-from mirrordash_core.features.mqtt.bridge import new_id
+from mirrordash_core.features.mqtt.bridge import new_client_id, new_id
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
 from mirrordash_core.host import reboot_system, run_restart
 
@@ -435,8 +435,10 @@ async def _restore_config(extract_dir: Path) -> bool:
     if not restored["admin_auth"]:
         del restored["admin_auth"]  # a mirror still being set up: the admin page asks for one
     if isinstance(restored.get("mqtt"), dict):
-        # This mirror's own MQTT id, never the backup's: two mirrors under one id would share their commands
+        # This mirror's own MQTT ids, never the backup's: two mirrors under one id would share their commands,
+        # and under one client ID throw each other off the broker
         restored["mqtt"]["id"] = current.get("mqtt", {}).get("id") or new_id()
+        restored["mqtt"]["client_id"] = current.get("mqtt", {}).get("client_id") or new_client_id()
     save_config(restored)
     logger.info("Configuration files restored successfully.")
     return reboot_needed
