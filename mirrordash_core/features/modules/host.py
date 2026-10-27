@@ -695,20 +695,20 @@ class Control:
     def start_instance(self, data: bytes, fds: list[int]) -> None:
         """The core's request to start an instance (receive_spawns): its sockets go to its process. Refused
         until the self-check ran, and while it found the sandbox open (fail closed)."""
-        socks = [socket.socket(fileno=fd) for fd in fds]
+        instance_sockets = [socket.socket(fileno=fd) for fd in fds]  # its messages, and the descriptors it is handed
         try:
             if not self._sandbox_checked.is_set() or self.sandbox_holes:
                 raise ValueError("the module sandbox isn't known to be closed")
             instance = json.loads(data).get("instance")
             uid = module_uids([instance]).get(instance) if isinstance(instance, str) else None
-            if uid is None or len(socks) != 2:
+            if uid is None or len(instance_sockets) != 2:
                 raise ValueError(f"no user for {instance!r}")
         except (ValueError, AttributeError, OSError) as e:
             logger.error(f"A module instance couldn't start: {e}")
-            for s in socks:
-                s.close()
+            for instance_socket in instance_sockets:
+                instance_socket.close()
             return
-        self.spawn("module", uid, instance, socks)
+        self.spawn("module", uid, instance, instance_sockets)
 
     async def run_in_child_process(self, kind: str, uid: int, message: dict | None, timeout: float, folder: str | None = None) -> dict:
         """Run a site step (in a module's folder) or the probe in a process of its own: the message in, its
@@ -747,31 +747,31 @@ class Control:
         a new folder of its own or take one out, import modules from it, switch it in or drop it. The links
         are written here, what runs a module's code in a process as that module's user. The core runs one
         change at a time."""
-        op = message.get("op")
+        step = message.get("op")  # prepare, pip, check, then commit or revert
         link, active, next_site = site_paths()
         try:
-            if op == "prepare":
+            if step == "prepare":
                 await asyncio.to_thread(empty_folder, next_site, True)
                 for name, folder in ({} if message.get("fresh") else site_links(active)).items():
                     link_module(next_site, name, folder)
                 await self._remove_unlinked_module_folders()
                 code, err = 0, ""
-            elif op == "pip":
+            elif step == "pip":
                 code, err = await self._install_or_uninstall(message, next_site)
-            elif op == "check":
+            elif step == "check":
                 code, err = await self._check_modules(message, next_site)
-            elif op == "revert":
+            elif step == "revert":
                 await asyncio.to_thread(empty_folder, next_site, True)
                 code, err = 0, ""
-            elif op == "commit":
+            elif step == "commit":
                 point_link(link, next_site)
                 code, err = 0, ""
             else:
-                code, err = 1, f"unknown site step {op!r}"
+                code, err = 1, f"unknown site step {step!r}"
         except (OSError, ValueError, TimeoutError) as e:
             code, err = 1, str(e) or repr(e)
         if code:
-            logger.warning(f"Module site {op} failed: {err.strip()}")
+            logger.warning(f"Module site {step} failed: {err.strip()}")
         await self.link.send({"t": "reply", "id": message.get("id"), "code": code, "err": err})
 
     async def _site_step_as(self, uid: int, folder: str, message: dict) -> tuple[int, str]:
@@ -819,7 +819,7 @@ class Control:
 
     async def _check_modules(self, message: dict, next_site: Path) -> tuple[int, str]:
         """The modules named import from the next site: each in its own folder, as its own user."""
-        names = {str(n).replace("-", "_") for n in message.get("names") or []}
+        names = {str(name).replace("-", "_") for name in message.get("names") or []}
         for name, folder in site_links(next_site).items():
             if folder_entry_points(str(next_site / name)) & names:
                 if (uid := self._owner_of_module_folder(folder)) is None:
@@ -832,11 +832,12 @@ class Control:
     async def _remove_unlinked_module_folders(self) -> None:
         """Remove the module folders neither site links to (an older version, an uninstalled module, a
         failed install), each emptied as its user. One that won't go stays until the next change."""
-        used = {f for s in site_paths()[1:] for f in site_links(s).values()}
+        linked_folders = {folder for site in site_paths()[1:] for folder in site_links(site).values()}
         entries = []
         with contextlib.suppress(OSError):
-            entries = [e for e in os.scandir(get_module_dir() / "pkgs") if e.name not in used
-                       and SAFE_NAME.match(e.name) and e.name.rpartition("_")[2].isdigit()]
+            # A module folder is named <package>_<number> (new_module_folder)
+            entries = [entry for entry in os.scandir(get_module_dir() / "pkgs") if entry.name not in linked_folders
+                       and SAFE_NAME.match(entry.name) and entry.name.rpartition("_")[2].isdigit()]
         for entry in entries:
             try:
                 if (uid := self._owner_of_module_folder(entry.name)) is None:

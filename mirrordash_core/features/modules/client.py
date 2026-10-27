@@ -260,7 +260,8 @@ class ModuleHost:
     @property
     def running(self) -> list[str]:
         """The instances whose run_loop runs, in the settings' order (the screen lays an area's cards out so)."""
-        return [i for i in self._placement if (conn := self._instances.get(i)) and conn.running]
+        return [instance_id for instance_id in self._placement
+                if (conn := self._instances.get(instance_id)) and conn.running]
 
     async def start_modules(self) -> None:
         """At startup: connect to the host (and keep reconnecting) and start the modules there."""
@@ -475,14 +476,16 @@ class ModuleHost:
             if self._control is None:
                 return
             config = load_config()
-            modules = {k: v for k, v in config.get("modules", {}).items() if isinstance(v, dict) and SAFE_NAME.match(k)}
+            modules = {instance_id: instance_config for instance_id, instance_config in config.get("modules", {}).items()
+                       if isinstance(instance_config, dict) and SAFE_NAME.match(instance_id)}
             globals_cfg = config.get("globals", {})
             # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
             eps = module_entry_points()
-            self._placement = {instance_id: {**placement(cfg, instance_id), "order": i, "scripts": scripts_allowed(
+            self._placement = {instance_id: {**placement(cfg, instance_id), "order": order, "scripts": scripts_allowed(
                                    find_entry_point(cfg.get("module", instance_id), eps), config)}
-                               for i, (instance_id, cfg) in enumerate(modules.items())}
-            wanted = {i: cfg for i, cfg in modules.items() if cfg.get("enabled", True) and i not in self.paused}
+                               for order, (instance_id, cfg) in enumerate(modules.items())}
+            wanted = {instance_id: cfg for instance_id, cfg in modules.items()
+                      if cfg.get("enabled", True) and instance_id not in self.paused}
             # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)
             holes = reply.get("sandbox_open")
@@ -492,7 +495,8 @@ class ModuleHost:
                              "install the system update, or go back to the system before it")
                 wanted = {}  # fail closed: the running ones stop, the home network closes
             uids = reply.get("uids") if isinstance(reply.get("uids"), dict) else {}
-            self._uids = {i: uid for i, uid in uids.items() if i in wanted and type(uid) is int and uid in MODULE_UIDS}
+            self._uids = {instance_id: uid for instance_id, uid in uids.items()
+                          if instance_id in wanted and type(uid) is int and uid in MODULE_UIDS}
             await self._apply_lan(wanted)  # before they start, so their first call gets through
             for instance_id, conn in list(self._instances.items()):
                 if instance_id not in wanted or conn.key != settings_key(wanted[instance_id], globals_cfg):
