@@ -83,41 +83,61 @@ def guard_packet_size(client: aiomqtt.Client) -> None:
     paho._sock_recv = guarded
 
 
+def checked_declaration(name, declared) -> dict | None:
+    """One entry of a module's "exposes", as an entity {"type", "title", "control", ...} with only what is
+    what it may be (it is its author's text), or None if it can't be one."""
+    if not (isinstance(name, str) and SAFE_KEY.match(name) and isinstance(declared, dict)
+            and declared.get("type") in EXPOSE_TYPES):
+        return None
+    kind = declared["type"]
+    entity = {"type": kind, "title": str(declared.get("title") or name)[:64],
+              "control": declared.get("control") is True and kind in CONTROL_TYPES}
+    if kind == "select":
+        entity["options"] = [option for option in declared.get("options") or []
+                             if isinstance(option, str) and 0 < len(option) <= 64][:64]
+        if not entity["options"]:
+            return None
+    elif kind == "number":
+        try:
+            low = float(declared.get("min", 0))
+            high = float(declared.get("max", 100))
+            step = float(declared.get("step", 1))
+        except (TypeError, ValueError):
+            return None
+        if not all(map(math.isfinite, (low, high, step))) or low >= high or step <= 0:
+            return None
+        entity.update(min=low, max=high, step=step)
+    elif kind == "text":
+        max_length = declared.get("maxLength")
+        entity["max"] = min(max_length, TEXT_MAX) if type(max_length) is int and max_length > 0 else TEXT_MAX
+        entity["url"] = declared.get("format") == "url"
+    elif kind == "event":
+        entity["event_types"] = [event_type for event_type in declared.get("event_types") or []
+                                 if isinstance(event_type, str) and SAFE_KEY.match(event_type)][:16]
+        if not entity["event_types"]:
+            return None
+    elif kind == "sensor":
+        entity.update({key: declared[key] for key in ("unit", "device_class")
+                       if isinstance(declared.get(key), str) and UNIT.fullmatch(declared[key])})
+    return entity
+
+
 def declarations(schema: dict | None) -> dict[str, dict]:
-    """A module's "exposes" (config_schema.json): only the entries that are what they may be, as it is its
-    author's text. {name: {"type", "title", "control", ...}}"""
+    """A module's "exposes" (config_schema.json), its first EXPOSES_MAX entries that can be entities:
+    {name: {"type", "title", "control", ...}} (checked_declaration)."""
     exposes = (schema or {}).get("exposes")
-    out = {}
-    for name, d in list(exposes.items())[:EXPOSES_MAX] if isinstance(exposes, dict) else []:
-        if not (isinstance(name, str) and SAFE_KEY.match(name) and isinstance(d, dict) and d.get("type") in EXPOSE_TYPES):
-            continue
-        kind = d["type"]
-        entity = {"type": kind, "title": str(d.get("title") or name)[:64],
-                  "control": d.get("control") is True and kind in CONTROL_TYPES}
-        if kind == "select":
-            entity["options"] = [o for o in d.get("options") or [] if isinstance(o, str) and 0 < len(o) <= 64][:64]
-            if not entity["options"]:
-                continue
-        elif kind == "number":
-            try:
-                low, high, step = (float(d.get(k, v)) for k, v in (("min", 0), ("max", 100), ("step", 1)))
-            except (TypeError, ValueError):
-                continue
-            if not all(map(math.isfinite, (low, high, step))) or low >= high or step <= 0:
-                continue
-            entity.update(min=low, max=high, step=step)
-        elif kind == "text":
-            length = d.get("maxLength")
-            entity["max"] = min(length, TEXT_MAX) if type(length) is int and length > 0 else TEXT_MAX
-            entity["url"] = d.get("format") == "url"
-        elif kind == "event":
-            entity["event_types"] = [t for t in d.get("event_types") or [] if isinstance(t, str) and SAFE_KEY.match(t)][:16]
-            if not entity["event_types"]:
-                continue
-        elif kind == "sensor":
-            entity.update({k: d[k] for k in ("unit", "device_class") if isinstance(d.get(k), str) and UNIT.fullmatch(d[k])})
-        out[name] = entity
-    return out
+    if not isinstance(exposes, dict):
+        return {}
+    entities = {}
+    for name, declared in list(exposes.items())[:EXPOSES_MAX]:
+        if entity := checked_declaration(name, declared):
+            entities[name] = entity
+    return entities
+
+
+def has_control_characters(text: str) -> bool:
+    """A line break, a tab, an escape or DEL: none of them belongs in a text entity's value."""
+    return any(ord(character) < 32 or ord(character) == 127 for character in text)
 
 
 def command_value(entity: dict, payload: str):
@@ -133,7 +153,7 @@ def command_value(entity: dict, payload: str):
         value = float(payload)
         if math.isfinite(value) and entity["min"] <= value <= entity["max"]:
             return int(value) if value.is_integer() and entity["step"].is_integer() else value
-    if kind == "text" and len(payload) <= entity["max"] and not any(ord(c) < 32 or ord(c) == 127 for c in payload):
+    if kind == "text" and len(payload) <= entity["max"] and not has_control_characters(payload):
         if not entity["url"]:
             return payload
         parts = urllib.parse.urlsplit(payload)
@@ -172,20 +192,27 @@ def component(uid: str, platform: str, name: str, state: str | None, command: st
 
 def module_components(base: str, mirror_id: str, instance: str, entities: dict, control: set) -> dict:
     """The components of a shared module instance's device: its entities, the controls the owner allowed."""
-    comps = {}
-    for name, e in entities.items():
+    components = {}
+    for name, entity in entities.items():
         topic = f"{base}/m/{instance}/{name}"
-        kind, allowed = e["type"], e["control"] and name in control
-        if kind == "button" and not allowed:
+        platform = entity["type"]
+        owner_allows_control = entity["control"] and name in control
+        if platform == "button" and not owner_allows_control:
             continue
-        if kind in CONTROL_TYPES and not allowed:  # shown, not run: what it is now
-            kind = {"switch": "binary_sensor"}.get(kind, "sensor")
-        extra = {k: e[k] for k in ("options", "min", "max", "step", "event_types") if k in e and kind == e["type"]}
-        if kind == "sensor":
-            extra |= {k2: e[k] for k, k2 in (("unit", "unit_of_measurement"), ("device_class", "device_class")) if k in e}
-        comps[name] = component(f"{mirror_id}_{instance}_{name}", kind, e["title"],
-                                None if kind == "button" else f"{topic}/state", f"{topic}/set" if allowed else None, **extra)
-    return comps
+        if platform in CONTROL_TYPES and not owner_allows_control:  # shown, not run: what it is now
+            platform = "binary_sensor" if platform == "switch" else "sensor"
+        extra = {}
+        if platform == entity["type"]:  # the entity's own settings only fit its own platform
+            extra = {key: entity[key] for key in ("options", "min", "max", "step", "event_types") if key in entity}
+        if platform == "sensor":
+            for entity_key, discovery_key in (("unit", "unit_of_measurement"), ("device_class", "device_class")):
+                if entity_key in entity:
+                    extra[discovery_key] = entity[entity_key]
+        state_topic = None if platform == "button" else f"{topic}/state"
+        command_topic = f"{topic}/set" if owner_allows_control else None
+        components[name] = component(f"{mirror_id}_{instance}_{name}", platform, entity["title"],
+                                     state_topic, command_topic, **extra)
+    return components
 
 
 class MqttBridge:
@@ -199,7 +226,7 @@ class MqttBridge:
         self._published: dict[str, str] = {}  # retained topic -> what was sent last
         self._pending: dict[str, tuple[str, bool]] = {}  # topic -> (payload, retain), sent on the next pass
         self._modules: dict[str, dict] = {}  # shared instance -> its declarations
-        self._commands: collections.deque[float] = collections.deque(maxlen=COMMAND_RATE)
+        self._recent_command_times: collections.deque[float] = collections.deque(maxlen=COMMAND_RATE)
         self._refused_logged = 0.0
         self._refused = 0
         self._fingerprint = ""
@@ -495,10 +522,10 @@ class MqttBridge:
             self._refuse(topic, "a retained command")
             return
         now = time.monotonic()
-        if len(self._commands) == COMMAND_RATE and now - self._commands[0] < 1:
+        if len(self._recent_command_times) == COMMAND_RATE and now - self._recent_command_times[0] < 1:
             self._refuse(topic, f"more than {COMMAND_RATE} commands a second")
             return
-        self._commands.append(now)
+        self._recent_command_times.append(now)
         base = self._base() + "/"
         try:
             text = payload.decode("utf-8") if isinstance(payload, (bytes, bytearray)) else str(payload)

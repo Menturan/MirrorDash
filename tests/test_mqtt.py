@@ -105,11 +105,11 @@ async def test_nothing_runs_that_the_owner_didnt_turn_on():
             await b._on_message("mirrordash/m1/screen/set", b"OFF", False)
             screen.assert_awaited_once_with({"state": "off"})
             await b._on_message("mirrordash/m1/enabled/gone/set", b"OFF", False)  # no such instance
-            b._commands.clear()
+            b._recent_command_times.clear()
             for _ in range(4):  # flipped back and forth: one reload, with the last of each
                 await b._on_message("mirrordash/m1/enabled/tv/set", b"ON", False)
                 await b._on_message("mirrordash/m1/enabled/tv/set", b"OFF", False)
-            b._commands.clear()  # the ones above count against COMMAND_RATE (tested on its own below)
+            b._recent_command_times.clear()  # the ones above count against COMMAND_RATE (tested on its own below)
             for payload in (b"5", b"\xc2\xb2", b"40", b"55"):  # below the screen's 10, a superscript 2, then a slider
                 await b._on_message("mirrordash/m1/brightness/set", payload, False)
             with patch("mirrordash_core.system_settings.update_system_settings", AsyncMock()) as brightness:
