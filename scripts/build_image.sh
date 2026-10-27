@@ -6,6 +6,9 @@
 
 set -euo pipefail
 
+info() { info "$*"; }
+warn() { warn "$*"; }
+fail() { echo -e "\e[31m[ERROR] $*\e[0m"; exit 1; }
 
 BUILD_DIR="${1:-$(pwd)/build_workspace}"
 if [[ "$BUILD_DIR" != /* ]]; then BUILD_DIR="$(pwd)/$BUILD_DIR"; fi
@@ -16,7 +19,7 @@ MOUNT_DIR="$BUILD_DIR/mnt"
 
 # --- Fail-Safe Cleanup ---
 cleanup() {
-    echo -e "\n\e[34m[INFO] Cleaning up mounts and loops...\e[0m"
+    echo; info "Cleaning up mounts and loops..."
     sync
     umount -R "$MOUNT_DIR" 2>/dev/null || true
     if [ -n "${PIECES_DIR:-}" ]; then umount "$PIECES_DIR/mnt" 2>/dev/null || true; fi
@@ -28,7 +31,7 @@ cleanup() {
 trap cleanup EXIT ERR INT TERM
 
 # --- Download & Decompress ---
-echo -e "\e[34m[INFO] Fetching Raspberry Pi OS...\e[0m"
+info "Fetching Raspberry Pi OS..."
 DOWNLOAD_DIR="$BUILD_DIR/downloads"
 mkdir -p "$BUILD_DIR" "$MOUNT_DIR" "$DOWNLOAD_DIR"
 cd "$BUILD_DIR"
@@ -42,22 +45,21 @@ IMAGE_NAME=$(basename "$TARGET_URL")
 
 if [ ! -f "${IMAGE_NAME%.xz}" ]; then
     if [ ! -f "$DOWNLOAD_DIR/$IMAGE_NAME" ]; then
-        echo -e "\e[34m[INFO] Downloading base image...\e[0m"
+        info "Downloading base image..."
         wget -q -c -P "$DOWNLOAD_DIR" "$TARGET_URL"
     fi
     # A broken or changed download must not end up in the image (or in the CI cache)
     if ! echo "$TARGET_SHA256  $DOWNLOAD_DIR/$IMAGE_NAME" | sha256sum -c --quiet; then
         rm -f "$DOWNLOAD_DIR/$IMAGE_NAME"
-        echo -e "\e[31m[ERROR] The base image doesn't match its checksum; it was deleted. Run the build again.\e[0m"
-        exit 1
+        fail "The base image doesn't match its checksum; it was deleted. Run the build again."
     fi
-    echo -e "\e[34m[INFO] Decompressing base image...\e[0m"
+    info "Decompressing base image..."
     xz -d -c "$DOWNLOAD_DIR/$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
 fi
 cp "${IMAGE_NAME%.xz}" "$FINAL_IMAGE"
 
 # --- Expand OS Partition for Build ---
-echo -e "\e[34m[INFO] Expanding rootfs for package installation...\e[0m"
+info "Expanding rootfs for package installation..."
 # 2 GB more room to install packages into. Only for the build: the root is packed into a
 # squashfs at the end, and the final image is put together from scratch.
 truncate -s +2G "$FINAL_IMAGE"
@@ -65,21 +67,21 @@ parted -s "$FINAL_IMAGE" resizepart 2 100%
 
 # -P has the kernel read the partition table (already final: resized above, before attaching)
 LOOP_DEV=$(losetup -Pf --show "$FINAL_IMAGE")
-echo -e "\e[34m[INFO] Waiting for loop device...\e[0m"
+info "Waiting for loop device..."
 udevadm settle
 
 e2fsck -f -y "${LOOP_DEV}p2"
 resize2fs "${LOOP_DEV}p2"
 
 # --- Mount & Chroot ---
-echo -e "\e[34m[INFO] Mounting and copying repository...\e[0m"
+info "Mounting and copying repository..."
 mount "${LOOP_DEV}p2" "$MOUNT_DIR"
 mount "${LOOP_DEV}p1" "$MOUNT_DIR/boot/firmware"
 
 mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
-echo -e "\e[34m[INFO] Executing configure_image.sh via systemd-nspawn...\e[0m"
+info "Executing configure_image.sh via systemd-nspawn..."
 systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./configure_image.sh"
 
 # The repo copy is only build input — never ship source or the dev config.json
@@ -90,8 +92,7 @@ rm -rf "$MOUNT_DIR/opt/MirrorDash"
 # renames one must stop the build, not ship a mirror that can't start.
 for f in kernel8.img initramfs8 kernel_2712.img initramfs_2712 bootcode.bin start.elf fixup.dat; do
     if [ ! -s "$MOUNT_DIR/boot/firmware/$f" ]; then
-        echo -e "\e[31m[ERROR] $f is missing from the boot files (did Pi OS rename it?).\e[0m"
-        exit 1
+        fail "$f is missing from the boot files (did Pi OS rename it?)."
     fi
 done
 
@@ -103,30 +104,25 @@ done
 for initramfs in initramfs8 initramfs_2712; do
     initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs "/boot/firmware/$initramfs") || true
     if ! grep -q overlayroot <<< "$initramfs_files"; then
-        echo -e "\e[31m[ERROR] overlayroot is missing from $initramfs: the root would have no writable layer.\e[0m"
-        exit 1
+        fail "overlayroot is missing from $initramfs: the root would have no writable layer."
     fi
     # The root is a squashfs, a module in Pi OS's kernels: without it the root can't be mounted
     if ! grep -q kernel/fs/squashfs/squashfs.ko <<< "$initramfs_files"; then
-        echo -e "\e[31m[ERROR] squashfs is missing from $initramfs: the mirror couldn't mount its root.\e[0m"
-        exit 1
+        fail "squashfs is missing from $initramfs: the mirror couldn't mount its root."
     fi
     if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
-        echo -e "\e[31m[ERROR] The MirrorDash boot theme is missing from $initramfs.\e[0m"
-        exit 1
+        fail "The MirrorDash boot theme is missing from $initramfs."
     fi
 done
 
 # Without a Wi-Fi country the radio stays blocked: no hotspot, no way to set the mirror up.
 if ! grep -q 'cfg80211.ieee80211_regdom=' "$MOUNT_DIR/boot/firmware/cmdline.txt"; then
-    echo -e "\e[31m[ERROR] No Wi-Fi country in cmdline.txt: the mirror couldn't start its setup hotspot.\e[0m"
-    exit 1
+    fail "No Wi-Fi country in cmdline.txt: the mirror couldn't start its setup hotspot."
 fi
 
 # HDMI brightness goes through ddcutil; without it the brightness setting does nothing on HDMI.
 if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/bin/ddcutil; then
-    echo -e "\e[31m[ERROR] ddcutil is missing: brightness would not work on HDMI screens.\e[0m"
-    exit 1
+    fail "ddcutil is missing: brightness would not work on HDMI screens."
 fi
 
 # A unit directive the image's systemd doesn't know or can't parse (renamed in a newer systemd, a typo) is only
@@ -134,8 +130,7 @@ fi
 # <file>:<line>; a program that only exists on a running mirror (/storage) is no such line.
 unit_warnings=$(systemd-nspawn -q -D "$MOUNT_DIR" bash -c 'cd /etc/systemd/system && systemd-analyze verify --man=no cog-kiosk.service labwc-kiosk.service mirrordash*.service mirrordash*.timer 2>&1' || true)
 if grep -E '\.(service|timer|path):[0-9]+: ' <<< "$unit_warnings"; then
-    echo -e "\e[31m[ERROR] The image's systemd ignores directives in the units above.\e[0m"
-    exit 1
+    fail "The image's systemd ignores directives in the units above."
 fi
 
 # --- Build identity ---
@@ -155,7 +150,7 @@ if [ -n "${OS_TAG:-}" ]; then echo "$OS_TAG" > "$MOUNT_DIR/etc/mirrordash-os-ver
 #                  but the firmware still needs something bootable there.
 #   root.sqfs      p5 (root A) and the root image in the bundle
 # The disk identifier stays the base image's, so the PARTUUIDs in cmdline.txt are <id>-05 / -06.
-echo -e "\e[34m[INFO] Setup complete. Making the boot partitions...\e[0m"
+info "Setup complete. Making the boot partitions..."
 DISK_ID=$(sfdisk --disk-id "$FINAL_IMAGE")  # e.g. 0x27b94958; PARTUUIDs use it without 0x
 PIECES_DIR="$BUILD_DIR/pieces"
 mkdir -p "$PIECES_DIR/mnt"
@@ -198,7 +193,7 @@ umount "$PIECES_DIR/mnt"
 # ext4 size, which leaves room for a second root (A/B OS updates) on an 8 GB card.
 # boot/firmware stays in it as an empty mount point; the boot files are in their own partitions.
 cp "$MOUNT_DIR/usr/share/mirrordash/packages.txt" "${FINAL_IMAGE%.img}.packages.txt"
-echo -e "\e[34m[INFO] Packing the root as squashfs...\e[0m"
+info "Packing the root as squashfs..."
 umount "$MOUNT_DIR/boot/firmware"
 mksquashfs "$MOUNT_DIR" "$PIECES_DIR/root.sqfs" -comp zstd -noappend -quiet
 cleanup
@@ -206,8 +201,7 @@ trap - EXIT ERR INT TERM
 
 ROOT_SLOT_MIB=1536  # 1.5 GiB per root slot; the squashfs is about 0.75 GiB
 if [ "$(stat -c %s "$PIECES_DIR/root.sqfs")" -gt $(( ROOT_SLOT_MIB * 1048576 )) ]; then
-    echo -e "\e[31m[ERROR] The root is bigger than a root slot (${ROOT_SLOT_MIB} MiB).\e[0m"
-    exit 1
+    fail "The root is bigger than a root slot (${ROOT_SLOT_MIB} MiB)."
 fi
 
 # --- The image: p1-p5 (the first boot adds p6 and p7, see mirrordash-repart.sh) ---
@@ -227,7 +221,7 @@ P4_START=$(( P3_START + P3_SIZE ))
 P5_START=$(( P4_START + MIB ));        P5_SIZE=$(( ROOT_SLOT_MIB * MIB ))
 IMAGE_END=$(( P5_START + P5_SIZE ))
 
-echo -e "\e[34m[INFO] Assembling the A/B image...\e[0m"
+info "Assembling the A/B image..."
 rm -f "$FINAL_IMAGE"
 truncate -s $(( IMAGE_END * 512 )) "$FINAL_IMAGE"
 # type c = FAT32 (LBA), 5 = extended, 83 = Linux
@@ -258,7 +252,7 @@ write_at "$PIECES_DIR/root.sqfs" "$P5_START"
 # block against the signed hashes as it goes.
 BUNDLE="mirrordash-os-v${VERSION}-${OS_BUILD}.raucb"
 if [ -n "${RAUC_KEY:-}" ]; then
-    echo -e "\e[34m[INFO] Making the signed update bundle $BUNDLE...\e[0m"
+    info "Making the signed update bundle $BUNDLE..."
     mkdir -p "$PIECES_DIR/bundle"
     mv "$PIECES_DIR/root.sqfs" "$PIECES_DIR/bundle/rootfs.img"
     mv "$PIECES_DIR/boot.vfat" "$PIECES_DIR/bundle/boot.vfat"
@@ -278,16 +272,18 @@ filename=rootfs.img
 filename=boot.vfat
 EOF
     KEY_FILE=$(mktemp)
+    trap 'rm -f "$KEY_FILE"' EXIT  # the signing key never stays on the disk, also when rauc fails
     printf '%s\n' "$RAUC_KEY" > "$KEY_FILE"
     rm -f "$BUNDLE"
     rauc bundle --cert="$REPOS_DIR/scripts/rauc/cert.pem" --key="$KEY_FILE" "$PIECES_DIR/bundle" "$BUNDLE"
     rm -f "$KEY_FILE"
+    trap - EXIT
 else
-    echo -e "\e[33m[WARN] No RAUC_KEY: no update bundle (only the image).\e[0m"
+    warn "No RAUC_KEY: no update bundle (only the image)."
 fi
 rm -rf "$PIECES_DIR"
 
-echo -e "\e[34m[INFO] Compressing final image to XZ...\e[0m"
+info "Compressing final image to XZ..."
 xz -T0 -6 "$FINAL_IMAGE"
 sha256sum "${FINAL_IMAGE}.xz" > "${FINAL_IMAGE}.xz.sha256"
 echo -e "\e[32m[SUCCESS] Build Complete!\e[0m"
