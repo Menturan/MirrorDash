@@ -14,20 +14,23 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from mirrordash_core.config import write_atomic
 from mirrordash_core.features.kiosk.ws import manager
+from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.video")
 
 APP_ID = "mirrordash-video"
 RC_XML = Path.home() / ".config" / "labwc" / "rc.xml"  # in the RAM root: a rule left by a crash goes at the next start
 RULE = re.compile(r"<!-- mirrordash-video -->.*?<!-- /mirrordash-video -->", re.S)
+# One of wlr-randr's mode lines: "    1920x1080 px, 60.000000 Hz (preferred, current)"
 MODE = re.compile(r"^\s+(\d+)x(\d+) px, ([\d.]+) Hz(.*)$", re.M)
 ASK_TIMEOUT = 5  # seconds the page has to say where the video window is
 
 # ponytail: one video at a time (one window rule, one refresh rate); a second waits for the first to end.
 # Upgrade path: a rule per player, with its own app id.
 _one_at_a_time = asyncio.Lock()
-_asked: dict[str, asyncio.Future] = {}
+_asked: dict[str, asyncio.Future] = {}  # instance id -> the page's answer of where its video window is
 
 
 def with_rule(rc_xml: str, rect: list[int] | None) -> str:
@@ -46,14 +49,15 @@ def refresh_switch(wlr_randr: str, hz: int) -> tuple[str, str, str] | None:
     """(output, the mode at hz, the mode now) from wlr-randr's listing, or None when the screen is
     already at hz or has no mode at hz in its current resolution."""
     output = wlr_randr.split(maxsplit=1)[0] if wlr_randr.strip() else None
-    modes = [(w, h, float(rate), rest) for w, h, rate, rest in MODE.findall(wlr_randr)]
-    current = next(((w, h, rate) for w, h, rate, rest in modes if "current" in rest), None)
+    modes = [(width, height, float(rate), notes) for width, height, rate, notes in MODE.findall(wlr_randr)]
+    current = next(((width, height, rate) for width, height, rate, notes in modes if "current" in notes), None)
     if not output or not current or round(current[2]) == hz:
         return None
-    w, h, rate = current
-    if not any((mw, mh) == (w, h) and round(mrate) == hz for mw, mh, mrate, _ in modes):
+    width, height, rate = current
+    if not any((mode_width, mode_height) == (width, height) and round(mode_rate) == hz
+               for mode_width, mode_height, mode_rate, _ in modes):
         return None
-    return output, f"{w}x{h}@{hz}Hz", f"{w}x{h}@{rate:g}Hz"
+    return output, f"{width}x{height}@{hz}Hz", f"{width}x{height}@{rate:g}Hz"
 
 
 def window_reported(module: object, rect: object) -> None:
@@ -61,12 +65,14 @@ def window_reported(module: object, rect: object) -> None:
     future = _asked.get(module) if isinstance(module, str) else None
     if future is None or future.done():
         return
-    valid = (isinstance(rect, list) and len(rect) == 4 and all(isinstance(n, int) for n in rect)
+    # Trust boundary: the page's answer goes into rc.xml. Whole pixels, on a plausible screen
+    valid = (isinstance(rect, list) and len(rect) == 4 and all(isinstance(number, int) for number in rect)
              and 0 <= rect[0] < 20000 and 0 <= rect[1] < 20000 and 0 < rect[2] < 20000 and 0 < rect[3] < 20000)
     future.set_result(rect if valid else None)
 
 
 async def _ask_window(instance_id: str) -> list[int] | None:
+    """Ask the mirror's page where the instance's data-video-window element is; None if it doesn't say."""
     future = _asked[instance_id] = asyncio.get_running_loop().create_future()
     try:
         await manager.broadcast({"type": "video_window", "module": instance_id})
@@ -78,20 +84,17 @@ async def _ask_window(instance_id: str) -> list[int] | None:
 
 
 async def _run(*command: str) -> str | None:
-    """A command's output, or None when it fails or doesn't exist (not on a mirror)."""
-    try:
-        process = await asyncio.create_subprocess_exec(*command, stdout=asyncio.subprocess.PIPE,
-                                                       stderr=asyncio.subprocess.DEVNULL)
-    except OSError:
-        return None
-    out, _ = await process.communicate()
-    return out.decode(errors="replace") if process.returncode == 0 else None
+    """A command's output, or None when it fails, hangs or doesn't exist (not on a mirror). It runs while
+    the one-video lock is held, so it gets a timeout: a hung wlr-randr must not stop every video for good."""
+    exit_code, output, _ = await run_command(*command, timeout=10)
+    return output if exit_code == 0 else None
 
 
 async def _place(rect: list[int] | None) -> None:
+    """Put the window rule at rect into labwc's rc.xml (None takes it out), and have labwc read it."""
     if RC_XML.is_file():
-        RC_XML.write_text(with_rule(RC_XML.read_text(), rect))
-        await _run("pkill", "-HUP", "-x", "labwc")  # labwc rereads rc.xml
+        write_atomic(RC_XML, with_rule(RC_XML.read_text(), rect))  # labwc never reads half a file
+        await _run("pkill", "-HUP", "-x", "labwc")
 
 
 @dataclass(frozen=True)
