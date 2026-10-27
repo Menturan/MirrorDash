@@ -23,7 +23,8 @@ def dev(tmp_path):
         "systemctl": f'echo "systemctl $*" >> {log}',
         "journalctl": f'echo "journalctl $*" >> {log}',
         "systemd-tmpfiles": "exit 0",
-        "install": 'mkdir -p "${@: -1}"',  # install -d -o root ... DIR: only root may set the owner
+        # install -d -o root ... DIR: only root may set the owner; install -m MODE SOURCE FILE: a copy
+        "install": 'if [[ " $* " == *" -d "* ]]; then mkdir -p "${@: -1}"; else cat "${@: -2:1}" > "${@: -1}"; fi',
         "mount": f'echo "mount $*" >> {log}; touch {mounted}',
         "umount": f'echo "umount $*" >> {log}; rm -f {mounted}',
         "mountpoint": f"[ -e {mounted} ]",

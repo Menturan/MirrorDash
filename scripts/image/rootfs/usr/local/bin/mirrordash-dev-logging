@@ -57,8 +57,9 @@ apply() {
 case "${1:-}" in
   on)
     mkdir -p "$STORAGE"
-    rm -f "$FLAG"  # root writing into a pi-owned dir: never follow a symlink planted there
-    echo $(( $(date +%s) + DAYS * 86400 )) > "$FLAG"
+    # Root writing into a pi-owned dir: install unlinks what is there and creates the file with O_EXCL,
+    # so a symlink planted there (even between two steps) is replaced, never written through
+    echo $(( $(date +%s) + DAYS * 86400 )) | install -m 0644 /dev/stdin "$FLAG"
     apply ;;
   off)
     rm -f "$FLAG"
