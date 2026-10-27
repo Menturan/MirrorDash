@@ -23,7 +23,7 @@
 
 No keyboard, no terminal, no config files, now or later.
 
-> **Status: beta.** Developed and tested on a Raspberry Pi 3 B, Matter with Apple Home and Google Home included. The image also starts a Pi 4 and a Pi 5, which are less tested: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
+> **Status: beta.** Developed and tested on a Raspberry Pi 3 B, Matter with Apple Home and Google Home included. The image carries what a Pi 4 and a Pi 5 need, but hasn't been tried on them yet: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
 
 ## Why it's different from the smart mirror you built last time
 
@@ -46,7 +46,7 @@ No keyboard, no terminal, no config files, now or later.
 
 | Part | About | Notes |
 |---|---|---|
-| Raspberry Pi 3 B or newer | €35–60 | Developed on a Pi 3 B; a Pi 4 or 5 works too. |
+| Raspberry Pi 3 B or newer | €35–60 | Developed on a Pi 3 B; a Pi 4 or 5 should work too. |
 | SD card, 8 GB or more | €8 | |
 | The official power supply | €10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
 | A screen with HDMI | €0–100 | An old computer monitor is ideal: most of them let the mirror set their brightness (DDC/CI), most TVs don't. Take it out of its case for a slim build. |
