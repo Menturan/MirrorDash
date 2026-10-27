@@ -119,7 +119,7 @@ async def test_set_ssh_status_only_starts_ssh_with_the_owners_password(mock_subp
     of the owner's: SSH starts only once its hash is on /storage."""
     from mirrordash_core.features.settings import ssh
     monkeypatch.setattr(ssh, "PASSWORD_HASH_FILE", str(tmp_path / "pi_password.hash"))
-    mock_subproc.return_value = AsyncMock(wait=AsyncMock(return_value=0))
+    mock_subproc.return_value = AsyncMock(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
     actions = lambda: [c.args[3] for c in mock_subproc.call_args_list]
 
     assert await set_ssh_status(True) is True

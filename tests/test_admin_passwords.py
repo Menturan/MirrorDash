@@ -27,7 +27,7 @@ def _post_ssh(form, ssh_active=False):
     try:
         with patch("mirrordash_core.system_settings.load_config", return_value={}), \
              patch("mirrordash_core.system_settings.save_config") as save, \
-             patch("mirrordash_core.features.settings.ssh.asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
+             patch("asyncio.create_subprocess_exec", AsyncMock(return_value=proc)), \
              patch("mirrordash_core.features.settings.ssh.open", create=True), \
              patch("mirrordash_core.features.settings.ssh.os.chmod"), \
              patch("mirrordash_core.features.settings.ssh.get_ssh_status", AsyncMock(return_value=ssh_active)), \

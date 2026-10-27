@@ -1,38 +1,27 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""SSH on or off (Settings → Developer), and the pi user's password it needs."""
 
-import asyncio
 import logging
 import os
 
 from fastapi import HTTPException
 
 from mirrordash_core.config import write_atomic
-from mirrordash_core.host import apply_system_password_hash
+from mirrordash_core.host import apply_system_password_hash, run_command
 
 logger = logging.getLogger("mirrordash.core.settings")
 
 
 async def get_ssh_status() -> bool:
-    """Check if the SSH systemd service is active/enabled."""
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "systemctl", "is-active", "ssh",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
-        return stdout.decode().strip() == "active"
-    except Exception:
-        return False
+    """Whether the SSH service is running."""
+    _, output, _ = await run_command("systemctl", "is-active", "ssh")
+    return output.strip() == "active"
 
 
 async def _sudo_systemctl_ssh(action: str) -> int:
     """`sudo systemctl <action> ssh` (one of the sudo rules in sudoers.d/mirrordash), its exit code."""
-    process = await asyncio.create_subprocess_exec(
-        "sudo", "-n", "systemctl", action, "ssh",
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-    )
-    return await process.wait()
+    exit_code, _, _ = await run_command("sudo", "-n", "systemctl", action, "ssh", timeout=30)
+    return exit_code
 
 
 async def set_ssh_status(enabled: bool) -> bool:
@@ -61,13 +50,12 @@ PASSWORD_HASH_FILE = "/home/pi/.mirrordash/data/pi_password.hash"
 
 async def _set_pi_password(password: str) -> None:
     """Hash it, apply the hash now and remember it for the next boot. HTTPException when it fails."""
-    proc = await asyncio.create_subprocess_exec("openssl", "passwd", "-6", "-stdin", stdin=asyncio.subprocess.PIPE,
-                                                stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-    out, err = await proc.communicate(input=password.encode())
-    if proc.returncode != 0:
-        logger.error(f"openssl hash failed: {err.decode(errors='replace').strip()}")
+    # The password goes in on stdin: on the command line `ps` would show it
+    exit_code, output, error_output = await run_command("openssl", "passwd", "-6", "-stdin", input_text=password)
+    if exit_code != 0:
+        logger.error(f"openssl hash failed: {error_output.strip()}")
         raise HTTPException(status_code=500, detail="Failed to hash system password.")
-    password_hash = out.decode().strip()
+    password_hash = output.strip()
     if not await apply_system_password_hash(password_hash):
         raise HTTPException(status_code=500, detail="Failed to update system password.")
     logger.info("Password for user 'pi' updated successfully.")
