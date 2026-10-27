@@ -17,7 +17,7 @@ There are two kinds of releases:
 - The Dashboard's power warning no longer comes up for a Pi that only got hot: it now shows only when the power supply really dropped too low.
 - A Wi-Fi network with a `:` or `\` in its name now shows with its real name in the network list, and joining it works.
 - A screen tool that stops answering can no longer hold up the mirror's screen settings: each one gets a few seconds.
-- Restoring a backup made without a password no longer forgets the mirror's MQTT broker password.
+- A backup made without a password holds no password at all: the MQTT broker's, the Matter pairing code and the modules' API keys stay out too. Restoring one keeps the ones the mirror has (it no longer forgets the MQTT password).
 - In *Logs*, a module's error shows whole in that module's log (not half of it in the system log), and a module's log no longer shows another module whose name starts the same.
 - If one saved setting can't be applied when the mirror starts, the others still are (the pi user's password, SSH, Matter).
 - A carousel group whose name has a `"` in it no longer keeps its modules off the mirror.

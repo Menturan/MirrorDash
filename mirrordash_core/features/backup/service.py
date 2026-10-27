@@ -5,6 +5,7 @@ encrypted with openssl and also carries what logs in (the admin password, the pi
 
 import asyncio
 import contextlib
+import copy
 import importlib.metadata
 import json
 import logging
@@ -183,6 +184,62 @@ def _replace_in_module_folder(src: Path, dest: Path) -> bool:
     return True
 
 
+# The secrets in the config a plain backup leaves out, as (section, key): the admin password's hash and
+# recovery code, the MQTT broker's password, and the Matter pairing code (it lets a phone add the mirror)
+SECRET_CONFIG_ENTRIES = (("admin_auth", None), ("mqtt", "password"), ("matter", "passcode"), ("matter", "discriminator"))
+
+
+def secret_module_settings(instance_config: dict) -> set[str]:
+    """The settings of a module instance that are secrets (an API key, a password): what its config_schema
+    shows as a password field (format password, or a name like api_key or token, forms.py)."""
+    from mirrordash_core.features.modules.loader import find_entry_point
+    from mirrordash_core.features.settings.schema import get_module_schema
+    from mirrordash_core.forms import SECRET_KEYS
+    ep = find_entry_point(str(instance_config.get("module", "")))
+    properties = ((get_module_schema(ep) if ep else None) or {}).get("properties", {})
+    return {key for key, prop in properties.items()
+            if isinstance(prop, dict) and (prop.get("format") == "password" or key in SECRET_KEYS)}
+
+
+def without_secrets(config: dict) -> dict:
+    """The config for a plain backup: no password, key or pairing code in it (_keep_this_mirrors_secrets
+    puts the mirror's own back on a restore)."""
+    config = copy.deepcopy(config)
+    for section, key in SECRET_CONFIG_ENTRIES:
+        if key is None:
+            config.pop(section, None)
+        elif isinstance(config.get(section), dict):
+            config[section].pop(key, None)
+    for instance_config in config.get("modules", {}).values():
+        if isinstance(instance_config, dict):
+            for key in secret_module_settings(instance_config):
+                instance_config.pop(key, None)
+    return config
+
+
+def _keep_this_mirrors_secrets(restored: dict, current: dict) -> None:
+    """A plain backup has no secrets: what it left out comes from this mirror's own settings, where it has
+    them (the same module instance for a module's key)."""
+    for section, key in SECRET_CONFIG_ENTRIES:
+        current_section = current.get(section)
+        if key is None:
+            if not restored.get(section) and current_section:
+                restored[section] = current_section
+        elif isinstance(current_section, dict) and key in current_section:
+            restored_section = restored.setdefault(section, {})
+            if isinstance(restored_section, dict) and key not in restored_section:
+                restored_section[key] = current_section[key]
+    current_modules = current.get("modules", {})
+    for instance_id, instance_config in restored.get("modules", {}).items():
+        current_instance = current_modules.get(instance_id)
+        if not (isinstance(instance_config, dict) and isinstance(current_instance, dict)
+                and current_instance.get("module") == instance_config.get("module")):
+            continue
+        for key in secret_module_settings(instance_config):
+            if key not in instance_config and key in current_instance:
+                instance_config[key] = current_instance[key]
+
+
 def installed_modules() -> list[dict]:
     """Every installed module and where it reinstalls from: its local folder, its GitHub commit
     (PEP 610 records it) or its PyPI version. The backup manifest and a new Python's module site use it."""
@@ -303,13 +360,9 @@ async def create_backup(password: str | None = None) -> dict:
         content = temp_dir / "content"
         content.mkdir()
 
-        # 1. The config; a plain backup leaves out the admin credentials and the MQTT broker's password
+        # 1. The config; a plain backup carries no password (without_secrets)
         try:
-            config = load_config().copy()
-            if not password:
-                config.pop("admin_auth", None)
-                if isinstance(config.get("mqtt"), dict):
-                    config["mqtt"] = {k: v for k, v in config["mqtt"].items() if k != "password"}
+            config = load_config() if password else without_secrets(load_config())
             with open(content / "config.json", "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
             if password:
@@ -425,9 +478,9 @@ async def _restore_module(module: dict, extract_dir: Path, site) -> None:
 
 
 async def _restore_config(extract_dir: Path) -> bool:
-    """The backup's config: with its admin password when it carries one (an encrypted backup),
-    otherwise this mirror's, read now so a change made during the restore isn't undone. True when
-    the GPIO overlays changed and the mirror must reboot."""
+    """The backup's config: with its secrets when it carries them (an encrypted backup), otherwise this
+    mirror's own, read now so a change made during the restore isn't undone. True when the GPIO overlays
+    changed and the mirror must reboot."""
     restored = json.loads((extract_dir / "config.json").read_text(encoding="utf-8"))
     # GPIO overlays live in the boot config, not in the backup: write them for this card
     system_cfg = restored.setdefault("system", {})
@@ -436,18 +489,14 @@ async def _restore_config(extract_dir: Path) -> bool:
     if gpio_error:
         logger.error(f"Could not restore GPIO settings: {gpio_error}")
     current = load_config()
-    restored["admin_auth"] = restored.get("admin_auth") or current.get("admin_auth")
-    if not restored["admin_auth"]:
-        del restored["admin_auth"]  # a mirror still being set up: the admin page asks for one
+    # With no admin password in either, the mirror is still being set up: the admin page asks for one
+    _keep_this_mirrors_secrets(restored, current)
     if isinstance(restored.get("mqtt"), dict):
         current_mqtt = current.get("mqtt", {})
         # This mirror's own MQTT ids, never the backup's: two mirrors under one id would share their commands,
         # and under one client ID throw each other off the broker
         restored["mqtt"]["id"] = current_mqtt.get("id") or new_id()
         restored["mqtt"]["client_id"] = current_mqtt.get("client_id") or new_client_id()
-        # A plain backup leaves the broker's password out: keep this mirror's, as with the admin password
-        if "password" not in restored["mqtt"] and current_mqtt.get("password"):
-            restored["mqtt"]["password"] = current_mqtt["password"]
     save_config(restored)
     logger.info("Configuration files restored successfully.")
     return reboot_needed

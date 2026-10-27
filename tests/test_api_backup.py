@@ -474,3 +474,22 @@ def test_a_plain_backup_keeps_this_mirrors_broker_password(tmp_path):
          patch.object(service, "sync_gpio_overlays", new_callable=AsyncMock, return_value=(False, None)):
         asyncio.run(service._restore_config(tmp_path))
     assert saved["mqtt"] == {"host": "broker.lan", "username": "mirror", "id": "a1", "client_id": "c1", "password": "kept"}
+
+
+def test_a_plain_backup_carries_no_secret_and_a_restore_keeps_the_mirrors_own(tmp_path):
+    """No password, API key or pairing code goes into a backup without a password; restoring one, the
+    mirror keeps its own, the module's key too when it's the same instance of the same module."""
+    from mirrordash_core.features.backup import service
+    schema = {"properties": {"api_key": {"type": "string"}, "pin": {"type": "string", "format": "password"},
+                             "city": {"type": "string"}}}
+    mirror = {"admin_auth": {"hash": "h", "salt": "s"}, "mqtt": {"host": "broker.lan", "password": "pw"},
+              "matter": {"enabled": True, "passcode": 20202021, "discriminator": 3840},
+              "modules": {"weather": {"module": "weather", "api_key": "k3y", "pin": "1234", "city": "Lund"}}}
+    with patch("mirrordash_core.features.modules.loader.find_entry_point", return_value=MagicMock()), \
+         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=schema):
+        plain = service.without_secrets(mirror)
+        assert plain == {"mqtt": {"host": "broker.lan"}, "matter": {"enabled": True},
+                         "modules": {"weather": {"module": "weather", "city": "Lund"}}}
+        assert mirror["modules"]["weather"]["api_key"] == "k3y"  # the mirror's own config is untouched
+        service._keep_this_mirrors_secrets(plain, mirror)
+    assert plain == mirror
