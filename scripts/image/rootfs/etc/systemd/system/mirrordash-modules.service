@@ -32,39 +32,53 @@ StandardError=journal
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/storage/mirrordash/modules
+# InaccessiblePaths: the paths look empty and can't be opened; '-' first: no error if one is missing
 InaccessiblePaths=-/storage/mirrordash/data -/storage/mirrordash/logs -/storage/mirrordash/ssh -/storage/mirrordash/system-connections -/storage/rauc -/run/dbus
 # /tmp and /dev/shm of its own, small: they are RAM, and with no swap a file there is never reclaimed, so one
 # module's would get the others killed at MemoryMax (and the host's /dev/shm outlived the unit). The modules'
 # own temporary files go to their cache folder (TMPDIR), uv's to the module's folder (forkserver.py)
 TemporaryFileSystem=/tmp:mode=1777,size=16M /dev/shm:mode=1777,size=16M
+# /proc shows each user its own processes only
 ProtectProc=invisible
 # Only the processes in /proc, not the machine's (cpuinfo, meminfo, the kernel's settings): no module needs them
 ProcSubset=pid
+# The kernel's settings (/proc/sys, /sys), its modules, its log and the cgroups: read-only or out of reach
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
 ProtectKernelLogs=yes
 ProtectControlGroups=yes
+# The clock and the host name can't be changed
 ProtectClock=yes
 ProtectHostname=yes
+# No program it runs gains rights (a setuid binary such as sudo or su runs as the caller)
 NoNewPrivileges=yes
 # Only to make each module instance's process a user of its own (forkserver.py): the forkserver keeps them,
 # every other process clears them before anything else runs (and the host's self-check looks)
 CapabilityBoundingSet=CAP_SETUID CAP_SETGID CAP_CHOWN
 AmbientCapabilities=CAP_SETUID CAP_SETGID CAP_CHOWN
+# No namespaces of its own (a container's way out of the filters below)
 RestrictNamespaces=yes
+# No realtime scheduling, which could starve the core and the screen
 RestrictRealtime=yes
+# It can't make a setuid or setgid file
 RestrictSUIDSGID=yes
+# Linux's personality (another architecture's ABI) and the system call architecture stay the native one:
+# a 32-bit call on a 64-bit kernel would get past the filter below
 LockPersonality=yes
 SystemCallArchitectures=native
 # What a service needs (Python, uv, git, a compiler for a module's build), not the kernel's rarer calls
 SystemCallFilter=@system-service
+# A refused call fails with "Operation not permitted" instead of killing the process
 SystemCallErrorNumber=EPERM
+# Its user's System V and POSIX shared memory, semaphores and message queues go with the unit
 RemoveIPC=yes
+# Sockets: local (the core's connection) and IP only; no netlink (the network's settings), no raw packets
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
 # Devices: I2C and SPI (the user is in i2c and spi), nothing else: no camera, screen or sound. No GPIO chip
 # either: a chip is all its pins (the SD card's, the core's). A module gets the free header pins it asks
 # for from the core, as the kernel's handle to exactly those lines (features/hardware/gpio.py).
+# closed: only /dev/null, zero, random and the like, and what DeviceAllow names
 DevicePolicy=closed
 DeviceAllow=char-i2c rw
 DeviceAllow=char-spi rw
@@ -73,6 +87,9 @@ DeviceAllow=char-spi rw
 # at home can have a global address). Names through systemd-resolved's stub. The core adds the addresses
 # of the "lan-url" settings at run time (mirrordash-module-network). Only systemd's own names (localhost,
 # link-local, multicast, any) or addresses: it skips any other word with a mere warning.
+# The ranges: localhost (127/8, ::1), private networks (10/8, 172.16/12, 192.168/16), link-local
+# (169.254/16, fe80::/64), multicast (224/4, ff00::/8), "this network" (0/8), carrier-grade NAT
+# (100.64/10), reserved (240/4), and all of IPv6 (::/0)
 IPAddressDeny=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0
 IPAddressAllow=127.0.0.53
 
@@ -85,8 +102,10 @@ MemoryMax=30%
 # the core starts it again, and pauses it after it died three times in a row (client.py CRASH_LIMIT)
 OOMPolicy=continue
 MemorySwapMax=0
+# Relative shares when the CPU or the card is busy (100 is the default): the core and the screen go first
 CPUWeight=50
 IOWeight=50
+# Processes and threads in the whole unit (each module's user has its own cap: forkserver.py)
 TasksMax=256
 
 [Install]

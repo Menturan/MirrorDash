@@ -1,4 +1,7 @@
 # MirrorDash application — scoped passwordless sudo
+# A rule with arguments allows exactly those; "*" allows any words in their place; a lone "" allows
+# the command with no arguments at all (so mirrordash-pi-password can't be given another user's name).
+# A command with nothing after it allows any arguments: those scripts check them themselves.
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl enable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl disable ssh
 pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ssh

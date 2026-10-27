@@ -13,6 +13,7 @@ Environment="XCURSOR_THEME=empty"
 ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
 # The screen runs the modules' cards: it gets the mirror itself and the internet, not the home network
 # (ARCHITECTURE #41). A module shows a camera at home through its own route, not from the page.
+# The ranges as mirrordash-modules.service's: every home-network and reserved range, and all of IPv6
 IPAddressDeny=10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 link-local multicast 0.0.0.0/8 100.64.0.0/10 240.0.0.0/4 ::/0
 IPAddressAllow=localhost
 Restart=always
