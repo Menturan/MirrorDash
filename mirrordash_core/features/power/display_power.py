@@ -22,8 +22,9 @@ own schedule is kept. A module with `keep_running = True` is never held.
 
 import asyncio
 import logging
-import time as time_mod
-from datetime import datetime, time
+import time
+from datetime import datetime
+from datetime import time as time_of_day
 from zoneinfo import ZoneInfo
 
 from mirrordash_core.config import load_config
@@ -36,6 +37,7 @@ DEFAULT_WAKE = {"timeout_minutes": 5, "extend": True, "presence": True}
 
 
 def wake_settings(display_cfg: dict) -> dict:
+    """The wake timer's settings, with the defaults for what isn't saved."""
     return {**DEFAULT_WAKE, **display_cfg.get("wake", {})}
 
 
@@ -47,7 +49,7 @@ class DisplayPowerManager:
         self.is_on: bool | None = None  # unknown at start: the first pass always applies the wanted state
         self.wake_until = 0.0        # time.monotonic() until which the screen is woken
         self.forced_off = False      # an explicit "off" wins until a wake or base change
-        self.last_base: bool | None = None
+        self.last_base: bool | None = None  # what the base mode said last time: on or off
         self.was_present = False
         self.changed = asyncio.Event()
         self.awake = asyncio.Event()  # set while the screen is on; modules' fetch_json waits on it
@@ -73,7 +75,7 @@ class DisplayPowerManager:
     def wake(self, timeout_minutes: float | None = None, now: float | None = None) -> None:
         """Turn the screen on for a while (or keep it on longer, depending on `extend`)."""
         settings = wake_settings(load_config().get("system", {}).get("display_control", {}))
-        now = time_mod.monotonic() if now is None else now
+        now = time.monotonic() if now is None else now
         until = now + (timeout_minutes or settings["timeout_minutes"]) * 60
         self.forced_off = False
         if settings["extend"]:
@@ -92,7 +94,7 @@ class DisplayPowerManager:
 
     # --- Decision ------------------------------------------------------------------------
 
-    def desired_state(self, display_cfg: dict, now: float, local_time: time, present: bool) -> bool:
+    def desired_state(self, display_cfg: dict, now: float, local_time: time_of_day, present: bool) -> bool:
         """Whether the screen should be on now. Pure apart from the timer state it updates."""
         mode = display_cfg.get("mode", "manual")
         interval = display_cfg.get("interval", {})
@@ -114,8 +116,9 @@ class DisplayPowerManager:
         return not self.forced_off and (base_on or now < self.wake_until)
 
     def status(self) -> dict:
-        left = max(0.0, self.wake_until - time_mod.monotonic())
-        return {"on": bool(self.is_on), "base_on": bool(self.last_base), "wake_seconds_left": left, "forced_off": self.forced_off}
+        wake_seconds_left = max(0.0, self.wake_until - time.monotonic())
+        return {"on": bool(self.is_on), "base_on": bool(self.last_base), "wake_seconds_left": wake_seconds_left,
+                "forced_off": self.forced_off}
 
     async def _run_loop(self) -> None:
         from mirrordash_core.features.hardware.devices import gpio_inputs
@@ -124,7 +127,7 @@ class DisplayPowerManager:
             try:
                 config = load_config()
                 display_cfg = config.get("system", {}).get("display_control", {})
-                desired = self.desired_state(display_cfg, time_mod.monotonic(), self._local_time(config),
+                desired = self.desired_state(display_cfg, time.monotonic(), self._local_time(config),
                                              gpio_inputs.motion_active)
                 if desired != self.is_on:
                     logger.info(f"Turning the screen {'on' if desired else 'off'}.")
@@ -143,14 +146,15 @@ class DisplayPowerManager:
                 await asyncio.sleep(5.0)
 
     @staticmethod
-    def _local_time(config: dict) -> time:
-        tz_name = config.get("globals", {}).get("timezone", "Europe/Stockholm")
+    def _local_time(config: dict) -> time_of_day:
+        """The time of day on the owner's clock (their time zone setting), for the schedule."""
+        timezone_name = config.get("globals", {}).get("timezone", "Europe/Stockholm")
         try:
-            tz = ZoneInfo(tz_name)
+            timezone = ZoneInfo(timezone_name)
         except Exception as e:
-            logger.warning(f"Invalid timezone '{tz_name}' in globals: {e}. Using local system time.")
-            tz = None
-        return (datetime.now(tz) if tz else datetime.now()).time()
+            logger.warning(f"Invalid timezone '{timezone_name}' in globals: {e}. Using local system time.")
+            timezone = None
+        return datetime.now(timezone).time()
 
     async def set_state(self, on: bool) -> bool:
         success = await set_screen_power(on)
@@ -161,20 +165,18 @@ class DisplayPowerManager:
             module_host.set_awake(on)  # the modules' fetches, in the module host, wait for it too
         return bool(success)
 
-    def _is_time_in_range(self, start_str: str, end_str: str, current_time: time) -> bool:
+    def _is_time_in_range(self, start_text: str, end_text: str, current_time: time_of_day) -> bool:
+        """Whether current_time is inside start-end ("07:00"-"22:00"); one like "22:00"-"06:00" runs over
+        midnight. A schedule that doesn't read keeps the screen on."""
         try:
-            start_h, start_m = map(int, start_str.split(":"))
-            end_h, end_m = map(int, end_str.split(":"))
-            start = time(start_h, start_m)
-            end = time(end_h, end_m)
-
-            if start <= end:
-                return start <= current_time <= end
-            else:
-                return current_time >= start or current_time <= end
+            start = time_of_day(*map(int, start_text.split(":")))
+            end = time_of_day(*map(int, end_text.split(":")))
         except Exception as e:
-            logger.error(f"Error checking time range {start_str}-{end_str}: {e}")
+            logger.error(f"Error checking time range {start_text}-{end_text}: {e}")
             return True
+        if start <= end:
+            return start <= current_time <= end
+        return current_time >= start or current_time <= end
 
 
 display_power_manager = DisplayPowerManager()

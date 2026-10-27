@@ -1,4 +1,5 @@
 # Licensed under the PolyForm Noncommercial License 1.0.0.
+"""The Power tab: the screen's schedule and timeout, turning it on and off, USB, shutting down and restarting."""
 
 import html
 import logging
@@ -44,6 +45,17 @@ async def update_screen_state(body: dict = Body(...)) -> dict:
     return {"status": "success", "message": f"Screen turned {state}"}
 
 
+def _clock_parts(time_text: str, time_format: str) -> tuple[int, int, str | None]:
+    """"22:30" as (hour, minute, AM/PM): (10, 30, "PM") on a 12h clock, (22, 30, None) on a 24h one."""
+    try:
+        hour, minute = (int(part) for part in time_text.split(":"))
+    except ValueError:
+        hour, minute = 7, 0
+    if time_format != "12h":
+        return hour, minute, None
+    return hour % 12 or 12, minute, "PM" if hour >= 12 else "AM"
+
+
 @router.get("/panels/power", dependencies=[Depends(require_api_key)])
 async def get_panel_power(request: Request):
     config = load_config()
@@ -53,31 +65,10 @@ async def get_panel_power(request: Request):
     settings_data = await get_system_settings()
     settings = settings_data.get("settings", {})
 
-    # Parse current active times
-    display_control = settings.get("display_control", {})
-    interval = display_control.get("interval", {"start": "07:00", "end": "22:00"})
-    start_time_str = interval.get("start", "07:00")
-    end_time_str = interval.get("end", "22:00")
-
-    def parse_time_to_format(time_str: str, fmt: str):
-        try:
-            h_str, m_str = time_str.split(":")
-            h, m = int(h_str), int(m_str)
-        except Exception:
-            h, m = 7, 0
-
-        if fmt == "12h":
-            ampm = "PM" if h >= 12 else "AM"
-            h_12 = h % 12
-            if h_12 == 0:
-                h_12 = 12
-            return h_12, m, ampm
-        else:
-            return h, m, None
-
-    start_h, start_m, start_ampm = parse_time_to_format(start_time_str, time_format)
-    end_h, end_m, end_ampm = parse_time_to_format(end_time_str, time_format)
-
+    # When the screen is on in the scheduled mode, shown as the owner's clock (24h or 12h) has it
+    interval = settings.get("display_control", {}).get("interval", {"start": "07:00", "end": "22:00"})
+    start_h, start_m, start_ampm = _clock_parts(interval.get("start", "07:00"), time_format)
+    end_h, end_m, end_ampm = _clock_parts(interval.get("end", "22:00"), time_format)
     hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
     minutes_list = list(range(0, 60))
 
@@ -90,8 +81,8 @@ async def get_panel_power(request: Request):
         request=request,
         name="admin_power.html",
         context={
-            "presence_sensors": [f"{DEVICE_TYPES[d['type']]['label']} on GPIO {d['pin']}"
-                                 for d in get_devices(config.get("system", {})) if d["type"] in PRESENCE_TYPES],
+            "presence_sensors": [f"{DEVICE_TYPES[device['type']]['label']} on GPIO {device['pin']}"
+                                 for device in get_devices(config.get("system", {})) if device["type"] in PRESENCE_TYPES],
             "settings": settings,
             "time_format": time_format,
             "start_h": start_h,
@@ -109,10 +100,11 @@ async def get_panel_power(request: Request):
 
 @router.post("/panels/power/usb", dependencies=[Depends(require_api_key)])
 async def post_panel_usb(request: Request):
-    on = (await read_form(request)).get("on") in (True, "true")
-    await set_usb(on)
+    turn_on = (await read_form(request)).get("on") in (True, "true")
+    await set_usb(turn_on)
+    message = f"USB is {'on' if turn_on else 'off'}."
     return templates.TemplateResponse(request=request, name="admin_power_usb.html", context={"usb": await usb_status()},
-                                      headers=events_header(**{"md-notify": {"message": f"USB is {'on' if on else 'off'}.", "kind": "success"}}))
+                                      headers=events_header(**{"md-notify": {"message": message, "kind": "success"}}))
 
 
 @router.post("/panels/power/screen", dependencies=[Depends(require_api_key)])
@@ -162,15 +154,16 @@ async def get_screen_status():
     from mirrordash_core.features.hardware.devices import gpio_inputs
     from mirrordash_core.features.power.display_power import display_power_manager
 
-    st = display_power_manager.status()
-    if not st["on"]:
-        text = "The screen is off" + (" (turned off by hand)." if st["forced_off"] else ".")
-    elif st["base_on"]:
+    status = display_power_manager.status()
+    if not status["on"]:
+        text = "The screen is off" + (" (turned off by hand)." if status["forced_off"] else ".")
+    elif status["base_on"]:
         text = "The screen is on."
-    elif gpio_inputs.motion_active and st["wake_seconds_left"]:
+    elif gpio_inputs.motion_active and status["wake_seconds_left"]:
         text = "The screen is on while someone is in front of the mirror."
-    elif st["wake_seconds_left"]:
-        text = f"The screen is on and turns off in {math.ceil(st['wake_seconds_left'] / 60)} min."
+    elif status["wake_seconds_left"]:
+        text = f"The screen is on and turns off in {math.ceil(status['wake_seconds_left'] / 60)} min."
     else:
         text = "The screen is on."
-    return HTMLResponse(content=f"<i class='fas fa-circle' style='font-size: 0.5rem; color: {'#a0ffba' if st['on'] else '#71717a'};'></i> {html.escape(text)}")
+    dot_color = "#a0ffba" if status["on"] else "#71717a"
+    return HTMLResponse(content=f"<i class='fas fa-circle' style='font-size: 0.5rem; color: {dot_color};'></i> {html.escape(text)}")

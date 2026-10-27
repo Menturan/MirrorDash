@@ -37,51 +37,16 @@ router = APIRouter(prefix="/admin")
 
 @router.get("/panels/system", dependencies=[Depends(require_api_key)])
 async def get_panel_system(request: Request):
-    config = load_config()
-    globals_cfg = config.get("globals", {})
-    time_format = globals_cfg.get("time_format", "24h")
-
     settings_data = await get_system_settings()
-    settings = settings_data.get("settings", {})
-    resolutions = settings_data.get("resolutions", [])
-
-    # When the screen is on in the scheduled mode, shown as the owner's clock (24h or 12h) has it
-    interval = settings.get("display_control", {}).get("interval", {"start": "07:00", "end": "22:00"})
-    start_h, start_m, start_ampm = _clock_parts(interval.get("start", "07:00"), time_format)
-    end_h, end_m, end_ampm = _clock_parts(interval.get("end", "22:00"), time_format)
-    hours_list = list(range(1, 13)) if time_format == "12h" else list(range(0, 24))
-    minutes_list = list(range(0, 60))
-    current_version = get_core_version()
-
     return templates.TemplateResponse(
         request=request,
         name="admin_system.html",
         context={
-            "settings": settings,
-            "resolutions": resolutions,
-            "current_version": current_version,
-            "time_format": time_format,
-            "start_h": start_h,
-            "start_m": start_m,
-            "start_ampm": start_ampm,
-            "end_h": end_h,
-            "end_m": end_m,
-            "end_ampm": end_ampm,
-            "hours_list": hours_list,
-            "minutes_list": minutes_list
+            "settings": settings_data.get("settings", {}),
+            "resolutions": settings_data.get("resolutions", []),
+            "current_version": get_core_version(),
         }
     )
-
-
-def _clock_parts(time_text: str, time_format: str) -> tuple[int, int, str | None]:
-    """"22:30" as (hour, minute, AM/PM): (10, 30, "PM") on a 12h clock, (22, 30, None) on a 24h one."""
-    try:
-        hour, minute = (int(part) for part in time_text.split(":"))
-    except ValueError:
-        hour, minute = 7, 0
-    if time_format != "12h":
-        return hour, minute, None
-    return hour % 12 or 12, minute, "PM" if hour >= 12 else "AM"
 
 
 def _format_temperature(celsius: float) -> str:
