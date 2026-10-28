@@ -37,7 +37,7 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .row > * { min-width: 0; }
 .row > div { display: grid; gap: 14px; }
 .row h2, .center h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 300; line-height: 1.15; }
-.row img { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
+.row img, .row video { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
 .works { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .works li { padding: 10px 16px; border: 1px solid var(--line); border-radius: 999px; color: var(--white); font-size: 15px; }
 .works li:nth-child(-n+2) { border-color: var(--white); }
@@ -71,7 +71,8 @@ a.tile:hover { border-color: var(--charcoal); }
 
   <div class="rows wrap gutter">
     <section class="row">
-      <img src="screenshot.webp" srcset="screenshot-700.webp 700w, screenshot.webp 1200w" sizes="(max-width: 700px) 100vw, 520px" width="1200" height="726" alt="The mirror's screen: weather and upcoming events on the left, the time on the right" loading="lazy">
+      <video class="demo" src="video/loop.mp4" poster="video/loop.jpg" autoplay muted loop playsinline preload="metadata" width="1280" height="720"
+             aria-label="On the phone, the Weather module is installed; on the mirror, the weather appears next to the clock"></video>
       <div>
         <h2>Easy setup from your phone.</h2>
         <p>Scan the QR code on the mirror, pick your Wi-Fi, and choose what it shows. Changing it later works the same way, from the sofa.</p>
@@ -160,5 +161,9 @@ a.tile:hover { border-color: var(--charcoal); }
   <a href="https://github.com/Menturan/MirrorDash/blob/master/CHANGELOG.md">Changelog</a>
   <span>AGPL-3.0 · © 2026 Jonas Öhlander</span>
 </footer>
+<script>
+// Who asked for less motion gets the still picture and a play button instead of a running loop
+if (matchMedia("(prefers-reduced-motion: reduce)").matches) for (const v of document.querySelectorAll("video.demo")) { v.removeAttribute("autoplay"); v.pause(); v.controls = true; }
+</script>
 </body>
 </html>
