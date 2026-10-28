@@ -9,7 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- MirrorDash has a website, [mirrordash.net](https://mirrordash.net), with the user guide.
+- MirrorDash has a website, [mirrordash.net](https://mirrordash.net), with the user guide. [mirrordash.net/download](https://mirrordash.net/download) always has the newest image.
+- The admin page's help links open the user guide on the website, which reads better on a phone.
 - The user guide starts with a five-step quick start and then follows the setup in order, from the SD card to choosing modules; everything for when something goes wrong is now in one section.
 - The user guide says that Apple Home and Google Home need a home hub for Matter, and which device type to pick in Google's Developer Console. Alexa and SmartThings are marked as not tried yet.
 - MirrorDash is now open source under the GNU AGPL 3.0 (a commercial license is available too), instead of the non-commercial PolyForm license.

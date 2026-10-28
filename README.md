@@ -60,7 +60,7 @@ All in, about €90–350, depending mostly on the screen and the mirror.
 
 **Then**
 
-1. Download the latest image (`mirrordash-os-….img.xz`) from [Releases](https://github.com/Menturan/MirrorDash/releases): the newest release whose name ends in `-os1`, `-os2`, ….
+1. Download the newest image at [mirrordash.net/download](https://mirrordash.net/download).
 2. Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (*Choose OS* → *Use custom*).
 3. Start the mirror. On its first start it restarts once by itself, then shows the Wi-Fi setup. The [user guide](USER_GUIDE.md#2-first-start-wi-fi-setup) takes it from there, and its [quick start](USER_GUIDE.md#quick-start) has every step on one screen.
 

@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Download MirrorDash</title>
+<meta name="description" content="Download the newest MirrorDash image for Raspberry Pi and flash it onto an SD card.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="Inter-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
+<style>
+.top { max-width: 640px; margin: 0 auto; padding-block: 32px 0; }
+.top a { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 500; }
+.top .mark { width: 32px; height: 32px; }
+main { max-width: 640px; margin: 0 auto; padding-block: 48px 64px; display: grid; gap: 40px; }
+h1 { font-size: clamp(36px, 7vw, 56px); font-weight: 100; letter-spacing: -.02em; line-height: 1.05; }
+.get { display: grid; gap: 12px; justify-items: start; }
+.meta { font-size: 14px; color: var(--charcoal); font-variant-numeric: tabular-nums; }
+ol { margin: 0; padding-left: 1.4em; display: grid; gap: 10px; }
+ol b { color: var(--white); font-weight: 500; }
+</style>
+</head>
+<body>
+<nav class="top gutter"><a href="./"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>MirrorDash</a></nav>
+<main class="gutter">
+  <h1>Download MirrorDash</h1>
+  <section class="get">
+    <a class="btn primary" id="download" href="https://github.com/Menturan/MirrorDash/releases">Download the image</a>
+    <p class="meta" id="meta">The newest image is the newest release whose name ends in <code>-os1</code>, <code>-os2</code>, ….</p>
+  </section>
+  <section class="get">
+    <div class="label">Then</div>
+    <ol>
+      <li><b>Flash it</b> onto an SD card (8 GB or more) with <a href="https://www.raspberrypi.com/software/">Raspberry Pi Imager</a>: <i>Choose OS</i> → <i>Use custom</i>, pick the image, then your card.</li>
+      <li><b>Start</b> the Pi with the card, the screen and the power plugged in. It restarts once by itself.</li>
+      <li><b>Join</b> <code>MirrorDash-Setup</code> on your phone by scanning the QR code on the screen, and pick your home Wi-Fi.</li>
+    </ol>
+    <p>The <a href="guide.html#quick-start">user guide</a> takes it from there.</p>
+  </section>
+</main>
+<footer class="site-footer gutter">
+  <a href="./">MirrorDash</a>
+  <a href="https://github.com/Menturan/MirrorDash/releases">All releases</a>
+  <a href="https://github.com/Menturan/MirrorDash/discussions">Discussions</a>
+</footer>
+<script>
+// The newest released (not test) OS image; without this script, the button opens the releases page
+fetch("https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=30")
+  .then(r => r.ok ? r.json() : Promise.reject(r.status))
+  .then(releases => {
+    for (const rel of releases) {
+      const img = !rel.draft && !rel.prerelease && rel.tag_name.includes("-os") && rel.assets.find(a => a.name.endsWith(".img.xz"));
+      if (!img) continue;
+      const sum = rel.assets.find(a => a.name === img.name + ".sha256");
+      document.getElementById("download").href = img.browser_download_url;
+      document.getElementById("download").textContent = "Download " + rel.tag_name.replace(/^v/, "");
+      document.getElementById("meta").innerHTML = img.name + " · " + Math.round(img.size / 1048576) + " MB · " +
+        new Date(rel.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) +
+        (sum ? ' · <a href="' + sum.browser_download_url + '">SHA-256</a>' : "") +
+        ' · <a href="' + rel.html_url + '">What\'s new</a>';
+      return;
+    }
+  })
+  .catch(() => {});
+</script>
+</body>
+</html>

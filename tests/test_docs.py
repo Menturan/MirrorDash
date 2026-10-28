@@ -28,8 +28,9 @@ def test_links_to_headings_exist():
     links = [(p.name, target or p.name, name)
              for p in DOCS for target, name in re.findall(r"\]\(([\w.-]*\.md)?#([^)\s]+)\)", prose(p))]
     pages = [*(ROOT / "mirrordash_core").rglob("*.html"), *(ROOT / "docs").glob("*.html")]
-    links += [(p.name, target, name)
-              for p in pages for target, name in re.findall(r"/blob/master/([\w.-]+\.md)#([\w-]+)", p.read_text())]
+    links += [(p.name, target or "USER_GUIDE.md", name)  # mirrordash.net/guide.html shows USER_GUIDE.md
+              for p in pages for target, name in
+              re.findall(r"(?:/blob/master/([\w.-]+\.md)|mirrordash\.net/guide\.html)#([\w-]+)", p.read_text())]
     broken = [f"{source}: {target}#{name}" for source, target, name in links
               if target in anchors and name not in anchors[target]]
     assert not broken, f"links to headings that don't exist: {broken}"

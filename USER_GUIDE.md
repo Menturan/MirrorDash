@@ -4,7 +4,7 @@ From a blank SD card to a mirror on the wall. The admin page explains its own se
 
 ## Quick start
 
-1. **Download** the newest image (`mirrordash-os-….img.xz`) from [Releases](https://github.com/Menturan/MirrorDash/releases) and flash it onto an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (*Choose OS* → *Use custom*).
+1. **Download** the newest image at [mirrordash.net/download](https://mirrordash.net/download) and flash it onto an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (*Choose OS* → *Use custom*).
 2. **Start** the Pi with the card, the screen and the power plugged in. It restarts once by itself.
 3. **Join** `MirrorDash-Setup` on your phone by scanning the QR code on the screen, and pick your home Wi-Fi.
 4. **Open** `mirrordash.local/admin` on your phone, choose a password and save the recovery code.
@@ -29,7 +29,7 @@ That's all. The rest of this guide is for when you want more.
 
 You need a Raspberry Pi 3 B or newer, an SD card of 8 GB or more, the official power supply, a screen with HDMI, and a two-way mirror with a frame. The [README](README.md#get-started) has the whole list, with what to look for.
 
-1. Download the image, `mirrordash-os-….img.xz`, from [Releases](https://github.com/Menturan/MirrorDash/releases): the newest release whose name ends in `-os1`, `-os2`, ….
+1. Download the newest image (`mirrordash-os-….img.xz`) at [mirrordash.net/download](https://mirrordash.net/download). All versions are under [Releases](https://github.com/Menturan/MirrorDash/releases): an image is a release whose name ends in `-os1`, `-os2`, ….
 2. Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/): *Choose OS* → *Use custom*, pick the image, then your SD card.
 3. Put the card in the Pi, connect the screen and plug in the power. On its first start the mirror restarts once by itself, then shows the Wi-Fi setup.
 
