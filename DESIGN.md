@@ -63,7 +63,7 @@ Loading is always visible: anything that waits shows calm motion (the breathing 
 ## Monogram and boot screens
 
 - **Monogram:** the line monogram "MD" (`static/favicon.svg`; path in `scripts/render_boot_images.py`), white on pure black. Small sizes (favicon) use a heavier stroke so it stays legible.
-- **The monogram says "you are in MirrorDash"** and is always on our own surfaces: the favicon and app icon, the admin page (sidebar, and the top of the page on a phone), its login, the Wi-Fi setup, the boot, restart and shutdown screens, `loading.html` and the README. It is never on the mirror's screen next to the modules: there the mirror should look like a mirror.
+- **The monogram says "you are in MirrorDash"** and is always on our own surfaces: the favicon and app icon, the admin page (sidebar, and the top of the page on a phone), its login, the Wi-Fi setup, the boot, restart and shutdown screens, `loading.html`, the README and the website (`docs/`, in the mirror's palette and type). It is never on the mirror's screen next to the modules: there the mirror should look like a mirror.
 - **Boot, restart and shutdown:** Plymouth shows `splash.png` (the monogram alone), `restart.png` and `shutdown.png` (monogram plus one quiet word), all rendered by `scripts/render_boot_images.py`. They are small and pure black, so Plymouth shows them at their own size on any screen (never scaled, never a visible box). The kiosk's first page, `static/loading.html`, draws the monogram at exactly the same size and place, so the handover from Plymouth to the mirror is seamless; its only motion is a slow breathing pulse.
 
 ## Icons

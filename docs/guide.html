@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MirrorDash User Guide</title>
+<meta name="description" content="Setting up a MirrorDash mirror: Wi-Fi, wiring, when the screen is on, recovery, Matter and Home Assistant.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="Inter-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
+<style>
+.top { max-width: 760px; margin: 0 auto; padding-block: 32px 0; display: flex; align-items: center; gap: 12px; }
+.top a { display: flex; align-items: center; gap: 12px; text-decoration: none; font-weight: 500; }
+.top .mark { width: 32px; height: 32px; }
+article { max-width: 760px; margin: 0 auto; padding-block: 40px 64px; min-width: 0; }
+article h1 { font-size: clamp(36px, 7vw, 56px); font-weight: 100; letter-spacing: -.02em; line-height: 1.05; margin-bottom: 24px; }
+article h2 { font-size: 28px; font-weight: 300; margin: 64px 0 16px; padding-top: 24px; border-top: 1px solid var(--line); }
+article h3 { font-size: 20px; font-weight: 500; margin: 40px 0 12px; }
+article h4 { color: var(--white); font-size: 17px; font-weight: 500; margin: 28px 0 8px; }
+article p, article ul, article ol, article pre, article table, article blockquote { margin: 0 0 16px; }
+article li { margin-bottom: 6px; }
+article strong { color: var(--white); font-weight: 500; }
+article :not(pre) > code { background: #141414; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; color: var(--white); }
+article pre { padding: 16px 18px; border: 1px solid var(--line); border-radius: 4px; overflow-x: auto; color: var(--white); line-height: 1.5; }
+article table { border-collapse: collapse; display: block; overflow-x: auto; font-size: 15px; }
+article th, article td { text-align: left; padding: 8px 14px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+article th { color: var(--white); font-weight: 500; }
+article blockquote { border-left: 1px solid var(--charcoal); padding-left: 16px; }
+article hr { display: none; }  /* every h2 has its own line */
+article img { height: auto; }
+</style>
+</head>
+<body>
+<nav class="top gutter"><a href="./"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>MirrorDash</a></nav>
+<article id="guide" class="gutter">
+  <p>Loading the user guide…</p>
+  <noscript><p>This page needs JavaScript. Read the <a href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md">user guide on GitHub</a> instead.</p></noscript>
+</article>
+<footer class="site-footer gutter">
+  <a href="./">MirrorDash</a>
+  <a href="https://github.com/Menturan/MirrorDash/discussions">Discussions</a>
+  <a href="https://github.com/Menturan/MirrorDash/issues">Issues</a>
+  <a href="https://github.com/Menturan/MirrorDash/blob/master/CHANGELOG.md">Changelog</a>
+</footer>
+<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked-gfm-heading-id@4.1.1/lib/index.umd.js" integrity="sha384-AfBBApo8mdLz/88akCqlD8FBp9ckhcuqWvfy2E32yJ/5u9z858eGxW7sLxvEdOgR" crossorigin="anonymous"></script>
+<script>
+// ponytail: USER_GUIDE.md is rendered in the browser so it is written in one place only (no Jekyll: Liquid would
+// empty its {{ }} Home Assistant templates). Ceiling: search engines see less; a build step in Actions is the upgrade.
+const repo = "https://github.com/Menturan/MirrorDash/blob/master/";
+const guide = document.getElementById("guide");
+fetch("https://raw.githubusercontent.com/Menturan/MirrorDash/master/USER_GUIDE.md")
+  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then(md => {
+    marked.use(markedGfmHeadingId.gfmHeadingId());
+    guide.innerHTML = marked.parse(md);
+    // Links to the repo's other files go to GitHub; links within the guide stay here
+    guide.querySelectorAll("a[href]").forEach(a => {
+      const href = a.getAttribute("href");
+      if (href.startsWith("USER_GUIDE.md#")) a.setAttribute("href", href.slice(13));
+      else if (!/^([a-z]+:|#)/i.test(href)) a.setAttribute("href", repo + href);
+    });
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  })
+  .catch(() => { guide.innerHTML = '<p>The user guide couldn\'t be loaded. Read it <a href="' + repo + 'USER_GUIDE.md">on GitHub</a> instead.</p>'; });
+</script>
+</body>
+</html>

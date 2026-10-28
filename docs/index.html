@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>MirrorDash</title>
+<meta name="description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. Free and open source, for Raspberry Pi.">
+<meta property="og:title" content="MirrorDash">
+<meta property="og:description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass.">
+<meta property="og:image" content="https://menturan.github.io/MirrorDash/concept.webp">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="Inter-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="site.css">
+<style>
+header { padding-block: 64px 40px; display: grid; justify-items: center; text-align: center; gap: 18px; }
+h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em; line-height: 1; }
+.lede { font-size: clamp(18px, 2.4vw, 22px); max-width: 34ch; }
+.lede strong { color: var(--white); font-weight: 400; }
+.ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.status { font-size: 13px; color: var(--charcoal); }
+.hero-img img { width: 100%; height: auto; display: block; border-radius: 6px; aspect-ratio: 1; object-fit: cover; max-height: 640px; }
+.rows { padding-block: 96px 40px; display: grid; gap: 96px; }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 40px 64px; align-items: center; }
+.row > * { min-width: 0; }
+.row > div { display: grid; gap: 14px; }
+.row h2, .center h2 { font-size: clamp(28px, 4vw, 40px); font-weight: 300; line-height: 1.15; }
+.row img { width: 100%; height: auto; border-radius: 4px; border: 1px solid var(--line); }
+.works { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.works li { padding: 10px 16px; border: 1px solid var(--line); border-radius: 999px; color: var(--white); font-size: 15px; }
+.works li:nth-child(-n+2) { border-color: var(--white); }
+.works li.soon { flex-basis: 100%; border: 0; padding: 4px 0 0; color: var(--charcoal); font-size: 14px; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; }
+.checks li { padding: 16px 0 16px 28px; border-bottom: 1px solid var(--line); position: relative; }
+.checks li::before { content: ""; position: absolute; left: 2px; top: 23px; width: 10px; height: 5px; border-left: 1.5px solid var(--white); border-bottom: 1.5px solid var(--white); transform: rotate(-45deg); }
+.checks b { color: var(--white); font-weight: 500; }
+.group { display: grid; gap: 40px; }
+.center { text-align: center; display: grid; gap: 14px; justify-items: center; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.tiles > * { display: grid; gap: 4px; align-content: start; padding: 18px 20px; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; color: var(--gray); text-decoration: none; }
+a.tile:hover { border-color: var(--charcoal); }
+.tiles b { color: var(--white); font-weight: 500; font-size: 17px; }
+</style>
+</head>
+<body>
+<header class="gutter">
+  <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  <h1>MirrorDash</h1>
+  <p class="lede"><strong>A calm display for your hallway mirror.</strong> The time, the weather and your day, glowing through the glass.</p>
+  <div class="ctas">
+    <a class="btn primary" href="https://github.com/Menturan/MirrorDash/releases">Download the image</a>
+    <a class="btn ghost" href="https://github.com/Menturan/MirrorDash">View on GitHub</a>
+  </div>
+  <p class="status">Beta · For Raspberry Pi · Free and open source</p>
+</header>
+
+<main>
+  <div class="hero-img wrap gutter"><img src="concept.webp" width="1200" height="1200" alt="A framed two-way mirror in a hallway, with the weather, a calendar and the time shining through the glass"></div>
+
+  <div class="rows wrap gutter">
+    <section class="row">
+      <img src="screenshot.webp" width="1200" height="726" alt="The mirror's screen: weather and upcoming events on the left, the time on the right" loading="lazy">
+      <div>
+        <h2>Easy setup from your phone.</h2>
+        <p>Scan the QR code on the mirror, pick your Wi-Fi, and choose what it shows. Changing it later works the same way, from the sofa.</p>
+        <p><a href="guide.html">Read the user guide →</a></p>
+      </div>
+    </section>
+
+    <section class="row">
+      <div>
+        <h2>Works with Apple Home and Google Home.</h2>
+        <p>Through Matter, the mirror's screen shows up as a light in your home app. Turn it on by voice, from the app, or in your automations. A motion sensor or a schedule can do it too. The rest of the time it's just a mirror.</p>
+      </div>
+      <ul class="works" aria-label="Works with">
+        <li>Apple Home</li><li>Google Home</li><li>Home Assistant</li>
+        <li class="soon">Alexa and SmartThings should work too, but haven't been tried yet. <a href="https://github.com/Menturan/MirrorDash/discussions">Tell us</a> how it goes.</li>
+      </ul>
+    </section>
+
+    <section class="row">
+      <div>
+        <h2>Safe in your home. Built to last.</h2>
+        <p>A mirror hangs on the wall for years. MirrorDash is made to look after itself, and after your home.</p>
+      </div>
+      <ul class="checks">
+        <li><b>Your passwords stay yours.</b> Every module runs walled off: it can't read your passwords or reach the other devices on your network.</li>
+        <li><b>Updates you can trust.</b> If an update doesn't work, the mirror keeps the version that did.</li>
+        <li><b>It doesn't wear out.</b> The system can't be changed by use, so it starts the same way every morning.</li>
+        <li><b>Nothing hidden.</b> All of MirrorDash is open source, so you, or someone you trust, can check exactly what it does in your home.</li>
+      </ul>
+    </section>
+
+    <section class="group">
+      <div class="center">
+        <h2>All you need</h2>
+        <p>Four things, and an afternoon.</p>
+      </div>
+      <div class="tiles">
+        <div><b>A Raspberry Pi</b>The small computer behind the glass.</div>
+        <div><b>A screen</b>An old computer monitor is perfect.</div>
+        <div><b>A two-way mirror</b>A bit larger than the screen.</div>
+        <div><b>A frame</b>From the hardware store, or an old picture frame.</div>
+      </div>
+    </section>
+
+    <section class="group">
+      <div class="center">
+        <h2>Modules, one tap away</h2>
+        <p>Install them in the admin page under Modules → Add modules.</p>
+      </div>
+      <div class="tiles">
+        <a class="tile" href="https://github.com/Menturan/mirrordash-clock"><b>Clock</b>The time and date</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-weather"><b>Weather</b>Now and the forecast</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-calendar"><b>Calendar</b>Your upcoming events</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-news"><b>News</b>The latest headlines</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-homeassistant"><b>Home Assistant</b>Your sensors</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-krisinformation"><b>Krisinformation</b>Swedish crisis information</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-namnsdag"><b>Namnsdag</b>The Swedish name day</a>
+      </div>
+    </section>
+
+    <section class="row">
+      <div>
+        <h2>Missing something? Build your own.</h2>
+        <p>With our developer kit, one command creates a new module with example data and a mirror on your computer that shows every change as you save. Publish it on GitHub, and it shows up under <i>Add modules</i> on every mirror.</p>
+        <p><a href="https://github.com/Menturan/mirrordash-sdk">Read the module guide →</a></p>
+      </div>
+      <pre class="cmd"><span>$ </span>uvx mirrordash-sdk quickstart mirrordash-my-widget</pre>
+    </section>
+  </div>
+</main>
+
+<footer class="site-footer wrap gutter">
+  <a href="guide.html">User guide</a>
+  <a href="https://github.com/Menturan/MirrorDash/discussions">Discussions</a>
+  <a href="https://github.com/Menturan/MirrorDash/issues">Issues</a>
+  <a href="https://github.com/Menturan/MirrorDash/blob/master/CHANGELOG.md">Changelog</a>
+  <span>AGPL-3.0 · © 2026 Jonas Öhlander</span>
+</footer>
+</body>
+</html>
