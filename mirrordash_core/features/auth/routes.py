@@ -2,7 +2,7 @@
 """The admin password, and the recovery code that resets it.
 
 The recovery code is shown once, when the password is set up (and again after each use, as a new
-one). Lost both? Remove `admin_auth` from config.json over SSH or on the SD card (USER_GUIDE §1)."""
+one). Lost both? Remove `admin_auth` from config.json over SSH or on the SD card (USER_GUIDE, "Lost the recovery code too?")."""
 
 import asyncio
 import logging

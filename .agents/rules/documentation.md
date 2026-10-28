@@ -13,8 +13,10 @@ trigger: always_on
 | `MODULE_GUIDE.md` (in `mirrordash-sdk` repo) | The **module developer API** changes — new injected helpers, lifecycle hooks, config schema format, or storage conventions. **Not** for documenting specific modules. |
 | `MODULE_AGENTS.md` (in `mirrordash-sdk` repo) | Any new module-specific coding rules, constraints, or scaffolding conventions are established |
 | `README.md` of a module (its own repo, in `../mirrordash-modules/<name>/`) | A specific module's config keys, providers, API key instructions, or features change |
-| `USER_GUIDE.md` | Something a mirror owner needs isn't self-explanatory in the admin page: setup before the admin page is reachable, wiring, the screen's on/off rules, recovery, Home Assistant. Don't describe fields the page already explains. |
+| `USER_GUIDE.md` | Something a mirror owner needs isn't self-explanatory in the admin page: setup before the admin page is reachable, wiring, the screen's on/off rules, recovery, Home Assistant. Don't describe fields the page already explains. It starts with a quick start and follows the owner's path (SD card → Wi-Fi → admin page → modules → the rest); troubleshooting goes in *When something is wrong*. |
 | `AGENTS.md` | New coding rules, patterns, or constraints are established |
 | `CHANGELOG.md` | A change a mirror owner would notice is committed — add a plain-language entry under `[Unreleased]` (`### OS image` for image-only changes). Hand-written; never generated from commits. |
 | `RELEASING.md` | The release workflow, OIDC configurations, or pre-release checklists change |
 | `.claude/skills/*/SKILL.md` | How a new module or a release is made changes |
+
+After changing any doc, heading or doc link (also in admin templates and `docs/`), run `uv run pytest -q tests/test_docs.py`: it checks that every `#anchor` lands on a heading, every relative link on a file, and every admin path (*Settings → …*) on a label.

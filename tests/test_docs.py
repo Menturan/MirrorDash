@@ -23,12 +23,27 @@ def test_anchor_rule():
 
 
 def test_links_to_headings_exist():
+    """In the docs, and from the admin page and the website to the docs on GitHub."""
     anchors = {p.name: {anchor(h) for h in re.findall(r"^#+ (.+)$", prose(p), re.M)} for p in DOCS}
-    broken = [f"{p.name}: {target}#{name}"
-              for p in DOCS
-              for target, name in re.findall(r"\]\(([\w.-]*\.md)?#([^)\s]+)\)", prose(p))
-              if (target or p.name) in anchors and name not in anchors[target or p.name]]
-    assert not broken, "links to headings that don't exist"
+    links = [(p.name, target or p.name, name)
+             for p in DOCS for target, name in re.findall(r"\]\(([\w.-]*\.md)?#([^)\s]+)\)", prose(p))]
+    pages = [*(ROOT / "mirrordash_core").rglob("*.html"), *(ROOT / "docs").glob("*.html")]
+    links += [(p.name, target, name)
+              for p in pages for target, name in re.findall(r"/blob/master/([\w.-]+\.md)#([\w-]+)", p.read_text())]
+    broken = [f"{source}: {target}#{name}" for source, target, name in links
+              if target in anchors and name not in anchors[target]]
+    assert not broken, f"links to headings that don't exist: {broken}"
+
+
+def test_links_to_files_exist():
+    """A relative link in the docs or on the website is a file in the repo."""
+    links = [(p, target) for p in DOCS
+             for target in re.findall(r"\]\(([^)\s#]+)(?:#[^)\s]*)?\)", prose(p))]
+    links += [(p, target) for p in (ROOT / "docs").glob("*.html")
+              for target in re.findall(r'(?:href|src)="([^"#]+)', re.sub(r"<script>.*?</script>", "", p.read_text(), flags=re.S))]
+    broken = [f"{p.name}: {target}" for p, target in links
+              if ":" not in target and not (p.parent / target).exists()]
+    assert not broken, f"links to files that don't exist: {broken}"
 
 
 def test_admin_paths_exist():
