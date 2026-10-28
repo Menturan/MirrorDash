@@ -13,7 +13,7 @@
 
 **A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. No touchscreen, no voice assistant, no notifications.**
 
-**Website:** [menturan.github.io/MirrorDash](https://menturan.github.io/MirrorDash/)
+**Website:** [mirrordash.net](https://mirrordash.net)
 
 ![MirrorDash on a mirror](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_concept.png)
 
@@ -100,7 +100,7 @@ This creates a module with example data and starts a mirror on your computer tha
 
 ## Documentation
 
-* [User guide](USER_GUIDE.md) (also [on the website](https://menturan.github.io/MirrorDash/guide.html)): setting up, wiring, the screen's rules, recovery, Matter, the API and Home Assistant.
+* [User guide](USER_GUIDE.md) (also [on the website](https://mirrordash.net/guide.html)): setting up, wiring, the screen's rules, recovery, Matter, the API and Home Assistant.
 * The website is `docs/` (GitHub Pages from master, no build step): `index.html`, and `guide.html`, which renders USER_GUIDE.md in the browser.
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
