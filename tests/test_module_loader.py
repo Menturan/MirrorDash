@@ -358,6 +358,33 @@ async def test_fetch_max_age_uses_the_saved_answer_until_it_is_old(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_an_answer_says_when_its_data_was_downloaded(tmp_path):
+    """fetched_at: now for a new answer, the download's time for a saved one (also on a failure), None without data."""
+    import os
+    from datetime import datetime
+
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+
+    source = tmp_path / "data.json"
+    source.write_text('{"n": 1}')
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    plugin = DummyPlugin({})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(cache)}, FakeLink())
+
+    before = datetime.now().replace(microsecond=0)
+    assert (await plugin.fetch_json(source.as_uri())).fetched_at >= before
+    for saved in cache.iterdir():
+        os.utime(saved, (1_000_000_000, 1_000_000_000))  # downloaded in 2001
+    answer = await plugin.fetch_json(source.as_uri(), max_age=10**10)
+    assert answer == ({"n": 1}, None) and answer.fetched_at == datetime.fromtimestamp(1_000_000_000)
+    source.unlink()
+    answer = await plugin.fetch_json(source.as_uri())  # gone: the saved answer, with its own time
+    assert answer[1] == "offline" and answer.fetched_at == datetime.fromtimestamp(1_000_000_000)
+    assert (await plugin.fetch_json((tmp_path / "never.json").as_uri())).fetched_at is None
+
+
+@pytest.mark.asyncio
 async def test_a_module_with_only_render_is_shown_every_interval_and_when_changed():
     class RenderOnly:
         interval = 3600

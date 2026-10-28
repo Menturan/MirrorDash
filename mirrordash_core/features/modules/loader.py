@@ -22,6 +22,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from jinja2 import (
@@ -169,15 +170,27 @@ def _cache_file_for(cache_dir: str | None, method: str, url: str, body: bytes | 
     return os.path.join(cache_dir, f"fetch-{request_hash}")
 
 
+class Answer(tuple):
+    """What fetch gives: (data, error) to unpack as before, and .fetched_at, when data was downloaded
+    (a datetime; None without data). A saved answer keeps the time it was downloaded."""
+
+    def __new__(cls, data, error, fetched_at: float | None = None):
+        answer = super().__new__(cls, (data, error))
+        answer.fetched_at = datetime.fromtimestamp(fetched_at) if data is not None and fetched_at else None
+        return answer
+
+
 def _read_cached_answer(cache_file: str | None, parse_answer, max_age: float | None = None):
-    """The saved answer, parsed; None when there is none, it doesn't parse, or it is older than max_age."""
+    """(The saved answer, parsed; when it was downloaded); (None, None) when there is none, it doesn't
+    parse, or it is older than max_age."""
     try:
-        if max_age is not None and time.time() - os.path.getmtime(cache_file) >= max_age:
-            return None
+        saved_at = os.path.getmtime(cache_file)
+        if max_age is not None and time.time() - saved_at >= max_age:
+            return None, None
         with open(cache_file, "rb") as f:
-            return parse_answer(f.read())
+            return parse_answer(f.read()), saved_at
     except (TypeError, OSError, ValueError):  # no cache_dir, nothing saved yet, or a broken file
-        return None
+        return None, None
 
 
 def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, where: str) -> None:
@@ -194,7 +207,8 @@ def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, wh
 
 def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False,
                 default_max_age=lambda: None):
-    """A module's `self.fetch` and `self.fetch_json` -> (answer, error).
+    """A module's `self.fetch` and `self.fetch_json` -> (answer, error), an Answer: .fetched_at says
+    when the data was downloaded, also for a saved answer (a card's "updated 10:42").
 
     `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
     raw bytes (RSS, ICS, XML); `self.fetch_json(...)` takes the same arguments and gives the parsed JSON.
@@ -212,14 +226,14 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
     max_age=seconds: a saved answer younger than that comes back as fresh (error None) without a call, so
     saving a setting or a restart doesn't fetch everything again. Left out, it is default_max_age() (the
     module's interval), so a paid API keeps to its schedule by itself; max_age=0 always calls. ponytail: after a restart the next call
-    can come up to two intervals after the last one, once; the cache file's mtime is the clock, so a Pi
-    booting on an old time may make one extra call. Upgrade path: return the answer's age.
+    can come up to two intervals after the last one, once; the cache file's mtime is the clock (and
+    fetched_at), so a Pi booting on an old time may make one extra call.
     """
     user_agent = f"MirrorDash/{get_core_version()}"
 
     async def fetch(url: str, *, parse=None, method: str = "GET", headers: dict | None = None,
                     params: dict | None = None, json: object = None, data: dict | bytes | None = None,
-                    timeout: float = 10, max_age: float | None = None) -> tuple[object, str | None]:
+                    timeout: float = 10, max_age: float | None = None) -> Answer:
         if json is not None and data is not None:
             raise ValueError("fetch: pass json= or data=, not both")
         if params:
@@ -232,8 +246,10 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
         where = f"{method} {url_parts.netloc}{url_parts.path}"  # never the query, headers or body: they can hold keys
         cache_file = _cache_file_for(cache_dir, method, url, body)
 
-        if max_age and (fresh_answer := _read_cached_answer(cache_file, parse_answer, max_age)) is not None:
-            return fresh_answer, None
+        if max_age:
+            saved, saved_at = _read_cached_answer(cache_file, parse_answer, max_age)
+            if saved is not None:
+                return Answer(saved, None, saved_at)
         if not keep_running:
             await awake.wait()
 
@@ -258,10 +274,11 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
             error = "invalid"
         else:
             _save_answer(cache_file, raw_answer, module_name, where)
-            return answer, None
+            return Answer(answer, None, time.time())
 
         logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
-        return _read_cached_answer(cache_file, parse_answer), error
+        saved, saved_at = _read_cached_answer(cache_file, parse_answer)
+        return Answer(saved, error, saved_at)
 
     return (functools.partial(fetch, parse=None),
             functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
