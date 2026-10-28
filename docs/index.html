@@ -52,6 +52,12 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .tiles > * { display: grid; gap: 4px; align-content: start; padding: 18px 20px; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; color: var(--gray); text-decoration: none; }
 a.tile:hover { border-color: var(--charcoal); }
 .tiles b { color: var(--white); font-weight: 500; font-size: 17px; }
+video.demo[role="button"] { cursor: zoom-in; }
+#lightbox { width: min(96vw, 1600px); max-width: none; padding: 0; border: 0; background: transparent; overflow: visible; }
+#lightbox::backdrop { background: rgba(0, 0, 0, .92); }
+#lightbox video { width: 100%; height: auto; display: block; border-radius: 6px; }
+#lightbox form { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+#lightbox .btn { background: transparent; font-family: inherit; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -72,7 +78,7 @@ a.tile:hover { border-color: var(--charcoal); }
   <div class="rows wrap gutter">
     <section class="row">
       <video class="demo" src="video/loop.mp4" poster="video/loop.jpg" autoplay muted loop playsinline preload="metadata" width="1280" height="720"
-             aria-label="On the phone, the Weather module is installed; on the mirror, the weather appears next to the clock"></video>
+             data-large="video/loop-hd.mp4" aria-label="On the phone, the Weather module is installed; on the mirror, the weather appears next to the clock"></video>
       <div>
         <h2>Easy setup from your phone.</h2>
         <p>Scan the QR code on the mirror, pick your Wi-Fi, and choose what it shows. Changing it later works the same way, from the sofa.</p>
@@ -161,9 +167,33 @@ a.tile:hover { border-color: var(--charcoal); }
   <a href="https://github.com/Menturan/MirrorDash/blob/master/CHANGELOG.md">Changelog</a>
   <span>AGPL-3.0 · © 2026 Jonas Öhlander</span>
 </footer>
+<dialog id="lightbox" aria-label="The video, larger">
+  <form method="dialog"><button class="btn ghost">Close</button></form>
+  <video muted loop playsinline></video>
+</dialog>
 <script>
-// Who asked for less motion gets the still picture and a play button instead of a running loop
-if (matchMedia("(prefers-reduced-motion: reduce)").matches) for (const v of document.querySelectorAll("video.demo")) { v.removeAttribute("autoplay"); v.pause(); v.controls = true; }
+const box = document.getElementById("lightbox"), big = box.querySelector("video");
+for (const v of document.querySelectorAll("video.demo")) {
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    // Who asked for less motion gets the still picture and a play button (and its own full screen) instead
+    v.removeAttribute("autoplay"); v.pause(); v.controls = true;
+    continue;
+  }
+  // A click, Enter or Space shows it large, from where it was; Esc, Close or a click beside it closes
+  v.tabIndex = 0;
+  v.setAttribute("role", "button");
+  v.setAttribute("aria-label", "Show larger: " + v.getAttribute("aria-label"));
+  const open = () => {
+    if (big.getAttribute("src") !== v.dataset.large) big.src = v.dataset.large;
+    big.currentTime = v.currentTime;
+    box.showModal();
+    big.play().catch(() => {});
+  };
+  v.addEventListener("click", open);
+  v.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+}
+box.addEventListener("click", e => { if (e.target === box) box.close(); });
+box.addEventListener("close", () => big.pause());
 </script>
 </body>
 </html>
