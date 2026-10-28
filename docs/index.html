@@ -3,13 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>MirrorDash</title>
-<meta name="description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. Free and open source, for Raspberry Pi.">
-<meta property="og:title" content="MirrorDash">
-<meta property="og:description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass.">
-<meta property="og:image" content="https://mirrordash.net/concept.webp">
+<title>MirrorDash – Smart mirror software for Raspberry Pi</title>
+<meta name="description" content="Free, open-source smart mirror software for Raspberry Pi. Set up from your phone, works with Apple Home and Google Home, and updates safely by itself. A MagicMirror² alternative without config files.">
+<link rel="canonical" href="https://mirrordash.net/">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://mirrordash.net/">
+<meta property="og:title" content="MirrorDash – Smart mirror software for Raspberry Pi">
+<meta property="og:description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. Free and open source.">
+<meta property="og:image" content="https://mirrordash.net/og.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "MirrorDash",
+ "description": "Free, open-source smart mirror software for Raspberry Pi.",
+ "url": "https://mirrordash.net/", "downloadUrl": "https://mirrordash.net/download", "image": "https://mirrordash.net/og.jpg",
+ "applicationCategory": "UtilitiesApplication", "operatingSystem": "Raspberry Pi OS", "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+ "offers": {"@type": "Offer", "price": "0", "priceCurrency": "EUR"}}
+</script>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="preload" href="Inter-Variable.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="inter-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="site.css">
 <style>
 header { padding-block: 64px 40px; display: grid; justify-items: center; text-align: center; gap: 18px; }
@@ -17,7 +30,7 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .lede { font-size: clamp(18px, 2.4vw, 22px); max-width: 34ch; }
 .lede strong { color: var(--white); font-weight: 400; }
 .ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
-.status { font-size: 13px; color: var(--charcoal); }
+.status { font-size: 13px; color: var(--gray); }
 .hero-img img { width: 100%; height: auto; display: block; border-radius: 6px; aspect-ratio: 1; object-fit: cover; max-height: 640px; }
 .rows { padding-block: 96px 40px; display: grid; gap: 96px; }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 40px 64px; align-items: center; }
@@ -28,7 +41,7 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .works { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
 .works li { padding: 10px 16px; border: 1px solid var(--line); border-radius: 999px; color: var(--white); font-size: 15px; }
 .works li:nth-child(-n+2) { border-color: var(--white); }
-.works li.soon { flex-basis: 100%; border: 0; padding: 4px 0 0; color: var(--charcoal); font-size: 14px; }
+.works li.soon { flex-basis: 100%; border: 0; padding: 4px 0 0; color: var(--gray); font-size: 14px; }
 .checks { list-style: none; margin: 0; padding: 0; display: grid; }
 .checks li { padding: 16px 0 16px 28px; border-bottom: 1px solid var(--line); position: relative; }
 .checks li::before { content: ""; position: absolute; left: 2px; top: 23px; width: 10px; height: 5px; border-left: 1.5px solid var(--white); border-bottom: 1.5px solid var(--white); transform: rotate(-45deg); }
@@ -45,7 +58,7 @@ a.tile:hover { border-color: var(--charcoal); }
 <header class="gutter">
   <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#fff" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
   <h1>MirrorDash</h1>
-  <p class="lede"><strong>A calm display for your hallway mirror.</strong> The time, the weather and your day, glowing through the glass.</p>
+  <p class="lede"><strong>A calm display for your hallway mirror.</strong> Free smart mirror software for Raspberry Pi: the time, the weather and your day, glowing through the glass.</p>
   <div class="ctas">
     <a class="btn primary" href="download.html">Download the image</a>
     <a class="btn ghost" href="https://github.com/Menturan/MirrorDash">View on GitHub</a>
@@ -54,11 +67,11 @@ a.tile:hover { border-color: var(--charcoal); }
 </header>
 
 <main>
-  <div class="hero-img wrap gutter"><img src="concept.webp" width="1200" height="1200" alt="A framed two-way mirror in a hallway, with the weather, a calendar and the time shining through the glass"></div>
+  <div class="hero-img wrap gutter"><img src="concept.webp" srcset="concept-700.webp 700w, concept.webp 1200w" sizes="(max-width: 1100px) 100vw, 1068px" fetchpriority="high" width="1200" height="1200" alt="A smart mirror: a framed two-way mirror in a hallway, with the weather, a calendar and the time shining through the glass"></div>
 
   <div class="rows wrap gutter">
     <section class="row">
-      <img src="screenshot.webp" width="1200" height="726" alt="The mirror's screen: weather and upcoming events on the left, the time on the right" loading="lazy">
+      <img src="screenshot.webp" srcset="screenshot-700.webp 700w, screenshot.webp 1200w" sizes="(max-width: 700px) 100vw, 520px" width="1200" height="726" alt="The mirror's screen: weather and upcoming events on the left, the time on the right" loading="lazy">
       <div>
         <h2>Easy setup from your phone.</h2>
         <p>Scan the QR code on the mirror, pick your Wi-Fi, and choose what it shows. Changing it later works the same way, from the sofa.</p>
@@ -88,6 +101,16 @@ a.tile:hover { border-color: var(--charcoal); }
         <li><b>It doesn't wear out.</b> The system can't be changed by use, so it starts the same way every morning.</li>
         <li><b>Nothing hidden.</b> All of MirrorDash is open source, so you, or someone you trust, can check exactly what it does in your home.</li>
       </ul>
+    </section>
+
+    <section class="row">
+      <div>
+        <h2>Coming from MagicMirror²?</h2>
+        <p>Same idea: a glance at the mirror on your way out. What's different is everything around it. You set it up and change it from your phone instead of a config file, and an update that goes wrong undoes itself.</p>
+      </div>
+      <div>
+        <p>MagicMirror² modules are JavaScript and don't run here. A MirrorDash module is a small Python package, and the developer kit makes one with example data in a minute.</p>
+      </div>
     </section>
 
     <section class="group">

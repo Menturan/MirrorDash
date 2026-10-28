@@ -1,5 +1,5 @@
 /* The website (GitHub Pages): the mirror's own palette and type from DESIGN.md, shared by index.html and guide.html */
-@font-face { font-family: "Inter"; src: url("Inter-Variable.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
+@font-face { font-family: "Inter"; src: url("inter-latin.woff2") format("woff2"); font-weight: 100 900; font-display: swap; }
 :root {
   --void: #000000;
   --white: #ffffff;
@@ -29,5 +29,5 @@ code, pre { font-family: var(--mono); font-size: .85em; }
 .btn.ghost:hover { border-color: var(--white); }
 .mark { width: 44px; height: 44px; display: block; }
 pre.cmd { margin: 0; padding: 16px 18px; border: 1px solid var(--line); border-radius: 4px; color: var(--white); overflow-x: auto; min-width: 0; }
-pre.cmd span { color: var(--charcoal); user-select: none; }
+pre.cmd span { color: var(--gray); user-select: none; }
 .site-footer { border-top: 1px solid var(--line); padding-block: 28px 48px; display: flex; flex-wrap: wrap; gap: 8px 24px; font-size: 14px; justify-content: center; }
