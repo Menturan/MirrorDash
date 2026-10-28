@@ -11,8 +11,8 @@
 <meta property="og:title" content="MirrorDash – Smart mirror software for Raspberry Pi">
 <meta property="og:description" content="A calm display for your hallway mirror: the time, the weather and your day, glowing through the glass. Free and open source.">
 <meta property="og:image" content="https://mirrordash.net/og.jpg">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
+<meta property="og:image:width" content="830">
+<meta property="og:image:height" content="436">
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "MirrorDash",
@@ -31,7 +31,7 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .lede strong { color: var(--white); font-weight: 400; }
 .ctas { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
 .status { font-size: 13px; color: var(--gray); }
-.hero-img img { width: 100%; height: auto; display: block; border-radius: 6px; aspect-ratio: 1; object-fit: cover; max-height: 640px; }
+.hero-img img { width: 100%; height: auto; display: block; border-radius: 6px; aspect-ratio: 830 / 720; object-fit: cover; max-height: 720px; }
 .rows { padding-block: 96px 40px; display: grid; gap: 96px; }
 .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr)); gap: 40px 64px; align-items: center; }
 .row > * { min-width: 0; }
@@ -67,7 +67,7 @@ a.tile:hover { border-color: var(--charcoal); }
 </header>
 
 <main>
-  <div class="hero-img wrap gutter"><img src="concept.webp" srcset="concept-700.webp 700w, concept.webp 1200w" sizes="(max-width: 1100px) 100vw, 1068px" fetchpriority="high" width="1200" height="1200" alt="A smart mirror: a framed two-way mirror in a hallway, with the weather, a calendar and the time shining through the glass"></div>
+  <div class="hero-img wrap gutter"><img src="concept.webp" srcset="concept-700.webp 700w, concept.webp 830w" sizes="(max-width: 1100px) 100vw, 1068px" fetchpriority="high" width="830" height="720" alt="A smart mirror: a framed two-way mirror in a hallway, with the weather, a calendar and the time shining through the glass"></div>
 
   <div class="rows wrap gutter">
     <section class="row">
