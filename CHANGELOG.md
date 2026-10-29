@@ -23,6 +23,7 @@ There are two kinds of releases:
 - If the wall that keeps modules away from the mirror and your home network ever stops holding (after a system update, say), no module runs until it holds again, and the Dashboard says so, instead of the modules running unprotected with only a line in the log.
 - The Dashboard's power warning no longer comes up for a Pi that only got hot: it now shows only when the power supply really dropped too low.
 - A Wi-Fi network with a `:` or `\` in its name now shows with its real name in the network list, and joining it works.
+- The admin page no longer keeps asking the mirror for its screen, sensor and GPIO status while it sits in a browser tab you aren't looking at.
 - A screen tool that stops answering can no longer hold up the mirror's screen settings: each one gets a few seconds.
 - A backup made without a password holds no password at all: the MQTT broker's, the Matter pairing code and the modules' API keys stay out too. Restoring one keeps the ones the mirror has (it no longer forgets the MQTT password).
 - In *Logs*, a module's error shows whole in that module's log (not half of it in the system log), and a module's log no longer shows another module whose name starts the same.

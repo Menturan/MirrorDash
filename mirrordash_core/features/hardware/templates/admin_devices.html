@@ -96,7 +96,7 @@
     </form>
     {% endif %}
 
-    <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s" hx-target="this"
+    <div id="gpio-status" hx-get="/admin/panels/system/gpio-status" hx-trigger="load, gpio-changed from:body, every 15s [document.visibilityState === 'visible']" hx-target="this"
          style="font-size: 0.8rem; color: var(--text-secondary); display: grid; gap: 4px; padding-top: 12px; margin-top: 12px; border-top: 1px solid rgba(255,255,255,0.05);">
         Checking...
     </div>

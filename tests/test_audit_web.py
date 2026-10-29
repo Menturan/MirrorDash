@@ -135,3 +135,12 @@ def test_wrong_passwords_count_per_ipv6_network():
     assert refused.value.status_code == 429
     admin.check_throttle("2001:db8:1:3::1")  # another network
     admin.check_throttle("192.0.2.7")
+
+
+def test_admin_polling_stops_in_a_hidden_browser_tab():
+    import re
+    from pathlib import Path
+    for template in Path(admin.__file__).parent.rglob("*.html"):
+        for trigger in re.findall(r'hx-trigger="([^"]*)"', template.read_text()):
+            for every in re.findall(r"every \d+m?s[^,]*", trigger):
+                assert "document.visibilityState === 'visible'" in every, f"{template.name}: {trigger}"
