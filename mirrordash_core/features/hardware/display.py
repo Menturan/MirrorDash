@@ -75,10 +75,11 @@ async def _set_backlight(brightness: int) -> bool:
 async def _set_ddc_brightness(brightness: int) -> bool:
     # ponytail: VCP 0x10 is written as a percentage; nearly every monitor's maximum is 100. One
     # with another maximum would need `ddcutil getvcp 10` first to scale the value.
-    # No --noverify: ddcutil 2.2 verifies anyway (verify_flag defaults on) and only logs "Both --verify
-    # and --noverify specified".
+    # --noverify: no read-back, so a slider step is quick and a screen that reads back late or rounded
+    # isn't taken for one without DDC/CI. ddcutil 2.1/2.2 verifies anyway and logs "Both --verify and
+    # --noverify specified" (its own bug, fixed upstream after 2.2).
     exit_code, _, error_output = await run_command(
-        "sudo", "-n", "ddcutil", "setvcp", "10", str(brightness), timeout=10)
+        "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), timeout=10)
     if exit_code != 0:
         reason = (error_output.strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
         logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {reason}")

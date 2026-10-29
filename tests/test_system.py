@@ -180,7 +180,7 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
         with patch("asyncio.create_subprocess_exec", ddc(0)) as run:
             assert asyncio.run(apply_brightness(40)) is True
         run.assert_awaited_once()
-        assert run.await_args.args == ("sudo", "-n", "ddcutil", "setvcp", "10", "40")
+        assert run.await_args.args == ("sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", "40")
         assert display.brightness_supported is True
         with patch("asyncio.create_subprocess_exec", ddc(1)):
             assert asyncio.run(apply_brightness(40)) is False
