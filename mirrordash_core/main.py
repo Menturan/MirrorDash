@@ -63,6 +63,9 @@ def main() -> None:
         port=8000,
         ws_ping_interval=20,
         ws_ping_timeout=20,
+        # The Matter node polls /api/v1/status every 2 s and an open admin page its panels every 5 s:
+        # tens of thousands of lines a day on a mirror. nginx in front can log requests if needed.
+        access_log=dev_mode,
         **reload_kwargs
     )
 

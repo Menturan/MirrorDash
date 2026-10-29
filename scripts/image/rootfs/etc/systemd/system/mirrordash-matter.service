@@ -9,6 +9,8 @@ Type=simple
 User=pi
 # The token and pairing codes, written by the core on every start
 EnvironmentFile=/storage/mirrordash/data/matter.env
+# matter.js logs every message exchange at its default (debug), in colour: thousands of lines an hour
+Environment=MATTER_LOG_LEVEL=info MATTER_LOG_FORMAT=plain
 # ponytail: a guessed heap cap (about 100 MB RSS without it, ARCHITECTURE #35); raise it if the node dies with "heap out of memory"
 ExecStart=/usr/bin/node --max-old-space-size=64 --optimize-for-size /opt/mirrordash-matter/index.mjs
 # Its first call can come before the core answers: it exits and is started again
