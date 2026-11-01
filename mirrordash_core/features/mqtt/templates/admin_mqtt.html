@@ -78,8 +78,8 @@
 
     {% if cfg.enabled and cfg.id %}
     <details style="margin-top: 14px; font-size: 0.85rem;">
-        <summary>Lock the broker down (recommended)</summary>
-        <p style="margin: 8px 0;">Without this, every device logged in to your broker could send the mirror what you allow above, and take over its connection. In the Mosquitto add-on, turn on <code>customize</code> and put these in its folder (<code>/share/mosquitto</code>): an ACL file with the lines below, and <code>use_username_as_clientid true</code> in a <code>.conf</code> file. Give your other devices their own users and lines too.</p>
+        <summary>Lock the broker down</summary>
+        <p style="margin: 8px 0;">Every device logged in to your broker can send the mirror what you allow above. On a Mosquitto broker of your own, an ACL file with the lines below keeps the mirror's user to its own topics; give your other devices their own users and lines too. Home Assistant's Mosquitto add-on lets its own logins through whatever an ACL says, so there only the choices above hold: allow no more than you need.</p>
         <pre style="font-family: var(--mono-family); font-size: 0.75rem; white-space: pre-wrap; margin: 0;">user {{ cfg.username or "<the mirror's user>" }}
 topic write mirrordash/{{ cfg.id }}/#
 topic read mirrordash/{{ cfg.id }}/+/set
