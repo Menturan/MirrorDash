@@ -462,7 +462,11 @@ def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: d
 
 
 async def _not_in_a_preview(*args, **kwargs):
-    raise RuntimeError("not in a preview")
+    raise RuntimeError("not in a preview")  # a RuntimeError, as self.gpio gives for a pin it can't have
+
+
+async def _shown_nowhere(*args, **kwargs) -> None:
+    """A preview's self.expose: the value goes nowhere, and the card is drawn as usual."""
 
 
 async def render_preview(instance_id: str, module_cfg: dict, globals_config: dict, link) -> str | None:
@@ -480,7 +484,8 @@ async def render_preview(instance_id: str, module_cfg: dict, globals_config: dic
     with tempfile.TemporaryDirectory(prefix="preview-") as scratch:  # on a mirror under its cache folder (TMPDIR)
         settings = _settings_for_instance(instance_id, module_cfg, globals_config, translations, scratch)
         plugin = plugin_class(settings)
-        plugin.gpio = plugin.expose = plugin.video_window = plugin.video_is_playing = _not_in_a_preview
+        plugin.gpio = plugin.video_window = plugin.video_is_playing = _not_in_a_preview
+        plugin.expose = _shown_nowhere
         _inject_module_helpers(plugin, plugin_class.__module__.split(".")[0], translations, instance_id, settings, link, fixtures)
         render = getattr(plugin, "render", None)
         if not inspect.iscoroutinefunction(render):

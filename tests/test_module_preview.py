@@ -65,6 +65,7 @@ class Card:
     async def render(self):
         if self.config.get("use_gpio"):
             await self.gpio([17], output=True)
+        await self.expose("value", 1)  # goes nowhere, the card is still drawn
         data, _ = await self.fetch_json("http://ha.local/api/states")
         self.config["event_bus"].publish("seen", data)
         return f"<p>{self.config['heading']}: {data['state']}</p>"
