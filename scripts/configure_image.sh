@@ -62,7 +62,7 @@ put() {
 STATE_FILE="/var/lib/mirrordash-setup-state"
 # Pinned so a given tag always produces the same image. Bump deliberately.
 UV_SERIES="0.13"  # uv is 0.x: a new minor can break (0.13 changed the default Python); its patches come by themselves
-CLOCK_REF="v1.2.0"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
+CLOCK_REF="v1.3.0"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
