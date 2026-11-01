@@ -9,11 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- On HDMI screens that answer only now and then, a new brightness really reaches the screen now: 0.10.0 could say it was set while the screen never got it. The mirror tries again until the screen answers, which can take a few minutes.
-
-### OS image
-
-- On a Raspberry Pi 3 the line the mirror uses to set the screen's brightness runs slower, which some screens need to answer reliably.
+- HDMI brightness works as before 0.10.0 again: 0.10.0 could say a brightness was set on a screen that never took it. Some screens don't take brightness from a Raspberry Pi 3 at all (a Samsung S24D300 didn't, at any bus speed); the admin page says so.
 
 ## [0.10.0] - 2026-11-01
 

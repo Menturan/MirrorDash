@@ -443,12 +443,6 @@ step_watchdog_boot_optimization() {
 disable_splash=1
 boot_delay=0
 dtoverlay=disable-bt
-# The Pi 3's HDMI DDC bus (i2c-2, brightness over DDC/CI) at 10 kHz instead of 100: the BCM2835's
-# I2C breaks when a screen stretches the clock, and a slower clock absorbs it. ponytail: one value,
-# picked for a Samsung S24D300 that took one DDC try in four at 100 kHz (2026-11-01)
-[pi3]
-dtparam=i2c2_baudrate=10000
-[all]
 EOF
   fi
 

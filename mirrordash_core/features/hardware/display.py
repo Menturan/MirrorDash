@@ -7,7 +7,6 @@ development machine on X11. Every step tries its tools in turn and gives up quie
 import asyncio
 import glob
 import logging
-import os
 import re
 
 from mirrordash_core.host import run_command
@@ -73,71 +72,19 @@ async def _set_backlight(brightness: int) -> bool:
     return True
 
 
-# One DDC/CI write at a time: two on the bus at once both fail. The newest value wins.
-_ddc_lock = asyncio.Lock()
-_ddc_wanted: int | None = None
-DDC_TRIES, DDC_PAUSE = 30, 10
-
-
-def _ddc_bus() -> list[str]:
-    """`--bus N` for the connected HDMI connector: skips ddcutil's display detection, which a
-    screen that answers only now and then fails ("Display not found")."""
-    for ddc in glob.glob("/sys/class/drm/card*-HDMI-*/ddc"):
-        try:
-            with open(os.path.join(os.path.dirname(ddc), "status")) as f:
-                if f.read().strip() == "connected":
-                    return ["--bus", os.path.realpath(ddc).rsplit("-", 1)[1]]
-        except OSError:
-            continue
-    return []
-
-
 async def _set_ddc_brightness(brightness: int) -> bool:
-    # ponytail: a Pi 3 (BCM2835 I2C, 100 kHz) and a Samsung S24D300 passed ddcutil's DDC check
-    # one try in four to seven (measured 2026-11-01: success on try 3, 4, 6 and 7, 10 s apart),
-    # so it tries until the screen takes it, up to DDC_TRIES. Don't skip the check (--skip-ddc-checks): ddcutil then says
-    # 0 but the screen drops nearly every write (6 of 6 lost, read off the screen's own menu); a
-    # passed check is the only sign the bus works right then. A screen that never answers costs
-    # DDC_TRIES * DDC_PAUSE in the background before it is reported. Upgrade path, untried: a
-    # slower bus (dtparam=i2c2_baudrate) against the BCM2835's clock-stretching bug.
-    global _ddc_wanted
-    _ddc_wanted = brightness
-    async with _ddc_lock:
-        for attempt in range(DDC_TRIES):
-            if _ddc_wanted != brightness:
-                return True  # a newer value is waiting for the lock; it reports for itself
-            if attempt:
-                await asyncio.sleep(DDC_PAUSE)
-            if await _ddc_setvcp(brightness):
-                logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI (try {attempt + 1})")
-                return True
-    logger.warning(f"The screen didn't take brightness {brightness}% over HDMI (DDC/CI) in {DDC_TRIES} tries")
-    return False
-
-
-async def _ddc_setvcp(brightness: int) -> bool:
     # ponytail: VCP 0x10 is written as a percentage; nearly every monitor's maximum is 100. One
     # with another maximum would need `ddcutil getvcp 10` first to scale the value.
-    try:
-        proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), *_ddc_bus(),
-            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-    except OSError as e:
-        logger.warning(f"Cannot run ddcutil for the HDMI brightness: {e}")
+    # --noverify: no read-back, so a slider step is quick and a screen that reads back late or rounded
+    # isn't taken for one without DDC/CI. ddcutil 2.1/2.2 verifies anyway and logs "Both --verify and
+    # --noverify specified" (its own bug, fixed upstream after 2.2).
+    exit_code, _, error_output = await run_command(
+        "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), timeout=10)
+    if exit_code != 0:
+        reason = (error_output.strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
+        logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {reason}")
         return False
-    try:
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10)
-    except TimeoutError:
-        proc.kill()
-        await proc.wait()
-        logger.debug("ddcutil didn't answer within 10 s")
-        return False
-    if proc.returncode != 0:
-        # ddcutil's verdict comes last, apart from its warning about --noverify (Debian's ddcutil 2.2)
-        lines = [line for line in stderr.decode(errors='replace').strip().splitlines() if "--verify" not in line]
-        logger.debug(f"ddcutil: {(lines or ['no answer'])[-1]}")
-        return False
+    logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI")
     return True
 
 

@@ -164,38 +164,26 @@ async def test_apply_system_password_hash(mock_subproc):
 
 
 
-def test_hdmi_brightness_goes_over_ddc(monkeypatch, tmp_path):
-    """No backlight device (HDMI): the brightness goes over DDC/CI on the connected HDMI
-    connector's bus, tried again while the screen fails, and a screen that never answers is
-    reported as unsupported."""
+def test_hdmi_brightness_goes_over_ddc(monkeypatch):
+    """No backlight device (HDMI): the brightness goes to the screen over DDC/CI, and a screen
+    that doesn't answer is reported as unsupported."""
     from mirrordash_core.features.hardware import display
     from mirrordash_core.features.hardware.display import apply_brightness
     monkeypatch.setattr(display, "brightness_supported", None)  # restored for the other tests
-    monkeypatch.setattr(display, "DDC_PAUSE", 0)
-    (tmp_path / "i2c-2").mkdir()
-    connector = tmp_path / "card0-HDMI-A-1"
-    connector.mkdir()
-    (connector / "status").write_text("connected\n")
-    (connector / "ddc").symlink_to(tmp_path / "i2c-2")
 
-    def ddc(*returncodes):
-        procs = []
-        for code in returncodes:
-            proc = MagicMock(returncode=code)
-            proc.communicate = AsyncMock(return_value=(b"", b"DDC communication failed"))
-            procs.append(proc)
-        return AsyncMock(side_effect=procs)
+    def ddc(returncode):
+        proc = MagicMock(returncode=returncode)
+        proc.communicate = AsyncMock(return_value=(b"", b"No monitor detected"))
+        return AsyncMock(return_value=proc)
 
-    drm_only = lambda pattern: [str(connector / "ddc")] if "drm" in pattern else []  # noqa: E731
-    with patch("mirrordash_core.features.hardware.display.glob.glob", side_effect=drm_only):
-        with patch("asyncio.create_subprocess_exec", ddc(1, 0)) as run:
+    with patch("mirrordash_core.features.hardware.display.glob.glob", return_value=[]):
+        with patch("asyncio.create_subprocess_exec", ddc(0)) as run:
             assert asyncio.run(apply_brightness(40)) is True
-        assert run.await_count == 2
-        assert run.await_args.args == ("sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", "40", "--bus", "2")
+        run.assert_awaited_once()
+        assert run.await_args.args == ("sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", "40")
         assert display.brightness_supported is True
-        with patch("asyncio.create_subprocess_exec", ddc(*[1] * display.DDC_TRIES)) as run:
+        with patch("asyncio.create_subprocess_exec", ddc(1)):
             assert asyncio.run(apply_brightness(40)) is False
-        assert run.await_count == display.DDC_TRIES
         assert display.brightness_supported is False
 
 
