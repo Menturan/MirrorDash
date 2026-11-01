@@ -9,6 +9,12 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- On HDMI screens that answer only now and then, a new brightness really reaches the screen now: 0.10.0 could say it was set while the screen never got it. The mirror tries again until the screen answers, which can take up to a minute.
+
+### OS image
+
+- On a Raspberry Pi 3 the line the mirror uses to set the screen's brightness runs slower, which some screens need to answer reliably.
+
 ## [0.10.0] - 2026-11-01
 
 - MirrorDash has a website, [mirrordash.net](https://mirrordash.net), with the user guide. [mirrordash.net/download](https://mirrordash.net/download) always has the newest image.
