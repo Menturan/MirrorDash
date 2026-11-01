@@ -73,7 +73,7 @@ uv sync --extra dev --inexact                             # --inexact keeps modu
 MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main   # mirror at http://localhost:8000, admin at /admin; reloads on save
 uv run pytest -q                                          # the whole suite, a few seconds
 uvx ruff check --fix                                      # lint (rules in pyproject.toml); CI runs it too
-uv run pytest tests/test_visual_admin.py                  # browser tests (once: uv run playwright install chromium webkit)
+uv run pytest tests/test_visual_admin.py                  # browser tests (once: uv run playwright install chromium webkit; Linux: --with-deps, needs sudo)
 ```
 
 ## Building a Test OS Image
