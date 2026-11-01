@@ -9,7 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- On HDMI screens that answer only now and then, a new brightness really reaches the screen now: 0.10.0 could say it was set while the screen never got it. The mirror tries again until the screen answers, which can take up to a minute.
+- On HDMI screens that answer only now and then, a new brightness really reaches the screen now: 0.10.0 could say it was set while the screen never got it. The mirror tries again until the screen answers, which can take a few minutes.
 
 ### OS image
 

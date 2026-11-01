@@ -76,7 +76,7 @@ async def _set_backlight(brightness: int) -> bool:
 # One DDC/CI write at a time: two on the bus at once both fail. The newest value wins.
 _ddc_lock = asyncio.Lock()
 _ddc_wanted: int | None = None
-DDC_TRIES, DDC_PAUSE = 8, 10
+DDC_TRIES, DDC_PAUSE = 30, 10
 
 
 def _ddc_bus() -> list[str]:
@@ -94,8 +94,8 @@ def _ddc_bus() -> list[str]:
 
 async def _set_ddc_brightness(brightness: int) -> bool:
     # ponytail: a Pi 3 (BCM2835 I2C, 100 kHz) and a Samsung S24D300 passed ddcutil's DDC check
-    # about one try in four (measured 2026-11-01: success on try 3, 4 and 6, 10 s apart), so a
-    # few tries with a pause between. Don't skip the check (--skip-ddc-checks): ddcutil then says
+    # one try in four to seven (measured 2026-11-01: success on try 3, 4, 6 and 7, 10 s apart),
+    # so it tries until the screen takes it, up to DDC_TRIES. Don't skip the check (--skip-ddc-checks): ddcutil then says
     # 0 but the screen drops nearly every write (6 of 6 lost, read off the screen's own menu); a
     # passed check is the only sign the bus works right then. A screen that never answers costs
     # DDC_TRIES * DDC_PAUSE in the background before it is reported. Upgrade path, untried: a
@@ -109,7 +109,9 @@ async def _set_ddc_brightness(brightness: int) -> bool:
             if attempt:
                 await asyncio.sleep(DDC_PAUSE)
             if await _ddc_setvcp(brightness):
+                logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI (try {attempt + 1})")
                 return True
+    logger.warning(f"The screen didn't take brightness {brightness}% over HDMI (DDC/CI) in {DDC_TRIES} tries")
     return False
 
 
@@ -129,13 +131,13 @@ async def _ddc_setvcp(brightness: int) -> bool:
     except TimeoutError:
         proc.kill()
         await proc.wait()
-        logger.warning("ddcutil didn't answer within 10 s; the screen doesn't take brightness over HDMI")
+        logger.debug("ddcutil didn't answer within 10 s")
         return False
     if proc.returncode != 0:
-        reason = (stderr.decode(errors='replace').strip().splitlines() or ["no answer"])[-1]  # ddcutil's verdict comes last
-        logger.warning(f"The screen doesn't take brightness over HDMI (DDC/CI): {reason}")
+        # ddcutil's verdict comes last, apart from its warning about --noverify (Debian's ddcutil 2.2)
+        lines = [line for line in stderr.decode(errors='replace').strip().splitlines() if "--verify" not in line]
+        logger.debug(f"ddcutil: {(lines or ['no answer'])[-1]}")
         return False
-    logger.info(f"Applied HDMI brightness {brightness}% via DDC/CI")
     return True
 
 
