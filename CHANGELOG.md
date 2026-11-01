@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-11-01
+
 - MirrorDash has a website, [mirrordash.net](https://mirrordash.net), with the user guide. [mirrordash.net/download](https://mirrordash.net/download) always has the newest image.
 - The admin page's help links open the user guide on the website, which reads better on a phone.
 - The user guide starts with a five-step quick start and then follows the setup in order, from the SD card to choosing modules; everything for when something goes wrong is now in one section.
