@@ -1159,12 +1159,13 @@ def test_config_migration():
     assert migrate_config(cfg) is False
 
 
+@patch("mirrordash_core.features.settings.schema._installed_module_schemas", return_value={})  # not a clock in the venv
 @patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=None)  # a module without a schema
 @patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=MagicMock())
 @patch("mirrordash_core.features.modules.routes.load_config")
 @patch("mirrordash_core.features.modules.routes.save_config")
 @patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
-def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_point, _schema, client):
+def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_point, _schema, _installed, client):
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
         "globals": {},

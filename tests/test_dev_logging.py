@@ -78,12 +78,13 @@ def test_it_turns_itself_off_when_the_seven_days_are_over(dev):
 
 def test_the_saved_log_stays_under_its_cap(dev):
     """Every start has its own machine-id folder; the oldest starts go first, never the running one.
-    (du rounds up: three 1 MB folders count as 4 MB, two as 3.)"""
+    (1.2 MB each: three are 3.6 MB, over the cap of 3, and two 2.4, which du -sm rounds up to 3 whether
+    folders take blocks (ext4) or none (tmpfs); 1 MB each was exactly 3 on tmpfs.)"""
     dev("on")
     journal = dev.storage / "journal"
     for i, name in enumerate(["oldest", "older", "current"]):
         (journal / name).mkdir(parents=True)
-        (journal / name / "system.journal").write_bytes(b"x" * 1024 * 1024)
+        (journal / name / "system.journal").write_bytes(b"x" * 1200 * 1024)
         os.utime(journal / name, (1_000_000 + i, 1_000_000 + i))
     assert dev("apply").returncode == 0
     assert sorted(p.name for p in journal.iterdir()) == ["current", "older"]

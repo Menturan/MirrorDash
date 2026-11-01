@@ -535,6 +535,8 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     (modules / "pkgs" / "md-clock_1").mkdir(parents=True)
     (modules / "site_a" / "md-clock").symlink_to("../pkgs/md-clock_1")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(modules))
+    # Not the capabilities of whatever runs the tests (a desktop session can hand down CapInh)
+    monkeypatch.setattr(host.forkserver, "held_capability_sets", lambda: [])
     try:
         monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
         monkeypatch.setattr(host, "ROUTE_TABLE_FILE", str(tmp_path / "route"))
@@ -588,6 +590,7 @@ async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, h
     monkeypatch.setattr(host_module, "SANDBOX_PATHS", {})
     monkeypatch.setattr(host_module, "SANDBOX_DEVICES", ())
     monkeypatch.setattr(host_module, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
+    monkeypatch.setattr(host_module.forkserver, "held_capability_sets", lambda: [])  # not the test runner's
     monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {"w": {"module": "md_w"}}, "globals": {}})
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
