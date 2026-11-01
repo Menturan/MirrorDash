@@ -75,6 +75,7 @@ from mirrordash_core.features.modules.loader import (
     folder_entry_points,
     module_folders,
     module_site,
+    render_preview,
 )
 from mirrordash_core.venv import point_link
 
@@ -515,6 +516,8 @@ class Host:
             event_bus.publish(str(message.get("name")), message.get("data"))
         elif kind == "http":
             self._spawn(self._http(message))
+        elif kind == "preview":
+            self._spawn(self._preview(message))
         elif kind == "control":
             self._spawn(self.loader.control(str(message.get("name")), message.get("value")))
         elif kind == "diagnose":
@@ -533,6 +536,18 @@ class Host:
             self.link.awake.set() if message.get("awake", True) else self.link.awake.clear()
             await self.loader.start_modules(message.get("modules") or {}, message.get("globals") or {})
             await self.link.send({"t": "status", "gen": self.link.gen, "running": sorted(self.loader.tasks)})
+
+    async def _preview(self, message: dict) -> None:
+        """The admin's preview: the card the unsaved settings would show, from the module's sample answers
+        (loader.render_preview); html None when the module has none, or rendering failed."""
+        html = None
+        module_cfg = message.get("config")
+        if isinstance(module_cfg, dict) and isinstance(message.get("instance"), str):
+            try:
+                html = await render_preview(message["instance"], module_cfg, message.get("globals") or {}, self.link)
+            except Exception as e:
+                logger.warning(f"{message['instance']}: its preview failed: {e!r}")
+        await self.link.send({"t": "reply", "id": message.get("id"), "html": html if isinstance(html, str) else None})
 
     async def _http(self, message: dict) -> None:
         instance_id = message.get("instance")

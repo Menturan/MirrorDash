@@ -212,6 +212,18 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     page.wait_for_selector("#configOverlay.open", state="visible")
     assert overlay.is_visible()
 
+    # Wide, with the preview beside the settings; on a phone the preview sits above them (ARCHITECTURE #43)
+    page.wait_for_selector("#config-fields-global .module-config-form")
+    page.wait_for_function("document.getElementById('modulePreview').srcdoc !== ''")
+    preview = page.locator("#modulePreview")
+    assert preview.get_attribute("sandbox") == "allow-scripts"
+    assert page.locator("#configSheet").bounding_box()["width"] > 900
+    assert preview.bounding_box()["x"] > page.locator("#config-fields-global").bounding_box()["x"] + 300
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(400)
+    assert preview.bounding_box()["y"] < page.locator("#config-fields-global").bounding_box()["y"]
+    page.set_viewport_size({"width": 1280, "height": 720})
+
     # Click close button to collapse
     page.click(".sheet-close")
     page.wait_for_selector("#configOverlay.open", state="hidden")

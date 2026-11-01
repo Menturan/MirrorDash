@@ -134,6 +134,7 @@
             <button class="sheet-close" onclick="window.closeConfigSheet()"><i class="fas fa-times"></i></button>
         </div>
         <div class="sheet-body">
+          <div class="sheet-main">
             <!-- App Profile Card -->
             <div class="app-profile">
                 <div class="profile-icon" id="profileIcon" style="background: rgba(255, 255, 255, 0.08); color: var(--primary);">
@@ -176,6 +177,13 @@
             <div id="config-fields-global">
                 <!-- Injected config form -->
             </div>
+          </div>
+            <!-- The module as the unsaved form would show it (admin.js refreshModulePreview, ARCHITECTURE #43):
+                 a page of no site, which can't reach this one -->
+            <section class="sheet-preview" aria-label="Preview">
+                <p class="sheet-preview-caption" id="modulePreviewCaption">Preview</p>
+                <iframe id="modulePreview" sandbox="allow-scripts" title="Preview of the module"></iframe>
+            </section>
         </div>
     </div>
 

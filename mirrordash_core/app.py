@@ -68,4 +68,15 @@ for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
 app.mount("/api/v1", api_v1.api)
 app.mount("/api/modules", module_routes)
 
+class FontFiles(StaticFiles):
+    """The fonts for any page, without credentials: the drawer's preview is a page of no site (ARCHITECTURE
+    #43), and a browser fetches a font with CORS. The one exception to "no CORS" above: files anyone may read."""
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+
+
+app.mount("/static/fonts", FontFiles(directory=str(PACKAGE_DIR / "static" / "fonts")), name="fonts")
 app.mount("/static", StaticFiles(directory=str(PACKAGE_DIR / "static")), name="static")

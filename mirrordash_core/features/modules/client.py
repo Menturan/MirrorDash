@@ -345,6 +345,21 @@ class ModuleHost:
             raise ConnectionError("the module isn't running")
         return await conn.request({"t": "http", **message}, REQUEST_TIMEOUT)
 
+    async def preview(self, instance_id: str, module_cfg: dict) -> str | None:
+        """The card the admin's unsaved settings would show (ARCHITECTURE #43), rendered in the instance's
+        own process, or in one of another instance of the same module, never shown on the screen. None
+        when the module ships no sample answers. ConnectionError when no instance of it runs.
+        ponytail: the first instance of a module has no preview before it is saved; upgrade path: a
+        short-lived process of its own through _start."""
+        module = str(module_cfg.get("module") or instance_id).replace("-", "_")
+        conn = self._instances.get(instance_id) or next(
+            (c for c in self._instances.values() if c.module == module), None)
+        if conn is None or conn.module != module:
+            raise ConnectionError("no instance of the module runs")
+        reply = await conn.request({"t": "preview", "instance": conn.instance, "config": module_cfg,
+                                    "globals": load_config().get("globals", {})}, REQUEST_TIMEOUT)
+        return reply.get("html") if isinstance(reply.get("html"), str) else None
+
     async def diagnose(self) -> dict:
         """The sandbox's checks (host.py's Control._diagnose) and each instance's GPIO lines."""
         reply = await self._request({"t": "diagnose"}, 90)

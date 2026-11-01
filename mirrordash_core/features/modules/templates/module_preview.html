@@ -1,0 +1,57 @@
+{# The drawer's preview of a card (routes.preview_module_route), shown as the srcdoc of an iframe with
+   sandbox="allow-scripts": a page of no site, where only the scripts with this nonce run, never the module's.
+   The card goes into a shadow root as on the mirror (js/kiosk/core.js showModuleHtml), then the page zooms
+   out until it fits. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'nonce-{{ nonce }}'; style-src * 'unsafe-inline'; img-src * data: blob:; media-src * data: blob:; font-src * data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<link rel="stylesheet" href="/static/fonts/inter.css">
+<link rel="stylesheet" href="/static/style.css">
+<style>
+    html, body { margin: 0; background: #000; overflow: hidden; cursor: default; }
+    .preview { width: max-content; max-width: 900px; padding: 24px; }
+    .preview-empty { color: #8a8a8a; font: 14px/1.5 Inter, system-ui, sans-serif; text-align: center; padding: 48px 24px; margin: 0; }
+</style>
+</head>
+<body>
+{% if html is not none %}
+<div class="preview"><div id="card" data-module="{{ instance_id }}"
+     style="{% if max_width %}max-width: {{ max_width }};{% endif %}{% if opacity is not none %}opacity: {{ opacity }};{% endif %}"></div></div>
+<script type="application/json" id="card-html">{{ html | tojson }}</script>
+<script type="application/json" id="modules-css">{{ modules_css | tojson }}</script>
+<script nonce="{{ nonce }}" src="/static/js/lucide.min.js"></script>
+<script nonce="{{ nonce }}" src="/static/js/kiosk/design-tokens.js"></script>
+<script nonce="{{ nonce }}">
+    const read = id => JSON.parse(document.getElementById(id).textContent);
+    const card = document.getElementById('card');
+    const shadow = card.attachShadow({ mode: 'open' });
+    shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${read('modules-css')}</style>` + read('card-html');
+    if (window.lucide) lucide.createIcons({ root: shadow });
+    // The card's own scripts (a ticking clock) as on the mirror, if its module may run them there: in this
+    // page of no site, without the session cookie and with nowhere to connect, they reach nothing else
+    window.__mirrordashRoot = shadow;
+    for (const old of shadow.querySelectorAll('script')) {
+        {% if scripts %}
+        const script = document.createElement('script');
+        script.nonce = {{ nonce | tojson }};
+        script.textContent = `(function (root) {\n${old.textContent}\n})(window.__mirrordashRoot);`;
+        old.replaceWith(script);
+        {% else %}
+        old.remove();
+        {% endif %}
+    }
+    const fit = () => {
+        const preview = document.querySelector('.preview');
+        document.body.style.zoom = 1;
+        document.body.style.zoom = Math.min(1, innerWidth / preview.offsetWidth, innerHeight / preview.offsetHeight).toFixed(3);
+    };
+    fit();
+    addEventListener('resize', fit);
+</script>
+{% else %}
+<p class="preview-empty">{{ message }}</p>
+{% endif %}
+</body>
+</html>

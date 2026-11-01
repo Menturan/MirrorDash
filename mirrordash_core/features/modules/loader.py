@@ -5,6 +5,7 @@ this file, which import nothing of the module (ARCHITECTURE #41)."""
 
 import asyncio
 import contextlib
+import fnmatch
 import functools
 import hashlib
 import http.client
@@ -18,11 +19,12 @@ import os
 import re
 import site
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from jinja2 import (
@@ -44,6 +46,8 @@ MODULE_RESTART_DELAY = 5
 # A module or instance name: it ends up in HTML ids, JS strings, URLs and folder names
 SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 MODULE_FILE_LIMIT = 1024 * 1024  # a module file the core reads (schema, translations, icon.svg)
+PREVIEW_TIMEOUT = 10  # seconds a preview's render() may take
+SAFE_FILE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$")  # a file in a module's preview folder: no path
 
 
 def module_site() -> Path:
@@ -155,6 +159,51 @@ def load_translations(pkg_dir: Path | None, lang: str) -> dict:
     return translations
 
 
+ISO_DATE = re.compile(r"(?<![\d.])(\d{4})-(\d{2})-(\d{2})(?![\d.])|(?<!\d)(\d{4})(\d{2})(\d{2})(?=T\d{4})")
+
+
+def _shift_dates(raw: bytes, days: int) -> bytes:
+    """raw with every date in it days later: 2026-11-02 (JSON, RSS) and 20261102T0800 (iCalendar).
+    ponytail: whole days only, and a date-like number in other text moves too."""
+    if not days:
+        return raw
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw
+
+    def later(match: re.Match) -> str:
+        year, month, day = (int(part) for part in (match.group(1, 2, 3) if match.group(1) else match.group(4, 5, 6)))
+        try:
+            moved = date(year, month, day) + timedelta(days=days)
+        except ValueError:  # not a date after all (2026-13-45)
+            return match.group(0)
+        return moved.isoformat() if match.group(1) else moved.strftime("%Y%m%d")
+    return ISO_DATE.sub(later, text).encode("utf-8")
+
+
+def preview_fixtures(pkg_dir: Path | None) -> dict[str, bytes] | None:
+    """A module's sample answers for the admin's preview (ARCHITECTURE #43), from its preview/fixtures.json:
+    {"captured": "2026-11-02", "answers": {"*/api/states": "states.json"}}: fnmatch patterns on host + path,
+    each to a file beside it. The dates in them move as many days as have passed since captured, so a
+    forecast or a calendar stays current. None when the module has no fixtures.json (the admin shows the
+    saved card instead); {} for one that fetches nothing."""
+    try:
+        path = module_file(pkg_dir, "preview", "fixtures.json")
+        fixtures = json.loads(path.read_text(encoding="utf-8")) if path else None
+        days = (date.today() - date.fromisoformat(fixtures["captured"])).days if "captured" in fixtures else 0
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+    if not isinstance(fixtures, dict) or not isinstance(patterns := fixtures.get("answers"), dict):
+        return None
+    answers = {}
+    for pattern, file_name in patterns.items():
+        if (isinstance(pattern, str) and isinstance(file_name, str) and SAFE_FILE.match(file_name)
+                and (answer := module_file(pkg_dir, "preview", file_name))):
+            answers[pattern] = _shift_dates(answer.read_bytes(), days)
+    return answers
+
+
 def _request_body(json_body: object, form_data: dict | bytes | None) -> bytes | None:
     """What fetch sends: json= as JSON, data= as a form (a dict) or as it is (bytes)."""
     if json_body is not None:
@@ -206,7 +255,7 @@ def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, wh
 
 
 def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False,
-                default_max_age=lambda: None):
+                default_max_age=lambda: None, fixtures: dict[str, bytes] | None = None):
     """A module's `self.fetch` and `self.fetch_json` -> (answer, error), an Answer: .fetched_at says
     when the data was downloaded, also for a saved answer (a card's "updated 10:42").
 
@@ -228,6 +277,9 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
     module's interval), so a paid API keeps to its schedule by itself; max_age=0 always calls. ponytail: after a restart the next call
     can come up to two intervals after the last one, once; the cache file's mtime is the clock (and
     fetched_at), so a Pi booting on an old time may make one extra call.
+
+    fixtures (the admin's preview, preview_fixtures): every fetch answers from the module's sample answers,
+    the first pattern matching host + path, else "offline"; never the network, the cache or a wait.
     """
     user_agent = f"MirrorDash/{get_core_version()}"
 
@@ -245,6 +297,16 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
         url_parts = urllib.parse.urlsplit(url)
         where = f"{method} {url_parts.netloc}{url_parts.path}"  # never the query, headers or body: they can hold keys
         cache_file = _cache_file_for(cache_dir, method, url, body)
+
+        if fixtures is not None:
+            sample = next((raw for pattern, raw in fixtures.items()
+                           if fnmatch.fnmatchcase(url_parts.netloc + url_parts.path, pattern)), None)
+            if sample is None:
+                return Answer(None, "offline")
+            try:
+                return Answer(parse_answer(sample), None, time.time())
+            except ValueError:
+                return Answer(None, "invalid")
 
         if max_age:
             saved, saved_at = _read_cached_answer(cache_file, parse_answer, max_age)
@@ -284,7 +346,8 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
             functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
 
 
-def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict, link) -> None:
+def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict, link,
+                           fixtures: dict[str, bytes] | None = None) -> None:
     """Inject translation, data fetching and template rendering helpers into the plugin instance if missing.
     link is the way to the core (host.py's HostLink): the screen's state, video playing and its window."""
     plugin_instance.translations = translations
@@ -298,7 +361,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         plugin_instance.translate = translate
 
     fetch, fetch_json = _make_fetch(config.get("cache_dir"), module_name, link.awake, getattr(plugin_instance, "keep_running", False),
-                                    lambda: getattr(plugin_instance, "interval", None))
+                                    lambda: getattr(plugin_instance, "interval", None), fixtures)
     if not hasattr(plugin_instance, "fetch"):
         plugin_instance.fetch = fetch
     if not hasattr(plugin_instance, "fetch_json"):
@@ -371,22 +434,58 @@ def _make_render_template(plugin_instance, package_name: str, config: dict):
     return render_template
 
 
-def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: dict, translations: dict) -> dict:
+class _NoEvents:
+    """The event bus of a preview's module: what it publishes or listens for goes nowhere."""
+    def subscribe(self, *args, **kwargs) -> None:
+        pass
+    unsubscribe = publish = subscribe
+
+
+def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: dict, translations: dict,
+                           scratch: str | None = None) -> dict:
     """What a module's constructor gets: its saved settings, plus its own writable data_dir and cache_dir,
-    the event bus, where its routes are served (api_path), the global settings and its translations."""
+    the event bus, where its routes are served (api_path), the global settings and its translations.
+    scratch (a preview): data_dir and cache_dir are that throwaway folder, and the event bus goes nowhere."""
     instance_settings = module_cfg.copy()
     for kind in ("data", "cache"):
-        path = os.path.join(get_module_dir(), kind, instance_id)
+        path = scratch or os.path.join(get_module_dir(), kind, instance_id)
         try:
             os.makedirs(path, exist_ok=True)
             instance_settings[f"{kind}_dir"] = path
         except Exception as e:
             logger.warning(f"Could not create writeable {kind} directory '{path}' for '{instance_id}': {e}")
-    instance_settings["event_bus"] = event_bus
+    instance_settings["event_bus"] = _NoEvents() if scratch else event_bus
     instance_settings["api_path"] = f"/api/modules/{instance_id}"
     instance_settings["globals"] = globals_config
     instance_settings["translations"] = translations
     return instance_settings
+
+
+async def _not_in_a_preview(*args, **kwargs):
+    raise RuntimeError("not in a preview")
+
+
+async def render_preview(instance_id: str, module_cfg: dict, globals_config: dict, link) -> str | None:
+    """The card module_cfg (the admin's unsaved form) would show, rendered once by a throwaway instance from
+    the module's sample answers (preview_fixtures, ARCHITECTURE #43); None when the module has none or no
+    render(). Nothing it does reaches the screen, Home Assistant, the GPIO pins, the event bus or the network
+    through fetch. ponytail: a module with its own HTTP client still reaches out from a preview."""
+    ep = find_entry_point(module_cfg.get("module") or instance_id)
+    if ep is None or (fixtures := preview_fixtures(pkg_dir := package_dir(ep))) is None:
+        return None
+    if (folder := module_folder(ep)) and folder not in sys.path:
+        site.addsitedir(folder)
+    plugin_class = ep.load()
+    translations = load_translations(pkg_dir, globals_config.get("language", "en"))
+    with tempfile.TemporaryDirectory(prefix="preview-") as scratch:  # on a mirror under its cache folder (TMPDIR)
+        settings = _settings_for_instance(instance_id, module_cfg, globals_config, translations, scratch)
+        plugin = plugin_class(settings)
+        plugin.gpio = plugin.expose = plugin.video_window = plugin.video_is_playing = _not_in_a_preview
+        _inject_module_helpers(plugin, plugin_class.__module__.split(".")[0], translations, instance_id, settings, link, fixtures)
+        render = getattr(plugin, "render", None)
+        if not inspect.iscoroutinefunction(render):
+            return None
+        return await asyncio.wait_for(render(), PREVIEW_TIMEOUT)
 
 
 async def _render_loop(instance_id: str, plugin_instance, broadcast_func) -> None:

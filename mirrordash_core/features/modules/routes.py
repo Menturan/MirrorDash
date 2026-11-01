@@ -5,6 +5,8 @@ updating and removing (service.py does the work), and the community modules to d
 import itertools
 import logging
 import re
+import secrets
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -21,6 +23,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
+from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import (
@@ -54,6 +57,7 @@ from mirrordash_core.forms import (
 
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")
+MODULES_CSS = Path(__file__).parents[2] / "static" / "modules.css"  # the cards' own styles, in the preview too
 
 
 @router.get("/panels/modules", dependencies=[Depends(require_api_key)])
@@ -140,17 +144,19 @@ def _new_instance_id(module_name: str, modules_config: dict) -> str:
                 if f"{module_name}_{number}".replace("-", "_") not in taken)
 
 
-@router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
-async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
-    """Save one instance's settings form: its values as the module's schema types them, then checked
-    whole by validate_config (the trust boundary) before anything is saved."""
+async def _config_from_form(module_name: str, request: Request, instance_id: str | None) -> tuple[dict, str]:
+    """One instance's settings form as the whole config would be with it: its values as the module's
+    schema types them, then checked whole by validate_config (the trust boundary). (config, instance_id);
+    HTTPException 404/400 when the module or the form is wrong."""
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
     forms_by_instance = (await read_form(request)).get("modules", {})
-    if not forms_by_instance:
+    if not forms_by_instance or not isinstance(forms_by_instance, dict):
         raise HTTPException(status_code=400, detail="Invalid form data structure")
     instance_id = instance_id or next(iter(forms_by_instance))
+    if not SAFE_NAME.match(str(instance_id)):
+        raise HTTPException(status_code=400, detail="Invalid instance name")
     instance_config = forms_by_instance.get(instance_id, {})
     if schema := get_module_schema(ep):
         instance_config = cast_values_by_schema(instance_config, schema)
@@ -164,6 +170,41 @@ async def save_module_config_route(module_name: str, request: Request, instance_
         validate_config(config)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    return config, instance_id
+
+
+@router.post("/panels/modules/preview/{module_name}", dependencies=[Depends(require_api_key)])
+async def preview_module_route(module_name: str, request: Request, instance_id: str = None):
+    """The drawer's preview of the unsaved form (ARCHITECTURE #43), a page for a sandboxed iframe's srcdoc:
+    the card the module renders from its sample answers, else the card the mirror shows now, else a word
+    why there is none. X-Preview says which: sample, saved or none."""
+    html, source, message = None, "none", "Not on the mirror yet. Save to see it here."
+    try:
+        config, instance_id = await _config_from_form(module_name, request, instance_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise
+        config, message = None, f"The preview waits for valid settings: {e.detail}"
+    if config is not None:
+        try:
+            html, source = await module_host.preview(instance_id, config["modules"][instance_id]), "sample"
+        except (ConnectionError, TimeoutError, OSError) as e:
+            logger.debug(f"{instance_id}: no preview from the module ({e!r})")
+        if html is None and isinstance(saved := manager.latest_messages.get(instance_id, {}).get("html"), str):
+            html, source = saved, "saved"
+    card = config["modules"][instance_id] if config is not None else {}
+    return templates.TemplateResponse(
+        request=request, name="module_preview.html", headers={"X-Preview": source if html is not None else "none"},
+        context={"html": html, "message": message, "instance_id": instance_id, "nonce": secrets.token_urlsafe(16),
+                 "max_width": card.get("max_width") or "", "opacity": card.get("opacity"),
+                 "scripts": config is not None and scripts_allowed(find_entry_point(module_name), config),
+                 "modules_css": MODULES_CSS.read_text(encoding="utf-8")})
+
+
+@router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
+async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
+    """Save one instance's settings form (_config_from_form checks it first)."""
+    config, _ = await _config_from_form(module_name, request, instance_id)
     save_config(config)
     await module_host.reload_modules()
     return notify("Module configuration saved successfully.", refreshModules=True)

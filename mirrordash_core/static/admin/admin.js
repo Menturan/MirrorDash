@@ -483,7 +483,50 @@ window.closeConfigSheet = function() {
     document.getElementById('configOverlay').classList.remove('open');
     const fields = document.getElementById('config-fields-global');
     if (fields) fields.innerHTML = '';
+    clearTimeout(previewTimer);
+    clearTimeout(previewPoll);
+    previewRun++;  // an answer still on its way is dropped
+    document.getElementById('modulePreview').srcdoc = '';
 };
+
+// The drawer's preview (ARCHITECTURE #43): the unsaved form, posted as Save would post it, rendered by the
+// module from its sample answers. Without those, the card the mirror shows now, looked at again every 10 s.
+// srcdoc: the page is of no site (the iframe's sandbox), so the module's HTML can't reach the admin page.
+let previewTimer = null, previewPoll = null, previewRun = 0;
+const PREVIEW_CAPTIONS = { sample: 'Preview, with sample data', saved: 'On the mirror now' };
+
+async function refreshModulePreview() {
+    const form = document.querySelector('#config-fields-global .module-config-form');
+    const frame = document.getElementById('modulePreview');
+    if (!form || !frame) return;
+    const url = form.getAttribute('hx-post').replace(/\/config\/([^/?]+)\/save/, '/preview/$1');
+    const run = ++previewRun;
+    clearTimeout(previewPoll);
+    try {
+        const response = await fetch(url, { method: 'POST', body: new FormData(form) });
+        const page = await response.text();
+        if (run !== previewRun) return;  // a newer one is on its way
+        const source = response.ok ? response.headers.get('X-Preview') || 'none' : 'none';
+        frame.srcdoc = response.ok ? page : '';
+        document.getElementById('modulePreviewCaption').textContent = PREVIEW_CAPTIONS[source] || 'Preview';
+        if (source !== 'sample') previewPoll = setTimeout(refreshModulePreview, 10000);
+    } catch (e) {
+        if (run === previewRun) previewPoll = setTimeout(refreshModulePreview, 10000);  // offline: the last one stays
+    }
+}
+
+function schedulePreview(event) {
+    if (!(event.target.closest && event.target.closest('#config-fields-global .module-config-form'))) return;
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(refreshModulePreview, 600);
+}
+document.addEventListener('input', schedulePreview);
+document.addEventListener('change', schedulePreview);
+document.body.addEventListener('htmx:afterSwap', (event) => {
+    if (event.target.id !== 'config-fields-global') return;
+    event.target.querySelectorAll('.array-item-card').forEach(arrayItemSummary);
+    refreshModulePreview();
+});
 
 window.openConfigureModule = function(name, packageName, activeInstanceId) {
     const card = document.getElementById('module-card-' + name);
@@ -748,18 +791,35 @@ function moveArrayItem(btn, direction) {
         }
     }
     reindexArrayContainer(container);
+    container.dispatchEvent(new Event('input', { bubbles: true }));  // the preview follows the new order
 }
+
+// A folded list item's line: its first filled field whose name ends in "name" (custom_name, name), else its
+// first filled text field, and the next filled one beside it; "# 2: Calendar" while it is empty.
+// ponytail: a guess from the field names; a schema hint (x-summary) is the upgrade path.
+function arrayItemSummary(card) {
+    const title = card.querySelector('.array-item-index-title');
+    const sub = card.querySelector('.array-item-sub');
+    if (!title || !sub) return;
+    const filled = [...card.querySelectorAll('.array-item-fields input[type="text"]')]
+        .filter(input => !input.closest('.icon-custom, .swatch-row') && input.value.trim());
+    const label = filled.find(input => /name\]$/.test(input.name)) || filled[0];
+    const index = [...card.parentElement.querySelectorAll('.array-item-card')].indexOf(card);
+    title.textContent = label ? label.value : `# ${index + 1}: ${title.dataset.itemTitle || 'Item'}`;
+    sub.textContent = filled.find(input => input !== label)?.value || '';
+}
+
+document.addEventListener('input', (event) => {
+    const card = event.target.closest && event.target.closest('.array-item-card');
+    if (card) arrayItemSummary(card);
+});
 
 function reindexArrayContainer(container) {
     if (!container) return;
     const cards = container.querySelectorAll('.array-item-card');
     cards.forEach((card, idx) => {
-        const titleEl = card.querySelector('.array-item-index-title');
-        if (titleEl) {
-            const itemTitle = titleEl.getAttribute('data-item-title') || 'Item';
-            titleEl.textContent = `# ${idx + 1}: ${itemTitle}`;
-        }
-        
+        arrayItemSummary(card);
+
         const inputs = card.querySelectorAll('input, select, textarea');
         inputs.forEach(input => {
             const name = input.getAttribute('name');

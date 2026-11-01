@@ -202,12 +202,12 @@ def _color(field: Field) -> str:
 
 
 def _password(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
+    return f'''<div class="form-group schema-field wide">{_label(field)}
         <div class="pw-field"><input type="password" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{field.id}" aria-controls="{field.id}" aria-pressed="false">Show</button></div></div>'''
 
 
 def _textarea(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
+    return f'''<div class="form-group schema-field wide">{_label(field)}
         <textarea id="{field.id}" name="{field.name}" rows="3" class="form-control schema-textarea">{field.value}</textarea></div>'''
 
 
@@ -220,7 +220,7 @@ def _lan_url(field: Field) -> str:
     """An address at home the module may reach (client.py lets the module host through to it). The schema's
     default is only a hint, never filled in: saving the form must not open an address the owner didn't type."""
     hint = escape(str(field.schema.get("default", "")), quote=True)
-    return f'''<div class="form-group schema-field">{_label(field)}
+    return f'''<div class="form-group schema-field wide">{_label(field)}
         <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" placeholder="{hint}" class="form-control">
         <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
 
@@ -308,15 +308,20 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
                       name_prefix, "")
         render = {"color": _sub_swatches, "icon": _sub_icons}.get(key) or (_sub_select if prop.get("enum") else _sub_text)
         fields.append(render(field))
-    return f'''<div class="array-item-card">
-        <div class="array-item-tools">
-            <button type="button" class="btn secondary btn-sm" onclick="moveArrayItem(this, 'up')" title="Move Up"><i class="fas fa-arrow-up"></i></button>
-            <button type="button" class="btn secondary btn-sm" onclick="moveArrayItem(this, 'down')" title="Move Down"><i class="fas fa-arrow-down"></i></button>
-            <button type="button" class="btn danger btn-sm" onclick="const container = this.closest('.array-items-container'); this.closest('.array-item-card').remove(); reindexArrayContainer(container); triggerLucide();" title="Remove"><i class="fas fa-trash"></i></button>
-        </div>
-        <div class="array-item-index-title" data-item-title="{item_title}"># {index + 1}: {item_title}</div>
+    # Folded to one line (admin.js arrayItemSummary fills it in); a new, empty item opens to be filled in
+    is_open = " open" if not any(item_val.values()) else ""
+    return f'''<details class="array-item-card"{is_open}>
+        <summary class="array-item-head">
+            <i class="fas fa-chevron-right array-item-chevron" aria-hidden="true"></i>
+            <span class="array-item-summary"><span class="array-item-index-title" data-item-title="{item_title}"># {index + 1}: {item_title}</span><span class="array-item-sub"></span></span>
+            <span class="array-item-tools">
+                <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'up')" title="Move up" aria-label="Move up"><i class="fas fa-arrow-up"></i></button>
+                <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'down')" title="Move down" aria-label="Move down"><i class="fas fa-arrow-down"></i></button>
+                <button type="button" class="btn danger btn-sm" onclick="event.preventDefault(); const container = this.closest('.array-items-container'); this.closest('.array-item-card').remove(); reindexArrayContainer(container); container.dispatchEvent(new Event('input', {{bubbles: true}}));" title="Remove" aria-label="Remove"><i class="fas fa-trash"></i></button>
+            </span>
+        </summary>
         <div class="array-item-fields">{"".join(fields)}</div>
-    </div>'''
+    </details>'''
 
 
 async def read_form(request) -> dict:
