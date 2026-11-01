@@ -7,6 +7,7 @@ development machine on X11. Every step tries its tools in turn and gives up quie
 import asyncio
 import glob
 import logging
+import os
 import re
 
 from mirrordash_core.host import run_command
@@ -72,16 +73,52 @@ async def _set_backlight(brightness: int) -> bool:
     return True
 
 
+# One DDC/CI write at a time: two on the bus at once both fail. The newest value wins.
+_ddc_lock = asyncio.Lock()
+_ddc_wanted: int | None = None
+DDC_TRIES, DDC_PAUSE = 8, 10
+
+
+def _ddc_bus() -> list[str]:
+    """`--bus N` for the connected HDMI connector: skips ddcutil's display detection, which a
+    screen that answers only now and then fails ("Display not found")."""
+    for ddc in glob.glob("/sys/class/drm/card*-HDMI-*/ddc"):
+        try:
+            with open(os.path.join(os.path.dirname(ddc), "status")) as f:
+                if f.read().strip() == "connected":
+                    return ["--bus", os.path.realpath(ddc).rsplit("-", 1)[1]]
+        except OSError:
+            continue
+    return []
+
+
 async def _set_ddc_brightness(brightness: int) -> bool:
+    # ponytail: a Pi 3 (BCM2835 I2C, 100 kHz) and a Samsung S24D300 passed ddcutil's DDC check
+    # about one try in four (measured 2026-11-01: success on try 3, 4 and 6, 10 s apart), so a
+    # few tries with a pause between. Don't skip the check (--skip-ddc-checks): ddcutil then says
+    # 0 but the screen drops nearly every write (6 of 6 lost, read off the screen's own menu); a
+    # passed check is the only sign the bus works right then. A screen that never answers costs
+    # DDC_TRIES * DDC_PAUSE in the background before it is reported. Upgrade path, untried: a
+    # slower bus (dtparam=i2c2_baudrate) against the BCM2835's clock-stretching bug.
+    global _ddc_wanted
+    _ddc_wanted = brightness
+    async with _ddc_lock:
+        for attempt in range(DDC_TRIES):
+            if _ddc_wanted != brightness:
+                return True  # a newer value is waiting for the lock; it reports for itself
+            if attempt:
+                await asyncio.sleep(DDC_PAUSE)
+            if await _ddc_setvcp(brightness):
+                return True
+    return False
+
+
+async def _ddc_setvcp(brightness: int) -> bool:
     # ponytail: VCP 0x10 is written as a percentage; nearly every monitor's maximum is 100. One
     # with another maximum would need `ddcutil getvcp 10` first to scale the value.
-    # --skip-ddc-checks: ddcutil's check that the screen speaks DDC/CI (reading VCP 0xDF) failed
-    # four times in five on a Pi 3 with a Samsung S24D300, and the write after it never failed
-    # (measured 2026-11-01: 2/10 with the check, 60/60 without). A screen without DDC/CI still
-    # fails the write itself and is reported as unsupported.
     try:
         proc = await asyncio.create_subprocess_exec(
-            "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), "--skip-ddc-checks",
+            "sudo", "-n", "ddcutil", "--noverify", "setvcp", "10", str(brightness), *_ddc_bus(),
             stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
         )
     except OSError as e:
