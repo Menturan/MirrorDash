@@ -11,6 +11,9 @@ There are two kinds of releases:
 
 - A module's settings open in a window over nearly the whole screen, with a preview beside them: the module as it will look on the mirror, following what you change before you save. Modules that come with sample data show it with that, without calling their services; the others show what the mirror shows now. The module's screenshot is gone from there, and Escape closes the window.
 - Lists in a module's settings (Home Assistant's entities, calendars, news feeds) show one line per item, which opens when you tap it, and the short settings sit two by two.
+- The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through. Comes with the next OS image.
+- config.txt with MirrorDash's GPIO start line but not its end line (a hand edit) is no longer cut off after that line when the Hardware tab saves: the tab says what to put back.
+- The Hardware tab shows the devices it knows when the settings hold one it doesn't (after an update was undone), instead of failing to load.
 - A module that stopped or crashed while it played a video no longer leaves the other modules updating only once a minute until the next restart.
 - A module's settings open again when its saved list is in an older shape (a list of addresses that became a list of entries): the old entries are left out instead of the settings failing to load.
 - With test versions on, an update that was withdrawn on PyPI is no longer offered.

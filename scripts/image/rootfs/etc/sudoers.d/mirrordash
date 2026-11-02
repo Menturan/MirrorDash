@@ -11,7 +11,9 @@ pi ALL=(ALL) NOPASSWD: /usr/bin/systemctl stop mirrordash-matter
 pi ALL=(ALL) NOPASSWD: /usr/bin/timedatectl set-timezone *
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-wifi-country *
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-pi-password ""
-pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil --noverify setvcp 10 *
+# The brightness alone, 10-100: "*" would also let more feature/value pairs and options through (sudo's
+# regular expressions, 1.9.10+; sudo-rs has none, and visudo -cf at build time would say so)
+pi ALL=(ALL) NOPASSWD: /usr/bin/ddcutil ^--noverify setvcp 10 ([1-9][0-9]|100)$
 pi ALL=(ALL) NOPASSWD: /usr/sbin/reboot
 pi ALL=(ALL) NOPASSWD: /usr/sbin/poweroff
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-gpio-overlays

@@ -16,7 +16,13 @@ DAYS=7
 CAP_MB=${MIRRORDASH_JOURNAL_CAP_MB:-64}
 MACHINE_ID_FILE=${MIRRORDASH_MACHINE_ID_FILE:-/etc/machine-id}
 
-is_on() { [ -f "$FLAG" ] && [ "$(cat "$FLAG")" -gt "$(date +%s)" ]; }
+# The flag is in pi's folder and this runs as root: read with nofollow (a link pi put there to a file only
+# root may read would show in the test's error message) and nonblock (a FIFO), and only digits count
+is_on() {
+  local off_at
+  off_at=$(dd if="$FLAG" iflag=nofollow,nonblock bs=32 count=1 2>/dev/null) || return 1
+  [[ "$off_at" =~ ^[0-9]+$ ]] && [ "$off_at" -gt "$(date +%s)" ]
+}
 
 # Keep the saved log under CAP_MB: delete whole starts (machine-id folders), oldest first, never the
 # running one. journald trims inside the running one by itself (SystemMaxUse).
@@ -32,7 +38,9 @@ trim() {
 
 apply() {
   if is_on; then
-    # The folder gets the owner, group and access rights journald expects for /var/log/journal
+    # The folder gets the owner, group and access rights journald expects for /var/log/journal. pi owns its
+    # parent: a link in its place would have install, the bind mount and trim act on wherever it points
+    if [ -L "$JOURNAL_DIR" ]; then rm -f "$JOURNAL_DIR"; fi
     install -d -o root -g systemd-journal -m 2755 "$JOURNAL_DIR"
     mkdir -p "$TARGET" "$(dirname "$DROPIN")"
     mountpoint -q "$TARGET" || mount --bind "$JOURNAL_DIR" "$TARGET"

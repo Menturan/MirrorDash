@@ -55,7 +55,14 @@ phone_on_hotspot() {
 # The hotspot came or went while MirrorDash runs: its screen reloads into the setup prompt or the
 # mirror. Nothing to tell at boot (MirrorDash starts after this), so a failure here is harmless.
 tell_mirrordash() {
-    curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $(cat /storage/mirrordash/data/local-token 2>/dev/null)" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+    curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $(read_pi_file /storage/mirrordash/data/local-token)" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+}
+
+# A small file in pi's folders, read as root: pi could put a link there to a file only root may read, or a
+# FIFO that never answers. nofollow refuses a link, nonblock a FIFO (pi can't hard-link root's files:
+# fs.protected_hardlinks). Empty when it can't be read.
+read_pi_file() {
+    dd if="$1" iflag=nofollow,nonblock bs=128 count=1 2>/dev/null || true
 }
 
 # Does anything actually get through? The router, or failing that 1.1.1.1 (some routers don't answer
@@ -154,14 +161,18 @@ reload_wifi_driver() {
 # Restart the mirror for its Wi-Fi chip, at most once an hour, so a chip that is really broken doesn't
 # make it restart over and over.
 restart_for_wifi_chip() {
-    local last
-    last=$(cat "$CHIP_REBOOT_FILE" 2>/dev/null || echo 0)
+    local last part
+    last=$(read_pi_file "$CHIP_REBOOT_FILE")
+    # Only digits reach the arithmetic: bash runs a command in it ("a[$(...)]"), and pi owns the folder
+    [[ "$last" =~ ^[0-9]+$ ]] || last=0
     if [ $(( $(date +%s) - last )) -lt 3600 ]; then
         logger -t mirrordash-wifi "$1; restarted less than an hour ago, so not again."
         return 0
     fi
     logger -t mirrordash-wifi "$1: restarting the mirror."
-    date +%s > "$CHIP_REBOOT_FILE"
+    # Under a new name, then renamed over it: a link pi put at the name is replaced, never written through
+    part=$(mktemp -u "$CHIP_REBOOT_FILE.XXXXXX")
+    date +%s | install -m 0644 /dev/stdin "$part" && mv -f "$part" "$CHIP_REBOOT_FILE"
     sync
     systemctl reboot
 }

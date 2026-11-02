@@ -280,3 +280,18 @@ def test_each_button_has_its_own_presses_and_actions():
         {"press": "single", "action": "wake", "button": "button"},
         {"press": "long", "action": "none", "button": "button_2"}]
     assert long_press == 1.0
+
+
+@patch("mirrordash_core.features.hardware.routes.save_config")
+@patch("mirrordash_core.features.hardware.routes.load_config")
+def test_a_device_this_version_doesnt_know_and_a_pin_that_isnt_a_number(mock_load, mock_save, client):
+    # A type a newer version added (an update undone leaves it in the settings): the others still show
+    mock_load.return_value = {"system": {"devices": [{"type": "thermostat", "pin": 5}, {"type": "button", "pin": 3, "actions": {}}]}}
+    assert client.get("/admin/panels/system/gpio-status").status_code == 200
+    r = client.get("/admin/panels/system/devices")
+    assert r.status_code == 200 and "Push button" in r.text
+    # "²" is a digit to Python, but no number int() takes: refused like any wrong pin, not a server error
+    mock_load.return_value = {"system": {"devices": []}}
+    r = client.post("/admin/panels/system/devices/add", data={"type": "pir", "pin": "²"})
+    assert r.status_code == 200 and "can't be used" in _message(r)
+    mock_save.assert_not_called()

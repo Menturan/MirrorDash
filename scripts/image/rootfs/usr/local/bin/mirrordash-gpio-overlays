@@ -51,6 +51,12 @@ CONFIG=/boot/firmware/config.txt
 BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
 END='# --- end MirrorDash GPIO ---'
 
+# The block is replaced from its first line to its last: with the last one gone (a hand edit), everything
+# after the first line would go with it (display_auto_detect, a camera's settings)
+if grep -qxF "$BEGIN" "$CONFIG" && ! grep -qxF "$END" "$CONFIG"; then
+  die "$CONFIG has the line '$BEGIN' but not '$END': put that line back after the MirrorDash lines, then save again"
+fi
+
 {
   awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
   echo "$BEGIN"

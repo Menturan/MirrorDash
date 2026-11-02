@@ -76,3 +76,13 @@ def test_up_to_four_buttons(tmp_path):
         assert f"dtoverlay=gpio-key,gpio={gpio},active_low=1,gpio_pull=up,keycode={keycode}" in text
     code, text = run_helper(tmp_path, "button_5:25")
     assert code == 2
+
+
+def test_a_block_without_its_end_line_is_refused_not_cut(tmp_path):
+    """The block is replaced from its first line to its last: with the last one removed by hand, the rest of
+    config.txt would go too."""
+    config = tmp_path / "config.txt"
+    config.write_text("arm_64bit=1\n# --- MirrorDash GPIO (managed by the admin page) ---\n[all]\ndisplay_auto_detect=1\n")
+    before = config.read_text()
+    code, text = run_helper(tmp_path, "dht11:4")
+    assert code != 0 and text == before

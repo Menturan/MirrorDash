@@ -332,7 +332,8 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
                       .replace("/run/mirrordash-wifi-fails", str(tmp_path / "fails"))
                       .replace("/run/mirrordash-wifi-recovery", str(tmp_path / "recovery"))
                       .replace("/run/mirrordash-wifi-chip-logged", str(tmp_path / "chip-logged"))
-                      .replace("/usr/local/lib/mirrordash/save-log", str(bin_dir / "save-log")))
+                      .replace("/usr/local/lib/mirrordash/save-log", str(bin_dir / "save-log"))
+                      .replace("/storage/mirrordash/data/local-token", str(tmp_path / "local-token")))
     sys_dir = tmp_path / "sys"
     (sys_dir / "module" / "brcmfmac").mkdir(parents=True, exist_ok=True)
     (sys_dir / "class" / "net").mkdir(parents=True, exist_ok=True)
@@ -567,3 +568,28 @@ def test_a_working_wifi_chip_is_left_alone(tmp_path):
     _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True)
     assert not any(c.startswith(("modprobe", "save-log wifi-chip")) for c in calls)
 
+
+
+def test_root_reads_nothing_through_pi_s_files(tmp_path):
+    """wifi-check runs as root, its files lie in pi's folders: a link pi put there is never read or written
+    through, and what the restart time holds is never run (bash runs a command inside arithmetic)."""
+    secret, ran = tmp_path / "shadow", tmp_path / "ran"
+    secret.write_text("root:$6$hash")
+    # The local token as a link to a file only root may read: an empty token is sent, not the file
+    (tmp_path / "token" / "local-token").parent.mkdir(parents=True)
+    (tmp_path / "token" / "local-token").symlink_to(secret)
+    _, calls = run_wifi_check(tmp_path / "token", "k7mxp2qrtw", "--watch", hotspot=True, saved_wifi=True)
+    assert calls[-1].startswith("curl") and "X-MirrorDash-Local: " in calls[-1] and "root:" not in calls[-1]
+    (tmp_path / "plain").mkdir()
+    (tmp_path / "plain" / "local-token").write_text("t0ken\n")
+    _, calls = run_wifi_check(tmp_path / "plain", "k7mxp2qrtw", "--watch", hotspot=True, saved_wifi=True)
+    assert "X-MirrorDash-Local: t0ken" in calls[-1]
+    # The Wi-Fi chip didn't start: the restart time holds a command, then is a link to a file of root's
+    for case, plant in (("command", lambda f: f.write_text(f"a[$(touch {ran})]")), ("link", lambda f: f.symlink_to(secret))):
+        (tmp_path / case).mkdir()
+        plant(tmp_path / case / "chip-restart")
+        _, calls = run_wifi_check(tmp_path / case, "k7mxp2qrtw", "--watch", chip=False)
+        assert "systemctl reboot" in calls and not ran.exists(), case
+        assert not (tmp_path / case / "chip-restart").is_symlink()
+        assert (tmp_path / case / "chip-restart").read_text().strip().isdigit()
+    assert secret.read_text() == "root:$6$hash"

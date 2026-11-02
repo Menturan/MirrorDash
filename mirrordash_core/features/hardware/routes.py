@@ -78,10 +78,16 @@ def _fan_text() -> str | None:
     return f"{state} (CPU {_format_temperature(fan['cpu_temperature_c'])})"
 
 
+def _known_devices(system_cfg: dict) -> list[dict]:
+    """The devices this version knows how to show: one of a type a newer version added (and an update undone
+    left in the settings), or a hand-edited one without a type, is left out instead of failing the card."""
+    return [device for device in get_devices(system_cfg) if isinstance(device, dict) and device.get("type") in DEVICE_TYPES]
+
+
 def _devices_card(request: Request, system_cfg: dict, message: str = "", kind: str = "success",
                   restart_needed: bool = False):
     """The Sensors & Inputs card, plus the page events that report what happened."""
-    devices = get_devices(system_cfg)
+    devices = _known_devices(system_cfg)
     used_types = {device["type"] for device in devices}
     next_button = next((button for button in BUTTON_TYPES if button not in used_types), None)  # offer one button at a time
     used_pins = {device["pin"] for device in devices if "pin" in device}
@@ -147,12 +153,12 @@ async def add_device(request: Request):
     device = {"type": device_type}
     if spec.get("pin"):
         pin = form.get("pin", "")
-        device["pin"] = int(pin) if pin.isdigit() else -1  # -1: rejected by the validation
+        device["pin"] = int(pin) if pin.isascii() and pin.isdigit() else -1  # -1: rejected by the validation ("²" is a digit too)
     else:
         device["address"] = form.get("address", "")
     if spec.get("temperature"):
         temperature = form.get("temperature", "")
-        device["temperature"] = int(temperature) if temperature.isdigit() else -1
+        device["temperature"] = int(temperature) if temperature.isascii() and temperature.isdigit() else -1
     if device_type in BUTTON_TYPES:
         device["actions"] = {press: "none" for press in PRESS_TYPES}
         device["long_press"] = DEFAULT_LONG_PRESS
@@ -199,7 +205,7 @@ async def get_gpio_status():
         return HTMLResponse(content=templates.get_template("hardware_status.html").render(restart_needed=True))
 
     lines = []
-    for device in get_devices(system_cfg):
+    for device in _known_devices(system_cfg):
         device_type = device["type"]
         label = DEVICE_TYPES[device_type]["label"]
         if device_type in BUTTON_TYPES:

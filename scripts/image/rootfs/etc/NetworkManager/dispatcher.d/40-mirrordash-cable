@@ -6,5 +6,8 @@
 nmcli -t -f NAME connection show --active | grep -qxF MirrorDash-Setup || exit 0
 logger -t mirrordash-wifi "A cable is connected: stopping the setup hotspot."
 nmcli connection down MirrorDash-Setup || true
-curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $(cat /storage/mirrordash/data/local-token 2>/dev/null)" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
+# The token is in pi's folder and this runs as root: nofollow refuses a link pi put there (to a file only
+# root may read), nonblock a FIFO
+token=$(dd if=/storage/mirrordash/data/local-token iflag=nofollow,nonblock bs=128 count=1 2>/dev/null || true)
+curl -fsS -m 5 -X POST -H "X-MirrorDash-Local: $token" http://127.0.0.1:8000/api/wifi/changed >/dev/null || true
 exit 0

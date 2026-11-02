@@ -95,3 +95,17 @@ def test_only_the_three_admin_actions_are_allowed_through_sudo():
     allowed = [line.split("NOPASSWD: ")[1] for line in sudoers.splitlines() if "NOPASSWD" in line]
     assert allowed == [f"/usr/local/bin/mirrordash-dev-logging {a}" for a in ("on", "off", "clear")]
 
+
+
+def test_a_link_pi_put_in_its_folder_is_never_followed(dev, tmp_path):
+    """The script runs as root in pi's folder: the flag read through a link would show the file in an error
+    message, and a journal folder that is a link would have install, the bind mount and trim act on its target."""
+    (tmp_path / "shadow").write_text("root:$6$hash")
+    (dev.storage / "dev-logging-until").symlink_to(tmp_path / "shadow")
+    result = dev("clear")
+    assert result.returncode == 0 and "root:" not in result.stderr + result.stdout
+    (dev.storage / "dev-logging-until").unlink()
+    (tmp_path / "elsewhere").mkdir()
+    (dev.storage / "journal").symlink_to(tmp_path / "elsewhere")
+    assert dev("on").returncode == 0
+    assert not (dev.storage / "journal").is_symlink() and (dev.storage / "journal").is_dir()
