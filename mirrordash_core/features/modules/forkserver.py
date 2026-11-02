@@ -282,6 +282,8 @@ def run_forkserver(control, children: dict) -> None:
         sys.exit("forkserver: a thread runs, so forking isn't safe")
     prctl(PR_SET_DUMPABLE, 0, 0, 0, 0)  # no /proc/<pid>/mem from the unit's user
     signal.signal(signal.SIGCHLD, signal.SIG_IGN)  # children are reaped by the kernel
+    # Ctrl+C on a local run reaches the whole process group; the core stops the modules itself (stop_modules)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
     if sandboxed and "CapEff" not in held_capability_sets():
         os.environ["MIRRORDASH_NO_USERS"] = "1"  # an OS image before this: the control process says so
     elif sandboxed:
