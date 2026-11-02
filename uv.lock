@@ -352,7 +352,7 @@ wheels = [
 
 [[package]]
 name = "mirrordash"
-version = "0.11.0rc4"
+version = "0.11.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiomqtt" },
