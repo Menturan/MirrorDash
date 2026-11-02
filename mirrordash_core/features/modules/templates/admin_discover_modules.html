@@ -11,7 +11,7 @@
         </button>
     </div>
 
-    <p class="discover-warning"><i class="fas fa-shield-alt" aria-hidden="true"></i> A module runs with full access to the mirror and your home network. Install only modules from people you trust; <strong>Official</strong> ones are made by MirrorDash.</p>
+    <p class="discover-warning"><i class="fas fa-shield-alt" aria-hidden="true"></i> Each module runs apart: it can't read MirrorDash's settings or another module's, or reach your home network except the address you type in its settings. It can still send what it reads to the internet, so install only modules from people you trust; <strong>Official</strong> ones are made by MirrorDash.</p>
 
     <div id="discover-modules-container" class="module-list">
         {% for m in discoverable_modules %}
@@ -27,7 +27,7 @@
                                 hx-post="/admin/panels/modules/install"
                                 hx-vals='{"package_name": "{{ m.install_name }}"}'
                                 hx-target="#global-status"
-                                hx-confirm="{% if m.official %}Install {{ m.title }}? The mirror restarts afterwards.{% else %}Install {{ m.title }} by {{ m.author or 'an unknown author' }}? It isn't made by MirrorDash and gets full access to the mirror. The mirror restarts afterwards.{% endif %}"
+                                hx-confirm="{% if m.official %}Install {{ m.title }}? The mirror restarts afterwards.{% else %}Install {{ m.title }} by {{ m.author or 'an unknown author' }}? It isn't made by MirrorDash. It runs apart from the mirror's settings and your home network, but can send what it reads to the internet. The mirror restarts afterwards.{% endif %}"
                                 hx-disabled-elt="this">
                             <span class="htmx-indicator"><i class="fas fa-spinner fa-spin"></i> Installing...</span>
                             <span class="htmx-normal">Install</span>
