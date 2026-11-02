@@ -1069,3 +1069,29 @@ def test_a_module_file_linked_out_of_the_modules_folders_isnt_read(tmp_path, mon
     monkeypatch.setattr(loader, "module_search_path", lambda: [str(tmp_path / "site")])
     assert loader.module_file(tmp_path / "site" / "pkg", "schema.json") is None
     assert loader.module_file(tmp_path / "site" / "pkg", "en.json") == b'{"title": "Clock"}'
+
+
+@pytest.mark.parametrize("kind", ["site", "module"])
+def test_children_keep_the_module_folder_when_their_home_changes(kind, tmp_path, monkeypatch):
+    """A local run has no unit to set MIRRORDASH_MODULE_DIR, so get_module_dir falls back on HOME; a child's
+    HOME is its own folder, so the forkserver hands it the folder, or a site installs into
+    pkgs/<folder>/.mirrordash/module-data/pkgs/<folder> and the core never finds the module."""
+    import os
+    import socket
+
+    from mirrordash_core.features.modules import forkserver
+    monkeypatch.delenv("MIRRORDASH_MODULE_DIR", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr(forkserver, "give_folder_to_user", lambda *args, **kwargs: None)
+    environments = []
+    monkeypatch.setattr(forkserver, "fork_child",
+                        lambda main, sockets, uid, environment, umask: environments.append(environment))
+    pairs = [socket.socketpair() for _ in range(2 if kind == "module" else 1)]
+    uid = next(iter(forkserver.UIDS_ALLOWED_PER_CHILD_KIND[kind]))
+    forkserver.spawn_child({"kind": kind, "uid": uid, "instance": "md-widget_1"},
+                           [os.dup(a.fileno()) for a, _ in pairs], {kind: None}, sandboxed=False)
+    assert environments[0]["MIRRORDASH_MODULE_DIR"] == str(tmp_path / ".mirrordash" / "module-data")
+    assert environments[0]["HOME"] != str(tmp_path)
+    for pair in pairs:
+        for s in pair:
+            s.close()

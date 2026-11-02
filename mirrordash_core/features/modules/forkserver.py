@@ -266,6 +266,9 @@ def spawn_child(request: dict, descriptors: list[int], children: dict, sandboxed
         # Its TMPDIR too: uv unpacks there (babel alone is 30 MB), more than the unit's /tmp holds, and on
         # the same file system as the folder uv links instead of copying
         environment, umask = {"HOME": home, "TMPDIR": home}, 0o022  # the site: every module reads it
+    # The child's HOME isn't the owner's, and get_module_dir falls back on HOME (a local run, no unit to set it):
+    # without this a site would install into pkgs/<folder>/.mirrordash/module-data/pkgs/<folder>
+    environment["MIRRORDASH_MODULE_DIR"] = modules_folder
     sockets = [socket.socket(fileno=fd) for fd in descriptors]
     try:
         fork_child(lambda *s: children[kind](*s, instance), sockets, owner, environment, umask)
