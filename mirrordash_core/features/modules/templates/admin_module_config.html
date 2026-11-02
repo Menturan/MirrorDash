@@ -1,5 +1,7 @@
 {# A module instance's settings in the Configure drawer: the core's standard settings, then the module's own #}
 <form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML" class="module-config-form">
+    {# Whose settings these are: choosing another instance changes this first, which shows on a phone too #}
+    <h3 class="module-config-instance">{{ instance_title }}</h3>
     {% if is_new %}
     <p class="alert alert--info">A new one on the mirror. Choose where it goes, then select Add to Mirror.</p>
     {% endif %}

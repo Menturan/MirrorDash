@@ -466,6 +466,24 @@ def test_add_to_mirror(page, server_url):
 
 
 
+def test_save_keeps_the_settings_open_under_the_instances_name(page, server_url):
+    navigate_authenticated(page, server_url)
+    page.click("#page-tab-modules")
+    page.click("#config-btn-mirrordash_clock")
+    heading = page.locator("#config-fields-global .module-config-instance")
+    heading.wait_for()
+    assert heading.text_content() == "Clock"
+    page.evaluate("document.querySelector('#instances-list-global .instance-item').dataset.before = 'save'")
+
+    with page.expect_response("**/save?**"):
+        page.click("#config-fields-global button[type=submit]")
+    # The instances are drawn again from the refreshed modules list, and the settings stay open
+    page.wait_for_function("!document.querySelector('#instances-list-global [data-before]')")
+    assert "open" in page.locator("#configOverlay").get_attribute("class")
+    assert heading.text_content() == "Clock"
+    assert page.locator("#instances-list-global .instance-item").count() == 1
+
+
 def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):
     page.clock.install()
     navigate_authenticated(page, server_url)

@@ -1470,6 +1470,11 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 
 /* A module's settings in the Configure drawer (features/modules/templates/admin_module_config.html) */
 .module-config-form { background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a; }
+/* The instance's name over its settings; it fades in when another instance's settings arrive, so the change shows */
+.module-config-instance { margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #27272a; color: white;
+    font-size: 1.35rem; font-weight: 600; overflow-wrap: anywhere; animation: config-instance-in 0.35s ease-out; }
+@keyframes config-instance-in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .module-config-instance { animation-duration: 1s; animation-timing-function: linear; } }
 .module-config-title { margin: 0 0 4px 0; color: white; font-size: 1rem; }
 .module-config-title i { margin-right: 6px; color: var(--accent-color); }
 .module-config-note { margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a; }

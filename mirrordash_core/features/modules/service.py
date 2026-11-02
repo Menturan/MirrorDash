@@ -105,6 +105,11 @@ def module_icon(name: str, schema: dict | None) -> str:
     return next((icon for key, icon in guesses.items() if key in name), "fa-puzzle-piece")
 
 
+def instance_title(instance_id: str, instance_config: dict) -> str:
+    """An instance's name in the admin page: its title, else its id made readable (mirrordash-clock-2: Clock-2)."""
+    return instance_config.get("title", re.sub(r"^mirrordash[-_]", "", instance_id).replace("_", " ").title())
+
+
 def screen_layout() -> dict[str, list[dict]]:
     """Which instances sit at each screen position. Read from the config, so turned-off instances show
     too, and so does an instance whose module is no longer installed (module is None)."""
@@ -344,7 +349,7 @@ async def list_modules() -> dict:
                     "id": instance_id,
                     "enabled": instance_config.get("enabled", True),
                     "position": instance_config.get("position", "middle_center"),
-                    "title": instance_config.get("title", instance_id.replace("mirrordash_", "").replace("_", " ").title())
+                    "title": instance_title(instance_id, instance_config)
                 })
 
         result[name] = {

@@ -115,6 +115,7 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
 
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
         "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
+        "instance_title": modules_service.instance_title(instance_id, instance_config),
         "position_form": form({"position": standard["position"]}),
         "standard_form": form(standard_without_position),
         "module_form": form(module_own_properties),
@@ -204,10 +205,13 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
 async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
     """Save one instance's settings form (_config_from_form checks it first)."""
-    config, _ = await _config_from_form(module_name, request, instance_id)
+    is_new = instance_id not in load_config().get("modules", {})
+    config, instance_id = await _config_from_form(module_name, request, instance_id)
     save_config(config)
     await module_host.reload_modules()
-    return notify("Module configuration saved successfully.", refreshModules=True)
+    # The settings stay open; a new instance's turn into its own, so a second Save doesn't add it again
+    return notify("Added to the mirror." if is_new else "Settings saved.", refreshModules=True,
+                  configSaved={"module": module_name, "instance": instance_id, "isNew": is_new})
 
 
 @router.post("/panels/modules/config/{module_name}/remove", dependencies=[Depends(require_api_key)])
@@ -223,7 +227,7 @@ async def remove_module_config_route(module_name: str, instance_id: str = None):
 
     await module_host.reload_modules()
 
-    return notify("Module removed from mirror display.", refreshModules=True)
+    return notify("Module removed from mirror display.", refreshModules=True, closeConfig=True)
 
 
 async def set_instances_enabled(changes: dict[str, bool]) -> None:
@@ -248,7 +252,7 @@ async def toggle_module_instance(module_name: str, instance_id: str = None):
         raise HTTPException(status_code=404, detail="Instance not found")
     new_state = not modules_config[instance_id].get("enabled", True)
     await set_instances_enabled({instance_id: new_state})
-    # No refreshModules here: it closes the settings sheet the toggle lives in
+    # No refreshModules here: the toggle's own row is right already
     return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
 
 

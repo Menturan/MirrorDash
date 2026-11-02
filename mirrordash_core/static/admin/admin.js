@@ -549,12 +549,27 @@ window.openConfigureModule = function(name, packageName, activeInstanceId) {
         activeInstanceId = instancesData.length > 0 ? instancesData[0].id : '';
     }
     
+    openSettings = { name, packageName };
     window.openConfigSheet(name, title, description, iconHtml, null, null, packageName, activeInstanceId);
 };
+let openSettings = null;  // the module whose settings are open
 
-// Close on refreshModules trigger
-document.body.addEventListener('refreshModules', function() {
-    window.closeConfigSheet();
+// Remove from Mirror closes the settings; Save keeps them open (configSaved)
+document.body.addEventListener('closeConfig', () => window.closeConfigSheet());
+
+// After a Save the modules list is drawn again; then the instances in the settings are too (a new position,
+// a new instance), and a new instance's settings become its own, so a second Save doesn't add it again
+document.body.addEventListener('configSaved', (event) => {
+    const { module, instance, isNew } = event.detail;
+    if (!openSettings || openSettings.name !== module || !document.getElementById('configOverlay').classList.contains('open')) return;
+    const before = document.getElementById('modules-live');
+    document.body.addEventListener('htmx:afterSettle', function redraw() {
+        if (document.getElementById('modules-live') === before) return;  // another request settled
+        document.body.removeEventListener('htmx:afterSettle', redraw);
+        if (!document.getElementById('configOverlay').classList.contains('open')) return;  // closed meanwhile
+        window.openConfigureModule(module, openSettings.packageName, instance);
+        if (isNew) htmx.ajax('GET', `/admin/panels/modules/config/${module}?instance_id=${encodeURIComponent(instance)}`, { target: '#config-fields-global' });
+    });
 });
 
 window.showRestartOverlay = function(title, message) {
