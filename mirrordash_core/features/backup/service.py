@@ -271,7 +271,7 @@ def backup_file(filename: str) -> str:
     if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="Invalid backup filename")
     path = os.path.join(BACKUPS_DIR, filename)
-    if not os.path.exists(path):
+    if not os.path.isfile(path):  # "" or "." is the folder itself
         raise HTTPException(status_code=404, detail="Backup file not found")
     return path
 

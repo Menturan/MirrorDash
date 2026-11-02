@@ -113,7 +113,7 @@ def _check_system_settings(new: dict) -> None:
         raise HTTPException(status_code=400, detail="Invalid display power settings")
     checks = [
         (isinstance(new["ssh"], bool), "SSH must be on or off"),
-        (isinstance(new["resolution"], str) and RESOLUTION.match(new["resolution"]), "Invalid resolution"),
+        (isinstance(new["resolution"], str) and RESOLUTION.fullmatch(new["resolution"]), "Invalid resolution"),
         (new["rotation"] in ("normal", "left", "right", "inverted"), "Invalid rotation value"),
         (_int_in(new["brightness"], 10, 100), "Brightness must be between 10 and 100"),
         (_int_in(new["volume"], 0, 100), "Volume must be between 0 and 100"),
@@ -123,7 +123,7 @@ def _check_system_settings(new: dict) -> None:
         (isinstance(new["prerelease"], bool), "Test versions must be on or off"),
         (isinstance(new["auto_update"], bool), "Automatic updates must be on or off"),
         (display_control.get("mode") != "interval"
-         or all(isinstance(interval.get(end, "00:00"), str) and HHMM.match(interval.get(end, "00:00")) for end in ("start", "end")),
+         or all(isinstance(interval.get(end, "00:00"), str) and HHMM.fullmatch(interval.get(end, "00:00")) for end in ("start", "end")),
          "Invalid interval time format (HH:MM)"),
     ]
     for ok, message in checks:

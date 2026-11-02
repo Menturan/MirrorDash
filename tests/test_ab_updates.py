@@ -359,3 +359,14 @@ def test_the_os_update_interface_stays_the_same():
     assert f'"$MOUNT_DIR{service.OS_VERSION_FILE}"' in build
     assert service.BUNDLE_NAME.match("mirrordash-os-v0.7.0-os2-20261019-1024.raucb").group(1) == "20261019-1024"
     assert service.RELEASES_URL.startswith("https://api.github.com/repos/Menturan/MirrorDash/releases")
+
+
+def test_test_versions_skip_a_withdrawn_release(monkeypatch):
+    import asyncio
+    import io
+    import json
+    releases = {"0.9.0": [{"requires_python": ">=3.14"}], "0.10.0rc1": [{"requires_python": ">=3.14", "yanked": True}]}
+    answer = json.dumps({"info": {"version": "0.9.0"}, "releases": releases}).encode()
+    monkeypatch.setattr(service.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(answer))
+    monkeypatch.setattr(service, "prerelease_enabled", lambda: True)
+    assert asyncio.run(service.check_core_update())["latest_version"] == "0.9.0"

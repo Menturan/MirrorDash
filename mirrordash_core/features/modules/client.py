@@ -548,8 +548,9 @@ class ModuleHost:
         conn.key = settings_key(cfg, globals_cfg)
         conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
         self._instances[instance_id] = conn
-        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
+        # Served first: if the start can't be sent, its connection ends there, and it is started again like a crash
         run_in_background(self._serve(conn), name=f"module-{instance_id}")
+        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
 
     async def _serve(self, conn: Connection) -> None:
         """An instance's connection until it ends; then, unless the core stopped it, start it again or,
@@ -557,6 +558,9 @@ class ModuleHost:
         await self._read(conn)
         conn.close()
         instance_id = conn.instance
+        # A process that died (or was stopped) inside video_is_playing() never says it stopped: the other
+        # modules would update once a minute until the next restart
+        await manager.set_video_playing(instance_id, False)
         if self._instances.get(instance_id) is not conn:
             return  # stopped: its settings changed, or the host went
         del self._instances[instance_id]

@@ -220,6 +220,7 @@ class MqttBridge:
 
     def __init__(self):
         self.status = "off"  # for the admin card
+        self._base_topic = ""  # _base's
         self._task: asyncio.Task | None = None
         self._client: aiomqtt.Client | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
@@ -258,7 +259,8 @@ class MqttBridge:
 
     async def restart(self) -> None:
         """After its settings changed: connect again with them, or stay off."""
-        await self.stop()
+        await self.stop()  # "offline" under the old id, if it changed
+        self._base_topic = ""
         cfg = load_config().get("mqtt", {})
         if cfg.get("enabled") and cfg.get("host") and cfg.get("id"):
             self._task = asyncio.create_task(self._run(), name="mqtt")
@@ -290,7 +292,11 @@ class MqttBridge:
     # The connection
 
     def _base(self) -> str:
-        return f"mirrordash/{load_config().get('mqtt', {}).get('id', 'mirrordash')}"
+        """mirrordash/<id>: worked out once per connection (restart), since every state and event asks for it,
+        and load_config copies the whole config each time."""
+        if not self._base_topic:
+            self._base_topic = f"mirrordash/{load_config().get('mqtt', {}).get('id', 'mirrordash')}"
+        return self._base_topic
 
     def _client_for(self, cfg: dict) -> aiomqtt.Client:
         props = Properties(PacketTypes.CONNECT)

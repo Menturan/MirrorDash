@@ -163,7 +163,8 @@ def _checkboxes(field: Field) -> str:
 def _array(field: Field) -> str:
     items_schema = field.schema.get("items", {})
     item_title = str(items_schema.get("title", "Item"))
-    items = field.stored_value if isinstance(field.stored_value, list) else []
+    # Only objects: a list saved by an older version of the module (["https://..."]) has no fields to show
+    items = [item for item in field.stored_value if isinstance(item, dict)] if isinstance(field.stored_value, list) else []
     cards = "\n".join(render_array_item(field.prefix, field.key, items_schema.get("properties", {}), i, item, item_title)
                       for i, item in enumerate(items))
     container_id = f"array-container-{field.key}"
@@ -379,13 +380,17 @@ def _get_or_create_child_container(container, token, next_token):
     return container[token]
 
 
+MAX_LIST_INDEX = 999  # items in one list setting (calendars, entities): more is no form's
+
+
 def parse_flat_form_data(form_data: dict) -> dict:
     """Nest flat form keys: 'a', 'a[b]', 'a[0][b]', 'a[b][0][c]'."""
     result = {}
     for key, value in form_data.items():
         # "a[b][0][c]" -> ["a", "b", 0, "c"]: a name, then each bracket's content, numbers as list indexes
-        tokens = [int(part) if part.isdigit() else part for part in re.split(r"\[|\]", key) if part]
-        if not tokens:
+        tokens = [int(part) if part.isascii() and part.isdigit() else part for part in re.split(r"\[|\]", key) if part]
+        # An index far past any list a form has would fill the core's memory with placeholders first
+        if not tokens or any(isinstance(token, int) and token > MAX_LIST_INDEX for token in tokens):
             continue
         parent = result
         for token, next_token in itertools.pairwise(tokens):

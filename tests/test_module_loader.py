@@ -593,7 +593,7 @@ async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, h
     monkeypatch.setattr(host_module.forkserver, "held_capability_sets", lambda: [])  # not the test runner's
     monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {"w": {"module": "md_w"}}, "globals": {}})
-    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
     core = client_module.ModuleHost()
     started = []
     monkeypatch.setattr(core, "_start", AsyncMock(side_effect=lambda *args: started.append(args[0])))
@@ -642,7 +642,7 @@ async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, ca
     core = client_module.ModuleHost()
     core._placement = {"w": {"module": "w"}}
     conn = core._instances["w"] = client_module.Connection(MagicMock(), MagicMock(), None, "w")
-    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
     monkeypatch.setattr(client_module, "HTML_INTERVAL", 0.2)
     with caplog.at_level(logging.INFO):
         for i in range(50):
@@ -755,7 +755,7 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
     monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {}, "globals": {}})
-    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
     core = client_module.ModuleHost()
     server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
@@ -866,7 +866,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
               "admin_auth": {"hash": "secret"}}
     monkeypatch.setattr(client_module, "load_config", lambda: config)
     manager = MagicMock()
-    manager.broadcast = AsyncMock()
+    manager.broadcast, manager.set_video_playing = AsyncMock(), AsyncMock()
     monkeypatch.setattr(client_module, "manager", manager)
     monkeypatch.setattr(client_module, "module_host", client_module.ModuleHost())
     core = client_module.module_host
@@ -996,7 +996,7 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
                           "dies": {"module": "md_fork", "die": True}, "stuck": {"module": "md_fork", "stuck": True}},
               "globals": {}}
     monkeypatch.setattr(client_module, "load_config", lambda: config)
-    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), clear_cache=MagicMock()))
+    monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), clear_cache=MagicMock(), set_video_playing=AsyncMock()))
     monkeypatch.setattr(client_module, "RESTART_DELAY", 0.1)
     core = client_module.ModuleHost()
 
@@ -1045,3 +1045,27 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
         await _until(lambda: gone(stuck_pid), 15)  # forkserver.STOP_GRACE_SECONDS after its connection closed
     finally:
         await core.stop_modules()
+
+
+@pytest.mark.asyncio
+async def test_an_instance_that_ends_mid_video_lets_the_others_update_again(monkeypatch):
+    from mirrordash_core.features.kiosk.ws import ConnectionManager
+    from mirrordash_core.features.modules import client as client_module
+    manager = ConnectionManager()
+    monkeypatch.setattr(client_module, "manager", manager)
+    await manager.set_video_playing("tv", True)  # its process dies inside video_is_playing()
+    reader = asyncio.StreamReader()
+    reader.feed_eof()
+    await client_module.ModuleHost()._serve(client_module.Connection(reader, MagicMock(), instance="tv"))
+    assert manager.video_players == set()
+
+
+def test_a_module_file_linked_out_of_the_modules_folders_isnt_read(tmp_path, monkeypatch):
+    loader = mirrordash_core.features.modules.loader
+    (tmp_path / "site" / "pkg").mkdir(parents=True)
+    (tmp_path / "secret.json").write_text('{"admin": "hash"}')
+    (tmp_path / "site" / "pkg" / "schema.json").symlink_to(tmp_path / "secret.json")
+    (tmp_path / "site" / "pkg" / "en.json").write_text('{"title": "Clock"}')
+    monkeypatch.setattr(loader, "module_search_path", lambda: [str(tmp_path / "site")])
+    assert loader.module_file(tmp_path / "site" / "pkg", "schema.json") is None
+    assert loader.module_file(tmp_path / "site" / "pkg", "en.json") == b'{"title": "Clock"}'

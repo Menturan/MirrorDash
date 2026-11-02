@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import site
+import stat
 import sys
 import tempfile
 import time
@@ -131,20 +132,32 @@ def package_dir(ep) -> Path | None:
     return Path(spec.origin).parent if spec.origin else None
 
 
-def module_file(pkg_dir: Path | None, *parts: str) -> Path | None:
-    """A file in a module's package, for the core to read, or None. One that really lies outside the
-    folders modules are found in isn't read: the module host writes the site, and a link it put there to
-    the core's data would have the core show that (a translated title on the screen)."""
+def module_file(pkg_dir: Path | None, *parts: str) -> bytes | None:
+    """A file in a module's package, read for the core, or None. One that really lies outside the folders
+    modules are found in isn't read: the module host writes the site, and a link it put there to the core's
+    data would have the core show that (a translated title on the screen). Where it lies is asked of the
+    open file (/proc/self/fd), and it is read from that descriptor, so a link the host swaps in between the
+    check and the read isn't followed either."""
     if pkg_dir is None:
         return None
-    real = Path(pkg_dir, *parts).resolve()
+    path = Path(pkg_dir, *parts)
     roots = [Path(p).resolve() for p in module_search_path() if p]
-    if not (real.is_file() and any(real.is_relative_to(root) for root in roots)):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)  # NONBLOCK: a FIFO there can't hang the core
+    except OSError:
         return None
-    if real.stat().st_size > MODULE_FILE_LIMIT:  # read whole into the core: a huge one would take its memory
-        logger.warning(f"{real} is over {MODULE_FILE_LIMIT // 1024} kB, not read")
-        return None
-    return real
+    with open(fd, "rb") as file:
+        try:
+            real = Path(os.readlink(f"/proc/self/fd/{fd}"))
+        except OSError:  # no /proc (a developer's Mac): the path as it resolves now
+            real = path.resolve()
+        info = os.fstat(fd)
+        if not (stat.S_ISREG(info.st_mode) and any(real.is_relative_to(root) for root in roots)):
+            return None
+        if info.st_size > MODULE_FILE_LIMIT:  # read whole into the core: a huge one would take its memory
+            logger.warning(f"{real} is over {MODULE_FILE_LIMIT // 1024} kB, not read")
+            return None
+        return file.read(MODULE_FILE_LIMIT)
 
 
 def load_translations(pkg_dir: Path | None, lang: str) -> dict:
@@ -152,8 +165,8 @@ def load_translations(pkg_dir: Path | None, lang: str) -> dict:
     translations = {}
     for code in dict.fromkeys(["en", lang or "en"]):
         try:
-            if path := module_file(pkg_dir, "translations", f"{code}.json"):
-                translations.update(json.loads(path.read_text(encoding="utf-8")))
+            if (raw := module_file(pkg_dir, "translations", f"{code}.json")) is not None:
+                translations.update(json.loads(raw.decode("utf-8")))
         except Exception as e:
             logger.debug(f"Could not load translations from {pkg_dir} in language '{code}': {e}")
     return translations
@@ -189,8 +202,8 @@ def preview_fixtures(pkg_dir: Path | None) -> dict[str, bytes] | None:
     forecast or a calendar stays current. None when the module has no fixtures.json (the admin shows the
     saved card instead); {} for one that fetches nothing."""
     try:
-        path = module_file(pkg_dir, "preview", "fixtures.json")
-        fixtures = json.loads(path.read_text(encoding="utf-8")) if path else None
+        raw = module_file(pkg_dir, "preview", "fixtures.json")
+        fixtures = json.loads(raw.decode("utf-8")) if raw is not None else None
         days = (date.today() - date.fromisoformat(fixtures["captured"])).days if "captured" in fixtures else 0
     except (OSError, ValueError, TypeError, AttributeError):
         return None
@@ -199,8 +212,8 @@ def preview_fixtures(pkg_dir: Path | None) -> dict[str, bytes] | None:
     answers = {}
     for pattern, file_name in patterns.items():
         if (isinstance(pattern, str) and isinstance(file_name, str) and SAFE_FILE.match(file_name)
-                and (answer := module_file(pkg_dir, "preview", file_name))):
-            answers[pattern] = _shift_dates(answer.read_bytes(), days)
+                and (answer := module_file(pkg_dir, "preview", file_name)) is not None):
+            answers[pattern] = _shift_dates(answer, days)
     return answers
 
 

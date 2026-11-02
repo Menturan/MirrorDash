@@ -11,6 +11,9 @@ There are two kinds of releases:
 
 - A module's settings open in a window over nearly the whole screen, with a preview beside them: the module as it will look on the mirror, following what you change before you save. Modules that come with sample data show it with that, without calling their services; the others show what the mirror shows now. The module's screenshot is gone from there, and Escape closes the window.
 - Lists in a module's settings (Home Assistant's entities, calendars, news feeds) show one line per item, which opens when you tap it, and the short settings sit two by two.
+- A module that stopped or crashed while it played a video no longer leaves the other modules updating only once a minute until the next restart.
+- A module's settings open again when its saved list is in an older shape (a list of addresses that became a list of entries): the old entries are left out instead of the settings failing to load.
+- With test versions on, an update that was withdrawn on PyPI is no longer offered.
 - *Add modules* no longer says a module gets full access to the mirror: each one runs apart, and the warning now says what a module can still do (send what it reads to the internet).
 - An icon in a module's settings (Home Assistant's custom icon) suggests icon names as you type and shows the icon beside the name; a name that doesn't exist gets a question mark.
 - Saving a module's settings keeps them open, and adding a module turns the window into its settings. The settings have the module's name over them, so choosing another of its cards on the mirror shows, on a phone too.

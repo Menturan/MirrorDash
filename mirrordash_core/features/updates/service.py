@@ -66,7 +66,9 @@ async def check_core_update() -> dict:
         if not prerelease:
             # PyPI's latest is always a final release
             return package_info["info"]["version"], package_info["info"].get("requires_python")
-        releases = package_info["releases"]
+        # A version whose files were all withdrawn (yanked) on PyPI isn't one to install
+        releases = {version: [file for file in files if not file.get("yanked")]
+                    for version, files in package_info["releases"].items()}
         newest = max((version for version, files in releases.items() if files), key=version_key)
         return newest, releases[newest][0].get("requires_python")
 

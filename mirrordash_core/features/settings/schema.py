@@ -22,25 +22,20 @@ def get_module_schema(ep) -> dict | None:
     schema = None
     if plugin_dir:
         for filename in ("config_schema.json", "schema.json"):
-            if filepath := module_file(plugin_dir, filename):
+            if (raw := module_file(plugin_dir, filename)) is not None:
                 try:
-                    with open(filepath, encoding="utf-8") as f:
-                        data = json.load(f)
-                        if isinstance(data, dict):
-                            schema = data
-                            break
-                except Exception as e:
-                    logger.warning(f"Error loading standalone schema {filepath}: {e}")
+                    data = json.loads(raw.decode("utf-8"))
+                    if isinstance(data, dict):
+                        schema = data
+                        break
+                except ValueError as e:
+                    logger.warning(f"Error loading standalone schema {plugin_dir / filename}: {e}")
 
-    # 3. If we resolved a schema and have a plugin_dir, check for icon.svg next to it
-    if schema and (svg_path := module_file(plugin_dir, "icon.svg")):
-        try:
-            with open(svg_path, "rb") as svg_f:
-                svg_content = svg_f.read().strip()
-                if svg_content.startswith(b"<svg"):
-                    schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
-        except Exception as svg_err:
-            logger.warning(f"Error loading icon.svg next to schema: {svg_err}")
+    # If we resolved a schema and have a plugin_dir, check for icon.svg next to it
+    if schema and (svg := module_file(plugin_dir, "icon.svg")) is not None:
+        svg_content = svg.strip()
+        if svg_content.startswith(b"<svg"):
+            schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
 
     return schema
 
@@ -102,7 +97,10 @@ def validate_config(config: dict) -> None:
         pos = cfg.get("position")
         if pos is not None and pos not in VALID_POSITIONS:
             raise ValueError(f"Module '{name}' has invalid position '{pos}'. Valid positions: {sorted(VALID_POSITIONS)}")
-        schema = schemas.get(cfg.get("module", name).replace("-", "_"))
+        module = cfg.get("module", name)
+        if not isinstance(module, str):
+            raise ValueError(f"Module '{name}' must name its module as text.")
+        schema = schemas.get(module.replace("-", "_"))
         if schema:
             _check_module_settings(name, cfg, schema["properties"])
 

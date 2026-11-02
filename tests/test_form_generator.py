@@ -212,3 +212,13 @@ def test_values_are_escaped_and_lists_nest():
     assert 'value="say &quot;hi&quot; &lt;b&gt;"' in html
     parsed = parse_flat_form_data({"m[cal][0][url]": "a", "m[cal][1][url]": "b", "m[on]": ["false", "true"]})
     assert parsed == {"m": {"cal": [{"url": "a"}, {"url": "b"}], "on": True}}
+
+
+def test_a_list_saved_in_an_older_shape_and_an_index_past_any_list():
+    # A module whose list of strings became a list of objects: the old items aren't shown, the form still is
+    feeds = {"type": "array", "items": {"type": "object", "properties": {"url": {"type": "string"}}}}
+    form = render_schema_form({"properties": {"feeds": feeds}}, {"feeds": ["https://old.example/rss", {"url": "https://new.example"}]},
+                              "modules[news]")
+    assert "https://new.example" in form and "old.example" not in form
+    # A posted index far past any list is left out, not filled up to with placeholders
+    assert parse_flat_form_data({"a[100000000]": "x", "b[0]": "y", "c[²]": "z"}) == {"b": ["y"], "c": {"²": "z"}}

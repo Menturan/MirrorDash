@@ -110,12 +110,16 @@ async def setup_auth(body: dict = Body(...)) -> dict:
     """First start only: set the password when there is no admin_auth at all. Answers with the
     recovery code, the only time it is shown."""
     password = _check_new_password(body.get("password"))
+    if "admin_auth" in load_config():
+        raise HTTPException(status_code=400, detail="Password is already set")
+    auth = await _hash_with_new_salt(password)
+    code = await _new_recovery_code(auth)
+    # Read again after the hashing (the awaits): another setup that got there first is never overwritten,
+    # nor a setting saved meanwhile
     config = load_config()
     if "admin_auth" in config:
         # Even a corrupt entry: this endpoint needs no login, so it must never overwrite one
         raise HTTPException(status_code=400, detail="Password is already set")
-    auth = await _hash_with_new_salt(password)
-    code = await _new_recovery_code(auth)
     config["admin_auth"] = auth
     save_config(config)
     return _logged_in({"status": "success", "recovery_code": code})
@@ -128,8 +132,9 @@ async def change_password(request: Request, body: dict = Body(...)) -> JSONRespo
     if not isinstance(body.get("current_password"), str) or not await check_password(body["current_password"], _client(request)):
         raise HTTPException(status_code=401, detail="The current password is wrong.")
     new_password = _check_new_password(body.get("new_password"))
-    config = load_config()
-    config["admin_auth"] = {**config["admin_auth"], **await _hash_with_new_salt(new_password)}
+    new_hash = await _hash_with_new_salt(new_password)
+    config = load_config()  # after the hashing: a setting saved meanwhile stays
+    config["admin_auth"] = {**config["admin_auth"], **new_hash}
     save_config(config)
     end_all_sessions()
     return _logged_in({"status": "success"})
@@ -140,8 +145,7 @@ async def recover_auth(request: Request, body: dict = Body(...)) -> JSONResponse
     """Set a new password with the recovery code. The code is used up: the answer has a new one.
     Every browser is logged out but this one."""
     check_throttle(_client(request))
-    config = load_config()
-    stored = (config.get("admin_auth") or {}).get("recovery") or {}
+    stored = (load_config().get("admin_auth") or {}).get("recovery") or {}
     code = _normalize_code(str(body.get("code") or ""))
     if not (stored.get("hash") and stored.get("salt") and code
             and secrets.compare_digest(await asyncio.to_thread(hash_password, code, stored["salt"]), stored["hash"])):
@@ -149,6 +153,7 @@ async def recover_auth(request: Request, body: dict = Body(...)) -> JSONResponse
         raise HTTPException(status_code=401, detail="Wrong recovery code")
     auth = await _hash_with_new_salt(_check_new_password(body.get("new_password")))
     new_code = await _new_recovery_code(auth)
+    config = load_config()  # after the hashing: a setting saved meanwhile stays
     config["admin_auth"] = auth
     save_config(config)
     logger.warning("The admin password was reset with the recovery code")
