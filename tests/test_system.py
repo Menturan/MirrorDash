@@ -241,3 +241,22 @@ def test_only_the_undervoltage_bits_warn_about_the_power_supply(throttled, under
     from mirrordash_core.features.dashboard import telemetry
     with patch.object(telemetry, "run_command", AsyncMock(return_value=(0, f"throttled={throttled}\n", ""))):
         assert asyncio.run(telemetry.get_undervoltage_detected()) is undervoltage
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("dev", [False, True])
+async def test_a_restart_ends_the_process_for_systemd_or_touches_a_file_for_the_dev_reloader(dev, monkeypatch):
+    import os
+    import signal
+
+    from mirrordash_core import host
+    monkeypatch.setattr(host.asyncio, "sleep", AsyncMock())
+    monkeypatch.setenv("MIRRORDASH_DEV", "1" if dev else "0")
+    with patch.object(host.os, "kill") as kill, patch.object(host.os, "utime") as utime:
+        await host.run_restart()
+    if dev:  # uvicorn's reloader starts a new process when a watched file changes; SIGTERM would only end it
+        utime.assert_called_once_with(host.__file__)
+        kill.assert_not_called()
+    else:
+        kill.assert_called_once_with(os.getpid(), signal.SIGTERM)
+        utime.assert_not_called()

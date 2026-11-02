@@ -56,10 +56,15 @@ def run_in_background(coroutine: Coroutine, name: str | None = None) -> asyncio.
 
 
 async def run_restart() -> None:
-    """Restart the app: SIGTERM to this process lets uvicorn stop cleanly, and systemd starts it again."""
-    logger.info("Restarting application via SIGTERM...")
+    """Restart the app: SIGTERM to this process lets uvicorn stop cleanly, and systemd starts it again.
+    In development (MIRRORDASH_DEV=1) no systemd is behind it, and uvicorn's reloader starts a new process
+    only when a watched file changes: touching this file restarts the app there instead of ending it."""
+    logger.info("Restarting application...")
     await asyncio.sleep(1)  # Allow HTTP responses to flush
-    os.kill(os.getpid(), signal.SIGTERM)
+    if os.getenv("MIRRORDASH_DEV") == "1":
+        os.utime(__file__)  # ponytail: needs main.py's reload watching mirrordash_core; started without it, nothing restarts
+    else:
+        os.kill(os.getpid(), signal.SIGTERM)
 
 
 async def _schedule_power_command(command: str, delay_sec: float) -> None:
