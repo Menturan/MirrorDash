@@ -380,7 +380,9 @@ def _module_title(package_name: str) -> str:
 
 def _fetch_pypi_simple_index() -> str:
     """PyPI's list of every package (one link each), or "" when it doesn't answer.
-    ponytail: the whole index, megabytes, since PyPI has no search API; scanned at most every 10 minutes."""
+    ponytail: the whole index, megabytes, since PyPI has no search API; scanned at most every 10 minutes.
+    HTML scanned by a regex, not the JSON form (PEP 691): json.loads of its 930,000 projects peaked at 325 MB
+    against 105 MB here (measured 2026-11-02), too much beside the screen on a Pi 3."""
     request = urllib.request.Request("https://pypi.org/simple/",
                                      headers={"User-Agent": "MirrorDash/1.0", "Accept-Encoding": "gzip"})
     try:
