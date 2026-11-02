@@ -28,7 +28,7 @@ Bug fix = root cause, not symptom: a report names a symptom. Grep every caller o
 Rules:
 
 * No abstractions that weren't explicitly requested.
-* No new dependency if it can be avoided.
+* No dependency by reflex, in either direction: weigh a library on what it replaces, its upkeep and its cost on the Pi (memory in every module instance, a build on the device), then add it or write the code.
 * No boilerplate nobody asked for.
 * Deletion over addition. Boring over clever. Fewest files possible.
 * Shortest working diff wins, but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.

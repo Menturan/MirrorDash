@@ -248,13 +248,19 @@ def module_name_clash(package: str, new_folder: Path, links: dict[str, str]) -> 
 def package_key(target: str) -> str | None:
     """The name a module's folder and user go by, from what uv installs: a GitHub repository's name, a
     local folder's or a PyPI requirement's, lowercase with '-' between words. None for anything else."""
+    # here, not at the top: the forkserver imports this file, and every instance it forks would carry packaging
+    from packaging.requirements import InvalidRequirement, Requirement
+    from packaging.utils import canonicalize_name
     if target.startswith("git+"):
         name = target.split("@")[0].rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
     elif "/" in target:
         name = Path(target).name
     else:
-        name = re.split(r"[\[<>=!~;@ ]", target, maxsplit=1)[0]
-    key = re.sub(r"[-_.]+", "-", name).lower()
+        try:
+            name = Requirement(target).name
+        except InvalidRequirement:
+            return None
+    key = canonicalize_name(name)
     return key if re.fullmatch(r"[a-z0-9-]{1,56}", key) else None
 
 

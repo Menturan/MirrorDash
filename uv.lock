@@ -359,6 +359,7 @@ dependencies = [
     { name = "babel" },
     { name = "fastapi" },
     { name = "jinja2" },
+    { name = "packaging" },
     { name = "python-multipart" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -379,6 +380,7 @@ requires-dist = [
     { name = "fastapi", specifier = "~=0.158.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.27.0" },
     { name = "jinja2", specifier = "~=3.1.6" },
+    { name = "packaging", specifier = ">=24" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23.0" },
     { name = "pytest-mock", marker = "extra == 'dev'", specifier = ">=3.12.0" },

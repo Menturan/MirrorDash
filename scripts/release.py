@@ -15,6 +15,7 @@ Needs the GitHub CLI, logged in (`gh auth login`), and the dev venv (.venv, `uv 
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -27,8 +28,11 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
+if sys.prefix == sys.base_prefix and VENV_PYTHON.exists():  # not in a venv yet
+    os.execv(VENV_PYTHON, [str(VENV_PYTHON), *sys.argv])  # the dev venv has packaging (version_key) and the tests
 sys.path.insert(0, str(ROOT))
-from mirrordash_core.config import version_key  # noqa: E402  (stdlib-only module)
+from mirrordash_core.config import version_key  # noqa: E402
 
 TEST_IMAGE_DIR = ROOT / "build_workspace" / "test-image"
 DRY = "--dry-run" in sys.argv
@@ -202,10 +206,9 @@ def check_ready(tag, tests=True, upgrade=False):
         print("\n  Running the tests...")
         # python -m pytest, not .venv/bin/pytest: the scripts' shebangs keep the path the venv
         # was made at, so they break when the repo moves.
-        python = ROOT / ".venv" / "bin" / "python"
-        if not python.exists():
+        if not VENV_PYTHON.exists():
             die("no dev venv (.venv); make one with `uv sync --extra dev`.")
-        if subprocess.run([str(python), "-m", "pytest", "-q"], cwd=ROOT).returncode != 0:
+        if subprocess.run([str(VENV_PYTHON), "-m", "pytest", "-q"], cwd=ROOT).returncode != 0:
             die("the tests failed (if pytest is missing or the repo moved, run `uv sync --extra dev`).")
 
 

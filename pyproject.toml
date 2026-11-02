@@ -23,6 +23,7 @@ dependencies = [
     "python-multipart~=0.0.32",
     "babel>=2.17",
     "aiomqtt~=2.5.1",
+    "packaging>=24",
 ]
 
 [project.optional-dependencies]

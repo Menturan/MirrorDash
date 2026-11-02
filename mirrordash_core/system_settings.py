@@ -4,9 +4,16 @@ checks and applies them, shared by the Hardware, Power and Settings tabs and Hom
 
 import logging
 import os
-import re
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
+from pydantic import (
+    BaseModel,
+    Field,
+    StringConstraints,
+    ValidationError,
+    model_validator,
+)
 
 from mirrordash_core.admin import notify, require_api_key
 from mirrordash_core.config import load_config, save_config
@@ -92,43 +99,66 @@ async def get_system_settings() -> dict:
     }
 
 
+HHMM = Annotated[str, StringConstraints(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")]  # 00:00 to 23:59
+
+
+class Interval(BaseModel, strict=True, extra="allow"):
+    start: HHMM = "00:00"
+    end: HHMM = "00:00"
+
+
+class Wake(BaseModel, strict=True, extra="allow"):
+    timeout_minutes: Annotated[int, Field(ge=1, le=1440)] = DEFAULT_WAKE["timeout_minutes"]
+    extend: bool = DEFAULT_WAKE["extend"]
+    presence: bool = DEFAULT_WAKE["presence"]
+
+
+class DisplayControl(BaseModel, strict=True, extra="allow"):
+    mode: Literal["manual", "interval", "wake"] = "manual"
+    interval: Interval = Interval()
+    wake: Wake = Wake()
+
+    @model_validator(mode="before")
+    @classmethod
+    def times_only_in_interval_mode(cls, data):
+        """The schedule's times count only in interval mode; another mode keeps whatever is there."""
+        if isinstance(data, dict) and data.get("mode") != "interval" and isinstance(data.get("interval"), dict):
+            data = {**data, "interval": {}}
+        return data
+
+
+class SystemSettings(BaseModel, strict=True):
+    """Trust boundary for everything the admin page and Home Assistant can send (strict: True is no number)."""
+    rotation: Literal["normal", "left", "right", "inverted"] = "normal"
+    resolution: Annotated[str, StringConstraints(pattern=r"^[\w.@-]+$")] = "auto"  # auto, 1920x1080 ...: nothing a command line could read as more
+    brightness: Annotated[int, Field(ge=10, le=100)] = 100
+    volume: Annotated[int, Field(ge=0, le=100)] = 80
+    ssh: bool = False
+    prerelease: bool = False
+    auto_update: bool = True
+    display_control: DisplayControl = DisplayControl()
+
+
 # What a setting is when the config doesn't have it yet
-DEFAULTS = {"rotation": "normal", "resolution": "auto", "brightness": 100, "volume": 80, "ssh": False, "prerelease": False,
-            "auto_update": True}
-HHMM = re.compile(r"^([01]\d|2[0-3]):[0-5]\d$")  # 00:00 to 23:59
-RESOLUTION = re.compile(r"^[\w.@-]+$")  # auto, 1920x1080 ...: a word, nothing a command line could read as more
-
-
-def _int_in(value, low: int, high: int) -> bool:
-    """Whether value is a whole number (not True/False) from low to high."""
-    return isinstance(value, int) and not isinstance(value, bool) and low <= value <= high
+DEFAULTS = SystemSettings().model_dump(exclude={"display_control"})
+# What the admin page says about a refused setting: by the innermost name in the error's place
+REFUSED = {
+    "ssh": "SSH must be on or off", "resolution": "Invalid resolution", "rotation": "Invalid rotation value",
+    "brightness": "Brightness must be between 10 and 100", "volume": "Volume must be between 0 and 100",
+    "prerelease": "Test versions must be on or off", "auto_update": "Automatic updates must be on or off",
+    "mode": "Invalid display power mode", "timeout_minutes": "The screen timeout must be 1 to 1440 minutes",
+    "extend": "Invalid wake settings", "presence": "Invalid wake settings",
+    "start": "Invalid interval time format (HH:MM)", "end": "Invalid interval time format (HH:MM)",
+}
 
 
 def _check_system_settings(new: dict) -> None:
-    """Trust boundary for everything the admin page and Home Assistant can send."""
-    display_control = new["display_control"]
-    wake = display_control.get("wake", {})
-    interval = display_control.get("interval", {})
-    if not isinstance(wake, dict) or not isinstance(interval, dict):
-        raise HTTPException(status_code=400, detail="Invalid display power settings")
-    checks = [
-        (isinstance(new["ssh"], bool), "SSH must be on or off"),
-        (isinstance(new["resolution"], str) and RESOLUTION.fullmatch(new["resolution"]), "Invalid resolution"),
-        (new["rotation"] in ("normal", "left", "right", "inverted"), "Invalid rotation value"),
-        (_int_in(new["brightness"], 10, 100), "Brightness must be between 10 and 100"),
-        (_int_in(new["volume"], 0, 100), "Volume must be between 0 and 100"),
-        (display_control.get("mode", "manual") in ("manual", "interval", "wake"), "Invalid display power mode"),
-        (_int_in(wake.get("timeout_minutes", DEFAULT_WAKE["timeout_minutes"]), 1, 1440), "The screen timeout must be 1 to 1440 minutes"),
-        (all(isinstance(wake.get(key, True), bool) for key in ("extend", "presence")), "Invalid wake settings"),
-        (isinstance(new["prerelease"], bool), "Test versions must be on or off"),
-        (isinstance(new["auto_update"], bool), "Automatic updates must be on or off"),
-        (display_control.get("mode") != "interval"
-         or all(isinstance(interval.get(end, "00:00"), str) and HHMM.fullmatch(interval.get(end, "00:00")) for end in ("start", "end")),
-         "Invalid interval time format (HH:MM)"),
-    ]
-    for ok, message in checks:
-        if not ok:
-            raise HTTPException(status_code=400, detail=message)
+    try:
+        SystemSettings.model_validate(new)
+    except ValidationError as e:
+        place = e.errors()[0]["loc"]
+        raise HTTPException(status_code=400, detail=next(
+            (REFUSED[name] for name in reversed(place) if name in REFUSED), "Invalid display power settings"))
 
 
 @router.post("/system", dependencies=[Depends(require_api_key)])

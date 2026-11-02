@@ -706,6 +706,14 @@ def test_version_key_orders_pre_releases_below_their_release():
     assert sorted(reversed(ordered), key=version_key) == ordered
     assert version_key("0.5.0-rc1") == version_key("0.5.0rc1")
     assert version_key("unknown") < version_key("0.0.1")
+    assert version_key("0.5.0.dev1") < version_key("0.5.0a1") and version_key("0.5.0.post1") > version_key("0.5.0")
+
+
+def test_package_key_names_a_module_by_its_package():
+    from mirrordash_core.features.modules.host import package_key
+    assert package_key("Mirrordash_Clock[extra]>=1.2; python_version>'3'") == "mirrordash-clock"
+    assert package_key("git+https://github.com/a/MirrorDash.News.git@v1.0") == "mirrordash-news"
+    assert package_key("not a requirement!") is None
 
 
 @pytest.mark.parametrize("prerelease, expected", [(False, "0.4.0"), (True, "0.5.0rc1")])

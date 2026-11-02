@@ -1,0 +1,150 @@
+{# The admin's forms from a JSON schema: one macro per kind of field, forms.py picks it. Autoescaped:
+   titles, descriptions, options and values come from a module's author. A value in a JS string goes
+   through tojson, since the browser decodes HTML escapes before the JS runs. #}
+
+{% macro label(f, with_for=true) -%}
+<div class="form-label-desc"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label><p class="field-description">{{ f.description }}</p></div>
+{%- endmacro %}
+
+{% macro options(prop, current) -%}
+{% set titles = prop.get("enum_titles") or prop.get("enumNames") %}
+{%- for opt in prop["enum"] %}
+<option value="{{ opt }}"{% if current == opt %} selected{% endif %}>{{ titles[loop.index0] if titles and loop.index0 < titles|length else (opt|string).replace("_", " ").upper() }}</option>
+{%- endfor %}
+{%- endmacro %}
+
+{% macro toggle(f) -%}
+<div class="form-group toggle-group schema-field">{{ label(f) }}
+    <label class="switch"><input type="hidden" name="{{ f.name }}" value="false">
+    <input type="checkbox" id="{{ f.id }}" name="{{ f.name }}" value="true"{% if f.stored_value %} checked{% endif %}>
+    <span class="slider round"></span></label></div>
+{%- endmacro %}
+
+{% macro select(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <select id="{{ f.id }}" name="{{ f.name }}" class="form-control">{{ options(f.schema, f.stored_value) }}</select></div>
+{%- endmacro %}
+
+{% macro checkboxes(f) -%}
+{% set chosen = f.stored_value if f.stored_value is sequence and f.stored_value is not string and f.stored_value is not mapping else [] %}
+<div class="form-group schema-group">{{ label(f, false) }}
+    <div class="schema-checkboxes"><input type="hidden" name="{{ f.name }}" value="">
+    {%- for opt in f.schema["items"]["enum"] %}
+    <label class="checkbox-inline"><input type="checkbox" id="{{ html_id(f.id, opt) }}" name="{{ f.name }}" value="{{ opt }}"{% if opt in chosen %} checked{% endif %}><span>{{ (opt|string).replace("_", " ").upper() }}</span></label>
+    {%- endfor %}</div></div>
+{%- endmacro %}
+
+{% macro array(f, cards, item_title) -%}
+{% set container = "array-container-" ~ f.key %}
+<div class="form-group schema-group">{{ label(f, false) }}
+    <div class="array-items-container" id="{{ container }}">{{ cards }}</div>
+    <button type="button" class="btn secondary btn-sm" hx-get="/admin/panels/config/add-array-item"
+            hx-vals='js:{index: document.querySelectorAll("#{{ container }} .array-item-card").length, name_prefix: {{ f.prefix|tojson }}, array_key: {{ f.key|tojson }}, item_title: {{ item_title|tojson }}, module_name: {{ f.module_name|tojson }}}'
+            hx-target="#{{ container }}" hx-swap="beforeend"><i class="fas fa-plus"></i> Add {{ item_title }}</button></div>
+{%- endmacro %}
+
+{% macro accordion(f, inner) -%}
+<details class="form-accordion"><summary>{{ f.title }}</summary>
+    <div class="form-accordion-body"><p class="field-description">{{ f.description }}</p>{{ inner }}</div></details>
+{%- endmacro %}
+
+{% macro slider(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <div class="range-row"><input type="range" min="{{ f.schema['minimum'] }}" max="{{ f.schema['maximum'] }}" step="{{ f.schema.get('step', '1' if f.schema['type'] == 'integer' else 'any') }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control-range" oninput="this.nextElementSibling.value = this.value">
+    <output>{{ f.value }}</output></div></div>
+{%- endmacro %}
+
+{% macro number(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <input type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+{%- endmacro %}
+
+{% macro color(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <div class="color-row"><input type="color" id="{{ f.id }}-picker" value="{{ f.value }}" oninput="document.getElementById('{{ f.id }}').value = this.value">
+    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control" oninput="document.getElementById('{{ f.id }}-picker').value = this.value"></div></div>
+{%- endmacro %}
+
+{% macro password(f) -%}
+<div class="form-group schema-field wide">{{ label(f) }}
+    <div class="pw-field"><input type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
+{%- endmacro %}
+
+{% macro textarea(f) -%}
+<div class="form-group schema-field wide">{{ label(f) }}
+    <textarea id="{{ f.id }}" name="{{ f.name }}" rows="3" class="form-control schema-textarea">{{ f.value }}</textarea></div>
+{%- endmacro %}
+
+{% macro text(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+{%- endmacro %}
+
+{# An address at home the module may reach (client.py lets the module host through to it). The schema's
+   default is only a hint, never filled in: saving the form must not open an address the owner didn't type. #}
+{% macro lan_url(f) -%}
+<div class="form-group schema-field wide">{{ label(f) }}
+    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.schema.get('default', '') }}" class="form-control">
+    <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>
+{%- endmacro %}
+
+{# A Lucide icon's name, drawn beside it as it is typed; admin.js suggests the names of the page's Lucide. #}
+{% macro icon_input(f, size="") -%}
+<div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control{{ size }}" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div>
+{%- endmacro %}
+
+{% macro icon(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    {{ icon_input(f) }}</div>
+{%- endmacro %}
+
+{# The fields of a list item (render_array_item) #}
+
+{% macro sub_swatches(f) -%}
+<div class="sub-form-group wide"><label for="{{ f.id }}">{{ f.title }}</label>
+    <div class="swatch-row"><div class="swatches">
+    {%- for title, value, preview_hex_color in SWATCHES %}
+    <button type="button" class="color-swatch-btn{% if f.stored_value == value %} active{% endif %}" style="background-color: {{ preview_hex_color }};" title="{{ title }}" onclick="selectSubFieldColor(this, '{{ f.id }}', '{{ value }}')"></button>
+    {%- endfor %}</div>
+    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm swatch-value" oninput="updateSwatchSelection(this)"></div></div>
+{%- endmacro %}
+
+{% macro sub_icons(f) -%}
+<div class="sub-form-group wide"><label for="{{ f.id }}">{{ f.title }}</label>
+    <div class="icon-picker"><div class="icon-grid">
+    {%- for icon in ICONS %}
+    <button type="button" class="icon-picker-btn{% if f.stored_value == icon %} active{% endif %}" title="{{ icon }}" onclick="selectSubFieldIcon(this, '{{ f.id }}', '{{ icon }}')"><i data-lucide="{{ icon }}"></i></button>
+    {%- endfor %}</div>
+    <div class="icon-custom"><span>Custom Name:</span><input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>
+{%- endmacro %}
+
+{% macro sub_icon(f) -%}
+<div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
+    {{ icon_input(f, " form-control-sm") }}</div>
+{%- endmacro %}
+
+{% macro sub_select(f) -%}
+<div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
+    <select id="{{ f.id }}" name="{{ f.name }}" class="form-control form-control-sm">{{ options(f.schema, f.stored_value) }}</select></div>
+{%- endmacro %}
+
+{% macro sub_text(f) -%}
+<div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
+    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm"></div>
+{%- endmacro %}
+
+{# One card in a list setting (e.g. a calendar), folded to one line (admin.js arrayItemSummary fills it in) #}
+{% macro array_item(index, item_title, fields, is_open) -%}
+<details class="array-item-card"{% if is_open %} open{% endif %}>
+    <summary class="array-item-head">
+        <i class="fas fa-chevron-right array-item-chevron" aria-hidden="true"></i>
+        <span class="array-item-summary"><span class="array-item-index-title" data-item-title="{{ item_title }}"># {{ index + 1 }}: {{ item_title }}</span><span class="array-item-sub"></span></span>
+        <span class="array-item-tools">
+            <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'up')" title="Move up" aria-label="Move up"><i class="fas fa-arrow-up"></i></button>
+            <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'down')" title="Move down" aria-label="Move down"><i class="fas fa-arrow-down"></i></button>
+            <button type="button" class="btn danger btn-sm" onclick="event.preventDefault(); const container = this.closest('.array-items-container'); this.closest('.array-item-card').remove(); reindexArrayContainer(container); container.dispatchEvent(new Event('input', {bubbles: true}));" title="Remove" aria-label="Remove"><i class="fas fa-trash"></i></button>
+        </span>
+    </summary>
+    <div class="array-item-fields">{{ fields }}</div>
+</details>
+{%- endmacro %}

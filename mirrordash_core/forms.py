@@ -1,13 +1,15 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Admin forms built from a JSON schema (a module's config_schema, the global settings), and the
-posted form read back into nested data. One small render function per kind of field."""
+posted form read back into nested data. One macro per kind of field, in templates/schema_form.html."""
 
+import functools
 import itertools
-import json
 import logging
 import re
 from dataclasses import dataclass
-from html import escape
+
+from jinja2 import Environment, PackageLoader
+from markupsafe import Markup
 
 logger = logging.getLogger("mirrordash.core.forms")
 
@@ -81,12 +83,15 @@ SAFE_PREFIX = re.compile(r"^[A-Za-z0-9_\[\]-]{0,256}$")
 
 def _html_id(*parts) -> str:
     """An HTML id from its parts: "field", "modules[clock]", "show_seconds" -> "field-modules-clock--show-seconds"."""
-    return escape("-".join(str(p) for p in parts).replace("[", "-").replace("]", "-").replace("_", "-"), quote=True)
+    return "-".join(str(p) for p in parts).replace("[", "-").replace("]", "-").replace("_", "-")
 
 
-def _as_js_string_in_attribute(value) -> str:
-    """A value as a JS string literal inside an HTML attribute."""
-    return escape(json.dumps(str(value)), quote=True)
+@functools.cache
+def _macros():
+    """templates/schema_form.html's macros, autoescaped: everything in a schema comes from a module's author."""
+    env = Environment(loader=PackageLoader("mirrordash_core"), autoescape=True)
+    env.globals.update(html_id=_html_id, SWATCHES=SWATCHES, ICONS=ICONS)
+    return env.get_template("schema_form.html").module
 
 
 def _safe_properties(properties) -> dict:
@@ -101,8 +106,7 @@ def _safe_properties(properties) -> dict:
 
 @dataclass
 class Field:
-    """One schema property, ready to render. Everything from a schema comes from a module's author and
-    is escaped: `value`, `title` and `description` here, the rest where it is used."""
+    """One schema property, ready to render (the template escapes it)."""
     key: str
     schema: dict  # the property's own schema: type, title, enum, default...
     stored_value: object  # what is saved, or the schema's default
@@ -113,51 +117,15 @@ class Field:
 
     @property
     def value(self) -> str:
-        return escape(str(self.stored_value), quote=True)
+        return str(self.stored_value)
 
     @property
     def title(self) -> str:
-        return escape(str(self.schema.get("title", self.key)), quote=True)
+        return str(self.schema.get("title", self.key))
 
     @property
     def description(self) -> str:
-        return escape(str(self.schema.get("description", "")), quote=True)
-
-
-def _label(field: Field, with_for: bool = True) -> str:
-    target = f' for="{field.id}"' if with_for else ""
-    return (f'<div class="form-label-desc"><label{target} class="field-title">{field.title}</label>'
-            f'<p class="field-description">{field.description}</p></div>')
-
-
-def _options(prop: dict, current) -> str:
-    titles = prop.get("enum_titles") or prop.get("enumNames")
-    return "\n".join(
-        f'<option value="{escape(str(opt), quote=True)}"{" selected" if current == opt else ""}>'
-        f'{escape(str(titles[i] if titles and i < len(titles) else str(opt).replace("_", " ").upper()))}</option>'
-        for i, opt in enumerate(prop["enum"]))
-
-
-def _toggle(field: Field) -> str:
-    return f'''<div class="form-group toggle-group schema-field">{_label(field)}
-        <label class="switch"><input type="hidden" name="{field.name}" value="false">
-        <input type="checkbox" id="{field.id}" name="{field.name}" value="true"{" checked" if field.stored_value else ""}>
-        <span class="slider round"></span></label></div>'''
-
-
-def _select(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
-        <select id="{field.id}" name="{field.name}" class="form-control">{_options(field.schema, field.stored_value)}</select></div>'''
-
-
-def _checkboxes(field: Field) -> str:
-    chosen = field.stored_value if isinstance(field.stored_value, list) else []
-    boxes = "\n".join(
-        f'<label class="checkbox-inline"><input type="checkbox" id="{_html_id(field.id, opt)}" name="{field.name}" '
-        f'value="{escape(str(opt), quote=True)}"{" checked" if opt in chosen else ""}><span>{escape(str(opt).replace("_", " ").upper())}</span></label>'
-        for opt in field.schema["items"]["enum"])
-    return f'''<div class="form-group schema-group">{_label(field, with_for=False)}
-        <div class="schema-checkboxes"><input type="hidden" name="{field.name}" value="">{boxes}</div></div>'''
+        return str(self.schema.get("description", ""))
 
 
 def _array(field: Field) -> str:
@@ -167,98 +135,39 @@ def _array(field: Field) -> str:
     items = [item for item in field.stored_value if isinstance(item, dict)] if isinstance(field.stored_value, list) else []
     cards = "\n".join(render_array_item(field.prefix, field.key, items_schema.get("properties", {}), i, item, item_title)
                       for i, item in enumerate(items))
-    container_id = f"array-container-{field.key}"
-    return f'''<div class="form-group schema-group">{_label(field, with_for=False)}
-        <div class="array-items-container" id="{container_id}">{cards}</div>
-        <button type="button" class="btn secondary btn-sm" hx-get="/admin/panels/config/add-array-item"
-                hx-vals='js:{{index: document.querySelectorAll("#{container_id} .array-item-card").length, name_prefix: {_as_js_string_in_attribute(field.prefix)}, array_key: {_as_js_string_in_attribute(field.key)}, item_title: {_as_js_string_in_attribute(item_title)}, module_name: {_as_js_string_in_attribute(field.module_name)}}}'
-                hx-target="#{container_id}" hx-swap="beforeend"><i class="fas fa-plus"></i> Add {escape(item_title)}</button></div>'''
+    return _macros().array(field, Markup(cards), item_title)
 
 
 def _object(field: Field) -> str:
     inner = render_schema_form({"properties": field.schema.get("properties", {})},
                                field.stored_value if isinstance(field.stored_value, dict) else {}, field.name, field.module_name)
-    return f'''<details class="form-accordion"><summary>{field.title}</summary>
-        <div class="form-accordion-body"><p class="field-description">{field.description}</p>{inner}</div></details>'''
-
-
-def _range(field: Field) -> str:
-    step = escape(str(field.schema.get("step", "1" if field.schema["type"] == "integer" else "any")), quote=True)
-    minimum, maximum = (escape(str(field.schema[bound]), quote=True) for bound in ("minimum", "maximum"))
-    return f'''<div class="form-group schema-field">{_label(field)}
-        <div class="range-row"><input type="range" min="{minimum}" max="{maximum}" step="{step}" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control-range" oninput="this.nextElementSibling.value = this.value">
-        <output>{field.value}</output></div></div>'''
-
-
-def _number(field: Field) -> str:
-    step = "1" if field.schema["type"] == "integer" else "any"
-    return f'''<div class="form-group schema-field">{_label(field)}
-        <input type="number" step="{step}" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control"></div>'''
-
-
-def _color(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
-        <div class="color-row"><input type="color" id="{field.id}-picker" value="{field.value}" oninput="document.getElementById('{field.id}').value = this.value">
-        <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control" oninput="document.getElementById('{field.id}-picker').value = this.value"></div></div>'''
-
-
-def _password(field: Field) -> str:
-    return f'''<div class="form-group schema-field wide">{_label(field)}
-        <div class="pw-field"><input type="password" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{field.id}" aria-controls="{field.id}" aria-pressed="false">Show</button></div></div>'''
-
-
-def _textarea(field: Field) -> str:
-    return f'''<div class="form-group schema-field wide">{_label(field)}
-        <textarea id="{field.id}" name="{field.name}" rows="3" class="form-control schema-textarea">{field.value}</textarea></div>'''
-
-
-def _text(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
-        <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control"></div>'''
-
-
-def _lan_url(field: Field) -> str:
-    """An address at home the module may reach (client.py lets the module host through to it). The schema's
-    default is only a hint, never filled in: saving the form must not open an address the owner didn't type."""
-    hint = escape(str(field.schema.get("default", "")), quote=True)
-    return f'''<div class="form-group schema-field wide">{_label(field)}
-        <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" placeholder="{hint}" class="form-control">
-        <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
-
-
-def _icon_input(field: Field, size: str = "") -> str:
-    """A Lucide icon's name, drawn beside it as it is typed; admin.js suggests the names of the page's Lucide."""
-    return f'''<div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control{size}" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div>'''
-
-
-def _icon(field: Field) -> str:
-    return f'''<div class="form-group schema-field">{_label(field)}
-        {_icon_input(field)}</div>'''
+    return _macros().accordion(field, Markup(inner))
 
 
 def _item_schema(prop: dict) -> dict:
     return prop.get("items", {})
 
 
-# Which input a schema property gets: the first rule that matches (type, then format, then name)
+# Which input a schema property gets: the first rule that matches (type, then format, then name); a
+# macro's name in templates/schema_form.html, or a function for the fields that hold fields
 WIDGET_RULES = [
-    (lambda key, p: p.get("type") == "boolean", _toggle),
-    (lambda key, p: bool(p.get("enum")), _select),
-    (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "string" and bool(_item_schema(p).get("enum")), _checkboxes),
+    (lambda key, p: p.get("type") == "boolean", "toggle"),
+    (lambda key, p: bool(p.get("enum")), "select"),
+    (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "string" and bool(_item_schema(p).get("enum")), "checkboxes"),
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "object", _array),
     (lambda key, p: p.get("type") == "object", _object),
-    (lambda key, p: p.get("type") in ("integer", "number") and "minimum" in p and "maximum" in p, _range),
-    (lambda key, p: p.get("type") in ("integer", "number"), _number),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "color" or key == "color"), _color),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "password" or key in SECRET_KEYS), _password),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), _textarea),
-    (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", _lan_url),
-    (lambda key, p: p.get("type") == "string" and p.get("format") == "icon", _icon),
+    (lambda key, p: p.get("type") in ("integer", "number") and "minimum" in p and "maximum" in p, "slider"),
+    (lambda key, p: p.get("type") in ("integer", "number"), "number"),
+    (lambda key, p: p.get("type") == "string" and (p.get("format") == "color" or key == "color"), "color"),
+    (lambda key, p: p.get("type") == "string" and (p.get("format") == "password" or key in SECRET_KEYS), "password"),
+    (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), "textarea"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", "lan_url"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "icon", "icon"),
 ]
 
 
-def _render_function_for(key: str, prop: dict):
-    return next((render for matches, render in WIDGET_RULES if matches(key, prop)), _text)
+def _render(widget, field: Field) -> str:
+    return widget(field) if callable(widget) else getattr(_macros(), widget)(field)
 
 
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "") -> str:
@@ -271,75 +180,30 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     for key in keys:
         prop = properties[key]
         value = current_values.get(key)
-        default = "" if prop.get("format") == "lan-url" else prop.get("default", "")  # _lan_url: a hint only
+        default = "" if prop.get("format") == "lan-url" else prop.get("default", "")  # lan_url: a hint only
         field = Field(key, prop, default if value is None else value,
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name)
-        parts.append(_render_function_for(key, prop)(field))
+        widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
+        parts.append(_render(widget, field))
     return "\n".join(parts)
-
-
-def _sub_swatches(field: Field) -> str:
-    swatches = "\n".join(
-        f'''<button type="button" class="color-swatch-btn{" active" if field.stored_value == value else ""}" style="background-color: {preview_hex_color};" title="{title}" onclick="selectSubFieldColor(this, '{field.id}', '{value}')"></button>'''
-        for title, value, preview_hex_color in SWATCHES)
-    return f'''<div class="sub-form-group wide"><label for="{field.id}">{field.title}</label>
-        <div class="swatch-row"><div class="swatches">{swatches}</div>
-        <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control form-control-sm swatch-value" oninput="updateSwatchSelection(this)"></div></div>'''
-
-
-def _sub_icons(field: Field) -> str:
-    icons = "\n".join(
-        f'''<button type="button" class="icon-picker-btn{" active" if field.stored_value == icon else ""}" title="{icon}" onclick="selectSubFieldIcon(this, '{field.id}', '{icon}')"><i data-lucide="{icon}"></i></button>'''
-        for icon in ICONS)
-    return f'''<div class="sub-form-group wide"><label for="{field.id}">{field.title}</label>
-        <div class="icon-picker"><div class="icon-grid">{icons}</div>
-        <div class="icon-custom"><span>Custom Name:</span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>'''
-
-
-def _sub_icon(field: Field) -> str:
-    return f'''<div class="sub-form-group"><label for="{field.id}">{field.title}</label>
-        {_icon_input(field, " form-control-sm")}</div>'''
-
-
-def _sub_select(field: Field) -> str:
-    return f'''<div class="sub-form-group"><label for="{field.id}">{field.title}</label>
-        <select id="{field.id}" name="{field.name}" class="form-control form-control-sm">{_options(field.schema, field.stored_value)}</select></div>'''
-
-
-def _sub_text(field: Field) -> str:
-    return f'''<div class="sub-form-group"><label for="{field.id}">{field.title}</label>
-        <input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control form-control-sm"></div>'''
 
 
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str) -> str:
     """One card in a list setting (e.g. a calendar), with move up/down and remove."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key):
         raise ValueError("Unsafe form name prefix or list name")
-    item_title = escape(str(item_title), quote=True)
     fields = []
     for key, prop in _safe_properties(sub_properties).items():
         value = item_val.get(key)
         field = Field(key, prop, prop.get("default", "") if value is None else value,
                       _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
                       name_prefix, "")
-        render = ({"color": _sub_swatches, "icon": _sub_icons}.get(key) or (_sub_select if prop.get("enum") else
-                  _sub_icon if prop.get("format") == "icon" else _sub_text))
-        fields.append(render(field))
-    # Folded to one line (admin.js arrayItemSummary fills it in); a new, empty item opens to be filled in
-    is_open = " open" if not any(item_val.values()) else ""
-    return f'''<details class="array-item-card"{is_open}>
-        <summary class="array-item-head">
-            <i class="fas fa-chevron-right array-item-chevron" aria-hidden="true"></i>
-            <span class="array-item-summary"><span class="array-item-index-title" data-item-title="{item_title}"># {index + 1}: {item_title}</span><span class="array-item-sub"></span></span>
-            <span class="array-item-tools">
-                <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'up')" title="Move up" aria-label="Move up"><i class="fas fa-arrow-up"></i></button>
-                <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'down')" title="Move down" aria-label="Move down"><i class="fas fa-arrow-down"></i></button>
-                <button type="button" class="btn danger btn-sm" onclick="event.preventDefault(); const container = this.closest('.array-items-container'); this.closest('.array-item-card').remove(); reindexArrayContainer(container); container.dispatchEvent(new Event('input', {{bubbles: true}}));" title="Remove" aria-label="Remove"><i class="fas fa-trash"></i></button>
-            </span>
-        </summary>
-        <div class="array-item-fields">{"".join(fields)}</div>
-    </details>'''
+        widget = ({"color": "sub_swatches", "icon": "sub_icons"}.get(key) or
+                  ("sub_select" if prop.get("enum") else "sub_icon" if prop.get("format") == "icon" else "sub_text"))
+        fields.append(_render(widget, field))
+    # A new, empty item opens to be filled in
+    return str(_macros().array_item(index, str(item_title), Markup("".join(fields)), not any(item_val.values())))
 
 
 async def read_form(request) -> dict:

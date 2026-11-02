@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
+from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
@@ -92,9 +93,16 @@ async def check_core_update() -> dict:
 
 def needed_python(requires_python: str | None) -> str | None:
     """The newer Python a release needs ("3.15"), from PyPI's requires_python, or None when the
-    running one will do. ponytail: reads only the ">=3.N" part, all our pyproject has ever used."""
-    match = re.search(r">=\s*3\.(\d+)", requires_python or "")
-    return f"3.{match[1]}" if match and int(match[1]) > sys.version_info.minor else None
+    running one will do (or the requirement doesn't read)."""
+    try:
+        allowed = SpecifierSet(requires_python or "")
+    except InvalidSpecifier:
+        return None
+    if allowed.contains(".".join(map(str, sys.version_info[:3])), prereleases=True):
+        return None
+    # ponytail: looks ten minor versions ahead, far more than one release ever jumps
+    return next((f"3.{minor}" for minor in range(sys.version_info.minor + 1, sys.version_info.minor + 11)
+                 if allowed.contains(f"3.{minor}")), None)
 
 
 # The last update to a newer Python that some modules stopped (see _update_to_new_python), for the

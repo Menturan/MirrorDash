@@ -231,18 +231,15 @@ def get_core_version() -> str:
             continue
     return "unknown"
 
-def version_key(version: str) -> tuple:
-    """Sortable key for "1.2.3", "v1.2.3" and pre-releases like "1.2.3rc1"; a release sorts above its
-    own pre-releases (0.5.0rc1 < 0.5.0). Anything else sorts lowest."""
-    # ponytail: only the version shapes MirrorDash publishes, not all of PEP 440 (no epochs, .post or .dev);
-    # the mirror has no `packaging` to lean on.
-    import re
-    match = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)(?:-?(a|b|rc)(\d+))?", version.strip())
-    if not match:
-        return (0,)
-    major, minor, patch, prerelease_kind, prerelease_number = match.groups()
-    # a < b < rc < the release itself (3)
-    prerelease_rank = ("a", "b", "rc").index(prerelease_kind) if prerelease_kind else 3
-    return (int(major), int(minor), int(patch), prerelease_rank, int(prerelease_number or 0))
 
-
+def version_key(version: str):
+    """Sortable key for any PEP 440 version ("1.2.3", "v1.2.3", "1.2.3rc1"; a release sorts above its own
+    pre-releases). Anything else sorts lowest."""
+    from packaging.version import (  # here: every module instance imports config, none compares versions
+        InvalidVersion,
+        Version,
+    )
+    try:
+        return Version(version)
+    except InvalidVersion:
+        return Version("0")

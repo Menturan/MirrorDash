@@ -57,7 +57,8 @@ ZIP_ENTRY_IS_ENCRYPTED = 0x1
 SECRET_FILES = ("pi_password.hash",)
 
 # openssl enc's header: the backup is encrypted. ponytail: AES-256-CBC with PBKDF2, no MAC; a changed
-# file fails to unpack as a zip rather than being detected. Upgrade path: openssl's -aead modes (3.x).
+# file fails to unpack as a zip rather than being detected. Upgrade path: AES-GCM with `cryptography`
+# (`openssl enc` refuses AEAD ciphers, also in 3.x).
 ENCRYPTED_MAGIC = b"Salted__"
 
 
