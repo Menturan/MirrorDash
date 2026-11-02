@@ -295,7 +295,7 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
             max_age = default_max_age()
         parse_answer = parse or (lambda raw: raw)
         url_parts = urllib.parse.urlsplit(url)
-        where = f"{method} {url_parts.netloc}{url_parts.path}"  # never the query, headers or body: they can hold keys
+        where = f"{method} {url_parts.hostname}"  # only the host: user:password@, path (a Google Calendar private-… link), query, headers and body can hold keys
         cache_file = _cache_file_for(cache_dir, method, url, body)
 
         if fixtures is not None:
