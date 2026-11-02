@@ -10,8 +10,9 @@
 <link rel="stylesheet" href="/static/fonts/inter.css">
 <link rel="stylesheet" href="/static/style.css">
 <style>
-    html, body { margin: 0; background: #000; overflow: hidden; cursor: default; }
-    .preview { width: max-content; max-width: 900px; padding: 24px; }
+    html, body { margin: 0; background: #000; overflow-x: hidden; overflow-y: auto; cursor: default; }
+    .preview { position: absolute; top: 0; left: 50%; width: max-content; max-width: 900px; padding: 24px;
+               transform: translateX(-50%); transform-origin: top center; }
     .preview-empty { color: #8a8a8a; font: 14px/1.5 Inter, system-ui, sans-serif; text-align: center; padding: 48px 24px; margin: 0; }
 </style>
 </head>
@@ -42,12 +43,17 @@
         old.remove();
         {% endif %}
     }
+    // Scaled down to fit, centred; again whenever the card's size changes (fonts, icons, a ticking clock).
+    // A transform leaves offsetWidth/Height as they are, so measuring doesn't feed back into itself.
+    // ponytail: never below 0.6 for height (a tall card on a phone would be unreadable): the rest scrolls
+    const preview = document.querySelector('.preview');
     const fit = () => {
-        const preview = document.querySelector('.preview');
-        document.body.style.zoom = 1;
-        document.body.style.zoom = Math.min(1, innerWidth / preview.offsetWidth, innerHeight / preview.offsetHeight).toFixed(3);
+        const width = preview.offsetWidth, height = preview.offsetHeight;
+        const scale = Math.min(1, innerWidth / width, Math.max(innerHeight / height, 0.6));
+        preview.style.transform = `translateX(-50%) scale(${scale.toFixed(3)})`;
+        document.body.style.height = `${Math.ceil(height * scale)}px`;
     };
-    fit();
+    new ResizeObserver(fit).observe(preview);
     addEventListener('resize', fit);
 </script>
 {% else %}

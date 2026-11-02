@@ -126,40 +126,28 @@
         </div>
     </div>
 
-    <!-- Reimagined Module Config Slide-over Drawer -->
+    <!-- A module's settings: a modal over nearly the whole screen (the whole screen on a phone), the module's
+         name, README and Uninstall in its header, the settings on the left and the preview on the right -->
     <div class="config-overlay" id="configOverlay" onclick="window.closeConfigSheet()"></div>
-    <div class="config-sheet" id="configSheet">
+    <div class="config-sheet" id="configSheet" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
         <div class="sheet-header">
-            <h2 id="sheetTitle" style="margin: 0; font-size: 1.25rem;">Configure Module</h2>
-            <button class="sheet-close" onclick="window.closeConfigSheet()"><i class="fas fa-times"></i></button>
+            <div class="profile-icon" id="profileIcon" style="background: rgba(255, 255, 255, 0.08); color: var(--primary);">
+                <i class="fas fa-puzzle-piece"></i>
+            </div>
+            <div class="sheet-heading">
+                <h2 class="profile-title" id="profileTitle">Module Name</h2>
+                <p class="profile-desc" id="profileDesc">Description</p>
+            </div>
+            <a class="btn secondary btn-sm" id="profileReadme" target="_blank" rel="noopener" hidden><i class="fab fa-github"></i> README</a>
+            <button class="btn danger btn-sm" id="uninstall-btn-global"
+                    hx-post="/admin/panels/modules/uninstall"
+                    hx-target="#global-status">
+                <i class="fas fa-trash-alt"></i> Uninstall
+            </button>
+            <button class="sheet-close" onclick="window.closeConfigSheet()" aria-label="Close"><i class="fas fa-times"></i></button>
         </div>
         <div class="sheet-body">
           <div class="sheet-main">
-            <!-- App Profile Card -->
-            <div class="app-profile">
-                <div class="profile-icon" id="profileIcon" style="background: rgba(255, 255, 255, 0.08); color: var(--primary);">
-                    <i class="fas fa-puzzle-piece"></i>
-                </div>
-                <div style="flex: 1;">
-                    <h3 class="profile-title" id="profileTitle">Module Name</h3>
-                    <p class="profile-desc" id="profileDesc">Description</p>
-                </div>
-                <div>
-                    <button class="btn danger btn-sm" id="uninstall-btn-global"
-                            hx-post="/admin/panels/modules/uninstall"
-                            hx-target="#global-status"
-                            style="padding: 6px 12px; font-size: 0.8rem; border-radius: 6px; display: inline-flex; align-items: center; gap: 6px;">
-                        <i class="fas fa-trash-alt"></i> Uninstall
-                    </button>
-                </div>
-            </div>
-
-            <!-- The module's screenshot.png from its GitHub repository (hidden for local installs or when missing) -->
-            <figure class="profile-shot" id="profileShot" hidden>
-                <img alt="" onerror="this.closest('figure').hidden = true">
-                <figcaption><a target="_blank" rel="noopener">Read the README on GitHub</a></figcaption>
-            </figure>
-
             <!-- Instances Switcher Section -->
             <div class="instances-section" id="instancesSection" style="display: none; margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px;">
                 <div class="instances-header" style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">

@@ -346,7 +346,6 @@ async function triggerRestart() {
 }
 
 window.openConfigSheet = function(name, title, description, iconHtml, color, textColor, packageName, activeInstanceId) {
-    document.getElementById('sheetTitle').innerText = `Configure ${title}`;
     document.getElementById('profileTitle').innerText = title;
     document.getElementById('profileDesc').innerText = description || 'Configure instance properties.';
     
@@ -372,17 +371,10 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
     // Render instances list
     const card = document.getElementById('module-card-' + name);
 
-    const shot = document.getElementById('profileShot');
-    if (shot) {
-        const src = card ? card.dataset.screenshot : '';
-        shot.hidden = !src;
-        if (src) {
-            const img = shot.querySelector('img');
-            img.alt = `Screenshot of ${title}`;
-            img.src = src;
-            shot.querySelector('a').href = card.dataset.repo + '#readme';
-        }
-    }
+    // No screenshot here: the preview shows the module itself (ARCHITECTURE #43); its README stays a link
+    const readme = document.getElementById('profileReadme');
+    readme.hidden = !(card && card.dataset.repo);
+    if (!readme.hidden) readme.href = card.dataset.repo + '#readme';
     const instancesSection = document.getElementById('instancesSection');
     const instancesList = document.getElementById('instances-list-global');
     const addNewBtn = document.getElementById('add-new-instance-btn');
@@ -488,6 +480,12 @@ window.closeConfigSheet = function() {
     previewRun++;  // an answer still on its way is dropped
     document.getElementById('modulePreview').srcdoc = '';
 };
+
+// Escape closes a module's settings, as any modal (not while another dialog, e.g. a confirm, is on top)
+document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.getElementById('configOverlay').classList.contains('open')
+        && !document.querySelector('.modal-overlay[style*="flex"]')) window.closeConfigSheet();
+});
 
 // The drawer's preview (ARCHITECTURE #43): the unsaved form, posted as Save would post it, rendered by the
 // module from its sample answers. Without those, the card the mirror shows now, looked at again every 10 s.

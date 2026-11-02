@@ -1933,21 +1933,25 @@ header {
     transition: opacity 0.3s ease;
 }
 
-/* Wide: the settings on the left, the module's preview on the right (ARCHITECTURE #43) */
+/* A module's settings: a modal over nearly the whole screen, the settings on the left and the module's
+   preview on the right (ARCHITECTURE #43); the whole screen on a phone (below) */
 .config-sheet {
     position: fixed;
-    top: 0;
-    right: 0;
-    transform: translateX(105%);
-    width: min(1120px, 100vw);
-    height: 100vh;
+    inset: 24px;
+    margin: auto;
+    max-width: 1440px;
     background: #09090b;
-    border-left: 1px solid var(--border-color);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    overflow: hidden;
     z-index: 2100;
     display: flex;
     flex-direction: column;
-    box-shadow: -10px 0 40px rgba(0, 0, 0, 0.6);
-    transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.7);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(12px) scale(0.99);
+    transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 0.25s;
 }
 
 .config-overlay.open {
@@ -1956,16 +1960,29 @@ header {
 }
 
 .config-overlay.open + .config-sheet {
+    opacity: 1;
+    visibility: visible;
     transform: none;
+    transition: opacity 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .config-sheet, .config-overlay.open + .config-sheet { transform: none; }
 }
 
 .sheet-header {
-    padding: 24px;
+    padding: 14px 16px 14px 20px;
     border-bottom: 1px solid var(--border-color);
     display: flex;
-    justify-content: space-between;
+    gap: 14px;
     align-items: center;
 }
+
+.sheet-header .profile-icon { width: 40px; height: 40px; border-radius: 10px; font-size: 1.1rem; box-shadow: none; flex: none; }
+.sheet-heading { flex: 1; min-width: 0; }
+.sheet-heading .profile-title { font-size: 1.1rem; }
+.sheet-heading .profile-desc { margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-header .btn { flex: none; }
 
 .sheet-close {
     background: transparent;
@@ -1990,7 +2007,7 @@ header {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 400px;
+    grid-template-columns: minmax(0, 1fr) minmax(400px, 42%);
 }
 
 .sheet-main {
@@ -2028,22 +2045,16 @@ header {
     background: #000;
 }
 
-/* A phone: the preview above the settings, the two scrolling as one */
+/* A phone: the whole screen, the preview above the settings, the two scrolling as one */
 @media (max-width: 960px) {
+    .config-sheet { inset: 0; max-width: none; border: 0; border-radius: 0; }
     .sheet-body { display: flex; flex-direction: column; overflow-y: auto; }
     .sheet-main { overflow: visible; }
     .sheet-preview { order: -1; border-left: 0; border-bottom: 1px solid var(--border-color); height: 40vh; flex: none; }
 }
-
-/* App Profile Section */
-.app-profile {
-    display: flex;
-    gap: 20px;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.02);
-    border: 1px solid rgba(255, 255, 255, 0.04);
-    padding: 16px;
-    border-radius: 12px;
+@media (max-width: 600px) {
+    .sheet-header { gap: 10px; padding: 12px; }
+    .sheet-heading .profile-desc { display: none; }
 }
 
 .profile-icon {
@@ -2073,9 +2084,6 @@ header {
 
 /* MOBILE RESPONSIVENESS AND ERGONOMICS */
 @media (max-width: 900px) {
-    .config-sheet {
-        width: 100%;
-    }
     :root {
         --sidebar-width: 0px;
     }
@@ -2281,7 +2289,7 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
 .discover-row[open] .module-row-icon i { transform: rotate(90deg); }
 .discover-row[open] .module-row-status { white-space: normal; }
 .discover-details { display: grid; gap: 12px; padding: 0 0 18px 50px; }
-.module-shot, .profile-shot img {
+.module-shot {
     display: block;
     width: 100%;
     max-width: 520px;
@@ -2293,9 +2301,7 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
 .module-facts div { display: flex; gap: 6px; }
 .module-facts dt { color: var(--text-muted); }
 .module-facts dd { margin: 0; color: var(--text-secondary); }
-.discover-details a, .profile-shot a { color: var(--text-primary); font-size: 0.82rem; }
-.profile-shot { margin: 0 0 20px; }
-.profile-shot figcaption { margin-top: 6px; }
+.discover-details a { color: var(--text-primary); font-size: 0.82rem; }
 .install-url { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); }
 .install-url summary { cursor: pointer; color: var(--text-secondary); font-size: 0.85rem; }
 .install-url p { margin: 12px 0; }
