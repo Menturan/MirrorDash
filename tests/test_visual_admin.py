@@ -486,18 +486,22 @@ def test_save_keeps_the_settings_open_under_the_instances_name(page, server_url)
 
 def test_an_icon_setting_suggests_lucide_names_and_draws_the_one_typed(page, server_url):
     from mirrordash_core.forms import render_schema_form
-    form = render_schema_form({"properties": {"icon": {"type": "string", "format": "icon"}}}, {"icon": "house"})
+    # As Home Assistant's: an icon in each item of a list (its entities)
+    entities = {"type": "array", "items": {"type": "object", "properties": {"custom_icon": {"type": "string", "format": "icon"}}}}
+    form = render_schema_form({"properties": {"entities": entities}}, {"entities": [{"custom_icon": "house"}]}, "modules[ha]")
     navigate_authenticated(page, server_url)
     page.wait_for_function("window.lucide")
     page.evaluate("""html => { const box = document.createElement('div'); box.id = 'icon-test'; box.innerHTML = html;
                                document.body.append(box); setUpIconInputs(box); }""", form)
     preview = page.locator("#icon-test .icon-preview")
+    assert preview.count() == 1
     assert preview.locator("svg").count() == 1  # the saved one, drawn at once
     assert page.locator("#lucide-icons option").count() > 1000
     assert page.locator("#lucide-icons option[value='thermometer-sun']").count() == 1
-    page.fill("#icon-test input", "no-such-icon")
+    page.click("#icon-test summary")  # the item opens, as when tapped
+    page.fill("#icon-test [data-icon-input]", "no-such-icon")
     assert "unknown" in preview.get_attribute("class") and preview.locator("svg").count() == 0
-    page.fill("#icon-test input", "thermometer-sun")
+    page.fill("#icon-test [data-icon-input]", "thermometer-sun")
     assert "unknown" not in preview.get_attribute("class") and preview.locator("svg").count() == 1
 
 

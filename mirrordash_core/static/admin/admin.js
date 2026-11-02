@@ -541,10 +541,13 @@ function setUpIconInputs(root) {
     inputs.forEach(drawIcon);
 }
 document.addEventListener('input', (event) => { if (event.target.matches?.('[data-icon-input]')) drawIcon(event.target); });
+// The whole settings form, or a new item in one of its lists
+document.body.addEventListener('htmx:afterSwap', (event) => {
+    if (event.target.closest?.('#config-fields-global')) setUpIconInputs(event.target);
+});
 
 document.body.addEventListener('htmx:afterSwap', (event) => {
     if (event.target.id !== 'config-fields-global') return;
-    setUpIconInputs(event.target);
     event.target.querySelectorAll('.array-item-card').forEach(arrayItemSummary);
     refreshModulePreview();
 });

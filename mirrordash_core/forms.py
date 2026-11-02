@@ -225,10 +225,14 @@ def _lan_url(field: Field) -> str:
         <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
 
 
-def _icon(field: Field) -> str:
+def _icon_input(field: Field, size: str = "") -> str:
     """A Lucide icon's name, drawn beside it as it is typed; admin.js suggests the names of the page's Lucide."""
+    return f'''<div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control{size}" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div>'''
+
+
+def _icon(field: Field) -> str:
     return f'''<div class="form-group schema-field">{_label(field)}
-        <div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div></div>'''
+        {_icon_input(field)}</div>'''
 
 
 def _item_schema(prop: dict) -> dict:
@@ -292,6 +296,11 @@ def _sub_icons(field: Field) -> str:
         <div class="icon-custom"><span>Custom Name:</span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>'''
 
 
+def _sub_icon(field: Field) -> str:
+    return f'''<div class="sub-form-group"><label for="{field.id}">{field.title}</label>
+        {_icon_input(field, " form-control-sm")}</div>'''
+
+
 def _sub_select(field: Field) -> str:
     return f'''<div class="sub-form-group"><label for="{field.id}">{field.title}</label>
         <select id="{field.id}" name="{field.name}" class="form-control form-control-sm">{_options(field.schema, field.stored_value)}</select></div>'''
@@ -313,7 +322,8 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
         field = Field(key, prop, prop.get("default", "") if value is None else value,
                       _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
                       name_prefix, "")
-        render = {"color": _sub_swatches, "icon": _sub_icons}.get(key) or (_sub_select if prop.get("enum") else _sub_text)
+        render = ({"color": _sub_swatches, "icon": _sub_icons}.get(key) or (_sub_select if prop.get("enum") else
+                  _sub_icon if prop.get("format") == "icon" else _sub_text))
         fields.append(render(field))
     # Folded to one line (admin.js arrayItemSummary fills it in); a new, empty item opens to be filled in
     is_open = " open" if not any(item_val.values()) else ""
