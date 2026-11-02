@@ -520,8 +520,31 @@ function schedulePreview(event) {
 }
 document.addEventListener('input', schedulePreview);
 document.addEventListener('change', schedulePreview);
+// An icon setting (forms.py _icon): the page's Lucide icons as suggestions, and the one typed drawn beside it
+// (an unknown name gets a question mark). Lucide's names are PascalCase; the mirror's data-lucide kebab-case.
+const pascalIcon = (name) => name.trim().replace(/(^|-)([a-z0-9])/g, (_, __, c) => c.toUpperCase());
+function drawIcon(input) {
+    const preview = input.parentElement.querySelector('.icon-preview');
+    const icon = window.lucide && input.value.trim() && lucide.icons[pascalIcon(input.value)];
+    preview.classList.toggle('unknown', Boolean(input.value.trim()) && !icon);
+    preview.replaceChildren(...(icon ? [lucide.createElement(icon)] : []));
+}
+function setUpIconInputs(root) {
+    const inputs = root.querySelectorAll('[data-icon-input]');
+    if (!inputs.length || !window.lucide) return;
+    if (!document.getElementById('lucide-icons')) {
+        const list = document.createElement('datalist');
+        list.id = 'lucide-icons';
+        list.append(...Object.keys(lucide.icons).map((name) => new Option('', name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase())));
+        document.body.append(list);
+    }
+    inputs.forEach(drawIcon);
+}
+document.addEventListener('input', (event) => { if (event.target.matches?.('[data-icon-input]')) drawIcon(event.target); });
+
 document.body.addEventListener('htmx:afterSwap', (event) => {
     if (event.target.id !== 'config-fields-global') return;
+    setUpIconInputs(event.target);
     event.target.querySelectorAll('.array-item-card').forEach(arrayItemSummary);
     refreshModulePreview();
 });

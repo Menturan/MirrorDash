@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 - A module's settings open in a window over nearly the whole screen, with a preview beside them: the module as it will look on the mirror, following what you change before you save. Modules that come with sample data show it with that, without calling their services; the others show what the mirror shows now. The module's screenshot is gone from there, and Escape closes the window.
 - Lists in a module's settings (Home Assistant's entities, calendars, news feeds) show one line per item, which opens when you tap it, and the short settings sit two by two.
+- An icon in a module's settings (Home Assistant's custom icon) suggests icon names as you type and shows the icon beside the name; a name that doesn't exist gets a question mark.
 - Saving a module's settings keeps them open, and adding a module turns the window into its settings. The settings have the module's name over them, so choosing another of its cards on the mirror shows, on a phone too.
 - HDMI brightness works as before 0.10.0 again: 0.10.0 could say a brightness was set on a screen that never took it. Some screens don't take brightness from a Raspberry Pi 3 at all (a Samsung S24D300 didn't, at any bus speed); the admin page says so.
 - The logs no longer show the address a module fetches from, only its server: a private calendar link (Google Calendar's secret address) was written out whole when the mirror was offline, and so ended up in saved logs and diagnostics.

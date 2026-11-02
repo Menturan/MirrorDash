@@ -484,6 +484,23 @@ def test_save_keeps_the_settings_open_under_the_instances_name(page, server_url)
     assert page.locator("#instances-list-global .instance-item").count() == 1
 
 
+def test_an_icon_setting_suggests_lucide_names_and_draws_the_one_typed(page, server_url):
+    from mirrordash_core.forms import render_schema_form
+    form = render_schema_form({"properties": {"icon": {"type": "string", "format": "icon"}}}, {"icon": "house"})
+    navigate_authenticated(page, server_url)
+    page.wait_for_function("window.lucide")
+    page.evaluate("""html => { const box = document.createElement('div'); box.id = 'icon-test'; box.innerHTML = html;
+                               document.body.append(box); setUpIconInputs(box); }""", form)
+    preview = page.locator("#icon-test .icon-preview")
+    assert preview.locator("svg").count() == 1  # the saved one, drawn at once
+    assert page.locator("#lucide-icons option").count() > 1000
+    assert page.locator("#lucide-icons option[value='thermometer-sun']").count() == 1
+    page.fill("#icon-test input", "no-such-icon")
+    assert "unknown" in preview.get_attribute("class") and preview.locator("svg").count() == 0
+    page.fill("#icon-test input", "thermometer-sun")
+    assert "unknown" not in preview.get_attribute("class") and preview.locator("svg").count() == 1
+
+
 def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):
     page.clock.install()
     navigate_authenticated(page, server_url)

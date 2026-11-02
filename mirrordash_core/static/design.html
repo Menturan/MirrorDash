@@ -1668,6 +1668,35 @@
                     </div>
                 </div>
 
+                <!-- 12. Icon -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Icon</span>
+                        <span class="component-tag">type: string  +  format: icon  (a Lucide name, suggested while typing)</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Icon</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Shown before the value. Start typing to pick one.</p>
+                                </div>
+                                <div class="icon-row"><span class="icon-preview"><i data-lucide="thermometer-sun"></i></span><input type="text" value="thermometer-sun" class="form-control"></div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"icon": {
+  "type": "string",
+  "format": "icon",
+  "title": "Icon",
+  "description": "Shown before the value. Start typing to pick one.",
+  "default": ""
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
             </section>
 
 

@@ -1476,6 +1476,11 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 @keyframes config-instance-in { from { opacity: 0; transform: translateY(4px); } }
 @media (prefers-reduced-motion: reduce) { .module-config-instance { animation-duration: 1s; animation-timing-function: linear; } }
 .module-config-title { margin: 0 0 4px 0; color: white; font-size: 1rem; }
+/* An icon setting: the icon typed, drawn in a box before its name */
+.icon-row { display: flex; gap: 8px; }
+.icon-preview { flex: none; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #27272a; border-radius: 6px; color: white; }
+.icon-preview svg { width: 20px; height: 20px; }
+.icon-preview.unknown::after { content: "?"; color: #f59e0b; font-weight: 600; }
 .module-config-title i { margin-right: 6px; color: var(--accent-color); }
 .module-config-note { margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a; }
 .module-config-own { margin: 20px 0 12px 0; border-top: 1px solid #3f3f46; padding-top: 16px; }

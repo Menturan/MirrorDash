@@ -225,6 +225,12 @@ def _lan_url(field: Field) -> str:
         <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>'''
 
 
+def _icon(field: Field) -> str:
+    """A Lucide icon's name, drawn beside it as it is typed; admin.js suggests the names of the page's Lucide."""
+    return f'''<div class="form-group schema-field">{_label(field)}
+        <div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{field.id}" name="{field.name}" value="{field.value}" class="form-control" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div></div>'''
+
+
 def _item_schema(prop: dict) -> dict:
     return prop.get("items", {})
 
@@ -242,6 +248,7 @@ WIDGET_RULES = [
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "password" or key in SECRET_KEYS), _password),
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), _textarea),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", _lan_url),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "icon", _icon),
 ]
 
 
