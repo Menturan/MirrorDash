@@ -92,7 +92,7 @@ mirror_still(REPO / "mirrordash_core/static/splash.png", ASSETS / "m-boot.png", 
 mirror_still(CLIPS / "m-wifi.png", ASSETS / "m-wifi.png")
 mirror_still(CLIPS / "m-admin.png", ASSETS / "m-admin.png")
 mirror_still(REPO / "screenshot.png", ASSETS / "m-clock.png", keep_right=0.62)
-mirror_still(REPO / "screenshot.png", ASSETS / "m-full.png", black_below=0.47)
+mirror_still(REPO / "screenshot.png", ASSETS / "m-full.png", black_below=0.36)
 Image.new("RGB", (MW, MH)).save(ASSETS / "m-off.png")
 Image.open(REPO / "mirrordash_core/static/icon-512.png").resize((150, 150), Image.LANCZOS).save(ASSETS / "mark.png")
 
