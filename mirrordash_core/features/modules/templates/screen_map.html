@@ -1,15 +1,22 @@
-{# What is on the mirror, as its three bands (top, middle, bottom), each with left, center and right.
+{# What is on the mirror, as its three bands (top, middle, bottom), each with left, center and right, and
+   the full-screen layers in front and behind as a band each, shown only when a module is there.
    Heights follow the content, so a busy position never squeezes the others. Needs screen_layout; with
    interactive set, a module opens its settings and has a switch that turns it on or off. #}
 {% macro icon(m) %}{% if m.icon.startswith('data:') %}<span class="module-svg-icon" style="--icon: url('{{ m.icon }}')" aria-hidden="true"></span>{% else %}<i class="fas {{ m.icon }}" aria-hidden="true"></i>{% endif %}{% endmacro %}
 <div class="mirror-pane">
-    {% for row in ['top', 'middle', 'bottom'] %}
+    {% for label, positions in [('In front', ['foreground']),
+                                ('Top', ['top_left', 'top_center', 'top_right']),
+                                ('Middle', ['middle_left', 'middle_center', 'middle_right']),
+                                ('Bottom', ['bottom_left', 'bottom_center', 'bottom_right']),
+                                ('Behind', ['background'])]
+          if positions|length > 1 or screen_layout.get(positions[0]) %}
         <div class="mirror-band">
-            <span class="mirror-band-label">{{ row|capitalize }}</span>
-            <div class="mirror-slots">
-                {% for col in ['left', 'center', 'right'] %}
-                    {% set placed = screen_layout.get(row ~ '_' ~ col, []) %}
-                    <div class="mirror-slot{% if not placed %} empty{% endif %}" title="{{ row|capitalize }} {{ col }}">
+            <span class="mirror-band-label">{{ label }}</span>
+            <div class="mirror-slots{% if positions|length == 1 %} mirror-slots--full{% endif %}">
+                {% for position in positions %}
+                    {% set placed = screen_layout.get(position, []) %}
+                    {% set where = position.replace('_', ' ') %}
+                    <div class="mirror-slot{% if not placed %} empty{% endif %}" title="{{ where|capitalize }}">
                         {% for m in placed %}
                             {% if not m.module %}
                                 <div class="mirror-tile missing">
@@ -39,7 +46,7 @@
                                         </label>
                                     </span>
                                     <button type="button" class="mirror-tile-name"
-                                            aria-label="{{ m.name }} settings, {{ row }} {{ col }}"
+                                            aria-label="{{ m.name }} settings, {{ where }}"
                                             hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
                                             hx-target="#config-fields-global"
                                             onclick='openConfigureModule({{ m.module | tojson }}, {{ m.package | tojson }}, {{ m.id | tojson }})'>{{ m.name }}</button>

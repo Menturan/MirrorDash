@@ -702,6 +702,55 @@ def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_background_and_foreground_fill_the_screen_behind_and_in_front(page):
+    """The two layers cover the whole screen, the background under the nine anchors and the foreground
+    over them, and their cards are see-through: the anchors' near-black card background would black out
+    the mirror."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.set_viewport_size({"width": 1280, "height": 720})
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    for name, position in (("photos", "background"), ("clock", "top_left"), ("snow", "foreground")):
+        page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                      json.dumps({"module": name, "position": position, "html": name}))
+    card = "(name => document.querySelector(`[data-module='${name}']`))"
+    for name in ("photos", "snow"):
+        # offset*: the layout, not the 10 px the first-mount fade (.module-enter) slides it in from
+        box = page.evaluate(f"name => {{ const e = {card}(name); "
+                            "return [e.offsetLeft, e.offsetTop, e.offsetWidth, e.offsetHeight]; }", name)
+        assert box == [0, 0, 1280, 720], name
+        assert page.evaluate(f"name => getComputedStyle({card}(name)).backgroundColor", name) == "rgba(0, 0, 0, 0)"
+    assert page.evaluate(f"getComputedStyle({card}('clock')).backgroundColor") != "rgba(0, 0, 0, 0)"
+    # The order at the clock: the foreground (made hit-testable for the look), the clock, the background
+    assert page.evaluate("getComputedStyle(document.getElementById('foreground')).pointerEvents") == "none"
+    order = page.evaluate(f"""() => {{
+        document.getElementById('foreground').style.pointerEvents = 'auto';
+        const r = {card}('clock').getBoundingClientRect();
+        return document.elementsFromPoint(r.x + 5, r.y + 5)
+            .map(e => e.closest('[data-module]')?.dataset.module).filter(Boolean);
+    }}""")
+    assert [n for i, n in enumerate(order) if n not in order[:i]][:3] == ["snow", "clock", "photos"]
+    # The connection indicator stays above the foreground
+    assert int(page.evaluate("getComputedStyle(document.getElementById('ws-status')).zIndex")) > \
+        int(page.evaluate("getComputedStyle(document.getElementById('foreground')).zIndex"))
+
+
+@pytest.mark.only_browser("webkit")
 def test_mirror_page_reloads_only_for_a_new_version(page):
     """After an update the page's own code is new too: it reloads when the server's version or boot id
     changed (a restart may have changed the modules), not when the socket merely reconnected."""

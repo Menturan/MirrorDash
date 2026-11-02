@@ -152,7 +152,20 @@ body, html {
     display: flex;
     flex-direction: column;
     gap: var(--widget-gap);
+    z-index: 1;
 }
+
+/* Full-screen layers: the background behind the nine anchors, the foreground in front of them (never
+   above the connection and offline indicators, z-index 1000+). Each its own compositing layer, so a card
+   that changes doesn't repaint a photo under it. Several modules (or a carousel) overlay, not stack. */
+.region.layer { inset: 0; display: grid; will-change: transform; }
+.region.layer > * { grid-area: 1 / 1; min-width: 0; min-height: 0; }
+#background { z-index: 0; }
+#foreground { z-index: 2; pointer-events: none; }
+/* A card there fills the screen and is see-through: the near-black card background that lets the
+   anchors' cards cover each other would black out the whole mirror */
+.region.layer [data-module] { background: none; padding: 0; border-radius: 0; height: 100%; }
+.region.layer .carousel-slide { height: 100%; }
 
 /* Top row — pinned to top edge, modules grow downward */
 #top_left   { top: var(--safe-margin-top); left: var(--safe-margin-left);  align-items: flex-start; }

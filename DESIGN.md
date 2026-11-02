@@ -4,7 +4,7 @@ The rules behind how the mirror looks, and why. The components themselves, with 
 
 ## Principles
 
-- **Black is the glass.** A black pixel is an unlit pixel, invisible behind a two-way mirror. The background is always pure black, and only what should be seen gives off light.
+- **Black is the glass.** A black pixel is an unlit pixel, invisible behind a two-way mirror. The background is pure black, and only what should be seen gives off light. The one exception is the owner's: a module they put in the background layer (a photo) may light the screen, dimmed (see Layout).
 - **The centre stays empty.** Information sits at the edges so the mirror is still a mirror. Only a temporary alert may use the centre.
 - **Passive, not interactive.** Nobody touches the mirror: no cursor (`cursor: none`), no buttons, no hover states. Everything is changed from the admin page on a phone.
 - **Calm.** Glanceable from across the room, nothing that blinks or competes for attention.
@@ -44,6 +44,7 @@ A module starts with a `label-caps` heading; separators are horizontal 1px lines
 
 - **Safe margin:** 60px from every edge (`--safe-margin-*`, adjustable per mirror in the admin page), for the bezel and the frame.
 - **Nine anchors:** `top_left` … `bottom_right`, each pinned to its corner, edge or centre. Modules grow away from their edge: top and middle regions downward, bottom regions upward (the first module hugs the edge). Regions are independent; nothing clips or pushes.
+- **Two full-screen layers:** `background`, behind the nine anchors, and `foreground`, in front of them. A module there fills the screen edge to edge (no safe margin) and its card is see-through, with no card background or padding. Only the owner puts a module there, and the module gives the owner the choices: how bright, a dark vignette towards the edges so the anchors' text stays readable, how much and how often something moves. Defaults are calm: a background photo at about half brightness, a sparse and dim foreground. The foreground never takes input (`pointer-events: none`) and stays under the connection and offline indicators.
 - **Rhythm:** 30px between stacked modules (`--widget-gap`), 16px inside (`--internal-padding`), 8px between a label and its value (`--label-gap`).
 - **Flexible widths:** no fixed-width columns. Swedish or German strings are much longer than English, so use flex or grid with `min-width`/`flex: 1` and ellipsis.
 

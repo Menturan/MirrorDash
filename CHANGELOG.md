@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Two new screen positions fill the whole screen: **Background**, behind the other modules, and **Foreground**, in front of them. They are for modules made for them, like a photo slideshow behind the clock or snow falling over it. The Modules map shows them as *Behind* and *In front* when a module is there.
+
 ## [0.11.0] - 2026-11-02
 
 - A module's settings open in a window over nearly the whole screen, with a preview beside them: the module as it will look on the mirror, following what you change before you save. Modules that come with sample data show it with that, without calling their services; the others show what the mirror shows now. The module's screenshot is gone from there, and Escape closes the window.

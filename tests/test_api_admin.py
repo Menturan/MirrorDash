@@ -1142,6 +1142,20 @@ def test_modules_map_switches_each_instance(client):
     assert 'hx-post="/admin/panels/modules/config/mirrordash_gone/remove?instance_id=mirrordash_gone"' in html
 
 
+def test_modules_map_shows_a_layer_band_only_when_a_module_is_there(client):
+    def map_html(cfg):
+        clock = SimpleNamespace(name="mirrordash_clock", dist=None)
+        with patch("mirrordash_core.features.modules.service.load_config", return_value=cfg), \
+             patch("mirrordash_core.features.modules.service.find_entry_point", return_value=clock), \
+             patch("mirrordash_core.features.modules.routes.list_modules", AsyncMock(return_value={"modules": {}})):
+            return client.get("/admin/panels/modules", headers={"X-API-Key": "secret"}).text
+    plain = map_html({"modules": {"mirrordash-clock": {"position": "top_left"}}})
+    assert ">Top<" in plain and ">In front<" not in plain and ">Behind<" not in plain
+    layered = map_html({"modules": {"mirrordash-clock": {"position": "background"}}})
+    assert ">Behind<" in layered and ">In front<" not in layered
+    assert 'aria-label="Clock settings, background"' in layered
+
+
 def test_github_repo_from_install_urls():
     from mirrordash_core.features.modules.service import github_repo, github_screenshot
     assert github_repo("https://github.com/o/mirrordash-x.git") == "https://github.com/o/mirrordash-x"

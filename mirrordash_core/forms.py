@@ -16,13 +16,14 @@ logger = logging.getLogger("mirrordash.core.forms")
 
 POSITIONS = ["top_left", "top_center", "top_right",
              "middle_left", "middle_center", "middle_right",
-             "bottom_left", "bottom_center", "bottom_right"]
+             "bottom_left", "bottom_center", "bottom_right",
+             "background", "foreground"]  # the full-screen layers behind and in front of the nine (ARCHITECTURE #1)
 # Settings the core gives every module (module developers must NOT declare these in config_schema)
 STANDARD_SCHEMA = {"properties": {
     "enabled": {"type": "boolean", "default": True, "title": "Enabled",
                 "description": "Enable or disable this module on the mirror."},
     "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Screen Position",
-                 "description": "Which anchor region on the mirror this module floats from."},
+                 "description": "Which anchor region on the mirror this module floats from. Background and Foreground fill the whole screen, behind and in front of the others."},
     "carousel_group": {"type": "string", "default": "", "title": "Carousel Group",
                        "description": "Assign a group name to rotate this module with others in the same region."},
     "carousel_interval": {"type": "integer", "default": 15, "title": "Carousel Interval (s)",
