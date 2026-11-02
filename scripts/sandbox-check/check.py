@@ -16,7 +16,7 @@ M = "/storage/mirrordash/modules"
 config = {"modules": {"a": {"module": "md_probe", "other": "b"}, "b": {"module": "md_probe", "other": "a"}},
           "globals": {}}
 client.load_config = lambda: config
-client.manager = MagicMock(broadcast=AsyncMock())
+client.manager = MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock())
 client.LAN_HELPER = "/nonexistent"  # it would set IPAddressAllow to the stub alone, which isn't in here
 client.RESTART_DELAY = 1
 
