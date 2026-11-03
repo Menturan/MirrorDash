@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A schedule for each module**: in its settings, under *Schedule*, choose the days and the times it's shown, such as the news on weekday mornings; outside them it's hidden. Add the same module twice for two windows. A carousel now skips the modules that are hidden, by a schedule or by privacy mode, instead of showing a blank turn.
+
 - **Privacy mode**, for guests: only the modules you mark *Shown in Privacy Mode* stay on the screen (the clock, say); with none marked, the MirrorDash monogram or nothing. Turn it on in the Settings tab, with the mirror's button or from Home Assistant. A changed screen setting (privacy mode, modules over a background photo) now reaches the screen at once, without reloading it.
 
 - Modules can take files you upload in their settings, such as photos for a slideshow. Photos are shrunk to your screen on your phone before they're sent, which also removes their location, and they keep their date first in their name. Uploaded files aren't in backups.

@@ -80,6 +80,12 @@
     <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
 {%- endmacro %}
 
+{# "HH:MM" or blank, in the browser's own time picker (24h or 12h as the phone has it) #}
+{% macro time(f) -%}
+<div class="form-group schema-field">{{ label(f) }}
+    <input type="time" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+{%- endmacro %}
+
 {# An address at home the module may reach (client.py lets the module host through to it). The schema's
    default is only a hint, never filled in: saving the form must not open an address the owner didn't type. #}
 {% macro lan_url(f) -%}

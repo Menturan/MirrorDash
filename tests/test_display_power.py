@@ -1,4 +1,4 @@
-from datetime import time
+from datetime import datetime, time, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -7,6 +7,9 @@ from fastapi.testclient import TestClient
 from mirrordash_core.app import app
 from mirrordash_core.features.power.display_power import (
     DisplayPowerManager,
+    is_scheduled_out,
+    local_now,
+    scheduled_out,
 )
 
 
@@ -111,11 +114,41 @@ def test_system_settings_display_control_validation(
     # Clear overrides
     app.dependency_overrides.clear()
 
-def test_local_time_uses_the_configured_timezone():
-    with patch("mirrordash_core.features.power.display_power.datetime") as mock_datetime:
-        mock_datetime.now.return_value.time.return_value = time(12, 0)
-        assert DisplayPowerManager._local_time({"globals": {"timezone": "America/New_York"}}) == time(12, 0)
-    assert mock_datetime.now.call_args[0][0].key == "America/New_York"
+def test_local_now_uses_the_configured_timezone():
+    assert local_now({"globals": {"timezone": "America/New_York"}}).tzinfo.key == "America/New_York"
+
+
+def test_a_module_schedule_hides_it_outside_its_days_and_times():
+    friday = datetime(2026, 11, 6)  # a Friday
+    at = lambda day, hour, minute=0: day.replace(hour=hour, minute=minute)  # noqa: E731
+    weekdays = {"days": ["mon", "tue", "wed", "thu", "fri"], "from": "06:00", "to": "09:00"}
+    assert not is_scheduled_out(weekdays, at(friday, 6))
+    assert not is_scheduled_out(weekdays, at(friday, 8, 59))
+    assert is_scheduled_out(weekdays, at(friday, 9))  # to is when it goes
+    assert is_scheduled_out(weekdays, at(friday, 5, 59))
+    assert is_scheduled_out(weekdays, at(friday + timedelta(days=1), 7))  # Saturday
+    # Over midnight: belongs to the day it starts
+    friday_night = {"days": ["fri"], "from": "22:00", "to": "02:00"}
+    assert not is_scheduled_out(friday_night, at(friday, 23))
+    assert not is_scheduled_out(friday_night, at(friday + timedelta(days=1), 1))  # Saturday 01:00
+    assert is_scheduled_out(friday_night, at(friday, 1))  # Friday 01:00 is Thursday's night
+    assert is_scheduled_out(friday_night, at(friday, 12))
+    # Blank times are midnight; no days ticked hides it; none saved or unreadable shows it
+    assert not is_scheduled_out({"days": ["fri"], "from": "", "to": ""}, at(friday, 23, 59))
+    assert not is_scheduled_out({"from": "", "to": "18:00"}, at(friday, 0))
+    assert is_scheduled_out({"days": [], "from": "", "to": ""}, at(friday, 12))
+    assert not is_scheduled_out(None, at(friday, 12))
+    assert not is_scheduled_out({"from": "noon"}, at(friday, 12))
+    config = {"modules": {"news": {"schedule": weekdays}, "clock": {}}}
+    assert scheduled_out(config, at(friday, 12)) == ["news"]
+
+
+def test_validate_config_checks_a_module_schedule():
+    from mirrordash_core.features.settings.schema import validate_config
+    validate_config({"modules": {"clock": {"schedule": {"days": ["mon"], "from": "06:00", "to": ""}}}})
+    for bad in ({"days": ["monday"]}, {"from": "6:00"}, {"to": 900}, {"days": [{}]}, "always"):
+        with pytest.raises(ValueError, match="schedule"):
+            validate_config({"modules": {"clock": {"schedule": bad}}})
 
 
 WAKE_CFG = {"mode": "wake", "wake": {"timeout_minutes": 5, "extend": True, "presence": True}}

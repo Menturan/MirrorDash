@@ -17,6 +17,17 @@
         <div class="standard-settings-content">{{ standard_form | safe }}</div>
     </details>
 
+    <details class="standard-settings-accordion">
+        <summary>
+            <span><i class="fas fa-clock"></i> {{ schedule.title }}</span>
+            <i class="fas fa-chevron-down accordion-arrow"></i>
+        </summary>
+        <div class="standard-settings-content">
+            <p class="field-description wide">{{ schedule.description }}</p>
+            {{ schedule_form | safe }}
+        </div>
+    </details>
+
     {% if module_form %}
     <div class="module-config-own">
         <h5>Module Settings</h5>

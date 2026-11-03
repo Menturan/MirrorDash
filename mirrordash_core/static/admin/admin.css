@@ -1499,7 +1499,8 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
     position: sticky; bottom: 0; background: #0f0f11; border-top: 1px solid #27272a; border-radius: 0 0 6px 6px; z-index: 1; }
 /* The drawer's settings two by two; the long ones (lists, keys, addresses, text) across */
 .module-config-own, .standard-settings-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-.module-config-own > :is(h5, .schema-group, .form-accordion, .wide), .standard-settings-content > .wide { grid-column: 1 / -1; }
+.module-config-own > :is(h5, .schema-group, .form-accordion, .wide), .standard-settings-content > :is(.schema-group, .wide) { grid-column: 1 / -1; }
+.standard-settings-content .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; }  /* the schedule's days in a row */
 @media (max-width: 600px) { .module-config-own, .standard-settings-content { grid-template-columns: minmax(0, 1fr); } }
 .standard-settings-accordion { margin-top: 14px; border: 1px solid #27272a; border-radius: 6px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }
 .standard-settings-accordion summary { padding: 10px 14px; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none; outline: none; background: rgba(255, 255, 255, 0.02); transition: background 0.2s ease, color 0.2s ease; }

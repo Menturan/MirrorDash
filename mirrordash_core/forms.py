@@ -14,7 +14,8 @@ from markupsafe import Markup
 logger = logging.getLogger("mirrordash.core.forms")
 
 
-POSITIONS = ["top_left", "top_center", "top_right",
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")  # in datetime.weekday()'s order
+POSITIONS = ["top_left","top_center", "top_right",
              "middle_left", "middle_center", "middle_right",
              "bottom_left", "bottom_center", "bottom_right",
              "background", "foreground"]  # the full-screen layers behind and in front of the nine (ARCHITECTURE #1)
@@ -38,6 +39,17 @@ STANDARD_SCHEMA = {"properties": {
                 "description": "Module transparency: 1 = fully visible, 0 = invisible."},
     "show_in_privacy": {"type": "boolean", "default": False, "title": "Shown in Privacy Mode",
                         "description": "Stay on the screen in privacy mode, for guests: the clock, the weather, a guest album. Modules without it are hidden then."},
+    # Its own collapsible section in the module's settings (features/power/schedule.py)
+    "schedule": {"type": "object", "title": "Schedule",
+                 "description": "Show this module only on some days and at some times; outside them it is hidden. A time like 22:00 to 06:00 runs over midnight and belongs to the day it starts.",
+                 "properties": {
+                     "days": {"type": "array", "items": {"type": "string", "enum": list(DAYS)}, "default": list(DAYS),
+                              "title": "Days", "description": "The days it is shown."},
+                     "from": {"type": "string", "format": "time", "default": "", "title": "From",
+                              "description": "Blank: from midnight."},
+                     "to": {"type": "string", "format": "time", "default": "", "title": "To",
+                            "description": "Blank: until midnight."},
+                 }},
 }}
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # Fields shown as a password or a text box by their name when the schema doesn't say
@@ -59,24 +71,9 @@ ICONS = ["calendar", "clock", "users", "briefcase", "home", "heart", "gift", "tr
 
 
 def cast_standard_fields(module_cfg: dict) -> dict:
-    """Coerce standard core-owned fields to their correct Python types.
-
-    Because standard fields are NOT in the module's own config_schema, they
-    bypass cast_values_by_schema.  This function must be called explicitly on
-    the parsed form data after schema-based casting.
-    """
-    result = dict(module_cfg)
-    for key in ("enabled", "show_in_privacy"):
-        if key in result:
-            value = result[key]
-            result[key] = value.lower() in ("true", "1", "yes") if isinstance(value, str) else bool(value)
-    for key, cast_fn in (("carousel_interval", int), ("z_index", int), ("opacity", float)):
-        if key in result and result[key] not in (None, ""):
-            try:
-                result[key] = cast_fn(result[key])
-            except (ValueError, TypeError):
-                pass
-    return result
+    """The core's standard fields as their schema types: they aren't in the module's own config_schema,
+    so casting by that leaves them as the form's text. Call it after that."""
+    return cast_values_by_schema(module_cfg, STANDARD_SCHEMA)
 
 
 # A schema key or a form name prefix: they end up in ids, names and JS strings in onclick, where HTML
@@ -174,6 +171,7 @@ WIDGET_RULES = [
     (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), "textarea"),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", "lan_url"),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "icon", "icon"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "time", "time"),
 ]
 
 

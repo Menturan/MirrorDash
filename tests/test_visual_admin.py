@@ -224,6 +224,18 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     assert preview.bounding_box()["y"] < page.locator("#config-fields-global").bounding_box()["y"]
     page.set_viewport_size({"width": 1280, "height": 720})
 
+    # The schedule: its own collapsible section after the other standard settings, every day ticked
+    schedule = page.locator(".standard-settings-accordion", has_text="Schedule")
+    schedule.locator("summary").click()
+    assert schedule.locator("input[type=checkbox]:checked").count() == 7
+    assert schedule.locator("input[type=time]").count() == 2
+    if os.environ.get("SCHEDULE_SHOT"):
+        schedule.locator("input[type=checkbox][value=sat]").uncheck()
+        schedule.locator("input[type=checkbox][value=sun]").uncheck()
+        schedule.locator("input[type=time]").first.fill("06:00")
+        schedule.locator("input[type=time]").last.fill("09:00")
+        page.locator("#config-fields-global").screenshot(path=os.environ["SCHEDULE_SHOT"])
+
     # Click close button to collapse
     page.click(".sheet-close")
     page.wait_for_selector("#configOverlay.open", state="hidden")
@@ -795,8 +807,8 @@ def test_privacy_mode_keeps_only_the_marked_modules_else_the_monogram_or_nothing
     page.goto("http://mirror.test/static/index.html")
     page.wait_for_function("window.__ws")
     send = lambda message: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(message))
-    screen = lambda on, shows="monogram": send({"type": "screen", "privacy": on, "privacy_shows": shows,
-                                                "cards_over_photo": "see_through"})
+    screen = lambda on, shows="monogram", scheduled_out=(): send({"type": "screen", "privacy": on, "privacy_shows": shows,
+                                                                  "cards_over_photo": "see_through", "scheduled_out": list(scheduled_out)})
     shown = lambda name: page.evaluate(f"document.querySelector(`[data-module='{name}']`).offsetParent !== null")
     monogram = lambda: page.evaluate("getComputedStyle(document.getElementById('privacy-monogram')).display") != "none"
     send({"module": "clock", "position": "top_right", "html": "12:00", "show_in_privacy": True})
@@ -811,6 +823,20 @@ def test_privacy_mode_keeps_only_the_marked_modules_else_the_monogram_or_nothing
     assert not monogram()
     screen(False)
     assert shown("clock") and shown("calendar") and shown("photos") and not monogram()
+
+    # A module's schedule (display_power.py) hides its card the same way, and a carousel turns past it
+    for name in ("news", "namnsdag"):
+        send({"module": name, "position": "bottom_left", "html": name, "carousel_group": "morning"})
+    active = lambda: page.evaluate("document.querySelector('#bottom_left .carousel-active').dataset.module")
+    assert active() == "news"
+    screen(False, scheduled_out=["news"])
+    assert not shown("news") and active() == "namnsdag"
+    page.evaluate("stepCarousel(document.querySelector('#bottom_left .carousel-group-container'))")
+    assert active() == "namnsdag"
+    send({"module": "news", "position": "bottom_left", "html": "news 2", "carousel_group": "morning"})  # an update
+    assert not shown("news")
+    screen(False)
+    assert shown("news")
 
 
 @pytest.mark.only_browser("webkit")

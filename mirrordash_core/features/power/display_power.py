@@ -23,12 +23,13 @@ own schedule is kept. A module with `keep_running = True` is never held.
 import asyncio
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from datetime import time as time_of_day
 from zoneinfo import ZoneInfo
 
 from mirrordash_core.config import load_config
 from mirrordash_core.features.hardware.display import set_screen_power
+from mirrordash_core.forms import DAYS
 
 logger = logging.getLogger("mirrordash.core.power")
 
@@ -41,6 +42,45 @@ def wake_settings(display_cfg: dict) -> dict:
     return {**DEFAULT_WAKE, **display_cfg.get("wake", {})}
 
 
+def local_now(config: dict) -> datetime:
+    """Now on the owner's clock (their time zone setting), for the screen's and the modules' schedules."""
+    timezone_name = config.get("globals", {}).get("timezone", "Europe/Stockholm")
+    try:
+        timezone = ZoneInfo(timezone_name)
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{timezone_name}' in globals: {e}. Using local system time.")
+        timezone = None
+    return datetime.now(timezone)
+
+
+def is_scheduled_out(schedule, now: datetime) -> bool:
+    """Whether a module's schedule (forms.py's standard "schedule") hides it now. Blank times are midnight;
+    from after to runs over midnight and belongs to the day it starts (Fri 22:00-02:00 shows Sat 01:00).
+    No schedule, or one that doesn't read, shows it."""
+    if not isinstance(schedule, dict):
+        return False
+    try:
+        start = time_of_day.fromisoformat(schedule["from"]) if schedule.get("from") else time_of_day.min
+        end = time_of_day.fromisoformat(schedule["to"]) if schedule.get("to") else time_of_day.max
+    except (TypeError, ValueError):
+        return False
+    current, day = now.time(), now
+    if start <= end:
+        is_inside = start <= current < end
+    else:
+        is_inside = current >= start or current < end
+        if current < end:  # the part after midnight
+            day = now - timedelta(days=1)
+    days = schedule.get("days")
+    return not is_inside or (isinstance(days, list) and DAYS[day.weekday()] not in days)
+
+
+def scheduled_out(config: dict, now: datetime) -> list[str]:
+    """The module instances their schedules hide now, for the screen message (power/privacy.py)."""
+    modules = config.get("modules") or {}
+    return sorted(name for name, cfg in modules.items() if isinstance(cfg, dict) and is_scheduled_out(cfg.get("schedule"), now))
+
+
 class DisplayPowerManager:
     RETRY_AFTER_FAILURE = 30.0  # seconds; e.g. no wlr-randr on a development machine
 
@@ -51,6 +91,7 @@ class DisplayPowerManager:
         self.forced_off = False      # an explicit "off" wins until a wake or base change
         self.last_base: bool | None = None  # what the base mode said last time: on or off
         self.was_present = False
+        self.scheduled_out: list[str] | None = None  # the instances the modules' schedules hid last pass
         self.changed = asyncio.Event()
         self.awake = asyncio.Event()  # set while the screen is on; modules' fetch_json waits on it
         self.awake.set()
@@ -126,9 +167,10 @@ class DisplayPowerManager:
         while True:
             try:
                 config = load_config()
+                now = local_now(config)
+                await self._send_schedules(config, now)
                 display_cfg = config.get("system", {}).get("display_control", {})
-                desired = self.desired_state(display_cfg, time.monotonic(), self._local_time(config),
-                                             gpio_inputs.motion_active)
+                desired = self.desired_state(display_cfg, time.monotonic(), now.time(), gpio_inputs.motion_active)
                 if desired != self.is_on:
                     logger.info(f"Turning the screen {'on' if desired else 'off'}.")
                     if not await self.set_state(desired):
@@ -145,16 +187,15 @@ class DisplayPowerManager:
                 logger.error(f"Error in display power loop: {e}", exc_info=True)
                 await asyncio.sleep(5.0)
 
-    @staticmethod
-    def _local_time(config: dict) -> time_of_day:
-        """The time of day on the owner's clock (their time zone setting), for the schedule."""
-        timezone_name = config.get("globals", {}).get("timezone", "Europe/Stockholm")
-        try:
-            timezone = ZoneInfo(timezone_name)
-        except Exception as e:
-            logger.warning(f"Invalid timezone '{timezone_name}' in globals: {e}. Using local system time.")
-            timezone = None
-        return datetime.now(timezone).time()
+    async def _send_schedules(self, config: dict, now: datetime) -> None:
+        """The screen message again when the modules' schedules hide others than last time: a schedule
+        starting or ending, or a saved one (the page connecting gets it anyway, kiosk/ws.py)."""
+        hidden = scheduled_out(config, now)
+        if hidden != self.scheduled_out:
+            self.scheduled_out = hidden
+            from mirrordash_core.features.kiosk.ws import manager
+            from mirrordash_core.features.power.privacy import screen_message
+            await manager.broadcast(screen_message(config))
 
     async def set_state(self, on: bool) -> bool:
         success = await set_screen_power(on)

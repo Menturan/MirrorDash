@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, mock_open, patch
 
@@ -1199,9 +1200,13 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_p
     payload = {
         "modules[clock-one][enabled]": "true",
         "modules[clock-one][position]": "top_right",
-        "modules[clock-one][show_seconds]": "true"
+        "modules[clock-one][show_seconds]": "true",
+        # The Schedule section: the days' hidden blank and the ticked ones, a time picker left blank
+        "modules[clock-one][schedule][days]": ["", "mon", "fri"],
+        "modules[clock-one][schedule][from]": "06:30",
+        "modules[clock-one][schedule][to]": "",
     }
-    
+
     # Post with instance_id query parameter
     r = client.post("/admin/panels/modules/config/mirrordash-clock/save?instance_id=clock-one", data=payload, headers=headers)
     assert r.status_code == 200
@@ -1213,6 +1218,10 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_p
     assert saved["modules"]["clock-one"]["position"] == "top_right"
     assert saved["modules"]["clock-one"]["enabled"] is True
     assert saved["modules"]["clock-one"]["show_seconds"] == "true"  # no schema here: text stays text
+    assert saved["modules"]["clock-one"]["schedule"] == {"days": ["mon", "fri"], "from": "06:30", "to": ""}
+    payload["modules[clock-one][schedule][days]"] = ""  # none ticked
+    client.post("/admin/panels/modules/config/mirrordash-clock/save?instance_id=clock-one", data=payload, headers=headers)
+    assert mock_save.call_args[0][0]["modules"]["clock-one"]["schedule"]["days"] == []
 
 
 @patch("mirrordash_core.features.modules.routes.load_config")
@@ -1409,6 +1418,10 @@ def test_module_config_drawer_shows_standard_then_own_settings(client):
     assert '<option value="top_left" selected>' in html
     assert "instance_id=mirrordash-clock-2" in new  # a second instance gets its own id
     assert "Save Configuration" in html and "Add to Mirror" not in html
+    # The schedule's own collapsible section, every day ticked until the owner chooses
+    days = re.findall(r'type="checkbox" [^>]*name="modules\[mirrordash-clock\]\[schedule\]\[days\]"[^>]*>', html)
+    assert len(days) == 7 and all(" checked" in day for day in days)
+    assert 'type="time" id="field-modules-mirrordash-clock--schedule--from"' in html
 
 
 def test_new_instance_gets_its_own_id_when_key_and_entry_point_are_spelled_differently(client):

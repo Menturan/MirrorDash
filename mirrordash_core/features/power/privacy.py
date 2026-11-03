@@ -5,9 +5,11 @@ Turned on and off from the Power tab, the mirror's button and Home Assistant (MQ
 was already there and is the most neutral a mirror can be; this keeps what's harmless.
 
 What the screen shows of it comes in one message with the other screen-wide settings, {"type": "screen"}:
-when the page connects (kiosk/ws.py), when the settings are saved and when the mode changes."""
+when the page connects (kiosk/ws.py), when the settings are saved, when the mode changes and when the
+modules' schedules hide others (display_power.py)."""
 
 from mirrordash_core.config import load_config, save_config
+from mirrordash_core.features.power.display_power import local_now, scheduled_out
 from mirrordash_core.features.settings.schema import CARDS_OVER_PHOTO
 
 PRIVACY_SHOWS = ("monogram", "nothing")  # with no module marked; the first is the default
@@ -21,13 +23,15 @@ def privacy_on(config: dict | None = None) -> bool:
 
 def screen_message(config: dict | None = None) -> dict:
     """The screen-wide settings js/kiosk/core.js puts on <html>: privacy mode and what it shows, and how
-    the modules look over a background photo (an unknown value: the default)."""
+    the modules look over a background photo (an unknown value: the default); and the module instances
+    their schedules hide now, which it marks on their cards."""
     config = config if config is not None else load_config()
     globals_config = config.get("globals") or {}
     shows, cards = globals_config.get("privacy_shows"), globals_config.get("cards_over_photo")
     return {"type": "screen", "privacy": privacy_on(config),
             "privacy_shows": shows if shows in PRIVACY_SHOWS else PRIVACY_SHOWS[0],
-            "cards_over_photo": cards if cards in CARDS_OVER_PHOTO else CARDS_OVER_PHOTO[0]}
+            "cards_over_photo": cards if cards in CARDS_OVER_PHOTO else CARDS_OVER_PHOTO[0],
+            "scheduled_out": scheduled_out(config, local_now(config))}
 
 
 async def set_privacy(on: bool) -> None:

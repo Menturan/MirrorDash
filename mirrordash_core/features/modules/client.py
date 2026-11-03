@@ -69,7 +69,7 @@ CRASH_LIMIT = 3
 RESTART_DELAY = 5
 # Its place on the screen: changing one moves the card without restarting the module
 PLACEMENT_KEYS = {"position", "carousel_group", "carousel_interval", "max_width", "max_height", "z_index", "opacity",
-                  "show_in_privacy"}
+                  "show_in_privacy", "schedule"}
 # Headers that never reach a module (the admin session, the admin password) or come back from one
 # (a cookie on the mirror's own site, framing the core's answer, a service worker over the whole site,
 # wiping the site's logins)

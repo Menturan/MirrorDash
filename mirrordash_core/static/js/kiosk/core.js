@@ -17,6 +17,8 @@ let lostAt = null;
 let pageVersion = null;
 let pageBootId = null;
 let hideStatusTimer = null;
+// The module instances their schedules hide now (the screen message, features/power/display_power.py)
+let scheduledOut = [];
 
 function setStatus(state) {
     if (state !== 'connected' && lostAt && Date.now() - lostAt > NOT_RESPONDING_AFTER) state = 'failed';
@@ -36,8 +38,14 @@ function setStatus(state) {
     }
 }
 
+// The slides a carousel turns through: not those privacy mode or a schedule hides (display: none, so no
+// box; the other slides are only invisible)
+function shownSlides(groupContainer) {
+    return Array.from(groupContainer.querySelectorAll('.carousel-slide')).filter(slide => slide.getClientRects().length > 0);
+}
+
 function updateCarouselGroup(groupContainer) {
-    const slides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
+    const slides = shownSlides(groupContainer);
     if (slides.length === 0) {
         if (groupContainer._carouselTimer) {
             clearInterval(groupContainer._carouselTimer);
@@ -46,10 +54,10 @@ function updateCarouselGroup(groupContainer) {
         return;
     }
 
-    let activeSlide = groupContainer.querySelector('.carousel-slide.carousel-active');
-    if (!activeSlide) {
-        activeSlide = slides[0];
-        activeSlide.classList.add('carousel-active');
+    const activeSlide = groupContainer.querySelector('.carousel-slide.carousel-active');
+    if (!slides.includes(activeSlide)) {
+        activeSlide?.classList.remove('carousel-active');
+        slides[0].classList.add('carousel-active');
     }
 
     // A module updating often must not restart the rotation: only a changed slide count or interval
@@ -71,7 +79,7 @@ function carouselInterval(groupContainer) {
 }
 
 function stepCarousel(groupContainer) {
-    const currentSlides = Array.from(groupContainer.querySelectorAll('.carousel-slide'));
+    const currentSlides = shownSlides(groupContainer);
     if (currentSlides.length <= 1) return;
     groupContainer._steppedAt = Date.now();
 
@@ -209,6 +217,7 @@ function showModuleHtml(data) {
     card.style.zIndex    = data.z_index != null ? String(data.z_index) : '';
     card.style.opacity   = data.opacity  != null ? String(data.opacity)  : '';
     card.toggleAttribute('data-show-in-privacy', data.show_in_privacy === true);  // style.css, privacy mode
+    card.toggleAttribute('data-scheduled-out', scheduledOut.includes(data.module));  // style.css, its schedule
     card.toggleAttribute('data-video-is-playing', videoIsPlaying);
 
     const shadow = card.shadowRoot || card.attachShadow({ mode: 'open' });
@@ -247,6 +256,11 @@ function handleServerMessage(data) {
         root.toggleAttribute('data-privacy', data.privacy === true);
         root.dataset.privacyShows = data.privacy_shows;
         root.dataset.cardsOverPhoto = data.cards_over_photo;
+        // and the modules their schedules hide now; a carousel then turns through what is left
+        scheduledOut = data.scheduled_out || [];
+        document.querySelectorAll('[data-module]').forEach(card =>
+            card.toggleAttribute('data-scheduled-out', scheduledOut.includes(card.dataset.module)));
+        document.querySelectorAll('.carousel-group-container').forEach(updateCarouselGroup);
     } else if (data.type === 'video_is_playing') {
         setVideoIsPlaying(data.playing === true);
     } else if (data.type === 'video_window') {

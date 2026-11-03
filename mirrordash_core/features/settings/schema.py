@@ -3,8 +3,9 @@
 import base64
 import json
 import logging
+import re
 
-from mirrordash_core.forms import POSITIONS
+from mirrordash_core.forms import DAYS, POSITIONS
 
 logger = logging.getLogger("mirrordash.core.settings")
 
@@ -75,6 +76,18 @@ def _check_module_settings(name: str, cfg: dict, properties: dict) -> None:
             raise ValueError(f"Module '{name}' setting '{title}' must be one of: {prop['enum']}")
 
 
+TIME_OR_BLANK = re.compile(r"(([01]\d|2[0-3]):[0-5]\d)?")  # system_settings.py's HHMM, or blank
+
+
+def _is_schedule(schedule) -> bool:
+    """A module's standard "schedule" (forms.py): days of DAYS, times HH:MM or blank."""
+    if not isinstance(schedule, dict):
+        return False
+    days, times = schedule.get("days", []), [schedule.get("from", ""), schedule.get("to", "")]
+    return (isinstance(days, list) and all(isinstance(d, str) and d in DAYS for d in days)
+            and all(isinstance(t, str) and TIME_OR_BLANK.fullmatch(t) for t in times))
+
+
 def validate_config(config: dict) -> None:
     """Trust boundary for a saved config: its shape, the module positions and each module's settings
     against that module's config_schema. Raises ValueError on bad data."""
@@ -99,6 +112,8 @@ def validate_config(config: dict) -> None:
         pos = cfg.get("position")
         if pos is not None and pos not in VALID_POSITIONS:
             raise ValueError(f"Module '{name}' has invalid position '{pos}'. Valid positions: {sorted(VALID_POSITIONS)}")
+        if "schedule" in cfg and not _is_schedule(cfg["schedule"]):
+            raise ValueError(f"Module '{name}' has an invalid schedule: days from {DAYS[0]} to {DAYS[-1]}, times as HH:MM or blank.")
         module = cfg.get("module", name)
         if not isinstance(module, str):
             raise ValueError(f"Module '{name}' must name its module as text.")

@@ -186,9 +186,10 @@ body, html {
 
 /* Privacy mode (features/power/privacy.py): only the modules marked "Shown in Privacy Mode" stay; with
    none, the monogram of the boot screen, still and dim, or nothing (the owner's choice). The hidden cards
-   stay in the page, which only the mirror's own screen loads. ponytail: a carousel keeps turning to its
-   hidden slides (a blank turn); upgrade: skip them in updateCarouselGroup. */
+   stay in the page, which only the mirror's own screen loads; a carousel skips them (core.js shownSlides). */
 :root[data-privacy] [data-module]:not([data-show-in-privacy]) { display: none !important; }
+/* A module its schedule hides now (features/power/display_power.py): the same, outside its days and times */
+[data-module][data-scheduled-out] { display: none !important; }
 #privacy-monogram {
     display: none;
     position: fixed;
