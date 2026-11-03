@@ -524,45 +524,56 @@ def test_a_files_setting_shrinks_a_photo_to_the_screen_before_sending_it(page, s
 
     form = render_schema_form({"properties": {"photos": {"format": "files", "accept": "image", "title": "Photos"}}},
                               {}, "modules[photos-1]", "mirrordash_photos")
-    stored, sent = [{"name": "2026-07-14_beach.jpg", "size": 1, "modified": 1}], []
+    stored = [{"name": f"2026-07-{day:02d}_photo.jpg", "size": 1, "modified": day} for day in range(1, 41)]
+    sent, thumbnails = [], []
 
     def files_route(route):
         request = route.request
         if request.method == "GET" and request.url.endswith("/files/photos"):
             return route.fulfill(json={"files": stored, "max_files": 500, "max_side": 2560, "free_bytes": 3 << 30})
+        if request.method == "GET":
+            thumbnails.append(request.url)
+            return route.fulfill(status=404)
         if request.method == "POST":
-            sent.append(request.post_data_buffer)
+            sent.append(request.url)
             return route.fulfill(json={"name": "added.jpg"})
         if request.method == "DELETE":
-            stored.clear()
-            return route.fulfill(json={"removed": "2026-07-14_beach.jpg"})
+            return route.fulfill(json={"removed": request.url.rsplit("/", 1)[1]})
         route.fulfill(status=404)
 
     navigate_authenticated(page, server_url)
     page.route("**/admin/modules/photos-1/files/photos**", files_route)
     page.evaluate("""html => { const box = document.createElement('div'); box.id = 'files-test'; box.innerHTML = html;
                                document.body.append(box); box.querySelectorAll('[data-files-field]').forEach(setUpFilesField); }""", form)
-    status = page.locator("#files-test .files-status")
-    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('1 of 500')")
-    assert "GB" not in status.text_content() and "3072 MB free" in status.text_content()
-    assert page.locator("#files-test .files-tile img").count() == 1
+    status, tiles, more = (page.locator(f"#files-test {selector}") for selector in (".files-status", ".files-tile", ".files-more"))
+    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('40 of 500')")
+    assert "3072 MB free" in status.text_content()
+    # 40 photos: the newest 30 first, as their small copies, and the rest a tap away
+    assert tiles.count() == 30 and tiles.first.locator("img").get_attribute("alt") == "2026-07-40_photo.jpg"
+    assert tiles.first.locator("img").get_attribute("src").endswith("/2026-07-40_photo.jpg?thumb=1")
+    assert more.is_visible() and more.text_content() == "Show more (10 left)"
+    more.click()
+    assert tiles.count() == 40 and more.is_hidden()
     # What the page sends, read in the page: WebKit gives Playwright no multipart body with a blob in it
     page.evaluate("""() => { const realFetch = window.fetch; window.__sent = [];
         window.fetch = async (url, options) => {
             if (options?.method === 'POST') {
-                const file = options.body.get('file'), bitmap = await createImageBitmap(file);
-                window.__sent.push({ name: file.name, type: file.type, size: file.size, width: bitmap.width, height: bitmap.height });
+                const sizes = async (file) => { const bitmap = await createImageBitmap(file);
+                    return { name: file.name, type: file.type, size: file.size, width: bitmap.width, height: bitmap.height }; };
+                window.__sent.push({ file: await sizes(options.body.get('file')), thumb: await sizes(options.body.get('thumb')) });
             }
             return realFetch(url, options);
         }; }""")
     page.set_input_files("#files-test input[type=file]", files=[{"name": "big.png", "mimeType": "image/png", "buffer": png(4000, 3000)}])
-    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('2 of 500')")
+    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('41 of 500')")
     upload = page.evaluate("window.__sent")[0]
-    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_big\.png", upload["name"])
-    assert upload["type"] == "image/jpeg" and (upload["width"], upload["height"]) == (2560, 1920)
-    assert upload["size"] < 3.5 * 1024 * 1024 and len(sent) == 1
-    page.click("#files-test [aria-label='Remove 2026-07-14_beach.jpg']")
-    page.wait_for_function("document.querySelectorAll('#files-test .files-tile').length === 1")
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_big\.png", upload["file"]["name"])
+    assert upload["file"]["type"] == "image/jpeg" and (upload["file"]["width"], upload["file"]["height"]) == (2560, 1920)
+    assert upload["file"]["size"] < 3.5 * 1024 * 1024 and len(sent) == 1
+    assert (upload["thumb"]["width"], upload["thumb"]["height"]) == (240, 180) and upload["thumb"]["size"] < 64 * 1024
+    assert tiles.first.locator("img").get_attribute("alt") == "added.jpg"  # the newest first
+    page.click("#files-test [aria-label='Remove 2026-07-01_photo.jpg']")
+    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('40 of 500')")
 
 
 def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):

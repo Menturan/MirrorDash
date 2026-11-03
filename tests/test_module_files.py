@@ -58,6 +58,24 @@ def test_a_photo_lands_in_the_instances_cache_folder_readable_by_it(mirror):
     assert not stored.exists()
 
 
+def test_a_photos_small_copy_comes_and_goes_with_it(mirror):
+    """The field's thumbnails: the admin page's 240 px copy, kept apart where the module never looks."""
+    sent = mirror.client.post(URL, headers=AUTH, files={"file": ("IMG_1.jpg", jpeg(1920, 1080), "image/jpeg"),
+                                                        "thumb": ("thumb.jpg", jpeg(240, 135), "image/jpeg")})
+    assert sent.json() == {"name": "IMG_1.jpg"}
+    thumbs = mirror.folder.parent / ".thumbs" / "photos"
+    assert (thumbs / "IMG_1.jpg").read_bytes() == jpeg(240, 135)
+    assert [path.name for path in mirror.folder.iterdir()] == ["IMG_1.jpg"]  # the module's folder holds the photo only
+    assert mirror.client.get(f"{URL}/IMG_1.jpg?thumb=1", headers=AUTH).content == jpeg(240, 135)
+    upload(mirror.client, "IMG_2.jpg")  # no small copy: the photo itself
+    assert mirror.client.get(f"{URL}/IMG_2.jpg?thumb=1", headers=AUTH).content == jpeg(1920, 1080)
+    too_big = mirror.client.post(URL, headers=AUTH, files={"file": ("IMG_3.jpg", jpeg(1920, 1080), "image/jpeg"),
+                                                           "thumb": ("thumb.jpg", jpeg(1920, 1080), "image/jpeg")})
+    assert too_big.status_code == 415 and not (mirror.folder / "IMG_3.jpg").exists()
+    mirror.client.delete(f"{URL}/IMG_1.jpg", headers=AUTH)
+    assert not (thumbs / "IMG_1.jpg").exists()
+
+
 def test_the_owners_name_is_kept_made_safe_and_never_replaces_a_file(mirror):
     assert upload(mirror.client, "2026-07-14_IMG 1.HEIC.jpg").json()["name"] == "2026-07-14_IMG_1_HEIC.jpg"
     assert upload(mirror.client, "../../config.jpg").json()["name"] == "config.jpg"

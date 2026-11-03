@@ -1436,6 +1436,7 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 /* A module's files setting: its files as square thumbnails, each with a remove button */
 .files-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; }
 .files-grid:empty { display: none; }
+.files-more { margin-top: 8px; width: 100%; }
 .files-tile { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: #0c0c0e; border: 1px solid #27272a; }
 .files-tile img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .files-tile > span { display: block; padding: 8px; font-size: 0.75rem; overflow-wrap: anywhere; }

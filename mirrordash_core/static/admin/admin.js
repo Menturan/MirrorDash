@@ -552,17 +552,23 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
 // shrunk here on the phone before it's sent: to the screen's longest side, as a JPEG (the canvas drops its
 // EXIF, the GPS position too, and the rotation is applied), under the module route's 4 MB out with room
 // to spare. A tenth of the data over the Pi's Wi-Fi, and no 12-megapixel decode on the Pi.
+// With it a 240 px copy for the field's thumbnails (~15 kB), so a long list doesn't fetch every photo.
 async function shrinkImage(file, maxSide) {
     const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * scale);
-    canvas.height = Math.round(bitmap.height * scale);
-    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const draw = (side) => {
+        const scale = Math.min(1, side / Math.max(bitmap.width, bitmap.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(bitmap.width * scale);
+        canvas.height = Math.round(bitmap.height * scale);
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        return canvas;
+    };
+    const jpeg = (canvas, quality) => new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+    const canvas = draw(maxSide), thumb = await jpeg(draw(240), 0.8);
     bitmap.close();
     for (const quality of [0.85, 0.75, 0.65, 0.5]) {
-        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
-        if (blob && (blob.size <= 3.5 * 1024 * 1024 || quality === 0.5)) return blob;
+        const photo = await jpeg(canvas, quality);
+        if (photo && (photo.size <= 3.5 * 1024 * 1024 || quality === 0.5)) return { photo, thumb };
     }
     throw new Error('not drawable');
 }
@@ -590,12 +596,18 @@ async function setUpFilesField(field) {
     }
     const info = await response.json();
     const megabytes = (bytes) => `${Math.floor(bytes / (1024 * 1024))} MB`;
+    // The newest first, PAGE at a time: 500 photos would be a list a hundred rows long
+    const PAGE = 30;
+    let shown = PAGE;
+    const more = Object.assign(document.createElement('button'), { type: 'button', className: 'btn secondary btn-sm files-more' });
+    more.onclick = () => { shown += PAGE; draw(); };
+    grid.after(more);
     const draw = () => {
-        grid.replaceChildren(...info.files.map((file) => {
+        grid.replaceChildren(...info.files.slice(-shown).reverse().map((file) => {
             const tile = document.createElement('div');
             tile.className = 'files-tile';
             const preview = isImage ? Object.assign(document.createElement('img'), {
-                src: `${url}/${encodeURIComponent(file.name)}`, alt: file.name, loading: 'lazy', title: file.name,
+                src: `${url}/${encodeURIComponent(file.name)}?thumb=1`, alt: file.name, loading: 'lazy', title: file.name,
             }) : Object.assign(document.createElement('span'), { textContent: file.name });
             const remove = document.createElement('button');
             remove.type = 'button';
@@ -611,6 +623,9 @@ async function setUpFilesField(field) {
             tile.append(preview, remove);
             return tile;
         }));
+        const hidden = info.files.length - shown;
+        more.hidden = hidden <= 0;
+        more.textContent = `Show more (${hidden} left)`;
         status.textContent = `${info.files.length} of ${info.max_files} · ${megabytes(info.free_bytes)} free on the mirror`;
         add.hidden = info.files.length >= info.max_files;
     };
@@ -620,15 +635,19 @@ async function setUpFilesField(field) {
         add.hidden = true;
         for (const [index, file] of chosen.entries()) {
             status.textContent = `Adding ${index + 1} of ${chosen.length}…`;
-            let blob;
+            const form = new FormData();
             try {
-                blob = isImage ? await shrinkImage(file, info.max_side) : file;
+                if (isImage) {
+                    const { photo, thumb } = await shrinkImage(file, info.max_side);
+                    form.append('file', photo, datedName(file));
+                    if (thumb) form.append('thumb', thumb, 'thumb.jpg');
+                } else {
+                    form.append('file', file, file.name);
+                }
             } catch (_) {
                 showGlobal(`${file.name} couldn't be read as a picture.`, 'error');
                 continue;
             }
-            const form = new FormData();
-            form.append('file', blob, isImage ? datedName(file) : file.name);
             const sent = await fetch(url, { method: 'POST', body: form });
             if (!sent.ok) {
                 showGlobal(`${file.name}: ${await detail(sent)}`, 'error');

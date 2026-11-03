@@ -74,9 +74,18 @@ def is_image(data: bytes) -> bool:
     return size is not None and all(0 < side <= MAX_DIMENSION for side in size)
 
 
+THUMB_MAX_SIDE, THUMB_MAX_BYTES = 256, 64 * 1024  # the admin page's small copy (240 px, ~15 kB)
+
+
+def is_thumb(data: bytes) -> bool:
+    size = jpeg_size(data)
+    return len(data) <= THUMB_MAX_BYTES and size is not None and all(0 < side <= THUMB_MAX_SIDE for side in size)
+
+
 # One entry per kind of file the core takes, named by a setting's "accept". ponytail: images only; a new
-# kind is one entry here (its extension, size cap, content check) plus how admin.js prepares and shows it.
-FILE_KINDS = {"image": {"extension": ".jpg", "max_bytes": 4 * 1024 * 1024, "check": is_image}}
+# kind is one entry here (its extension, size cap, content check, whether the admin page sends a small
+# copy for the field's thumbnails) plus how admin.js prepares and shows it.
+FILE_KINDS = {"image": {"extension": ".jpg", "max_bytes": 4 * 1024 * 1024, "check": is_image, "thumbs": True}}
 
 
 def safe_name(name: str, extension: str) -> str:
@@ -110,15 +119,18 @@ def max_files(prop: dict) -> int:
     return min(value, MAX_FILES_CAP) if isinstance(value, int) and value > 0 else DEFAULT_MAX_FILES
 
 
-def open_folder(instance_id: str, key: str, create: bool) -> int:
-    """cache/<instance>/files/<key> as a directory descriptor, each part made if missing (create) and
-    none followed if it is a link. FileNotFoundError when it isn't there and create is False."""
+def open_folder(instance_id: str, key: str, create: bool, thumbs: bool = False) -> int:
+    """cache/<instance>/files/<key> (thumbs: files/.thumbs/<key>, the admin page's small copies, which the
+    module never reads) as a directory descriptor, each part made if missing (create) and none followed if
+    it is a link. FileNotFoundError when it isn't there and create is False."""
     module_dir = get_module_dir()
     if create:
         module_dir.mkdir(parents=True, exist_ok=True)
     folder = os.open(module_dir, DIR_FLAGS)
+    parts = [("cache", None), (instance_id, None), ("files", FOLDER_MODE),
+             *([(".thumbs", FOLDER_MODE)] if thumbs else []), (key, FOLDER_MODE)]
     try:
-        for part, mode in (("cache", None), (instance_id, None), ("files", FOLDER_MODE), (key, FOLDER_MODE)):
+        for part, mode in parts:
             if create:
                 with contextlib.suppress(FileExistsError):
                     os.mkdir(part, 0o770, dir_fd=folder)
@@ -144,9 +156,8 @@ def list_files(folder: int) -> list[dict]:
     return sorted(entries, key=lambda entry: (entry["modified"], entry["name"]))
 
 
-def store(folder: int, name: str, data: bytes) -> str:
-    """data as a new file under name, or name-2, name-3 ... (an existing file is never replaced); the
-    name it got. Written under a temporary name first, so the module never reads half a file."""
+def _write_temporary(folder: int, data: bytes) -> str:
+    """data in a new file of a random name in folder (O_EXCL, no link followed): its name."""
     temporary = f".upload-{secrets.token_hex(8)}"
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, FILE_MODE, dir_fd=folder)
     try:
@@ -155,6 +166,19 @@ def store(folder: int, name: str, data: bytes) -> str:
         os.fchmod(fd, FILE_MODE)
     finally:
         os.close(fd)
+    return temporary
+
+
+def store_thumb(folder: int, name: str, data: bytes) -> None:
+    """A file's small copy under its name: rename replaces whatever is at name, a link too, never
+    following it."""
+    os.replace(_write_temporary(folder, data), name, src_dir_fd=folder, dst_dir_fd=folder)
+
+
+def store(folder: int, name: str, data: bytes) -> str:
+    """data as a new file under name, or name-2, name-3 ... (an existing file is never replaced); the
+    name it got. Written under a temporary name first, so the module never reads half a file."""
+    temporary = _write_temporary(folder, data)
     stem, extension = name.rsplit(".", 1)
     try:
         for number in range(1, MAX_FILES_CAP + 2):
@@ -197,14 +221,18 @@ async def get_files(instance_id: str, key: str):
 
 
 @router.post("/{instance_id}/files/{key}")
-async def upload_file(instance_id: str, key: str, file: UploadFile):
-    """One file per call (the admin page sends them one at a time), read only up to its kind's size cap."""
+async def upload_file(instance_id: str, key: str, file: UploadFile, thumb: UploadFile | None = None):
+    """One file per call (the admin page sends them one at a time), read only up to its kind's size cap;
+    with an image, the admin page's small copy of it for the field's thumbnails."""
     prop, kind = files_setting(instance_id, key)
     data = await file.read(kind["max_bytes"] + 1)
     if len(data) > kind["max_bytes"]:
         raise HTTPException(status_code=413, detail=f"Larger than {kind['max_bytes'] // (1024 * 1024)} MB")
     if not kind["check"](data):
         raise HTTPException(status_code=415, detail="Not a file of the kind this setting takes")
+    thumb_data = await thumb.read(THUMB_MAX_BYTES + 1) if thumb is not None and kind.get("thumbs") else None
+    if thumb_data is not None and not is_thumb(thumb_data):
+        raise HTTPException(status_code=415, detail=f"The small copy must be a JPEG of at most {THUMB_MAX_SIDE} px")
     try:
         folder = open_folder(instance_id, key, create=True)
     except OSError as e:
@@ -219,16 +247,25 @@ async def upload_file(instance_id: str, key: str, file: UploadFile):
         raise HTTPException(status_code=507, detail="The mirror couldn't save the file: is it full?")
     finally:
         os.close(folder)
+    if thumb_data is not None:
+        try:
+            thumbs = open_folder(instance_id, key, create=True, thumbs=True)
+            try:
+                store_thumb(thumbs, name, thumb_data)
+            finally:
+                os.close(thumbs)
+        except OSError as e:  # the field shows the photo itself instead
+            logger.warning(f"{instance_id}: no small copy of {key}/{name} ({e})")
     logger.info(f"{instance_id}: {key}/{name} added")
     return {"name": name}
 
 
-def _open_file(instance_id: str, key: str, name: str) -> tuple[int, int]:
-    """(folder, file) descriptors of one stored file; 404 for any other name or a link."""
+def _open_file(instance_id: str, key: str, name: str, thumbs: bool = False) -> tuple[int, int]:
+    """(folder, file) descriptors of one stored file (or its small copy); 404 for any other name or a link."""
     if not NAME.match(name):
         raise HTTPException(status_code=404, detail="No such file")
     try:
-        folder = open_folder(instance_id, key, create=False)
+        folder = open_folder(instance_id, key, create=False, thumbs=thumbs)
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="No such file")
     try:
@@ -244,10 +281,16 @@ def _open_file(instance_id: str, key: str, name: str) -> tuple[int, int]:
 
 
 @router.get("/{instance_id}/files/{key}/{name}")
-async def get_file(instance_id: str, key: str, name: str):
-    """One file, for the field's thumbnails; never more than its kind's size cap."""
+async def get_file(instance_id: str, key: str, name: str, thumb: bool = False):
+    """One file, never more than its kind's size cap; thumb: its small copy, for the field's thumbnails
+    (the file itself when it has none: one uploaded without, or a copy that wasn't saved)."""
     _, kind = files_setting(instance_id, key)
-    folder, fd = _open_file(instance_id, key, name)
+    try:
+        folder, fd = _open_file(instance_id, key, name, thumbs=True) if thumb and kind.get("thumbs") else (None, None)
+    except HTTPException:
+        folder, fd = None, None
+    if fd is None:
+        folder, fd = _open_file(instance_id, key, name)
     try:
         with open(fd, "rb", closefd=False) as f:
             data = f.read(kind["max_bytes"])
@@ -269,5 +312,11 @@ async def delete_file(instance_id: str, key: str, name: str):
         pass
     finally:
         os.close(folder)
+    with contextlib.suppress(OSError):  # its small copy, if it has one
+        thumbs = open_folder(instance_id, key, create=False, thumbs=True)
+        try:
+            os.unlink(name, dir_fd=thumbs)
+        finally:
+            os.close(thumbs)
     logger.info(f"{instance_id}: {key}/{name} removed")
     return {"removed": name}
