@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-11-03
+
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI; none of them can listen to a microphone, also one plugged in later. Comes with the next OS image.
 - The volume in the Settings tab now reaches the 3.5 mm jack, and it follows how loud it sounds: before it changed nothing on a mirror.
 
