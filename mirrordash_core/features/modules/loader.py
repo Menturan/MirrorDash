@@ -537,9 +537,11 @@ class ModuleLoader:
         self.link = link
         self.tasks: dict[str, asyncio.Task] = {}
         self.instances: dict = {}
+        self.last_shown: bool | None = None  # what on_shown said last; None: not yet since the start
 
     async def start_modules(self, modules_config: dict, globals_config: dict) -> None:
         """Start an instance for each enabled entry of modules_config (the core's config["modules"])."""
+        self.last_shown = None
         eps = module_entry_points()
         logger.info(f"Discovered entry points: {[ep.name for ep in eps]}")
 
@@ -638,6 +640,23 @@ class ModuleLoader:
                     await result
             except Exception as e:
                 logger.error(f"{instance_id}: on_control({name!r}) failed: {e}", exc_info=True)
+
+    async def shown(self, on: bool) -> None:
+        """Whether the instance's card is on the screen (the screen on, and neither its schedule nor privacy mode
+        hiding it): the module's `on_shown(on)`, sync or async, at the start and on every change."""
+        if on == self.last_shown:
+            return
+        self.last_shown = on
+        for instance_id, plugin_instance in self.instances.items():
+            handler = getattr(plugin_instance, "on_shown", None)
+            if not callable(handler):
+                continue
+            try:
+                result = handler(on)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as e:
+                logger.error(f"{instance_id}: on_shown({on}) failed: {e}", exc_info=True)
 
     async def stop_modules(self) -> None:
         logger.info("Stopping all module tasks...")

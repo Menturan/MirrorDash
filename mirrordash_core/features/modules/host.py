@@ -16,8 +16,9 @@ sends one end of each over the second connection (<socket>.fds, SOCK_SEQPACKET) 
 process the forkserver makes for it gets them, so its connection is who it is. Over it, the host protocol
 for that one instance (Host):
 
-  core -> instance  start {gen, modules, globals, awake}   start it with these settings
+  core -> instance  start {gen, modules, globals, awake, hidden}  start it with these settings
                     awake {on}                              the screen went on or off
+                    hidden {on}                             the screen hides its card (schedule, privacy mode)
                     event {name, data}                      a hardware event for the modules' event bus
                     http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
                     diagnose {id}                           its GPIO lines (Logs → Diagnostics)
@@ -320,6 +321,7 @@ class HostLink:
         self.writer = writer
         self.awake = asyncio.Event()  # set while the screen is on: fetch_json waits on it
         self.awake.set()
+        self.hidden = False  # the screen hides its card: its schedule, or privacy mode
         self.gen = 0
         self.pending: dict[int, asyncio.Future] = {}
         self.gpio_lines: dict[str, list[GpioLines]] = {}  # each instance's, released when its run_loop ends
@@ -519,6 +521,10 @@ class Host:
             self._spawn(self._start(message))
         elif kind == "awake":
             self.link.awake.set() if message.get("on") else self.link.awake.clear()
+            self._spawn(self.loader.shown(self.link.awake.is_set() and not self.link.hidden))
+        elif kind == "hidden":
+            self.link.hidden = message.get("on") is True
+            self._spawn(self.loader.shown(self.link.awake.is_set() and not self.link.hidden))
         elif kind == "event":
             event_bus.publish(str(message.get("name")), message.get("data"))
         elif kind == "http":
@@ -541,7 +547,9 @@ class Host:
             self.apps.clear()
             self.link.gen = message.get("gen", 0)
             self.link.awake.set() if message.get("awake", True) else self.link.awake.clear()
+            self.link.hidden = message.get("hidden") is True
             await self.loader.start_modules(message.get("modules") or {}, message.get("globals") or {})
+            await self.loader.shown(self.link.awake.is_set() and not self.link.hidden)
             await self.link.send({"t": "status", "gen": self.link.gen, "running": sorted(self.loader.tasks)})
 
     async def _preview(self, message: dict) -> None:

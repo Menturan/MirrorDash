@@ -193,9 +193,8 @@ class DisplayPowerManager:
         hidden = scheduled_out(config, now)
         if hidden != self.scheduled_out:
             self.scheduled_out = hidden
-            from mirrordash_core.features.kiosk.ws import manager
-            from mirrordash_core.features.power.privacy import screen_message
-            await manager.broadcast(screen_message(config))
+            from mirrordash_core.features.power.privacy import broadcast_screen
+            await broadcast_screen(config)
 
     async def set_state(self, on: bool) -> bool:
         success = await set_screen_power(on)

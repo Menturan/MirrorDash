@@ -34,15 +34,32 @@ def screen_message(config: dict | None = None) -> dict:
             "scheduled_out": scheduled_out(config, local_now(config))}
 
 
+def hidden_instances(config: dict) -> set[str]:
+    """The module instances whose cards the screen hides now: their schedule, or privacy mode unless marked
+    for it. Each is told (`on_shown`), so a radio stops when its card goes."""
+    hidden = set(scheduled_out(config, local_now(config)))
+    if privacy_on(config):
+        hidden |= {name for name, cfg in (config.get("modules") or {}).items()
+                   if isinstance(cfg, dict) and cfg.get("show_in_privacy") is not True}
+    return hidden
+
+
+async def broadcast_screen(config: dict) -> None:
+    """The screen message to every page, and to the module instances whether their cards are hidden."""
+    from mirrordash_core.features.kiosk.ws import manager
+    from mirrordash_core.features.modules.client import module_host
+    await manager.broadcast(screen_message(config))
+    await module_host.set_hidden(hidden_instances(config))
+
+
 async def set_privacy(on: bool) -> None:
     """Privacy mode on or off: saved (it outlasts a restart while the guests are still there), and the
     screen told at once. Home Assistant's switch reads it at the bridge's next pass."""
-    from mirrordash_core.features.kiosk.ws import manager
     config = load_config()
     if privacy_on(config) != on:
         config["privacy"] = {"on": on}
         save_config(config)
-    await manager.broadcast(screen_message(config))
+    await broadcast_screen(config)
 
 
 async def toggle_privacy() -> None:

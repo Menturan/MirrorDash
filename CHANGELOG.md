@@ -18,6 +18,7 @@ There are two kinds of releases:
 
 - Modules can take files you upload in their settings, such as photos for a slideshow. Photos are shrunk to your screen on your phone before they're sent, which also removes their location, and they keep their date first in their name. Uploaded files aren't in backups.
 
+- For module developers: `on_shown(shown)` tells a module when its card is on the screen and when not (the screen off, its schedule, privacy mode), so a radio can stop playing when it's hidden.
 - For module developers: what `self.fetch` and `self.fetch_json` give back now has the answer's headers too (`answer.headers.get("Retry-After")`), so a module can wait as long as a busy service asks.
 - For module developers: a module's settings say `preview: True` when the admin page's preview draws it, so a module that needs a login can show its sample answers there instead of how to log in.
 - For module developers: a local mirror (`MIRRORDASH_DEV=1`) comes back by itself after a restart from the admin page, and installs modules from the admin page where it finds them.

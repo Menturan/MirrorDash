@@ -248,6 +248,7 @@ class ModuleHost:
         self._crashes: dict[str, int] = {}
         self._control: Connection | None = None
         self._instances: dict[str, Connection] = {}
+        self._hidden: set[str] = set()  # the instances whose cards the screen hides (privacy.hidden_instances)
         self._uids: dict[str, int] = {}
         self._placement: dict[str, dict] = {}
         self._sync_lock = asyncio.Lock()
@@ -306,6 +307,14 @@ class ModuleHost:
     def set_awake(self, on: bool) -> None:
         """The screen went on or off (display_power.py): the modules' fetches sleep meanwhile."""
         self._post({"t": "awake", "on": bool(on)})
+
+    async def set_hidden(self, hidden: set[str]) -> None:
+        """Which instances' cards the screen hides (their schedule, privacy mode): each one that changed is told,
+        and the module hears whether its card is shown (`on_shown`, with the screen being on)."""
+        changed, self._hidden = hidden ^ self._hidden, set(hidden)
+        for instance_id in sorted(changed):
+            if conn := self._instances.get(instance_id):
+                await self._send_quietly(conn, {"t": "hidden", "on": instance_id in hidden})
 
     def forward_event(self, name: str, data) -> None:
         """Every event published in the core (the hardware's) goes to each instance's event bus."""
@@ -522,6 +531,8 @@ class ModuleHost:
                 display_power_manager,
             )
             awake = display_power_manager.awake.is_set()
+            from mirrordash_core.features.power.privacy import hidden_instances
+            await self.set_hidden(hidden_instances(config))  # a saved schedule or "Shown in Privacy Mode"
             for instance_id, cfg in wanted.items():
                 if conn := self._instances.get(instance_id):
                     if conn.html is not None:  # for the screen that reloaded
@@ -552,7 +563,8 @@ class ModuleHost:
         self._instances[instance_id] = conn
         # Served first: if the start can't be sent, its connection ends there, and it is started again like a crash
         run_in_background(self._serve(conn), name=f"module-{instance_id}")
-        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake})
+        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake,
+                         "hidden": instance_id in self._hidden})
 
     async def _serve(self, conn: Connection) -> None:
         """An instance's connection until it ends; then, unless the core stopped it, start it again or,

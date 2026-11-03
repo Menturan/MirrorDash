@@ -86,3 +86,28 @@ async def test_home_assistant_sees_it_and_switches_it_when_the_owner_allows_the_
          patch.object(privacy, "set_privacy", AsyncMock()) as switch:
         await b._on_message("mirrordash/m1/privacy/set", b"ON", False)
         assert not switch.await_count
+
+
+@pytest.mark.asyncio
+async def test_a_module_hears_when_its_card_is_hidden_and_shown_again():
+    """Privacy mode hides the instances not marked for it, a schedule with no day its own; only the instances
+    whose state changed are told, and the module's on_shown runs once per change (the screen counts too)."""
+    from mirrordash_core.features.modules.client import ModuleHost
+    from mirrordash_core.features.modules.loader import ModuleLoader
+    config = {"privacy": {"on": True}, "modules": {"clock": {"show_in_privacy": True}, "radio": {},
+                                                   "news": {"schedule": {"days": []}}}}
+    assert privacy.hidden_instances(config) == {"radio", "news"}
+    assert privacy.hidden_instances({"modules": config["modules"]}) == {"news"}
+
+    host = ModuleHost.__new__(ModuleHost)
+    host._hidden, host._instances = {"news"}, {"radio": "r", "news": "n", "clock": "c"}
+    host._send_quietly = AsyncMock()
+    await host.set_hidden({"radio", "news"})
+    host._send_quietly.assert_awaited_once_with("r", {"t": "hidden", "on": True})
+
+    heard = []
+    loader = ModuleLoader(link=None)
+    loader.instances = {"radio": type("Radio", (), {"on_shown": lambda self, on: heard.append(on)})()}
+    for on in (True, True, False, True):
+        await loader.shown(on)
+    assert heard == [True, False, True]
