@@ -9,6 +9,11 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### OS image
+
+- Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
+- The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
+
 ## [0.12.0] - 2026-11-03
 
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI; none of them can listen to a microphone, also one plugged in later. Comes with the next OS image.
