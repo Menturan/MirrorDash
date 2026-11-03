@@ -385,6 +385,43 @@ async def test_an_answer_says_when_its_data_was_downloaded(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_an_answer_carries_its_calls_headers_a_429s_retry_after_too(tmp_path):
+    """headers: this call's, read in any case; a 429's Retry-After beside the last good data; empty for a saved
+    answer reused without a call, and when nothing answered."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+
+    busy = threading.Event()
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(429 if busy.is_set() else 200)
+            self.send_header("Retry-After" if busy.is_set() else "X-RateLimit-Remaining", "30" if busy.is_set() else "99")
+            self.end_headers()
+            self.wfile.write(b"{}" if busy.is_set() else b'{"n": 1}')
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/now"
+    plugin = DummyPlugin({})
+    _inject_module_helpers(plugin, "dummy", {}, "dummy", {"cache_dir": str(tmp_path)}, FakeLink())
+
+    answer = await plugin.fetch_json(url)
+    assert answer == ({"n": 1}, None) and answer.headers.get("x-ratelimit-remaining") == "99"
+    busy.set()
+    answer = await plugin.fetch_json(url, max_age=0)
+    assert answer == ({"n": 1}, "http 429") and answer.headers.get("Retry-After") == "30"
+    assert (await plugin.fetch_json(url, max_age=60)).headers.get("Retry-After") is None  # saved: no call
+    server.shutdown()
+    server.server_close()
+    answer = await plugin.fetch_json(url, max_age=0, timeout=2)
+    assert answer[1] == "offline" and not answer.headers.keys()
+
+
+@pytest.mark.asyncio
 async def test_a_module_with_only_render_is_shown_every_interval_and_when_changed():
     class RenderOnly:
         interval = 3600

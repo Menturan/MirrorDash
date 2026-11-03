@@ -26,6 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
+from email.message import Message
 from pathlib import Path
 
 from jinja2 import (
@@ -234,11 +235,15 @@ def _cache_file_for(cache_dir: str | None, method: str, url: str, body: bytes | 
 
 class Answer(tuple):
     """What fetch gives: (data, error) to unpack as before, and .fetched_at, when data was downloaded
-    (a datetime; None without data). A saved answer keeps the time it was downloaded."""
+    (a datetime; None without data). A saved answer keeps the time it was downloaded.
+    .headers: this call's answer's headers, read case-insensitively (.get("Retry-After")), an error's
+    too (a 429's Retry-After), while data is then the last good answer; empty when no call was made (a
+    saved answer reused, the preview's samples) or none came back (offline)."""
 
-    def __new__(cls, data, error, fetched_at: float | None = None):
+    def __new__(cls, data, error, fetched_at: float | None = None, headers: Message | None = None):
         answer = super().__new__(cls, (data, error))
         answer.fetched_at = datetime.fromtimestamp(fetched_at) if data is not None and fetched_at else None
+        answer.headers = headers if headers is not None else Message()
         return answer
 
 
@@ -270,7 +275,8 @@ def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, wh
 def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False,
                 default_max_age=lambda: None, fixtures: dict[str, bytes] | None = None):
     """A module's `self.fetch` and `self.fetch_json` -> (answer, error), an Answer: .fetched_at says
-    when the data was downloaded, also for a saved answer (a card's "updated 10:42").
+    when the data was downloaded, also for a saved answer (a card's "updated 10:42"); .headers are this
+    call's answer's (a 429's Retry-After), the module's own, so handed over like the body but never logged.
 
     `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
     raw bytes (RSS, ICS, XML); `self.fetch_json(...)` takes the same arguments and gives the parsed JSON.
@@ -333,27 +339,28 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
                            **({"Content-Type": "application/json"} if json is not None else {}),
                            **(headers or {})}
 
-        def download() -> bytes:
+        def download() -> tuple[bytes, Message]:
             request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
             with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.read()
+                return response.read(), response.headers
 
+        response_headers = None  # offline: no answer, so no headers
         try:
-            raw_answer = await asyncio.to_thread(download)
+            raw_answer, response_headers = await asyncio.to_thread(download)
             answer = parse_answer(raw_answer)
         except urllib.error.HTTPError as e:
-            error = "rejected" if e.code in (401, 403) else f"http {e.code}"
+            error, response_headers = "rejected" if e.code in (401, 403) else f"http {e.code}", e.headers
         except (urllib.error.URLError, OSError, http.client.HTTPException):  # timeouts, cut-off answers
             error = "offline"
         except ValueError:  # fetch_json: not JSON, or not UTF-8
             error = "invalid"
         else:
             _save_answer(cache_file, raw_answer, module_name, where)
-            return Answer(answer, None, time.time())
+            return Answer(answer, None, time.time(), response_headers)
 
         logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
         saved, saved_at = _read_cached_answer(cache_file, parse_answer)
-        return Answer(saved, error, saved_at)
+        return Answer(saved, error, saved_at, response_headers)
 
     return (functools.partial(fetch, parse=None),
             functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
