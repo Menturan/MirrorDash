@@ -77,6 +77,9 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 | [Home Assistant](https://github.com/Menturan/mirrordash-homeassistant) | Sensors from Home Assistant |
 | [Krisinformation](https://github.com/Menturan/mirrordash-krisinformation) | Swedish crisis information from Krisinformation.se |
 | [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
+| [Photos](https://github.com/Menturan/mirrordash-photos) | A photo slideshow: your own photos, Immich, Unsplash, Pexels or a picture of the day |
+| [Now Playing on Spotify](https://github.com/Menturan/mirrordash-now-playing-spotify) | What's playing on your Spotify right now |
+| [Foreground Theme](https://github.com/Menturan/mirrordash-foreground-theme) | Seasonal decoration over the mirror: snow, sparkles, hearts, petals, leaves |
 
 ### Make your own
 
