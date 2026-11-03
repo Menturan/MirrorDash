@@ -14,7 +14,7 @@ There are two kinds of releases:
 - For module developers: what `self.fetch` and `self.fetch_json` give back now has the answer's headers too (`answer.headers.get("Retry-After")`), so a module can wait as long as a busy service asks.
 - For module developers: a module's settings say `preview: True` when the admin page's preview draws it, so a module that needs a login can show its sample answers there instead of how to log in.
 - For module developers: a local mirror (`MIRRORDASH_DEV=1`) comes back by itself after a restart from the admin page, and installs modules from the admin page where it finds them.
-- Two new screen positions fill the whole screen: **Background**, behind the other modules, and **Foreground**, in front of them. They are for modules made for them, like a photo slideshow behind the clock or snow falling over it. The Modules map shows them as *Behind* and *In front* when a module is there.
+- Two new screen positions fill the whole screen: **Background**, behind the other modules, and **Foreground**, in front of them. They are for modules made for them, like a photo slideshow behind the clock or snow falling over it. The Modules map shows them as *Behind* and *In front* when a module is there. Over a background photo the other modules are see-through with their text shadowed, instead of dark boxes; the setting *Modules Over a Background Photo* (Settings tab) chooses a soft dark glow, half dark or dark instead.
 
 ## [0.11.0] - 2026-11-02
 

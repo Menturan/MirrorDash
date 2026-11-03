@@ -168,6 +168,21 @@ body, html {
    var(--md-layer-size, <its size in a box>) fill the screen here and keep the box elsewhere. */
 .region.layer [data-module] { background: none; padding: 0; border-radius: 0; height: 100%; --md-layer-size: 100%; }
 .region.layer .carousel-slide { height: 100%; }
+/* The anchors' cards while a module is in the background (a photo): their near-black card would be a dark
+   rectangle in it (on the mirror, a hole of glass). The owner's choice (Settings, cards_over_photo):
+   see-through with a shadow under the text (the default), a soft dark glow, half dark, or dark as always.
+   Without a background module the cards stay dark, so cards that overlap cover each other. text-shadow
+   inherits into the module's shadow root. */
+:root[data-cards-over-photo="see_through"]:has(#background [data-module]) .region:not(.layer) [data-module] {
+    background: none; text-shadow: 0 0 6px #000, 0 0 14px #000;
+}
+:root[data-cards-over-photo="halo"]:has(#background [data-module]) .region:not(.layer) [data-module] {
+    background: radial-gradient(ellipse closest-side, rgba(0, 0, 0, 0.75), rgba(0, 0, 0, 0.45) 60%, transparent);
+    text-shadow: 0 0 6px #000;
+}
+:root[data-cards-over-photo="half"]:has(#background [data-module]) .region:not(.layer) [data-module] {
+    background: rgba(0, 0, 0, 0.5);
+}
 
 /* Top row — pinned to top edge, modules grow downward */
 #top_left   { top: var(--safe-margin-top); left: var(--safe-margin-left);  align-items: flex-start; }

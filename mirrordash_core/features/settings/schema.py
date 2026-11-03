@@ -10,6 +10,8 @@ logger = logging.getLogger("mirrordash.core.settings")
 
 
 VALID_POSITIONS = set(POSITIONS)
+# How the anchors' cards look while a module is in the background layer (style.css); the first is the default
+CARDS_OVER_PHOTO = ("see_through", "halo", "half", "solid")
 
 
 def get_module_schema(ep) -> dict | None:
@@ -163,6 +165,14 @@ async def get_globals_schema() -> dict:
                 "default": 18.0686,
                 "title": "Decimal Longitude",
                 "description": "Longitude coordinates for weather/astronomy."
+            },
+            "cards_over_photo": {
+                "type": "string",
+                "default": "see_through",
+                "enum": list(CARDS_OVER_PHOTO),
+                "enum_titles": ["See-through, the text shadowed", "A soft dark glow", "Half dark", "Dark, as without a photo"],
+                "title": "Modules Over a Background Photo",
+                "description": "How the modules look while a module (a photo) is in the Background position. Without one, a module's card is always dark, so cards that overlap cover each other."
             },
             "safe_margin": {
                 "type": "object",

@@ -357,6 +357,15 @@ def test_public_active_modules_endpoint(mock_host, mock_config, mock_ep, mock_tr
     assert data["modules"][0]["name"] == "mirrordash_clock"
     assert data["modules"][0]["position"] == "top_right"
     assert data["modules"][0]["title"] == "Clock Module Title"
+    assert data["cards_over_photo"] == "see_through"  # the default
+
+
+@pytest.mark.parametrize("saved,sent", [("halo", "halo"), ("solid", "solid"), ("<script>", "see_through"), (None, "see_through")])
+def test_the_screen_gets_how_cards_look_over_a_background_photo(saved, sent, client):
+    with patch("mirrordash_core.features.kiosk.routes.load_config", return_value={"globals": {"cards_over_photo": saved}}), \
+         patch("mirrordash_core.features.kiosk.routes.module_host", running=[]):
+        assert client.get("/api/active-modules").json()["cards_over_photo"] == sent
+
 
 def test_config_positions_validation():
     from mirrordash_core.features.settings.schema import validate_config

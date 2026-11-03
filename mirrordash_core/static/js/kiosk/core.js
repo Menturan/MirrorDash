@@ -358,6 +358,8 @@ async function loadActiveModules() {
             const margin = data[`safe_margin_${side}`];
             if (margin) document.documentElement.style.setProperty(`--safe-margin-${side}`, margin);
         }
+        // How the cards look over a background photo (style.css; only while a module is in the background)
+        document.documentElement.dataset.cardsOverPhoto = data.cards_over_photo || 'see_through';
         showBootStatus(data.boot_status);
         for (const module of data.modules || []) addLoadingPlaceholder(module);
     } catch (err) {

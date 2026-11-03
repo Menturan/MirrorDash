@@ -806,7 +806,17 @@ def test_background_and_foreground_fill_the_screen_behind_and_in_front(page):
                             "return [e.offsetLeft, e.offsetTop, e.offsetWidth, e.offsetHeight]; }", name)
         assert box == [0, 0, 1280, 720], name
         assert page.evaluate(f"name => getComputedStyle({card}(name)).backgroundColor", name) == "rgba(0, 0, 0, 0)"
-    assert page.evaluate(f"getComputedStyle({card}('clock')).backgroundColor") != "rgba(0, 0, 0, 0)"
+    # The anchors' cards over a background photo: see-through with a shadow under the text by default,
+    # dark when the owner chose it, and dark again without a module in the background
+    page.wait_for_function("document.documentElement.dataset.cardsOverPhoto === 'see_through'")
+    clock = f"(() => {{ const style = getComputedStyle({card}('clock')); return [style.backgroundColor, style.textShadow]; }})()"
+    background, shadow = page.evaluate(clock)
+    assert background == "rgba(0, 0, 0, 0)" and shadow != "none"
+    page.evaluate("document.documentElement.dataset.cardsOverPhoto = 'solid'")
+    assert page.evaluate(clock)[0] not in ("rgba(0, 0, 0, 0)", "transparent")
+    page.evaluate(f"document.documentElement.dataset.cardsOverPhoto = 'see_through'; (window.__photos = {card}('photos')).remove()")
+    assert page.evaluate(clock)[0] not in ("rgba(0, 0, 0, 0)", "transparent")
+    page.evaluate("document.getElementById('background').append(window.__photos)")
     # What a module's own CSS reads to fill the screen in a layer and keep its box elsewhere
     size = "name => getComputedStyle({card}(name)).getPropertyValue('--md-layer-size').trim()"
     assert [page.evaluate(size.format(card=card), name) for name in ("photos", "clock")] == ["100%", ""]

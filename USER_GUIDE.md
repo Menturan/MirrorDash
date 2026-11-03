@@ -74,7 +74,7 @@ The clock comes with the mirror; everything else is a module. In the admin page,
 
 ### Where things go on the screen
 
-The screen has nine areas: top, middle and bottom, each left, center and right. Two more fill the whole screen: **Background**, behind the others (for photos), and **Foreground**, in front of them (for things like falling snow). The map shows them as *Behind* and *In front* once a module is there. Each module has a position in its settings: in the Modules tab, tap it on the map or choose **Settings**.
+The screen has nine areas: top, middle and bottom, each left, center and right. Two more fill the whole screen: **Background**, behind the others (for photos), and **Foreground**, in front of them (for things like falling snow). The map shows them as *Behind* and *In front* once a module is there. While a photo is in the background, the other modules are see-through with a shadow under their text; the setting *Modules Over a Background Photo* in the Settings tab makes them a soft dark glow, half dark or dark instead (dark is easiest to read over a bright photo). Each module has a position in its settings: in the Modules tab, tap it on the map or choose **Settings**.
 
 *   Several modules in the same area are stacked.
 *   A module can be added more than once, for example two clocks in different time zones, each with its own settings.

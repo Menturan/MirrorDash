@@ -21,6 +21,7 @@ from mirrordash_core.features.modules.loader import (
     load_translations,
     package_dir,
 )
+from mirrordash_core.features.settings.schema import CARDS_OVER_PHOTO
 from mirrordash_core.features.wifi.network import (
     HOTSPOT_SSID,
     get_hotspot_password,
@@ -122,9 +123,11 @@ async def get_active_modules() -> dict:
     safe_margin = globals_config.get("safe_margin", {})
     if not isinstance(safe_margin, dict):
         safe_margin = {}
+    cards_over_photo = globals_config.get("cards_over_photo")
     return {
         "modules": modules_list,
         "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
+        "cards_over_photo": cards_over_photo if cards_over_photo in CARDS_OVER_PHOTO else CARDS_OVER_PHOTO[0],
         **{f"safe_margin_{side}": f"{safe_margin.get(side, DEFAULT_SAFE_MARGIN_PX)}px"
            for side in ("top", "bottom", "left", "right")},
     }
