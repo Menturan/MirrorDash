@@ -429,6 +429,9 @@ class MqttBridge:
             "screen": component(f"{mirror_id}_screen", "switch" if control else "binary_sensor", "Screen",
                                 f"{base}/screen/state", f"{base}/screen/set" if control else None,
                                 **({} if control else {"device_class": "power"})),
+            # Privacy mode (power/privacy.py): only the modules marked for it on the screen
+            "privacy": component(f"{mirror_id}_privacy", "switch" if control else "binary_sensor", "Privacy mode",
+                                 f"{base}/privacy/state", f"{base}/privacy/set" if control else None, icon="mdi:incognito"),
             "cpu_temperature": component(f"{mirror_id}_cpu_temperature", "sensor", "CPU temperature",
                                          f"{base}/cpu_temperature/state", device_class="temperature",
                                          unit_of_measurement="°C", entity_category="diagnostic"),
@@ -522,7 +525,9 @@ class MqttBridge:
         )
         from mirrordash_core.features.power.display_power import display_power_manager
         base, mqtt_config, system = self._base(), config.get("mqtt", {}), config.get("system", {})
+        from mirrordash_core.features.power.privacy import privacy_on
         states = {f"{base}/screen/state": "ON" if display_power_manager.is_on else "OFF",
+                  f"{base}/privacy/state": "ON" if privacy_on(config) else "OFF",
                   f"{base}/brightness/state": str(system.get("brightness", 100))}
         if any(find_device(system, presence_type) for presence_type in PRESENCE_TYPES):
             states[f"{base}/motion/state"] = "ON" if gpio_inputs.motion_active else "OFF"
@@ -600,6 +605,12 @@ class MqttBridge:
                 from mirrordash_core.features.power.routes import update_screen_state
                 await update_screen_state({"state": payload.lower()})
                 return f"screen {payload}"
+            case ["privacy", "set"] if cfg.get("control_screen") is True:
+                if payload not in ("ON", "OFF"):
+                    raise ValueError("not ON or OFF")
+                from mirrordash_core.features.power.privacy import set_privacy
+                await set_privacy(payload == "ON")
+                return f"privacy {payload}"
             case ["brightness", "set"] if cfg.get("control_screen") is True:
                 if not (payload.isascii() and payload.isdigit()) or not 10 <= int(payload) <= 100:
                     raise ValueError("not a brightness from 10 to 100")

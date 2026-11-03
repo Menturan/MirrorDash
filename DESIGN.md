@@ -5,7 +5,7 @@ The rules behind how the mirror looks, and why. The components themselves, with 
 ## Principles
 
 - **Black is the glass.** A black pixel is an unlit pixel, invisible behind a two-way mirror. The background is pure black, and only what should be seen gives off light. The one exception is the owner's: a module they put in the background layer (a photo) may light the screen, dimmed (see Layout).
-- **The centre stays empty.** Information sits at the edges so the mirror is still a mirror. Only a temporary alert may use the centre.
+- **The centre stays empty.** Information sits at the edges so the mirror is still a mirror. Only a temporary alert may use the centre, and privacy mode's monogram when nothing else is shown (the boot screen's, still and at half brightness).
 - **Passive, not interactive.** Nobody touches the mirror: no cursor (`cursor: none`), no buttons, no hover states. Everything is changed from the admin page on a phone.
 - **Calm.** Glanceable from across the room, nothing that blinks or competes for attention.
 

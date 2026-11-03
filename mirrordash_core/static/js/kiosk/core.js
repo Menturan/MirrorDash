@@ -208,6 +208,7 @@ function showModuleHtml(data) {
     card.style.maxHeight = data.max_height || '';
     card.style.zIndex    = data.z_index != null ? String(data.z_index) : '';
     card.style.opacity   = data.opacity  != null ? String(data.opacity)  : '';
+    card.toggleAttribute('data-show-in-privacy', data.show_in_privacy === true);  // style.css, privacy mode
     card.toggleAttribute('data-video-is-playing', videoIsPlaying);
 
     const shadow = card.shadowRoot || card.attachShadow({ mode: 'open' });
@@ -239,6 +240,13 @@ function handleServerMessage(data) {
         pageBootId = data.boot_id;
         showOffline(data.online === false);
         setVideoIsPlaying(data.video_is_playing === true);
+    } else if (data.type === 'screen') {
+        // The screen-wide settings (features/power/privacy.py), for style.css: privacy mode and what it
+        // shows with no module marked for it, and how the modules look over a background photo
+        const root = document.documentElement;
+        root.toggleAttribute('data-privacy', data.privacy === true);
+        root.dataset.privacyShows = data.privacy_shows;
+        root.dataset.cardsOverPhoto = data.cards_over_photo;
     } else if (data.type === 'video_is_playing') {
         setVideoIsPlaying(data.playing === true);
     } else if (data.type === 'video_window') {
@@ -358,8 +366,6 @@ async function loadActiveModules() {
             const margin = data[`safe_margin_${side}`];
             if (margin) document.documentElement.style.setProperty(`--safe-margin-${side}`, margin);
         }
-        // How the cards look over a background photo (style.css; only while a module is in the background)
-        document.documentElement.dataset.cardsOverPhoto = data.cards_over_photo || 'see_through';
         showBootStatus(data.boot_status);
         for (const module of data.modules || []) addLoadingPlaceholder(module);
     } catch (err) {

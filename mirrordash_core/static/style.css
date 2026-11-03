@@ -184,6 +184,26 @@ body, html {
     background: rgba(0, 0, 0, 0.5);
 }
 
+/* Privacy mode (features/power/privacy.py): only the modules marked "Shown in Privacy Mode" stay; with
+   none, the monogram of the boot screen, still and dim, or nothing (the owner's choice). The hidden cards
+   stay in the page, which only the mirror's own screen loads. ponytail: a carousel keeps turning to its
+   hidden slides (a blank turn); upgrade: skip them in updateCarouselGroup. */
+:root[data-privacy] [data-module]:not([data-show-in-privacy]) { display: none !important; }
+#privacy-monogram {
+    display: none;
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    width: 160px;
+    height: 160px;
+    margin: -80px 0 0 -80px;
+    opacity: 0.5;
+    pointer-events: none;
+}
+:root[data-privacy][data-privacy-shows="monogram"]:not(:has([data-module][data-show-in-privacy])) #privacy-monogram {
+    display: block;
+}
+
 /* Top row — pinned to top edge, modules grow downward */
 #top_left   { top: var(--safe-margin-top); left: var(--safe-margin-left);  align-items: flex-start; }
 #top_center { top: var(--safe-margin-top); left: 50%; transform: translateX(-50%); align-items: center; }

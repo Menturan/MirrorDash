@@ -55,9 +55,12 @@ class ConnectionManager:
         # "video_is_playing" whether the modules update once a minute (later as {"type": "video_is_playing"}).
         from mirrordash_core.admin import BOOT_ID
         from mirrordash_core.features.kiosk.internet import internet_monitor
+        from mirrordash_core.features.power.privacy import screen_message
         try:
             await websocket.send_json({"type": "hello", "version": get_core_version(), "boot_id": BOOT_ID, "online": internet_monitor.online,
                                       "video_is_playing": bool(self.video_players)})
+            # Privacy mode and the other screen-wide settings, before any module's card (privacy.py)
+            await websocket.send_json(screen_message())
         except Exception as e:
             logger.error(f"Error greeting new client: {e}")
 

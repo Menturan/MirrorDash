@@ -174,6 +174,14 @@ async def get_globals_schema() -> dict:
                 "title": "Modules Over a Background Photo",
                 "description": "How the modules look while a module (a photo) is in the Background position. Without one, a module's card is always dark, so cards that overlap cover each other."
             },
+            "privacy_shows": {
+                "type": "string",
+                "default": "monogram",
+                "enum": ["monogram", "nothing"],
+                "enum_titles": ["The MirrorDash monogram", "Nothing: just the mirror"],
+                "title": "Privacy Mode Without Modules",
+                "description": "What the screen shows in privacy mode when no module is marked Shown in Privacy Mode. Turn privacy mode on in the Power tab, with the button or from Home Assistant."
+            },
             "safe_margin": {
                 "type": "object",
                 "title": "Screen Padding (Safe Margins)",

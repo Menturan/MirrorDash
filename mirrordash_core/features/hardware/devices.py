@@ -88,6 +88,7 @@ BUTTON_ACTIONS = {
     "none": "Do nothing",
     "wake": "Wake the screen (for the screen timeout)",
     "toggle_display": "Turn screen on/off",
+    "privacy": "Privacy mode on/off",
     "restart": "Restart MirrorDash",
     "reboot": "Restart the mirror",
     "shutdown": "Shut down the mirror",
@@ -424,6 +425,9 @@ async def run_button_action(action: str) -> None:
         display_power_manager.wake()
     elif action == "toggle_display":
         display_power_manager.toggle()
+    elif action == "privacy":
+        from mirrordash_core.features.power.privacy import toggle_privacy
+        await toggle_privacy()
     elif action == "restart":
         await run_restart()
     elif action == "reboot":

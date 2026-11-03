@@ -773,6 +773,47 @@ def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_privacy_mode_keeps_only_the_marked_modules_else_the_monogram_or_nothing(page):
+    """Privacy mode (features/power/privacy.py): only cards marked show_in_privacy stay; with none, the
+    monogram or nothing, as the owner chose; off, everything is back."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    send = lambda message: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(message))
+    screen = lambda on, shows="monogram": send({"type": "screen", "privacy": on, "privacy_shows": shows,
+                                                "cards_over_photo": "see_through"})
+    shown = lambda name: page.evaluate(f"document.querySelector(`[data-module='{name}']`).offsetParent !== null")
+    monogram = lambda: page.evaluate("getComputedStyle(document.getElementById('privacy-monogram')).display") != "none"
+    send({"module": "clock", "position": "top_right", "html": "12:00", "show_in_privacy": True})
+    send({"module": "calendar", "position": "top_left", "html": "Dentist 09:15"})
+    send({"module": "photos", "position": "background", "html": "photo"})
+    assert shown("clock") and shown("calendar") and not monogram()
+    screen(True)
+    assert shown("clock") and not shown("calendar") and not shown("photos") and not monogram()
+    send({"module": "clock", "position": "top_right", "html": "12:00", "show_in_privacy": False})  # unmarked
+    assert not shown("clock") and monogram()
+    screen(True, "nothing")
+    assert not monogram()
+    screen(False)
+    assert shown("clock") and shown("calendar") and shown("photos") and not monogram()
+
+
+@pytest.mark.only_browser("webkit")
 def test_background_and_foreground_fill_the_screen_behind_and_in_front(page):
     """The two layers cover the whole screen, the background under the nine anchors and the foreground
     over them, and their cards are see-through: the anchors' near-black card background would black out
@@ -808,7 +849,8 @@ def test_background_and_foreground_fill_the_screen_behind_and_in_front(page):
         assert page.evaluate(f"name => getComputedStyle({card}(name)).backgroundColor", name) == "rgba(0, 0, 0, 0)"
     # The anchors' cards over a background photo: see-through with a shadow under the text by default,
     # dark when the owner chose it, and dark again without a module in the background
-    page.wait_for_function("document.documentElement.dataset.cardsOverPhoto === 'see_through'")
+    page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(
+        {"type": "screen", "privacy": False, "privacy_shows": "monogram", "cards_over_photo": "see_through"}))
     clock = f"(() => {{ const style = getComputedStyle({card}('clock')); return [style.backgroundColor, style.textShadow]; }})()"
     background, shadow = page.evaluate(clock)
     assert background == "rgba(0, 0, 0, 0)" and shadow != "none"

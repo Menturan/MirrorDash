@@ -16,8 +16,10 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.config import get_core_version, load_config, save_config
+from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import find_entry_point
+from mirrordash_core.features.power.privacy import screen_message
 from mirrordash_core.features.settings.dev_logging import (
     clear_saved_journal,
     dev_logging_available,
@@ -119,6 +121,7 @@ async def save_panel_config_visual(request: Request):
 
     if globals_data.get("timezone") and globals_data["timezone"] != old_timezone:
         run_in_background(apply_system_timezone(globals_data["timezone"]))
+    await manager.broadcast(screen_message(config))  # the screen-wide settings, without reloading the page
     await module_host.reload_modules()
 
     return notify("Saved.")

@@ -36,6 +36,8 @@ STANDARD_SCHEMA = {"properties": {
                 "description": "Stacking order when modules overlap. Higher = on top."},
     "opacity": {"type": "number", "default": "", "title": "Opacity",
                 "description": "Module transparency: 1 = fully visible, 0 = invisible."},
+    "show_in_privacy": {"type": "boolean", "default": False, "title": "Shown in Privacy Mode",
+                        "description": "Stay on the screen in privacy mode, for guests: the clock, the weather, a guest album. Modules without it are hidden then."},
 }}
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # Fields shown as a password or a text box by their name when the schema doesn't say
@@ -64,9 +66,10 @@ def cast_standard_fields(module_cfg: dict) -> dict:
     the parsed form data after schema-based casting.
     """
     result = dict(module_cfg)
-    if "enabled" in result:
-        enabled = result["enabled"]
-        result["enabled"] = enabled.lower() in ("true", "1", "yes") if isinstance(enabled, str) else bool(enabled)
+    for key in ("enabled", "show_in_privacy"):
+        if key in result:
+            value = result[key]
+            result[key] = value.lower() in ("true", "1", "yes") if isinstance(value, str) else bool(value)
     for key, cast_fn in (("carousel_interval", int), ("z_index", int), ("opacity", float)):
         if key in result and result[key] not in (None, ""):
             try:
