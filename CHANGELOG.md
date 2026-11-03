@@ -9,6 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI; none of them can listen to a microphone, also one plugged in later. Comes with the next OS image.
+- The volume in the Settings tab now reaches the 3.5 mm jack, and it follows how loud it sounds: before it changed nothing on a mirror.
+
 - **A schedule for each module**: in its settings, under *Schedule*, choose the days and the times it's shown, such as the news on weekday mornings; outside them it's hidden. Add the same module twice for two windows. A carousel now skips the modules that are hidden, by a schedule or by privacy mode, instead of showing a blank turn.
 
 - **Privacy mode**, for guests: only the modules you mark *Shown in Privacy Mode* stay on the screen (the clock, say); with none marked, the MirrorDash monogram or nothing. Turn it on in the Settings tab, with the mirror's button or from Home Assistant. A changed screen setting (privacy mode, modules over a background photo) now reaches the screen at once, without reloading it.

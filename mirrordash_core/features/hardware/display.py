@@ -16,7 +16,7 @@ logger = logging.getLogger("mirrordash.core.hardware")
 # What a headless development machine offers, where no tool lists the screen's own modes
 COMMON_RESOLUTIONS = ["1920x1080", "1280x720", "1024x768", "800x600", "1080x1920", "720x1280"]
 # The ALSA mixer controls tried in turn when there is no PipeWire/PulseAudio: names differ per sound card
-ALSA_VOLUME_CONTROLS = ["Master", "Speaker", "HDMI", "Headphone", "Audio Out"]
+ALSA_VOLUME_CONTROLS = ["Master", "PCM", "Speaker", "HDMI", "Headphone", "Audio Out"]  # PCM: the Pi's 3.5 mm jack
 # The admin page's rotation names as wlr-randr's --transform values
 WAYLAND_TRANSFORM_FOR_ROTATION = {"normal": "normal", "left": "90", "inverted": "180", "right": "270"}
 # At boot the settings are applied while the compositor may still be starting: wait this long for it
@@ -102,11 +102,17 @@ async def _apply_volume(volume: int) -> None:
     if (await run_command("pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{volume}%"))[0] == 0:
         logger.info(f"Applied system volume {volume}% via pactl")
         return
-    for control in ALSA_VOLUME_CONTROLS:
-        if (await run_command("amixer", "sset", control, f"{volume}%"))[0] == 0:
-            logger.info(f"Applied system volume {volume}% via amixer control '{control}'")
-            return
-    logger.debug("No sound tool took the volume")
+    # Every card, not only the default: on a Pi that is HDMI (no controls) and the 3.5 mm jack is card 1.
+    # -M: the hearing scale; on the raw one 20 % is -81 dB, silent.
+    applied = False
+    for card in sorted(path.removeprefix("/proc/asound/card") for path in glob.glob("/proc/asound/card[0-9]*")):
+        for control in ALSA_VOLUME_CONTROLS:
+            if (await run_command("amixer", "-M", "-c", card, "sset", control, f"{volume}%"))[0] == 0:
+                logger.info(f"Applied system volume {volume}% via amixer card {card} control '{control}'")
+                applied = True
+                break
+    if not applied:
+        logger.debug("No sound tool took the volume")
 
 
 def _mode_arguments(resolution: str) -> list[str]:

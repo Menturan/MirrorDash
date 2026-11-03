@@ -290,9 +290,11 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     assert any(line.startswith("InaccessiblePaths=-/storage/mirrordash/data ") for line in host)
     # No GPIO chip nor gpiomem (every pin, the SD card's too): pins come from the core (features/hardware/gpio.py)
     assert not any("gpio" in line for line in host if line.startswith("DeviceAllow="))
-    assert "for group in i2c spi; do" in SETUP
     # Of the I2C buses only the header's: the screen's DDC/CI one would let a module turn it off
     assert 'SUBSYSTEM=="i2c-dev", KERNEL!="i2c-1", GROUP:="root", MODE:="0600"' in unit("/etc/udev/rules.d/90-mirrordash-i2c.rules")
+    # Sound plays, but no module hears the room: a microphone's capture node is root's
+    assert "DeviceAllow=char-alsa rw" in host and "for group in i2c spi audio; do" in SETUP
+    assert 'SUBSYSTEM=="sound", KERNEL=="pcmC*D*c", GROUP:="root", MODE:="0600", TAG-="uaccess"' in unit("/etc/udev/rules.d/72-mirrordash-sound.rules")
     # A module can't fill /storage for the core: ext4's reserve is pi's too
     assert re.search(r"LABEL=mirrordash-data .*\bresgid=\$\(id -g pi\)", SETUP)
     # nor the card at all: their folder is a file system of its own, in a file (hydrate), mounted before both start

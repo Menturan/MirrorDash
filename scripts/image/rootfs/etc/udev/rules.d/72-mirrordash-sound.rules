@@ -1,0 +1,5 @@
+# Modules (the audio group, ARCHITECTURE #41) may play sound but never record: a microphone's capture node
+# (a USB microphone or webcam, plugged in now or later) is root's alone. uaccess off too, or logind gives the
+# logged-in user (pi) an ACL on it. 72: after 70-uaccess.rules tags every sound node, before
+# 73-seat-late.rules reads the tag. := so a later rule can't hand the node back.
+SUBSYSTEM=="sound", KERNEL=="pcmC*D*c", GROUP:="root", MODE:="0600", TAG-="uaccess"

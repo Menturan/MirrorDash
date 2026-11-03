@@ -103,7 +103,8 @@ SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirror
                  "/storage/mirrordash/system-connections": "the Wi-Fi passwords", "/storage/rauc": "the OS update keys",
                  "/home": "the home folders", "/run/dbus": "the system bus"}
 # Its DevicePolicy=closed and the I2C rule (90-mirrordash-i2c.rules): GPIO only through the core, no other I2C bus
-SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", "/dev/input/event*", "/dev/video*")
+SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", "/dev/input/event*", "/dev/video*",
+                   "/dev/snd/pcmC*D*c")  # a microphone; playback (pcmC*D*p) is the modules'
 MODULE_DEVICES = {"/dev/i2c-1"}  # the header's I2C bus
 # Where the unit's memory limit is: this process's cgroup (v2: one line "0::<path>") under the cgroup tree
 OWN_CGROUP_FILE = "/proc/self/cgroup"

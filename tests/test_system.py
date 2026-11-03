@@ -187,6 +187,23 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
         assert display.brightness_supported is False
 
 
+def test_volume_reaches_the_jack_on_card_1():
+    """A Pi without PipeWire: card 0 is HDMI (no mixer controls), the 3.5 mm jack is card 1 with 'PCM'.
+    The volume goes to every card that has a control, on the hearing scale."""
+    from mirrordash_core.features.hardware.display import _apply_volume
+    calls = []
+
+    async def amixer(*args):
+        calls.append(args)
+        return (0 if args[:5] == ("amixer", "-M", "-c", "1", "sset") and args[5] == "PCM" else 1), "", ""
+
+    with patch("mirrordash_core.features.hardware.display.run_command", amixer), \
+         patch("mirrordash_core.features.hardware.display.glob.glob", return_value=["/proc/asound/card1", "/proc/asound/card0"]):
+        asyncio.run(_apply_volume(35))
+    assert ("amixer", "-M", "-c", "1", "sset", "PCM", "35%") in calls
+    assert not any(c[3] == "1" and c[5] in ("Speaker", "HDMI") for c in calls if c[0] == "amixer")  # stops at the first
+
+
 def test_wifi_country_follows_the_time_zone(tmp_path, monkeypatch):
     """The time zone (sent by the phone during Wi-Fi setup) picks the Wi-Fi country; cmdline.txt is
     only rewritten when the country changes."""

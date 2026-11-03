@@ -75,13 +75,15 @@ RemoveIPC=yes
 # Sockets: local (the core's connection) and IP only; no netlink (the network's settings), no raw packets
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 
-# Devices: I2C and SPI (the user is in i2c and spi), nothing else: no camera, screen or sound. No GPIO chip
+# Devices: I2C, SPI and sound (the user is in i2c, spi and audio), nothing else: no camera or screen. Of
+# sound only playback: a microphone's capture node is root's (72-mirrordash-sound.rules). No GPIO chip
 # either: a chip is all its pins (the SD card's, the core's). A module gets the free header pins it asks
 # for from the core, as the kernel's handle to exactly those lines (features/hardware/gpio.py).
 # closed: only /dev/null, zero, random and the like, and what DeviceAllow names
 DevicePolicy=closed
 DeviceAllow=char-i2c rw
 DeviceAllow=char-spi rw
+DeviceAllow=char-alsa rw
 
 # Network: the internet. Not the mirror itself (the core's routes), the home network, or IPv6 (a device
 # at home can have a global address). Names through systemd-resolved's stub. The core adds the addresses

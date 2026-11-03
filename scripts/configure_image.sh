@@ -815,14 +815,15 @@ step_module_host() {
   getent group mirrordash-mod >/dev/null || groupadd --system --gid 960 mirrordash-mod
   id mirrordash-mod >/dev/null 2>&1 || useradd --system --uid 960 --gid mirrordash-mod \
     --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin mirrordash-mod
-  # Modules may use I2C and SPI (the unit allows only those devices); GPIO pins they get from the core,
-  # never the gpio group (a whole chip). pi (the core) reaches the host's socket and the modules' folder
-  # (backups) through the modules' group
-  for group in i2c spi; do
+  # Modules may use I2C, SPI and sound playback (the unit allows only those devices); GPIO pins they get
+  # from the core, never the gpio group (a whole chip). pi (the core) reaches the host's socket and the
+  # modules' folder (backups) through the modules' group
+  for group in i2c spi audio; do
     if getent group "$group" >/dev/null; then usermod -aG "$group" mirrordash-mod; fi
   done
   usermod -aG mirrordash-mod pi
   put 0644 /etc/udev/rules.d/90-mirrordash-i2c.rules
+  put 0644 /etc/udev/rules.d/72-mirrordash-sound.rules
   put 0644 /etc/systemd/system/mirrordash-modules.service
   systemctl --root=/ enable mirrordash-modules.service
   put 0755 /usr/local/bin/mirrordash-module-network
