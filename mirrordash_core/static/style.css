@@ -163,8 +163,10 @@ body, html {
 #background { z-index: 0; }
 #foreground { z-index: 2; pointer-events: none; }
 /* A card there fills the screen and is see-through: the near-black card background that lets the
-   anchors' cards cover each other would black out the whole mirror */
-.region.layer [data-module] { background: none; padding: 0; border-radius: 0; height: 100%; }
+   anchors' cards cover each other would black out the whole mirror. --md-layer-size tells the module's
+   own CSS (it inherits into the shadow root, which can't see where its card sits): width and height
+   var(--md-layer-size, <its size in a box>) fill the screen here and keep the box elsewhere. */
+.region.layer [data-module] { background: none; padding: 0; border-radius: 0; height: 100%; --md-layer-size: 100%; }
 .region.layer .carousel-slide { height: 100%; }
 
 /* Top row — pinned to top edge, modules grow downward */

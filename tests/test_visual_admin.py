@@ -807,6 +807,9 @@ def test_background_and_foreground_fill_the_screen_behind_and_in_front(page):
         assert box == [0, 0, 1280, 720], name
         assert page.evaluate(f"name => getComputedStyle({card}(name)).backgroundColor", name) == "rgba(0, 0, 0, 0)"
     assert page.evaluate(f"getComputedStyle({card}('clock')).backgroundColor") != "rgba(0, 0, 0, 0)"
+    # What a module's own CSS reads to fill the screen in a layer and keep its box elsewhere
+    size = "name => getComputedStyle({card}(name)).getPropertyValue('--md-layer-size').trim()"
+    assert [page.evaluate(size.format(card=card), name) for name in ("photos", "clock")] == ["100%", ""]
     # The order at the clock: the foreground (made hit-testable for the look), the clock, the background
     assert page.evaluate("getComputedStyle(document.getElementById('foreground')).pointerEvents") == "none"
     order = page.evaluate(f"""() => {{
