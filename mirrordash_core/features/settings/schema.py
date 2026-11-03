@@ -180,7 +180,7 @@ async def get_globals_schema() -> dict:
                 "enum": ["monogram", "nothing"],
                 "enum_titles": ["The MirrorDash monogram", "Nothing: just the mirror"],
                 "title": "Privacy Mode Without Modules",
-                "description": "What the screen shows in privacy mode when no module is marked Shown in Privacy Mode. Turn privacy mode on in the Power tab, with the button or from Home Assistant."
+                "description": "What the screen shows in privacy mode when no module is marked Shown in Privacy Mode. Turn privacy mode on below, with the button or from Home Assistant."
             },
             "safe_margin": {
                 "type": "object",

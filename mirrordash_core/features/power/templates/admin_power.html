@@ -169,28 +169,6 @@
         </div>
     </section>
 
-    <!-- Privacy mode (power/privacy.py): also from the button and Home Assistant -->
-    <section id="privacy" class="card" style="margin-top: 24px;">
-        <h2><i class="fas fa-user-secret" aria-hidden="true"></i> Privacy Mode</h2>
-        <form hx-post="/admin/panels/power/privacy" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-              hx-on::response-error="this.reset()">
-            <div class="form-group" style="margin-top: 15px;">
-                <div class="form-label-desc" style="margin-bottom: 8px;">
-                    <label for="sys-privacy" style="font-weight: 500; font-size: 0.9rem; color: white;">Privacy mode</label>
-                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">
-                        For guests: only the modules marked <em>Shown in Privacy Mode</em> in their settings stay on the screen,
-                        like the clock or the weather. With none marked the screen shows the MirrorDash monogram, or nothing
-                        (Settings tab). The mirror's button and Home Assistant can turn it on and off too.</p>
-                </div>
-                <label class="switch">
-                    <input type="hidden" name="on" value="false">
-                    <input type="checkbox" id="sys-privacy" name="on" value="true" {% if privacy %}checked{% endif %}>
-                    <span class="slider round"></span>
-                </label>
-            </div>
-        </form>
-    </section>
-
     {% if usb %}{% include "admin_power_usb.html" %}{% endif %}
 
     <!-- Restart / shut down the whole mirror -->

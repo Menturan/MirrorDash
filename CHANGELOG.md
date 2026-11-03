@@ -9,7 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- **Privacy mode**, for guests: only the modules you mark *Shown in Privacy Mode* stay on the screen (the clock, say); with none marked, the MirrorDash monogram or nothing. Turn it on in the Power tab, with the mirror's button or from Home Assistant. A changed screen setting (privacy mode, modules over a background photo) now reaches the screen at once, without reloading it.
+- **Privacy mode**, for guests: only the modules you mark *Shown in Privacy Mode* stay on the screen (the clock, say); with none marked, the MirrorDash monogram or nothing. Turn it on in the Settings tab, with the mirror's button or from Home Assistant. A changed screen setting (privacy mode, modules over a background photo) now reaches the screen at once, without reloading it.
 
 - Modules can take files you upload in their settings, such as photos for a slideshow. Photos are shrunk to your screen on your phone before they're sent, which also removes their location, and they keep their date first in their name. Uploaded files aren't in backups.
 

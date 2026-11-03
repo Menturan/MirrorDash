@@ -16,7 +16,6 @@ from mirrordash_core.admin import (
     ui_events,
 )
 from mirrordash_core.config import load_config
-from mirrordash_core.features.power.privacy import privacy_on, set_privacy
 from mirrordash_core.features.power.usb import set_usb, usb_status
 from mirrordash_core.forms import read_form
 from mirrordash_core.host import poweroff_system, reboot_system, sudo_allowed
@@ -82,7 +81,6 @@ async def get_panel_power(request: Request):
         request=request,
         name="admin_power.html",
         context={
-            "privacy": privacy_on(config),
             "presence_sensors": [f"{DEVICE_TYPES[device['type']]['label']} on GPIO {device['pin']}"
                                  for device in get_devices(config.get("system", {})) if device["type"] in PRESENCE_TYPES],
             "settings": settings,
@@ -121,14 +119,6 @@ async def post_panel_screen(request: Request):
     display_power_manager.wake() if state == "on" else display_power_manager.turn_off()
 
     return notify(f"Screen turned {state}.")
-
-
-@router.post("/panels/power/privacy", dependencies=[Depends(require_api_key)])
-async def post_panel_privacy(request: Request):
-    """The Power tab's privacy mode switch (power/privacy.py)."""
-    on =(await read_form(request)).get("on") in (True, "true")
-    await set_privacy(on)
-    return notify("Privacy mode is on: only the modules marked for it are shown." if on else "Privacy mode is off.")
 
 
 @router.post("/panels/system/reload-screen", dependencies=[Depends(require_api_key)])

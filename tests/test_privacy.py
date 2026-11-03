@@ -1,5 +1,5 @@
 """Privacy mode (features/power/privacy.py, ARCHITECTURE #45): its state, the screen's message, and the
-three ways to switch it: the Power tab, the mirror's button and Home Assistant."""
+three ways to switch it: the Settings tab, the mirror's button and Home Assistant."""
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -59,11 +59,11 @@ async def test_the_buttons_privacy_action_switches_it(saved):
     assert saved[0]["privacy"] == {"on": True}
 
 
-def test_the_power_tabs_switch(saved):
+def test_the_settings_tabs_switch(saved):
     client = TestClient(app)
     with patch("mirrordash_core.admin.load_config", return_value=AUTH):
-        assert client.post("/admin/panels/power/privacy", data={"on": "true"}).status_code == 401
-        assert client.post("/admin/panels/power/privacy", data={"on": "true"}, headers={"X-API-Key": "secret"}).status_code == 200
+        assert client.post("/admin/panels/config/privacy", data={"on": "true"}).status_code == 401
+        assert client.post("/admin/panels/config/privacy", data={"on": "true"}, headers={"X-API-Key": "secret"}).status_code == 200
     assert saved[0]["privacy"] == {"on": True}
 
 

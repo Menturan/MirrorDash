@@ -19,7 +19,11 @@ from mirrordash_core.config import get_core_version, load_config, save_config
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.loader import find_entry_point
-from mirrordash_core.features.power.privacy import screen_message
+from mirrordash_core.features.power.privacy import (
+    privacy_on,
+    screen_message,
+    set_privacy,
+)
 from mirrordash_core.features.settings.dev_logging import (
     clear_saved_journal,
     dev_logging_available,
@@ -67,6 +71,7 @@ async def get_panel_config(request: Request):
             "prerelease": config.get("system", {}).get("prerelease", False),
             "auto_update": config.get("system", {}).get("auto_update", True),
             "ssh": await get_ssh_status(),
+            "privacy": privacy_on(config),
             # None where there are no system updates (an image from before A/B, a development machine)
             "os_build": format_build(build) if (build := installed_os_build()) else None,
             "os_version": installed_os_version(),
@@ -125,6 +130,14 @@ async def save_panel_config_visual(request: Request):
     await module_host.reload_modules()
 
     return notify("Saved.")
+
+
+@router.post("/panels/config/privacy", dependencies=[Depends(require_api_key)])
+async def post_privacy(request: Request):
+    """The Settings tab's privacy mode switch (power/privacy.py)."""
+    on = (await read_form(request)).get("on") in (True, "true")
+    await set_privacy(on)
+    return notify("Privacy mode is on: only the modules marked for it are shown." if on else "Privacy mode is off.")
 
 
 @router.get("/panels/config/add-array-item", dependencies=[Depends(require_api_key)])
