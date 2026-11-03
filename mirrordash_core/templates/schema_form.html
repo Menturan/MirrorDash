@@ -98,6 +98,22 @@
     {{ icon_input(f) }}</div>
 {%- endmacro %}
 
+{# Files the owner uploads (features/modules/files.py): admin.js lists them as thumbnails, shrinks an image
+   on the phone before sending it, and says why when it can't (settings not saved yet, a kind of file this
+   version doesn't take). Nothing of it goes into the form: the files live in the module's cache folder. #}
+{% macro files(f) -%}
+<div class="form-group schema-group wide">{{ label(f, false) }}
+    {%- if f.instance_id %}
+    <div class="files-field" data-files-field data-files-url="/admin/modules/{{ f.instance_id }}/files/{{ f.key }}" data-files-accept="{{ f.schema.get('accept', '') }}">
+        <div class="files-grid"></div>
+        <div class="files-row"><label class="btn secondary btn-sm files-add" hidden><i class="fas fa-plus"></i> {{ "Add photos" if f.schema.get("accept") == "image" else "Add files" }}<input type="file"{% if f.schema.get("accept") == "image" %} accept="image/*"{% endif %} multiple hidden></label>
+        <p class="field-description files-status" aria-live="polite">Loading…</p></div>
+    </div>
+    {%- else %}
+    <p class="field-description">Files can't sit in a list or a group of settings.</p>
+    {%- endif %}</div>
+{%- endmacro %}
+
 {# The fields of a list item (render_array_item) #}
 
 {% macro sub_swatches(f) -%}

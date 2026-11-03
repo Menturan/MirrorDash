@@ -505,6 +505,66 @@ def test_an_icon_setting_suggests_lucide_names_and_draws_the_one_typed(page, ser
     assert "unknown" not in preview.get_attribute("class") and preview.locator("svg").count() == 1
 
 
+@pytest.mark.only_browser("webkit")  # as a phone's Safari: createImageBitmap's orientation, toBlob
+def test_a_files_setting_shrinks_a_photo_to_the_screen_before_sending_it(page, server_url):
+    """The admin page shrinks an image on the phone (a JPEG at the screen's longest side, the photo's date
+    first in its name), sends it, shows it, and removes it (features/modules/files.py, ARCHITECTURE #44)."""
+    import re
+    import struct
+    import zlib
+
+    from mirrordash_core.forms import render_schema_form
+
+    def png(width, height):  # a grey photo, built without an imaging library
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+        rows = b"".join(b"\x00" + b"\x80" * width for _ in range(height))
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 0, 0, 0, 0))
+                + chunk(b"IDAT", zlib.compress(rows, 9)) + chunk(b"IEND", b""))
+
+    form = render_schema_form({"properties": {"photos": {"format": "files", "accept": "image", "title": "Photos"}}},
+                              {}, "modules[photos-1]", "mirrordash_photos")
+    stored, sent = [{"name": "2026-07-14_beach.jpg", "size": 1, "modified": 1}], []
+
+    def files_route(route):
+        request = route.request
+        if request.method == "GET" and request.url.endswith("/files/photos"):
+            return route.fulfill(json={"files": stored, "max_files": 500, "max_side": 2560, "free_bytes": 3 << 30})
+        if request.method == "POST":
+            sent.append(request.post_data_buffer)
+            return route.fulfill(json={"name": "added.jpg"})
+        if request.method == "DELETE":
+            stored.clear()
+            return route.fulfill(json={"removed": "2026-07-14_beach.jpg"})
+        route.fulfill(status=404)
+
+    navigate_authenticated(page, server_url)
+    page.route("**/admin/modules/photos-1/files/photos**", files_route)
+    page.evaluate("""html => { const box = document.createElement('div'); box.id = 'files-test'; box.innerHTML = html;
+                               document.body.append(box); box.querySelectorAll('[data-files-field]').forEach(setUpFilesField); }""", form)
+    status = page.locator("#files-test .files-status")
+    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('1 of 500')")
+    assert "GB" not in status.text_content() and "3072 MB free" in status.text_content()
+    assert page.locator("#files-test .files-tile img").count() == 1
+    # What the page sends, read in the page: WebKit gives Playwright no multipart body with a blob in it
+    page.evaluate("""() => { const realFetch = window.fetch; window.__sent = [];
+        window.fetch = async (url, options) => {
+            if (options?.method === 'POST') {
+                const file = options.body.get('file'), bitmap = await createImageBitmap(file);
+                window.__sent.push({ name: file.name, type: file.type, size: file.size, width: bitmap.width, height: bitmap.height });
+            }
+            return realFetch(url, options);
+        }; }""")
+    page.set_input_files("#files-test input[type=file]", files=[{"name": "big.png", "mimeType": "image/png", "buffer": png(4000, 3000)}])
+    page.wait_for_function("document.querySelector('#files-test .files-status').textContent.includes('2 of 500')")
+    upload = page.evaluate("window.__sent")[0]
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}_big\.png", upload["name"])
+    assert upload["type"] == "image/jpeg" and (upload["width"], upload["height"]) == (2560, 1920)
+    assert upload["size"] < 3.5 * 1024 * 1024 and len(sent) == 1
+    page.click("#files-test [aria-label='Remove 2026-07-14_beach.jpg']")
+    page.wait_for_function("document.querySelectorAll('#files-test .files-tile').length === 1")
+
+
 def test_dashboard_analytics_refresh_only_on_dashboard(page, server_url):
     page.clock.install()
     navigate_authenticated(page, server_url)

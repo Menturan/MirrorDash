@@ -25,6 +25,12 @@ def test_the_rule_comes_and_goes_without_touching_the_rest():
     assert window.with_rule(window.with_rule(placed, [0, 0, 10, 10]), None) == BASE_RC  # one rule at a time
 
 
+def test_the_screens_size_is_its_current_modes():
+    assert window.current_size(WLR_RANDR) == (1920, 1080)
+    assert window.current_size(WLR_RANDR.replace(" (preferred, current)", "")) is None
+    assert window.current_size("") is None  # not on a mirror
+
+
 def test_the_screen_switches_to_50_hz_and_back():
     assert window.refresh_switch(WLR_RANDR, 50) == ("HDMI-A-1", "1920x1080@50Hz", "1920x1080@60Hz")
     assert window.refresh_switch(WLR_RANDR, 60) is None                          # already there

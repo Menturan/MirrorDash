@@ -128,6 +128,12 @@ class Field:
     def description(self) -> str:
         return str(self.schema.get("description", ""))
 
+    @property
+    def instance_id(self) -> str | None:
+        """The module instance a top-level field of its settings belongs to ("modules[clock-2]" -> "clock-2")."""
+        match = re.fullmatch(r"modules\[([A-Za-z0-9_-]+)\]", self.prefix)
+        return match[1] if match else None
+
 
 def _array(field: Field) -> str:
     items_schema = field.schema.get("items", {})
@@ -152,6 +158,7 @@ def _item_schema(prop: dict) -> dict:
 # Which input a schema property gets: the first rule that matches (type, then format, then name); a
 # macro's name in templates/schema_form.html, or a function for the fields that hold fields
 WIDGET_RULES = [
+    (lambda key, p: p.get("format") == "files", "files"),
     (lambda key, p: p.get("type") == "boolean", "toggle"),
     (lambda key, p: bool(p.get("enum")), "select"),
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "string" and bool(_item_schema(p).get("enum")), "checkboxes"),

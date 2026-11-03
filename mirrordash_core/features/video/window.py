@@ -45,6 +45,13 @@ def with_rule(rc_xml: str, rect: list[int] | None) -> str:
     return rc_xml.replace("</labwc_config>", rule + "</labwc_config>")
 
 
+def current_size(wlr_randr: str) -> tuple[int, int] | None:
+    """(width, height) of the mode the screen is in, from wlr-randr's listing; None when there is none.
+    The mode's own size: a screen turned to portrait still lists it as landscape."""
+    return next(((int(width), int(height)) for width, height, _, notes in MODE.findall(wlr_randr)
+                 if "current" in notes), None)
+
+
 def refresh_switch(wlr_randr: str, hz: int) -> tuple[str, str, str] | None:
     """(output, the mode at hz, the mode now) from wlr-randr's listing, or None when the screen is
     already at hz or has no mode at hz in its current resolution."""

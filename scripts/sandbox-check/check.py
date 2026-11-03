@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 os.environ["MIRRORDASH_MODULE_SOCKET"] = "/run/mirrordash-modules/host.sock"
 os.environ["MIRRORDASH_MODULE_DIR"] = "/storage/mirrordash/modules"
-from mirrordash_core.features.modules import client  # noqa: E402
+from mirrordash_core.features.modules import client, files  # noqa: E402
 
 M = "/storage/mirrordash/modules"
 config = {"modules": {"a": {"module": "md_probe", "other": "b"}, "b": {"module": "md_probe", "other": "a"}},
@@ -29,9 +29,22 @@ async def until(check, t=60):
     raise AssertionError("timed out")
 
 
-async def who(core, instance):
-    reply = await core.call_route({"instance": instance, "method": "GET", "path": "/who"})
+async def route(core, instance, path):
+    reply = await core.call_route({"instance": instance, "method": "GET", "path": path})
     return json.loads(base64.b64decode(reply["body"]))
+
+
+async def who(core, instance):
+    return await route(core, instance, "/who")
+
+
+def upload(instance, name, text):
+    """What the admin page's upload does as pi (features/modules/files.py): the name the file got."""
+    folder = files.open_folder(instance, "photos", create=True)
+    try:
+        return files.store(folder, name, text.encode())
+    finally:
+        os.close(folder)
 
 
 def sh(command):
@@ -52,6 +65,11 @@ async def main():
         assert w["write_own"] == "ok" and w["oom"] == "500" and 200 < w["threads"] < 256  # forkserver.MAX_PROCESSES_PER_MODULE_USER
         assert w["fill_tmp"] == w["fill_shm"] == "OSError"  # a RAM folder of 16 MB: no module pins the unit's memory
     assert a["append_restored"] == "ok"  # what pi restored was given back to the module
+    # An upload pi put in a's cache: a reads it at once (as "other"), b can't reach it
+    assert upload("a", "up.jpg", "from pi") == "up.jpg"
+    assert (await route(core, "a", "/uploads"))["own"] == [["up.jpg", "from pi"]]
+    assert (await route(core, "b", "/uploads"))["other"] == "PermissionError"
+    upload("b", "first.jpg", "1")
     print(sh(f"stat -c '%u:%g %A %n' {M}/site_a {M}/pkgs {M}/pkgs/md-probe_1/md_probe/plugin.py {M}/data/*/*"))
 
     checks = (await core.diagnose())["checks"]
@@ -101,6 +119,13 @@ async def main():
     await until(lambda: "b" in core.running and str(b["pid"]) not in (core._instances["b"].html or str(b["pid"])))
     assert (await who(core, "a"))["pid"] == a["pid"]
     print("a changed setting restarted its instance alone")
+    # b's start gave it its cache, files/ too: pi still writes there (the group), and a link b put where pi
+    # writes next is never followed
+    assert os.stat(f"{M}/cache/b/files/photos").st_uid == 70101
+    assert await route(core, "b", "/plant") == "PLANTED"
+    assert upload("b", "evil.jpg", "2") == "evil-2.jpg"
+    assert (await route(core, "b", "/uploads"))["own"] == [["evil-2.jpg", "2"], ["first.jpg", "1"]]
+    print("uploads: each instance reads its own, pi writes after the instance owns the folder, no link followed")
     await core.stop_modules()
     await asyncio.sleep(7)
     assert sh("ps -eo uid= | awk '$1>=70000' | wc -l") == "0"

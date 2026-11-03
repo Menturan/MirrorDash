@@ -543,8 +543,105 @@ function setUpIconInputs(root) {
 document.addEventListener('input', (event) => { if (event.target.matches?.('[data-icon-input]')) drawIcon(event.target); });
 // The whole settings form, or a new item in one of its lists
 document.body.addEventListener('htmx:afterSwap', (event) => {
-    if (event.target.closest?.('#config-fields-global')) setUpIconInputs(event.target);
+    if (!event.target.closest?.('#config-fields-global')) return;
+    setUpIconInputs(event.target);
+    event.target.querySelectorAll('[data-files-field]').forEach(setUpFilesField);
 });
+
+// A module's files setting ("format": "files", features/modules/files.py, ARCHITECTURE #44). An image is
+// shrunk here on the phone before it's sent: to the screen's longest side, as a JPEG (the canvas drops its
+// EXIF, the GPS position too, and the rotation is applied), under the module route's 4 MB out with room
+// to spare. A tenth of the data over the Pi's Wi-Fi, and no 12-megapixel decode on the Pi.
+async function shrinkImage(file, maxSide) {
+    const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    for (const quality of [0.85, 0.75, 0.65, 0.5]) {
+        const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+        if (blob && (blob.size <= 3.5 * 1024 * 1024 || quality === 0.5)) return blob;
+    }
+    throw new Error('not drawable');
+}
+
+// The day the photo was taken goes first in its name (a phone's file date is usually that), so a
+// slideshow sorting by name sorts by date. The canvas drops the EXIF date, so it's kept here.
+function datedName(file) {
+    const day = new Date(file.lastModified || Date.now());
+    const pad = (number) => String(number).padStart(2, '0');
+    return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}_${file.name}`;
+}
+
+async function setUpFilesField(field) {
+    const url = field.dataset.filesUrl;
+    const isImage = field.dataset.filesAccept === 'image';
+    const grid = field.querySelector('.files-grid');
+    const status = field.querySelector('.files-status');
+    const add = field.querySelector('.files-add');
+    const input = add.querySelector('input');
+    const detail = async (response) => (await response.json().catch(() => ({}))).detail || `Error ${response.status}`;
+    const response = await fetch(url, { cache: 'no-store' });
+    if (!response.ok) {
+        status.textContent = await detail(response);
+        return;
+    }
+    const info = await response.json();
+    const megabytes = (bytes) => `${Math.floor(bytes / (1024 * 1024))} MB`;
+    const draw = () => {
+        grid.replaceChildren(...info.files.map((file) => {
+            const tile = document.createElement('div');
+            tile.className = 'files-tile';
+            const preview = isImage ? Object.assign(document.createElement('img'), {
+                src: `${url}/${encodeURIComponent(file.name)}`, alt: file.name, loading: 'lazy', title: file.name,
+            }) : Object.assign(document.createElement('span'), { textContent: file.name });
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'btn danger btn-sm';
+            remove.setAttribute('aria-label', `Remove ${file.name}`);
+            remove.innerHTML = '<i class="fas fa-trash" aria-hidden="true"></i>';
+            remove.onclick = async () => {
+                const removed = await fetch(`${url}/${encodeURIComponent(file.name)}`, { method: 'DELETE' });
+                if (!removed.ok) return showGlobal(await detail(removed), 'error');
+                info.files = info.files.filter((other) => other.name !== file.name);
+                draw();
+            };
+            tile.append(preview, remove);
+            return tile;
+        }));
+        status.textContent = `${info.files.length} of ${info.max_files} · ${megabytes(info.free_bytes)} free on the mirror`;
+        add.hidden = info.files.length >= info.max_files;
+    };
+    input.onchange = async () => {
+        const chosen = [...input.files];
+        input.value = '';
+        add.hidden = true;
+        for (const [index, file] of chosen.entries()) {
+            status.textContent = `Adding ${index + 1} of ${chosen.length}…`;
+            let blob;
+            try {
+                blob = isImage ? await shrinkImage(file, info.max_side) : file;
+            } catch (_) {
+                showGlobal(`${file.name} couldn't be read as a picture.`, 'error');
+                continue;
+            }
+            const form = new FormData();
+            form.append('file', blob, isImage ? datedName(file) : file.name);
+            const sent = await fetch(url, { method: 'POST', body: form });
+            if (!sent.ok) {
+                showGlobal(`${file.name}: ${await detail(sent)}`, 'error');
+                if (sent.status === 409) break;  // full
+                continue;
+            }
+            info.files.push({ name: (await sent.json()).name });
+            draw();
+        }
+        draw();
+    };
+    draw();
+}
 
 document.body.addEventListener('htmx:afterSwap', (event) => {
     if (event.target.id !== 'config-fields-global') return;
