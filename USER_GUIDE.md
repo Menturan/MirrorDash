@@ -81,6 +81,7 @@ The screen has nine areas: top, middle and bottom, each left, center and right. 
 *   Several modules in the same area are stacked.
 *   A module can be added more than once, for example two clocks in different time zones, each with its own settings.
 *   **Taking turns (carousel):** give modules in the same area the same **Carousel Group** name, and they show one at a time, switching every **Carousel Interval** seconds. Modules in that area without the group name stay stacked as usual.
+*   **Only at some times (schedule):** under *Schedule* in a module's settings, tick the days and give the times it's shown, such as the news on weekday mornings; outside them it's hidden (it keeps updating, so it's current when it comes back). 22:00 to 06:00 runs over midnight and belongs to the day it starts. For two windows, add the module twice. A carousel skips the modules that are hidden.
 
 ---
 
@@ -105,6 +106,7 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 *   A **push button on GPIO 3** (pin 5) also starts the mirror again after it has been shut down. With *Shut down the mirror* on its long press, the button works as an on/off switch. GPIO 3 is also used by the light sensor, so the two can't be combined.
 *   An **on/off fan** (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone. A 4-wire PWM fan is connected directly.
 *   **Brightness on an HDMI screen** is sent over the cable (DDC/CI). Most computer monitors understand it, most TVs don't. Some monitors have it turned off in their own menu: turn it on there and move the slider again.
+*   **Sound** (for a module that plays, like a radio) comes out of the **3.5 mm jack**, for powered speakers or headphones, or over **HDMI** if the screen has speakers; the module chooses which (the radio has a setting for it). A screen without speakers stays silent without saying so. *System Volume* in the Hardware tab is the whole mirror's. Needs the OS image that comes after 0.11.0.
 
 ---
 
