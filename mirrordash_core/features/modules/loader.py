@@ -465,7 +465,8 @@ def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: d
                            scratch: str | None = None) -> dict:
     """What a module's constructor gets: its saved settings, plus its own writable data_dir and cache_dir,
     the event bus, where its routes are served (api_path), the global settings and its translations.
-    scratch (a preview): data_dir and cache_dir are that throwaway folder, and the event bus goes nowhere."""
+    scratch (a preview): data_dir and cache_dir are that throwaway folder, the event bus goes nowhere, and
+    preview is True, so a module that needs a login or a pairing shows its sample answers, not how to log in."""
     instance_settings = module_cfg.copy()
     for kind in ("data", "cache"):
         path = scratch or os.path.join(get_module_dir(), kind, instance_id)
@@ -475,6 +476,7 @@ def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: d
         except Exception as e:
             logger.warning(f"Could not create writeable {kind} directory '{path}' for '{instance_id}': {e}")
     instance_settings["event_bus"] = _NoEvents() if scratch else event_bus
+    instance_settings["preview"] = bool(scratch)
     instance_settings["api_path"] = f"/api/modules/{instance_id}"
     instance_settings["globals"] = globals_config
     instance_settings["translations"] = translations

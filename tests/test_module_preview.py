@@ -68,7 +68,7 @@ class Card:
         await self.expose("value", 1)  # goes nowhere, the card is still drawn
         data, _ = await self.fetch_json("http://ha.local/api/states")
         self.config["event_bus"].publish("seen", data)
-        return f"<p>{self.config['heading']}: {data['state']}</p>"
+        return f"<p>{self.config['heading']}: {data['state']}{' (preview)' if self.config['preview'] else ''}</p>"
 
 
 def test_a_preview_renders_the_unsaved_settings_and_touches_nothing_else(module_pkg):
@@ -78,7 +78,7 @@ def test_a_preview_renders_the_unsaved_settings_and_touches_nothing_else(module_
          patch.object(loader, "package_dir", return_value=module_pkg), \
          patch.object(loader.event_bus, "publish", side_effect=lambda *a, **k: published.append(a)):
         html = asyncio.run(loader.render_preview("card", {"module": "card", "heading": "Unsaved"}, {}, SimpleNamespace(awake=asyncio.Event())))
-        assert html == "<p>Unsaved: 21.4</p>"
+        assert html == "<p>Unsaved: 21.4 (preview)</p>"  # preview: True, so a login can be skipped
         assert published == []  # the event bus of a preview goes nowhere
         with pytest.raises(RuntimeError, match="not in a preview"):
             asyncio.run(loader.render_preview("card", {"module": "card", "heading": "x", "use_gpio": True}, {}, SimpleNamespace(awake=asyncio.Event())))
