@@ -222,3 +222,17 @@ def test_a_list_saved_in_an_older_shape_and_an_index_past_any_list():
     assert "https://new.example" in form and "old.example" not in form
     # A posted index far past any list is left out, not filled up to with placeholders
     assert parse_flat_form_data({"a[100000000]": "x", "b[0]": "y", "c[²]": "z"}) == {"b": ["y"], "c": {"²": "z"}}
+
+
+def test_render_array_item_checkboxes():
+    """A list of choices in a list item: a titled box per choice, ticked as saved, no ids (a move renames them)."""
+    from mirrordash_core.forms import cast_values_by_schema, parse_flat_form_data
+    prop = {"type": "array", "title": "Extra readings",
+            "items": {"type": "string", "enum": ["humidity", "linkquality"], "enum_titles": ["Humidity", "Signal"]}}
+    html = render_array_item("m", "entities", {"readings": prop}, 0, {"readings": ["linkquality"]}, "Entity")
+    assert 'type="checkbox" name="m[entities][0][readings]" value="humidity">' in html
+    assert 'value="linkquality" checked' in html and "<span>Signal</span>" in html
+    # None ticked saves as [], not missing: the module then shows none instead of its default
+    parsed = parse_flat_form_data({"entities[0][readings]": ""})
+    schema = {"properties": {"entities": {"type": "array", "items": {"type": "object", "properties": {"readings": prop}}}}}
+    assert cast_values_by_schema(parsed, schema) == {"entities": [{"readings": []}]}

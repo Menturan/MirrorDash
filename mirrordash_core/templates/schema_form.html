@@ -6,10 +6,15 @@
 <div class="form-label-desc"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label><p class="field-description">{{ f.description }}</p></div>
 {%- endmacro %}
 
-{% macro options(prop, current) -%}
+{# An enum option's name: the schema's enum_titles (or enumNames) beside its enum, else the value in capitals #}
+{% macro option_title(prop, index) -%}
 {% set titles = prop.get("enum_titles") or prop.get("enumNames") %}
+{{- titles[index] if titles and index < titles|length else (prop["enum"][index]|string).replace("_", " ").upper() -}}
+{%- endmacro %}
+
+{% macro options(prop, current) -%}
 {%- for opt in prop["enum"] %}
-<option value="{{ opt }}"{% if current == opt %} selected{% endif %}>{{ titles[loop.index0] if titles and loop.index0 < titles|length else (opt|string).replace("_", " ").upper() }}</option>
+<option value="{{ opt }}"{% if current == opt %} selected{% endif %}>{{ option_title(prop, loop.index0) }}</option>
 {%- endfor %}
 {%- endmacro %}
 
@@ -25,13 +30,19 @@
     <select id="{{ f.id }}" name="{{ f.name }}" class="form-control">{{ options(f.schema, f.stored_value) }}</select></div>
 {%- endmacro %}
 
-{% macro checkboxes(f) -%}
+{# The boxes of a list of choices; the hidden empty value saves "none ticked" as []. Without ids when in a
+   list item: moving the item renames ids (admin.js reindexArrayContainer), and the label holds its box. #}
+{% macro checkbox_list(f, with_ids=true) -%}
 {% set chosen = f.stored_value if f.stored_value is sequence and f.stored_value is not string and f.stored_value is not mapping else [] %}
-<div class="form-group schema-group">{{ label(f, false) }}
-    <div class="schema-checkboxes"><input type="hidden" name="{{ f.name }}" value="">
+<div class="schema-checkboxes"><input type="hidden" name="{{ f.name }}" value="">
     {%- for opt in f.schema["items"]["enum"] %}
-    <label class="checkbox-inline"><input type="checkbox" id="{{ html_id(f.id, opt) }}" name="{{ f.name }}" value="{{ opt }}"{% if opt in chosen %} checked{% endif %}><span>{{ (opt|string).replace("_", " ").upper() }}</span></label>
-    {%- endfor %}</div></div>
+    <label class="checkbox-inline"><input type="checkbox"{% if with_ids %} id="{{ html_id(f.id, opt) }}"{% endif %} name="{{ f.name }}" value="{{ opt }}"{% if opt in chosen %} checked{% endif %}><span>{{ option_title(f.schema["items"], loop.index0) }}</span></label>
+    {%- endfor %}</div>
+{%- endmacro %}
+
+{% macro checkboxes(f) -%}
+<div class="form-group schema-group">{{ label(f, false) }}
+    {{ checkbox_list(f) }}</div>
 {%- endmacro %}
 
 {% macro array(f, cards, item_title) -%}
@@ -143,6 +154,11 @@
 {% macro sub_icon(f) -%}
 <div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
     {{ icon_input(f, " form-control-sm") }}</div>
+{%- endmacro %}
+
+{% macro sub_checkboxes(f) -%}
+<div class="sub-form-group wide"><span class="sub-form-label">{{ f.title }}</span>
+    {{ checkbox_list(f, false) }}</div>
 {%- endmacro %}
 
 {% macro sub_select(f) -%}

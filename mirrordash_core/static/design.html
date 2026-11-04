@@ -1438,7 +1438,7 @@
                 <div class="component-card">
                     <div class="component-meta">
                         <span class="component-name">Multi-select Checkboxes</span>
-                        <span class="component-tag">type: array  +  items.type: string  +  items.enum</span>
+                        <span class="component-tag">type: array  +  items.type: string  +  items.enum, also in a list item</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
@@ -1449,13 +1449,13 @@
                                 </div>
                                 <div style="display:flex;flex-direction:column;gap:4px;">
                                     <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
-                                        <input type="checkbox" checked> <span>BBC NEWS</span>
+                                        <input type="checkbox" checked> <span>BBC News</span>
                                     </label>
                                     <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
-                                        <input type="checkbox"> <span>SR EKOT</span>
+                                        <input type="checkbox"> <span>SR Ekot</span>
                                     </label>
                                     <label class="checkbox-inline" style="display:flex;align-items:center;gap:8px;color:white;">
-                                        <input type="checkbox" checked> <span>CNN EDITION</span>
+                                        <input type="checkbox" checked> <span>CNN Edition</span>
                                     </label>
                                 </div>
                             </div>
@@ -1468,7 +1468,8 @@
   "description": "Select one or more preconfigured news sources.",
   "items": {
     "type": "string",
-    "enum": ["bbc_news", "sr_ekot", "cnn_edition"]
+    "enum": ["bbc_news", "sr_ekot", "cnn_edition"],
+    "enum_titles": ["BBC News", "SR Ekot", "CNN Edition"]
   },
   "default": ["bbc_news"]
 }</code></pre>

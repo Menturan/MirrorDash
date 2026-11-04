@@ -1462,7 +1462,8 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .array-item-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .sub-form-group { margin-bottom: 8px; }
 .sub-form-group.wide { grid-column: span 2; }
-.sub-form-group > label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+.sub-form-group > label, .sub-form-label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
+.sub-form-group .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; font-size: 0.85rem; }  /* a list item's choices in a row */
 .sub-form-group .form-control { font-size: 0.85rem; height: auto; padding: 4px 8px; background: #09090b; border: 1px solid #27272a; color: white; }
 .swatch-row { display: flex; align-items: center; gap: 10px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

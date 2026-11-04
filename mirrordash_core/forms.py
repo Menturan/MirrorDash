@@ -157,13 +157,18 @@ def _item_schema(prop: dict) -> dict:
     return prop.get("items", {})
 
 
+def _is_choices(key: str, prop: dict) -> bool:
+    """A list of strings from an enum: a box per choice."""
+    return prop.get("type") == "array" and _item_schema(prop).get("type") == "string" and bool(_item_schema(prop).get("enum"))
+
+
 # Which input a schema property gets: the first rule that matches (type, then format, then name); a
 # macro's name in templates/schema_form.html, or a function for the fields that hold fields
 WIDGET_RULES = [
     (lambda key, p: p.get("format") == "files", "files"),
     (lambda key, p: p.get("type") == "boolean", "toggle"),
     (lambda key, p: bool(p.get("enum")), "select"),
-    (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "string" and bool(_item_schema(p).get("enum")), "checkboxes"),
+    (_is_choices, "checkboxes"),
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "object", _array),
     (lambda key, p: p.get("format") in CHOICE_FORMATS, "choice"),
     (lambda key, p: p.get("type") == "object", _object),
@@ -211,6 +216,8 @@ def _sub_widget(key: str, prop: dict):
         return _sub_choice
     if prop.get("enum"):
         return "sub_select"
+    if _is_choices(key, prop):
+        return "sub_checkboxes"
     if prop.get("format") == "icon":
         return "sub_icon"
     if prop.get("format") == "password" or key in SECRET_KEYS:
