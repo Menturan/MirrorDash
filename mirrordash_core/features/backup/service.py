@@ -28,7 +28,7 @@ from mirrordash_core.config import (
 )
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.loader import SAFE_NAME, module_entry_points
+from mirrordash_core.features.modules.module_files import SAFE_NAME, module_entry_points
 from mirrordash_core.features.mqtt.bridge import new_client_id, new_id
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
 from mirrordash_core.host import reboot_system, run_in_background, run_restart
@@ -193,7 +193,7 @@ SECRET_CONFIG_ENTRIES = (("admin_auth", None), ("mqtt", "password"), ("matter", 
 def secret_module_settings(instance_config: dict) -> set[str]:
     """The settings of a module instance that are secrets (an API key, a password): what its config_schema
     shows as a password field (format password, or a name like api_key or token, forms.py)."""
-    from mirrordash_core.features.modules.loader import find_entry_point
+    from mirrordash_core.features.modules.module_files import find_entry_point
     from mirrordash_core.features.settings.schema import get_module_schema
     from mirrordash_core.forms import SECRET_KEYS
     ep = find_entry_point(str(instance_config.get("module", "")))

@@ -15,7 +15,7 @@ import struct
 
 from mirrordash_core.config import get_module_dir
 from mirrordash_core.features.modules import forkserver
-from mirrordash_core.features.modules.loader import (
+from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
     module_folders,
     module_site,

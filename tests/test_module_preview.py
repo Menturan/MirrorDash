@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
-from mirrordash_core.features.modules import loader
+from mirrordash_core.features.modules import loader, module_fetch, preview
 from mirrordash_core.forms import render_array_item
 
 AUTH = {"admin_auth": {"hash": hash_password("secret", "0123456789abcdef"), "salt": "0123456789abcdef"}}
@@ -34,16 +34,16 @@ def module_pkg(tmp_path, monkeypatch):
 
 
 def test_sample_answers_move_to_today_and_stay_in_the_preview_folder(module_pkg):
-    fixtures = loader.preview_fixtures(module_pkg)
+    fixtures = preview.preview_fixtures(module_pkg)
     assert set(fixtures) == {"*/api/states", "calendar.example.org/*"}  # ../secret.json is never read
     assert json.loads(fixtures["*/api/states"])["when"] == f"{date.today()}T08:00:00Z"
     assert json.loads(fixtures["*/api/states"])["version"] == "2.1"
     assert fixtures["calendar.example.org/*"] == f"DTSTART:{date.today():%Y%m%d}T073000\r\n".encode()
-    assert loader.preview_fixtures(module_pkg.parent) is None  # no preview/fixtures.json: no preview
+    assert preview.preview_fixtures(module_pkg.parent) is None  # no preview/fixtures.json: no preview
 
 
 def test_a_preview_fetch_answers_from_the_samples_and_never_the_network(module_pkg):
-    fetch, fetch_json = loader._make_fetch(None, "m", asyncio.Event(), fixtures=loader.preview_fixtures(module_pkg))
+    fetch, fetch_json = module_fetch._make_fetch(None, "m", asyncio.Event(), fixtures=preview.preview_fixtures(module_pkg))
 
     async def fetches():  # awake is never set: a real fetch would wait for it, and then go out
         return (await fetch_json("http://ha.local:8123/api/states", headers={"Authorization": "Bearer x"}),
@@ -74,16 +74,16 @@ class Card:
 def test_a_preview_renders_the_unsaved_settings_and_touches_nothing_else(module_pkg):
     ep = SimpleNamespace(load=lambda: Card, dist=None)
     published = []
-    with patch.object(loader, "find_entry_point", return_value=ep), \
-         patch.object(loader, "package_dir", return_value=module_pkg), \
+    with patch.object(preview, "find_entry_point", return_value=ep), \
+         patch.object(preview, "package_dir", return_value=module_pkg), \
          patch.object(loader.event_bus, "publish", side_effect=lambda *a, **k: published.append(a)):
-        html = asyncio.run(loader.render_preview("card", {"module": "card", "heading": "Unsaved"}, {}, SimpleNamespace(awake=asyncio.Event())))
+        html = asyncio.run(preview.render_preview("card", {"module": "card", "heading": "Unsaved"}, {}, SimpleNamespace(awake=asyncio.Event())))
         assert html == "<p>Unsaved: 21.4 (preview)</p>"  # preview: True, so a login can be skipped
         assert published == []  # the event bus of a preview goes nowhere
         with pytest.raises(RuntimeError, match="not in a preview"):
-            asyncio.run(loader.render_preview("card", {"module": "card", "heading": "x", "use_gpio": True}, {}, SimpleNamespace(awake=asyncio.Event())))
-    with patch.object(loader, "find_entry_point", return_value=ep), patch.object(loader, "package_dir", return_value=module_pkg.parent):
-        assert asyncio.run(loader.render_preview("card", {"module": "card"}, {}, None)) is None  # no samples: none
+            asyncio.run(preview.render_preview("card", {"module": "card", "heading": "x", "use_gpio": True}, {}, SimpleNamespace(awake=asyncio.Event())))
+    with patch.object(preview, "find_entry_point", return_value=ep), patch.object(preview, "package_dir", return_value=module_pkg.parent):
+        assert asyncio.run(preview.render_preview("card", {"module": "card"}, {}, None)) is None  # no samples: none
 
 
 @pytest.fixture

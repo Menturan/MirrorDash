@@ -1,33 +1,24 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""Runs the modules. ModuleLoader lives in the module host process (host.py), as its own user, never in
-the core's: the core reads a module's files (schema, icon, translations) with the helpers at the top of
-this file, which import nothing of the module (ARCHITECTURE #41)."""
+"""Runs the modules: ModuleLoader starts each instance, gives it its helpers and keeps its run_loop going.
+
+It lives in the module host, in the instance's own process (instance.py), as its own user, never in the
+core's (ARCHITECTURE #41). The helpers a module gets (_inject_module_helpers) are self.translate,
+self.fetch and self.fetch_json (module_fetch.py), self.render_template, self.video_is_playing,
+self.video_window, self.expose and self.gpio. Finding modules and reading their files is module_files.py;
+the settings drawer's preview is preview.py."""
 
 import asyncio
 import contextlib
-import fnmatch
 import functools
-import hashlib
-import http.client
 import importlib.machinery
 import importlib.metadata
 import importlib.util
 import inspect
-import json
 import logging
 import os
-import re
 import site
-import stat
 import sys
-import tempfile
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
-from datetime import date, datetime, timedelta
-from email.message import Message
-from pathlib import Path
 
 from jinja2 import (
     ChoiceLoader,
@@ -37,333 +28,23 @@ from jinja2 import (
     select_autoescape,
 )
 
-from mirrordash_core.config import get_core_version, get_module_dir
+from mirrordash_core.config import get_module_dir
 from mirrordash_core.event_bus import event_bus
+from mirrordash_core.features.modules.module_fetch import _make_fetch
+from mirrordash_core.features.modules.module_files import (
+    SAFE_NAME,
+    find_entry_point,
+    load_translations,
+    module_entry_points,
+    module_folder,
+    package_dir,
+)
 
 logger = logging.getLogger("mirrordash.core.modules")
 
 
 # Restart delay before retrying a crashed module (seconds)
 MODULE_RESTART_DELAY = 5
-# A module or instance name: it ends up in HTML ids, JS strings, URLs and folder names
-SAFE_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
-MODULE_FILE_LIMIT = 1024 * 1024  # a module file the core reads (schema, translations, icon.svg)
-PREVIEW_TIMEOUT = 10  # seconds a preview's render() may take
-SAFE_FILE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$")  # a file in a module's preview folder: no path
-
-
-def module_site() -> Path:
-    """Where modules are installed: the module host's own folder, a link it switches between site_a and
-    site_b (host.py), each a link per module to the folder it was installed in alone. Never on the core's
-    sys.path: the core reads its files only, so a package's .pth or one that shadows the core's own runs
-    nowhere but in the module host, and there only in that module's process (ARCHITECTURE #41)."""
-    return get_module_dir() / "site"
-
-
-def module_folders() -> list[str]:
-    """Each installed module's own folder (site/<name>), in name order."""
-    with contextlib.suppress(OSError):
-        return [str(module_site() / e.name) for e in sorted(os.scandir(module_site()), key=lambda e: e.name)
-                if e.is_symlink() and SAFE_NAME.match(e.name)]
-    return []
-
-
-def module_search_path() -> list[str]:
-    """The modules' folders, then this process's sys.path (a module installed into a developer's venv)."""
-    return [*module_folders(), *sys.path]
-
-
-def module_folder(ep) -> str | None:
-    """The folder ep's package was installed in (one of module_folders, or this process's site-packages)."""
-    return str(ep.dist.locate_file("")) if getattr(ep, "dist", None) else None
-
-
-def site_name(ep) -> str | None:
-    """A module's folder's name in the module site (site/<name>), or None for one in the core's venv."""
-    folder = module_folder(ep)
-    return Path(folder).name if folder and Path(folder).parent == module_site() else None
-
-
-def scripts_allowed(ep, config: dict) -> bool:
-    """Whether a module's card runs its scripts on the screen, where they could read the other cards
-    (ARCHITECTURE #41): a module in the core's venv (the image's clock, a developer's), or one in the site
-    whose name is in config's "module_scripts" (installed from MirrorDash's own GitHub, or the owner's yes)."""
-    return bool(ep) and ((name := site_name(ep)) is None or name in config.get("module_scripts", []))
-
-
-def folder_entry_points(folder: str) -> set[str]:
-    """The module names a folder declares, '-' as '_' (find_entry_point's equality)."""
-    return {ep.name.replace("-", "_") for dist in importlib.metadata.distributions(path=[folder])
-            for ep in dist.entry_points.select(group="mirrordash.modules")}
-
-
-def module_entry_points() -> list:
-    """The installed modules' entry points, each name once; one whose name isn't SAFE_NAME is left out (a
-    package chooses its own entry point names)."""
-    eps, seen = [], set()
-    for dist in importlib.metadata.distributions(path=module_search_path()):
-        for ep in dist.entry_points.select(group="mirrordash.modules"):
-            if SAFE_NAME.match(ep.name) and ep.name not in seen:
-                seen.add(ep.name)
-                eps.append(ep)
-    return eps
-
-
-def find_entry_point(name: str, eps=None):
-    """Find a module's entry point by name, treating '-' and '_' as equal (config ids use either)."""
-    norm_name = name.replace('-', '_')
-    eps = module_entry_points() if eps is None else eps
-    return next((ep for ep in eps if ep.name.replace('-', '_') == norm_name), None)
-
-
-def package_dir(ep) -> Path | None:
-    """The folder of a module's plugin file, found without importing anything of it: PathFinder of a
-    top-level name runs no package code (a submodule's would run its parent's __init__), nor a .pth."""
-    try:
-        top, *rest = ep.module.split(".")
-        # Its own folder first: another module's package of the same name lies in a folder of its own
-        folder = module_folder(ep)
-        spec = importlib.machinery.PathFinder.find_spec(top, [folder, *sys.path] if folder else module_search_path())
-    except (AttributeError, TypeError, ImportError, ValueError):  # not a real entry point, or a bad name
-        return None
-    if not spec:
-        return None
-    if spec.submodule_search_locations:
-        return Path(next(iter(spec.submodule_search_locations)), *rest[:-1])
-    return Path(spec.origin).parent if spec.origin else None
-
-
-def module_file(pkg_dir: Path | None, *parts: str) -> bytes | None:
-    """A file in a module's package, read for the core, or None. One that really lies outside the folders
-    modules are found in isn't read: the module host writes the site, and a link it put there to the core's
-    data would have the core show that (a translated title on the screen). Where it lies is asked of the
-    open file (/proc/self/fd), and it is read from that descriptor, so a link the host swaps in between the
-    check and the read isn't followed either."""
-    if pkg_dir is None:
-        return None
-    path = Path(pkg_dir, *parts)
-    roots = [Path(p).resolve() for p in module_search_path() if p]
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)  # NONBLOCK: a FIFO there can't hang the core
-    except OSError:
-        return None
-    with open(fd, "rb") as file:
-        try:
-            real = Path(os.readlink(f"/proc/self/fd/{fd}"))
-        except OSError:  # no /proc (a developer's Mac): the path as it resolves now
-            real = path.resolve()
-        info = os.fstat(fd)
-        if not (stat.S_ISREG(info.st_mode) and any(real.is_relative_to(root) for root in roots)):
-            return None
-        if info.st_size > MODULE_FILE_LIMIT:  # read whole into the core: a huge one would take its memory
-            logger.warning(f"{real} is over {MODULE_FILE_LIMIT // 1024} kB, not read")
-            return None
-        return file.read(MODULE_FILE_LIMIT)
-
-
-def load_translations(pkg_dir: Path | None, lang: str) -> dict:
-    """The module's translations/en.json, with the configured language's file over it."""
-    translations = {}
-    for code in dict.fromkeys(["en", lang or "en"]):
-        try:
-            if (raw := module_file(pkg_dir, "translations", f"{code}.json")) is not None:
-                translations.update(json.loads(raw.decode("utf-8")))
-        except Exception as e:
-            logger.debug(f"Could not load translations from {pkg_dir} in language '{code}': {e}")
-    return translations
-
-
-ISO_DATE = re.compile(r"(?<![\d.])(\d{4})-(\d{2})-(\d{2})(?![\d.])|(?<!\d)(\d{4})(\d{2})(\d{2})(?=T\d{4})")
-
-
-def _shift_dates(raw: bytes, days: int) -> bytes:
-    """raw with every date in it days later: 2026-11-02 (JSON, RSS) and 20261102T0800 (iCalendar).
-    ponytail: whole days only, and a date-like number in other text moves too."""
-    if not days:
-        return raw
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return raw
-
-    def later(match: re.Match) -> str:
-        year, month, day = (int(part) for part in (match.group(1, 2, 3) if match.group(1) else match.group(4, 5, 6)))
-        try:
-            moved = date(year, month, day) + timedelta(days=days)
-        except ValueError:  # not a date after all (2026-13-45)
-            return match.group(0)
-        return moved.isoformat() if match.group(1) else moved.strftime("%Y%m%d")
-    return ISO_DATE.sub(later, text).encode("utf-8")
-
-
-def preview_fixtures(pkg_dir: Path | None) -> dict[str, bytes] | None:
-    """A module's sample answers for the admin's preview (ARCHITECTURE #43), from its preview/fixtures.json:
-    {"captured": "2026-11-02", "answers": {"*/api/states": "states.json"}}: fnmatch patterns on host + path,
-    each to a file beside it. The dates in them move as many days as have passed since captured, so a
-    forecast or a calendar stays current. None when the module has no fixtures.json (the admin shows the
-    saved card instead); {} for one that fetches nothing."""
-    try:
-        raw = module_file(pkg_dir, "preview", "fixtures.json")
-        fixtures = json.loads(raw.decode("utf-8")) if raw is not None else None
-        days = (date.today() - date.fromisoformat(fixtures["captured"])).days if "captured" in fixtures else 0
-    except (OSError, ValueError, TypeError, AttributeError):
-        return None
-    if not isinstance(fixtures, dict) or not isinstance(patterns := fixtures.get("answers"), dict):
-        return None
-    answers = {}
-    for pattern, file_name in patterns.items():
-        if (isinstance(pattern, str) and isinstance(file_name, str) and SAFE_FILE.match(file_name)
-                and (answer := module_file(pkg_dir, "preview", file_name)) is not None):
-            answers[pattern] = _shift_dates(answer, days)
-    return answers
-
-
-def _request_body(json_body: object, form_data: dict | bytes | None) -> bytes | None:
-    """What fetch sends: json= as JSON, data= as a form (a dict) or as it is (bytes)."""
-    if json_body is not None:
-        return json.dumps(json_body).encode()
-    return urllib.parse.urlencode(form_data).encode() if isinstance(form_data, dict) else form_data
-
-
-def _cache_file_for(cache_dir: str | None, method: str, url: str, body: bytes | None) -> str | None:
-    """Where the last good answer to this exact request is kept (none without a cache_dir)."""
-    if not cache_dir:
-        return None
-    request_hash = hashlib.sha256(f"{method} {url}\n".encode() + (body or b"")).hexdigest()[:16]
-    return os.path.join(cache_dir, f"fetch-{request_hash}")
-
-
-class Answer(tuple):
-    """What fetch gives: (data, error) to unpack as before, and .fetched_at, when data was downloaded
-    (a datetime; None without data). A saved answer keeps the time it was downloaded.
-    .headers: this call's answer's headers, read case-insensitively (.get("Retry-After")), an error's
-    too (a 429's Retry-After), while data is then the last good answer; empty when no call was made (a
-    saved answer reused, the preview's samples) or none came back (offline)."""
-
-    def __new__(cls, data, error, fetched_at: float | None = None, headers: Message | None = None):
-        answer = super().__new__(cls, (data, error))
-        answer.fetched_at = datetime.fromtimestamp(fetched_at) if data is not None and fetched_at else None
-        answer.headers = headers if headers is not None else Message()
-        return answer
-
-
-def _read_cached_answer(cache_file: str | None, parse_answer, max_age: float | None = None):
-    """(The saved answer, parsed; when it was downloaded); (None, None) when there is none, it doesn't
-    parse, or it is older than max_age."""
-    try:
-        saved_at = os.path.getmtime(cache_file)
-        if max_age is not None and time.time() - saved_at >= max_age:
-            return None, None
-        with open(cache_file, "rb") as f:
-            return parse_answer(f.read()), saved_at
-    except (TypeError, OSError, ValueError):  # no cache_dir, nothing saved yet, or a broken file
-        return None, None
-
-
-def _save_answer(cache_file: str | None, raw_answer: bytes, module_name: str, where: str) -> None:
-    """Keep a good answer for when the next fetch fails; written whole or not at all."""
-    if not cache_file:
-        return
-    try:
-        with open(cache_file + ".tmp", "wb") as f:
-            f.write(raw_answer)
-        os.replace(cache_file + ".tmp", cache_file)
-    except OSError as e:
-        logger.debug(f"{module_name}: could not cache {where}: {e}")
-
-
-def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, keep_running: bool = False,
-                default_max_age=lambda: None, fixtures: dict[str, bytes] | None = None):
-    """A module's `self.fetch` and `self.fetch_json` -> (answer, error), an Answer: .fetched_at says
-    when the data was downloaded, also for a saved answer (a card's "updated 10:42"); .headers are this
-    call's answer's (a 429's Retry-After), the module's own, so handed over like the body but never logged.
-
-    `await self.fetch(url, method="GET", headers=..., params=..., json=..., data=..., timeout=10)` gives the
-    raw bytes (RSS, ICS, XML); `self.fetch_json(...)` takes the same arguments and gives the parsed JSON.
-    params go in the query; json= is sent as a JSON body, data= as a form (dict) or as is (bytes).
-
-    While the screen is off (awake cleared) it waits until the screen is back on (unless keep_running), so
-    a sleeping mirror calls no APIs and a fetch that fell due in the dark happens once, on waking.
-    ponytail: only fetches through here sleep; a module with its own HTTP client keeps polling.
-
-    error is None, "rejected" (401/403: usually the API key), "offline" (no answer), "http <code>" or
-    "invalid" (fetch_json: not JSON). On an error, answer is the last good one for the same method, URL
-    and body (kept in the module's cache_dir), or None.
-    ponytail: no retry or backoff; the module's own interval is the retry. Upgrade path: backoff here.
-
-    max_age=seconds: a saved answer younger than that comes back as fresh (error None) without a call, so
-    saving a setting or a restart doesn't fetch everything again. Left out, it is default_max_age() (the
-    module's interval), so a paid API keeps to its schedule by itself; max_age=0 always calls. ponytail: after a restart the next call
-    can come up to two intervals after the last one, once; the cache file's mtime is the clock (and
-    fetched_at), so a Pi booting on an old time may make one extra call.
-
-    fixtures (the admin's preview, preview_fixtures): every fetch answers from the module's sample answers,
-    the first pattern matching host + path, else "offline"; never the network, the cache or a wait.
-    """
-    user_agent = f"MirrorDash/{get_core_version()}"
-
-    async def fetch(url: str, *, parse=None, method: str = "GET", headers: dict | None = None,
-                    params: dict | None = None, json: object = None, data: dict | bytes | None = None,
-                    timeout: float = 10, max_age: float | None = None) -> Answer:
-        if json is not None and data is not None:
-            raise ValueError("fetch: pass json= or data=, not both")
-        if params:
-            url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
-        body = _request_body(json, data)
-        if max_age is None:
-            max_age = default_max_age()
-        parse_answer = parse or (lambda raw: raw)
-        url_parts = urllib.parse.urlsplit(url)
-        where = f"{method} {url_parts.hostname}"  # only the host: user:password@, path (a Google Calendar private-… link), query, headers and body can hold keys
-        cache_file = _cache_file_for(cache_dir, method, url, body)
-
-        if fixtures is not None:
-            sample = next((raw for pattern, raw in fixtures.items()
-                           if fnmatch.fnmatchcase(url_parts.netloc + url_parts.path, pattern)), None)
-            if sample is None:
-                return Answer(None, "offline")
-            try:
-                return Answer(parse_answer(sample), None, time.time())
-            except ValueError:
-                return Answer(None, "invalid")
-
-        if max_age:
-            saved, saved_at = _read_cached_answer(cache_file, parse_answer, max_age)
-            if saved is not None:
-                return Answer(saved, None, saved_at)
-        if not keep_running:
-            await awake.wait()
-
-        request_headers = {"User-Agent": user_agent,
-                           **({"Accept": "application/json"} if parse else {}),
-                           **({"Content-Type": "application/json"} if json is not None else {}),
-                           **(headers or {})}
-
-        def download() -> tuple[bytes, Message]:
-            request = urllib.request.Request(url, data=body, method=method, headers=request_headers)
-            with urllib.request.urlopen(request, timeout=timeout) as response:
-                return response.read(), response.headers
-
-        response_headers = None  # offline: no answer, so no headers
-        try:
-            raw_answer, response_headers = await asyncio.to_thread(download)
-            answer = parse_answer(raw_answer)
-        except urllib.error.HTTPError as e:
-            error, response_headers = "rejected" if e.code in (401, 403) else f"http {e.code}", e.headers
-        except (urllib.error.URLError, OSError, http.client.HTTPException):  # timeouts, cut-off answers
-            error = "offline"
-        except ValueError:  # fetch_json: not JSON, or not UTF-8
-            error = "invalid"
-        else:
-            _save_answer(cache_file, raw_answer, module_name, where)
-            return Answer(answer, None, time.time(), response_headers)
-
-        logger.warning(f"{module_name}: fetching {where} failed ({error}); showing the last answer if there is one")
-        saved, saved_at = _read_cached_answer(cache_file, parse_answer)
-        return Answer(saved, error, saved_at, response_headers)
-
-    return (functools.partial(fetch, parse=None),
-            functools.partial(fetch, parse=lambda raw: json.loads(raw.decode("utf-8"))))
 
 
 def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict, link,
@@ -481,38 +162,6 @@ def _settings_for_instance(instance_id: str, module_cfg: dict, globals_config: d
     instance_settings["globals"] = globals_config
     instance_settings["translations"] = translations
     return instance_settings
-
-
-async def _not_in_a_preview(*args, **kwargs):
-    raise RuntimeError("not in a preview")  # a RuntimeError, as self.gpio gives for a pin it can't have
-
-
-async def _shown_nowhere(*args, **kwargs) -> None:
-    """A preview's self.expose: the value goes nowhere, and the card is drawn as usual."""
-
-
-async def render_preview(instance_id: str, module_cfg: dict, globals_config: dict, link) -> str | None:
-    """The card module_cfg (the admin's unsaved form) would show, rendered once by a throwaway instance from
-    the module's sample answers (preview_fixtures, ARCHITECTURE #43); None when the module has none or no
-    render(). Nothing it does reaches the screen, Home Assistant, the GPIO pins, the event bus or the network
-    through fetch. ponytail: a module with its own HTTP client still reaches out from a preview."""
-    ep = find_entry_point(module_cfg.get("module") or instance_id)
-    if ep is None or (fixtures := preview_fixtures(pkg_dir := package_dir(ep))) is None:
-        return None
-    if (folder := module_folder(ep)) and folder not in sys.path:
-        site.addsitedir(folder)
-    plugin_class = ep.load()
-    translations = load_translations(pkg_dir, globals_config.get("language", "en"))
-    with tempfile.TemporaryDirectory(prefix="preview-") as scratch:  # on a mirror under its cache folder (TMPDIR)
-        settings = _settings_for_instance(instance_id, module_cfg, globals_config, translations, scratch)
-        plugin = plugin_class(settings)
-        plugin.gpio = plugin.video_window = plugin.video_is_playing = _not_in_a_preview
-        plugin.expose = _shown_nowhere
-        _inject_module_helpers(plugin, plugin_class.__module__.split(".")[0], translations, instance_id, settings, link, fixtures)
-        render = getattr(plugin, "render", None)
-        if not inspect.iscoroutinefunction(render):
-            return None
-        return await asyncio.wait_for(render(), PREVIEW_TIMEOUT)
 
 
 async def _render_loop(instance_id: str, plugin_instance, broadcast_func) -> None:

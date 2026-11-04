@@ -18,7 +18,7 @@ from mirrordash_core.admin import (
 from mirrordash_core.config import get_core_version, load_config, save_config
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.loader import find_entry_point
+from mirrordash_core.features.modules.module_files import find_entry_point
 from mirrordash_core.features.power.privacy import (
     privacy_on,
     screen_message,

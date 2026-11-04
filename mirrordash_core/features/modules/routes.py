@@ -26,7 +26,7 @@ from mirrordash_core.config import (
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.loader import (
+from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
     find_entry_point,
     scripts_allowed,

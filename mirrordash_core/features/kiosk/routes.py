@@ -16,7 +16,7 @@ from mirrordash_core.config import load_config
 from mirrordash_core.features.auth.routes import auth_state
 from mirrordash_core.features.kiosk.ws import manager, on_screen
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.loader import (
+from mirrordash_core.features.modules.module_files import (
     find_entry_point,
     load_translations,
     package_dir,

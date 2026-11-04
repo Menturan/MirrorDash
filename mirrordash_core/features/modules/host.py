@@ -38,7 +38,7 @@ holding the request's id. An instance stops when the core closes its connection.
 connection to the control process ends (the core restarted, or was updated), the host exits and systemd
 starts it again, so a new venv's modules load fresh.
 
-The modules are installed in the module site (loader.module_site), in the host's own folder: each module in
+The modules are installed in the module site (module_files.module_site), in the host's own folder: each module in
 a folder of its own (pkgs/<name>_<n>), where uv runs in a process of its own as that module's user
 (site_main, forkserver.PACKAGE_UIDS: one per module and where it comes from), and the site is a link per module to its folder, which only the control
 process writes. So a package's build, the files it installs and its .pth reach no other module's folder or
@@ -72,10 +72,7 @@ from mirrordash_core.features.modules.instance import (
     instance_main,
     read_lines,
 )
-from mirrordash_core.features.modules.loader import (
-    SAFE_NAME,
-    folder_entry_points,
-)
+from mirrordash_core.features.modules.module_files import SAFE_NAME, folder_entry_points
 from mirrordash_core.features.modules.package_names import package_key, package_user
 from mirrordash_core.features.modules.sandbox_checks import data_folders, sandbox_checks
 from mirrordash_core.features.modules.site_folders import (

@@ -27,10 +27,8 @@ from fastapi import APIRouter, FastAPI
 
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import GpioLines
-from mirrordash_core.features.modules.loader import (
-    ModuleLoader,
-    render_preview,
-)
+from mirrordash_core.features.modules.loader import ModuleLoader
+from mirrordash_core.features.modules.preview import render_preview
 
 logger = logging.getLogger("mirrordash.core.modules.host")
 
@@ -281,7 +279,7 @@ class Host:
 
     async def _preview(self, message: dict) -> None:
         """The admin's preview: the card the unsaved settings would show, from the module's sample answers
-        (loader.render_preview); html None when the module has none, or rendering failed."""
+        (preview.render_preview); html None when the module has none, or rendering failed."""
         html = None
         module_cfg = message.get("config")
         if isinstance(module_cfg, dict) and isinstance(message.get("instance"), str):

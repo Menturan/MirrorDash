@@ -31,7 +31,10 @@ def _printable(value, limit: int) -> str:
 
 def _shareable(config: dict) -> list[dict]:
     """The module instances that expose something, with what (for the card's choices)."""
-    from mirrordash_core.features.modules.loader import SAFE_NAME, find_entry_point
+    from mirrordash_core.features.modules.module_files import (
+        SAFE_NAME,
+        find_entry_point,
+    )
     from mirrordash_core.features.settings.schema import get_module_schema
     found = []
     for instance, cfg in config.get("modules", {}).items():

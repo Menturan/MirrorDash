@@ -62,7 +62,7 @@ async def run(name: str, port: int) -> list[str]:
          patch("mirrordash_core.features.power.routes.update_screen_state", screen), \
          patch("mirrordash_core.features.modules.routes.set_instances_enabled", enabled), \
          patch("mirrordash_core.features.modules.client.module_host.control", control), \
-         patch("mirrordash_core.features.modules.loader.find_entry_point", return_value=SimpleNamespace()), \
+         patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=SimpleNamespace()), \
          patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=TV):
         watcher = asyncio.create_task(watch())
         await asyncio.sleep(0.3)

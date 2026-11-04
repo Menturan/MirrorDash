@@ -34,7 +34,7 @@ import time
 import traceback
 
 from mirrordash_core.config import get_module_dir
-from mirrordash_core.features.modules.loader import SAFE_NAME
+from mirrordash_core.features.modules.module_files import SAFE_NAME
 
 # One per module and where it comes from (package_names.py package_user), for uv and what its build runs, in that
 # module's own folders (pkgs/<name>_<n>) alone; kept in package_uids.json (host.py module_uids), never

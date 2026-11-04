@@ -986,8 +986,8 @@ def test_only_the_owners_choice_of_modules_runs_scripts_on_the_screen(mock_resta
     """A card's scripts could read the other cards (ARCHITECTURE #41): a module installed from MirrorDash's own
     GitHub runs them, one of that name from anywhere else or uninstalled loses the yes, the owner decides
     for the others; a module in the core's venv (the image's clock) always does."""
-    from mirrordash_core.features.modules.loader import module_site as site
-    from mirrordash_core.features.modules.loader import scripts_allowed
+    from mirrordash_core.features.modules.module_files import module_site as site
+    from mirrordash_core.features.modules.module_files import scripts_allowed
     mock_urlopen.return_value.__enter__.return_value.read.return_value = b'{"tag_name": "v1.0.0"}'
     config = {}
     in_site = SimpleNamespace(dist=SimpleNamespace(locate_file=lambda _: site() / "mirrordash-news"))
@@ -1011,7 +1011,7 @@ def test_only_the_owners_choice_of_modules_runs_scripts_on_the_screen(mock_resta
 
 
 @patch("mirrordash_core.fetch.urllib.request.urlopen")
-@patch("mirrordash_core.features.modules.loader.module_entry_points")
+@patch("mirrordash_core.features.modules.module_files.module_entry_points")
 def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
     mock_dist = MagicMock()
     direct_url_content = json.dumps({

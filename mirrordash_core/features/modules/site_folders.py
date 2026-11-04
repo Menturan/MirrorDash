@@ -15,7 +15,7 @@ import shutil
 from pathlib import Path
 
 from mirrordash_core.config import get_module_dir
-from mirrordash_core.features.modules.loader import (
+from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
     folder_entry_points,
     module_site,
@@ -68,7 +68,7 @@ def next_module_folder_name(package: str) -> str:
 def module_name_clash(package: str, new_folder: Path, links: dict[str, str]) -> tuple[str, set[str]] | None:
     """(the other package, the module names both have) when the modules in new_folder take a name another
     package has: one in the site (links), or in the core's venv (the image's clock), which the site shadows
-    (loader.module_search_path), so only a newer version of that package may take them. None if no clash."""
+    (module_files.module_search_path), so only a newer version of that package may take them. None if no clash."""
     claimed_names = folder_entry_points(str(new_folder))
     pkgs = get_module_dir() / "pkgs"
     others = [(other, folder_entry_points(str(pkgs / folder))) for other, folder in links.items()]

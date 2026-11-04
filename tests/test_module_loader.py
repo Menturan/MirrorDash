@@ -43,10 +43,8 @@ def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, m
     """Two modules loaded one after the other keep their own translate() and render_template(): the
     helpers are closures over each instance (a late-binding bug once gave every module the last one's),
     and the configured language's file goes over en.json."""
-    from mirrordash_core.features.modules.loader import (
-        _inject_module_helpers,
-        load_translations,
-    )
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+    from mirrordash_core.features.modules.module_files import load_translations
 
     for pkg, greeting in (("md_test_a", "Hej"), ("md_test_b", "Hallå")):
         (tmp_path / pkg / "translations").mkdir(parents=True)
@@ -76,7 +74,10 @@ def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monke
     (it would, if imported) still has its schema, icon and title, and stays unimported."""
     import sys
 
-    from mirrordash_core.features.modules.loader import load_translations, package_dir
+    from mirrordash_core.features.modules.module_files import (
+        load_translations,
+        package_dir,
+    )
     from mirrordash_core.features.settings.schema import get_module_schema
 
     pkg = tmp_path / "md_untouched"
@@ -676,7 +677,7 @@ async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, ca
     HTML_INTERVAL, a flood of log lines is counted instead of logged, and a module file over
     MODULE_FILE_LIMIT isn't read: what a bad module sends can't take the core's memory or its log."""
     from mirrordash_core.features.modules import client as client_module
-    from mirrordash_core.features.modules import loader
+    from mirrordash_core.features.modules import module_files
     core = client_module.ModuleHost()
     core._placement = {"w": {"module": "w"}}
     conn = core._instances["w"] = client_module.Connection(MagicMock(), MagicMock(), None, "w")
@@ -705,11 +706,11 @@ async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, ca
         f"30 log lines left out: more than {client_module.LOG_BURST} in {client_module.LOG_WINDOW} s", "after"]
 
     (tmp_path / "pkg").mkdir()
-    (tmp_path / "pkg" / "schema.json").write_text(" " * (loader.MODULE_FILE_LIMIT + 1))
-    monkeypatch.setattr(loader, "module_search_path", lambda: [str(tmp_path)])
-    assert loader.module_file(tmp_path / "pkg", "schema.json") is None
+    (tmp_path / "pkg" / "schema.json").write_text(" " * (module_files.MODULE_FILE_LIMIT + 1))
+    monkeypatch.setattr(module_files, "module_search_path", lambda: [str(tmp_path)])
+    assert module_files.module_file(tmp_path / "pkg", "schema.json") is None
     (tmp_path / "pkg" / "schema.json").write_text("{}")
-    assert loader.module_file(tmp_path / "pkg", "schema.json")
+    assert module_files.module_file(tmp_path / "pkg", "schema.json")
 
 
 @pytest.mark.asyncio
@@ -767,7 +768,10 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
 
     from mirrordash_core.features.modules import client as client_module
     from mirrordash_core.features.modules import host as host_module
-    from mirrordash_core.features.modules.loader import find_entry_point, package_dir
+    from mirrordash_core.features.modules.module_files import (
+        find_entry_point,
+        package_dir,
+    )
 
     marker = tmp_path / "pth-ran"
     (tmp_path / "bin").mkdir()
@@ -1099,14 +1103,14 @@ async def test_an_instance_that_ends_mid_video_lets_the_others_update_again(monk
 
 
 def test_a_module_file_linked_out_of_the_modules_folders_isnt_read(tmp_path, monkeypatch):
-    loader = mirrordash_core.features.modules.loader
+    module_files = mirrordash_core.features.modules.module_files
     (tmp_path / "site" / "pkg").mkdir(parents=True)
     (tmp_path / "secret.json").write_text('{"admin": "hash"}')
     (tmp_path / "site" / "pkg" / "schema.json").symlink_to(tmp_path / "secret.json")
     (tmp_path / "site" / "pkg" / "en.json").write_text('{"title": "Clock"}')
-    monkeypatch.setattr(loader, "module_search_path", lambda: [str(tmp_path / "site")])
-    assert loader.module_file(tmp_path / "site" / "pkg", "schema.json") is None
-    assert loader.module_file(tmp_path / "site" / "pkg", "en.json") == b'{"title": "Clock"}'
+    monkeypatch.setattr(module_files, "module_search_path", lambda: [str(tmp_path / "site")])
+    assert module_files.module_file(tmp_path / "site" / "pkg", "schema.json") is None
+    assert module_files.module_file(tmp_path / "site" / "pkg", "en.json") == b'{"title": "Clock"}'
 
 
 @pytest.mark.parametrize("kind", ["site", "module"])

@@ -19,7 +19,7 @@ def get_module_schema(ep) -> dict | None:
     """A module's config_schema.json (or schema.json) next to its plugin file, with its icon.svg as
     "icon" (a data: URL, shown as a mask so its scripts never run). Read as files: the core never
     imports a module (ARCHITECTURE #41)."""
-    from mirrordash_core.features.modules.loader import module_file, package_dir
+    from mirrordash_core.features.modules.module_files import module_file, package_dir
     plugin_dir = package_dir(ep) if ep else None
 
     schema = None
@@ -54,7 +54,7 @@ TYPE_CHECKS = {
 
 def _installed_module_schemas() -> dict:
     """config_schema of every installed module, keyed by its name with '-' as '_'."""
-    from mirrordash_core.features.modules.loader import module_entry_points
+    from mirrordash_core.features.modules.module_files import module_entry_points
     schemas = {}
     for ep in module_entry_points():
         schema = get_module_schema(ep)
@@ -102,7 +102,7 @@ def validate_config(config: dict) -> None:
         return
     if not isinstance(modules, dict):
         raise ValueError("'modules' must be a JSON object.")
-    from mirrordash_core.features.modules.loader import SAFE_NAME
+    from mirrordash_core.features.modules.module_files import SAFE_NAME
     schemas = _installed_module_schemas()
     for name, cfg in modules.items():
         if not isinstance(name, str) or not SAFE_NAME.match(name):

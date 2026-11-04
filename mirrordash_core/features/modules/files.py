@@ -24,7 +24,7 @@ from fastapi.responses import Response
 
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_module_dir, load_config
-from mirrordash_core.features.modules.loader import SAFE_NAME, find_entry_point
+from mirrordash_core.features.modules.module_files import SAFE_NAME, find_entry_point
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.features.video.window import current_size
 from mirrordash_core.forms import SAFE_KEY

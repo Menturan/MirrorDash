@@ -34,7 +34,7 @@ from paho.mqtt.subscribeoptions import SubscribeOptions
 
 from mirrordash_core.config import get_core_version, load_config
 from mirrordash_core.event_bus import event_bus
-from mirrordash_core.features.modules.loader import SAFE_NAME
+from mirrordash_core.features.modules.module_files import SAFE_NAME
 from mirrordash_core.forms import SAFE_KEY
 
 logger = logging.getLogger("mirrordash.core.mqtt")
@@ -474,7 +474,7 @@ class MqttBridge:
     def _shared_module_devices(self, mqtt_config: dict, modules: dict, origin: dict) -> tuple[dict, dict]:
         """(a discovery device per module instance the owner shares, what each shares): the entities its
         config_schema.json "exposes", with the controls the owner allowed."""
-        from mirrordash_core.features.modules.loader import find_entry_point
+        from mirrordash_core.features.modules.module_files import find_entry_point
         from mirrordash_core.features.settings.schema import get_module_schema
         base, mirror_id = self._base(), mqtt_config["id"]
         devices, shared = {}, {}
@@ -514,7 +514,7 @@ class MqttBridge:
     async def _clear_unshared_module_states(self, client: aiomqtt.Client, modules: dict) -> None:
         """What a module no longer shared said stays on the broker (retained) for any client to read: cleared,
         once a connection for each entity it declares (an empty retained message deletes one)."""
-        from mirrordash_core.features.modules.loader import find_entry_point
+        from mirrordash_core.features.modules.module_files import find_entry_point
         from mirrordash_core.features.settings.schema import get_module_schema
         base = self._base()
         for instance, instance_config in modules.items():

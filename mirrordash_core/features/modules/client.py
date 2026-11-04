@@ -36,7 +36,7 @@ from mirrordash_core.features.hardware.gpio import free_pins, header_chip, reque
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import lan
 from mirrordash_core.features.modules.forkserver import MODULE_UIDS
-from mirrordash_core.features.modules.loader import (
+from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
     find_entry_point,
     module_entry_points,
