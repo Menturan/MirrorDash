@@ -246,7 +246,7 @@ async def save_system_settings_route(request: Request):
 
     await update_system_settings(settings=parsed)
     if "ssh" in parsed:  # only the Developer card sends it
-        on = parsed["ssh"] in (True, "true")
+        on = parsed["ssh"]  # a bool since the loop above
         return notify("SSH is on. Log in with: ssh pi@mirrordash.local" if on else "SSH is off.",
                       **{"md-ssh": {"on": on}})
     return notify("Saved.")

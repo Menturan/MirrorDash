@@ -959,6 +959,12 @@ def test_install_module_enforce_releases(mock_restart, mock_urlopen, module_site
     r1 = call(install_module, **payload_ok)
     assert r1.status_code == 200
     assert module_site.calls == [("pip", "install", "git+https://github.com/user1/mirrordash-widget-ok.git@v1.0.0")]
+    # Only a module from MirrorDash's own GitHub account runs its card's scripts on the screen
+    with patch("mirrordash_core.features.modules.service.allow_scripts") as allow:
+        for name in ("git+https://github.com/Menturan/mirrordash-x.git", "git+https://github.com/menturan-fake/mirrordash-x",
+                     "git+https://github.com/user1/mirrordash-x.git@v2", "mirrordash-x"):
+            assert call(install_module, package_name=name).status_code == 200
+    assert [c.args[1] for c in allow.call_args_list] == [True, False, False, False]
 
     from urllib.error import HTTPError
     payload_fail = {"package_name": "git+https://github.com/user2/mirrordash-widget-norelease.git"}
@@ -1164,6 +1170,12 @@ def test_github_repo_from_install_urls():
     assert github_repo("https://github.com/o/mirrordash-x/") == "https://github.com/o/mirrordash-x"
     assert github_repo("file:///home/me/mirrordash-x") is None  # a local install has no screenshot
     assert github_screenshot(None) is None
+    from mirrordash_core.features.modules.service import github_owner_repo
+    # What install and update are given: a pinned tag, one with a slash, ".git" inside a name
+    assert github_owner_repo("git+https://github.com/Menturan/mirrordash-x.git@v1.0") == ("Menturan", "mirrordash-x")
+    assert github_owner_repo("git+https://github.com/o/mirrordash-x@feature/y") == ("o", "mirrordash-x")
+    assert github_owner_repo("https://github.com/o/x.github.io") == ("o", "x.github.io")
+    assert github_owner_repo("git+https://github.com/o") is None and github_owner_repo("mirrordash-x") is None
 
 
 def test_config_migration():

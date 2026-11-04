@@ -43,13 +43,20 @@ NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-
 # Modules from this GitHub account are marked Official. Only GitHub's own owner field counts:
 # a PyPI package can name any repository in its metadata.
 OFFICIAL_OWNER = "menturan"
-GITHUB_REPO = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?/?$")
+GITHUB_REPO = re.compile(r"github\.com[/:]([\w.-]+)/([\w.-]+?)(?:\.git)?/?(?:@.*)?$")
+
+
+def github_owner_repo(url: str | None) -> tuple[str, str] | None:
+    """(owner, repo) of a GitHub repository's URL: git+https://github.com/o/r.git@tag, an html or a
+    Project-URL; None for anything else."""
+    match = GITHUB_REPO.search(url or "")
+    return (match[1], match[2]) if match else None
 
 
 def github_repo(url: str | None) -> str | None:
     """https://github.com/owner/repo for a git, html or Project-URL pointing at a repository, else None."""
-    match = GITHUB_REPO.search(url or "")
-    return f"https://github.com/{match[1]}/{match[2]}" if match else None
+    owner_repo = github_owner_repo(url)
+    return f"https://github.com/{owner_repo[0]}/{owner_repo[1]}" if owner_repo else None
 
 
 def github_screenshot(repo: str | None) -> str | None:
@@ -152,10 +159,9 @@ def _local_target(package_name: str) -> str:
 
 async def _pinned_to_latest_release(package_name: str) -> str:
     """A GitHub module installs its latest release, pinned (`@tag`): updates compare that tag."""
-    owner_repo = package_name.split("github.com/")[-1].split("@")[0].rstrip("/").split("/")
-    if len(owner_repo) < 2:
+    if not (owner_repo := github_owner_repo(package_name)):
         return package_name
-    owner, repo = owner_repo[0], owner_repo[1].replace(".git", "")
+    owner, repo = owner_repo
 
     def latest_release_tag():
         request = urllib.request.Request(
@@ -215,9 +221,8 @@ async def install_module(package_name: str) -> dict:
     await _change_packages("Installation", ["install", _local_target(package_name)])
     # Its card's scripts run on the screen if it came from MirrorDash's own GitHub; one of that name from
     # anywhere else loses the yes (ARCHITECTURE #41). Saved before the restart _change_packages scheduled.
-    owner = package_name.removeprefix("git+https://github.com/").split("/")[0].lower()
-    allow_scripts(package_key(_local_target(package_name)),
-                  package_name.startswith("git+https://github.com/") and owner == OFFICIAL_OWNER)
+    owner_repo = github_owner_repo(package_name) if package_name.startswith("git+https://github.com/") else None
+    allow_scripts(package_key(_local_target(package_name)), bool(owner_repo) and owner_repo[0].lower() == OFFICIAL_OWNER)
     return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
@@ -227,7 +232,8 @@ async def update_modules(*package_names: str) -> dict:
     for package_name in package_names:
         check_package_name(package_name)
         # A git URL's package is named after the repository (mirrordash-calendar)
-        name = package_name.split("/")[-1].split(".git")[0].split("@")[0] if package_name.startswith("git+https://github.com/") else package_name
+        owner_repo = github_owner_repo(package_name) if package_name.startswith("git+https://github.com/") else None
+        name = owner_repo[1] if owner_repo else package_name
         name_spellings += [name, name.replace("-", "_"), name.replace("_", "-")]
 
     async def loads_in_new_site(site):
@@ -264,24 +270,22 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
             direct_url_info = json.loads(ep.dist.read_text("direct_url.json") or "null")
 
     if direct_url_info and "vcs_info" in direct_url_info:
-        vcs_info = direct_url_info["vcs_info"]
-        url = direct_url_info.get("url", "")
-        if vcs_info.get("vcs", "") == "git" and "github.com" in url:
-            owner_and_repository = url.rstrip("/").split("github.com/")[-1].split("/")
-            if len(owner_and_repository) >= 2:
-                owner, repository = owner_and_repository[0], owner_and_repository[1].replace(".git", "")
-                api_url = f"https://api.github.com/repos/{owner}/{repository}/releases/latest"
-                release_data = await fetch_json_cached(api_url, headers={"Accept": "application/vnd.github.v3+json"},
-                                                       max_age=max_age)
-                result["checked_at"] = answered_at(api_url)
-                if release_data and release_data.get("tag_name"):
-                    tag_name = release_data["tag_name"]
-                    latest_version = tag_name.lstrip("v")
-                    # Installed from exactly this release (upgrades install git+url@tag): up to date,
-                    # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
-                    on_latest = vcs_info.get("requested_revision") == tag_name
-                    if not on_latest and version_key(latest_version) > version_key(current_version):
-                        result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False)
+        vcs_info, url = direct_url_info["vcs_info"], direct_url_info.get("url", "")
+        owner_repo = github_owner_repo(url) if vcs_info.get("vcs") == "git" else None
+        if not owner_repo:
+            return result
+        api_url = f"https://api.github.com/repos/{owner_repo[0]}/{owner_repo[1]}/releases/latest"
+        release_data = await fetch_json_cached(api_url, headers={"Accept": "application/vnd.github.v3+json"}, max_age=max_age)
+        result["checked_at"] = answered_at(api_url)
+        tag_name = release_data.get("tag_name") if isinstance(release_data, dict) else None
+        if not tag_name:
+            return result
+        latest_version = tag_name.lstrip("v")
+        # Installed from exactly this release (upgrades install git+url@tag): up to date,
+        # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
+        on_latest = vcs_info.get("requested_revision") == tag_name
+        if not on_latest and version_key(latest_version) > version_key(current_version):
+            result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False)
         return result
 
     pypi_url = f"https://pypi.org/pypi/{package_name}/json"

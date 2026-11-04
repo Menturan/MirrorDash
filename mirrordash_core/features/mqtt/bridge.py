@@ -140,6 +140,13 @@ def has_control_characters(text: str) -> bool:
     return any(ord(character) < 32 or ord(character) == 127 for character in text)
 
 
+def on_off(payload: str) -> bool:
+    """A switch command's ON or OFF as True or False; ValueError for anything else."""
+    if payload not in ("ON", "OFF"):
+        raise ValueError("not ON or OFF")
+    return payload == "ON"
+
+
 def command_value(entity: dict, payload: str):
     """What a command to entity carries, if it is something entity takes; ValueError if not."""
     kind = entity["type"]
@@ -600,16 +607,14 @@ class MqttBridge:
         cfg = load_config().get("mqtt", {})
         match parts:
             case ["screen", "set"] if cfg.get("control_screen") is True:
-                if payload not in ("ON", "OFF"):
-                    raise ValueError("not ON or OFF")
+                on = on_off(payload)
                 from mirrordash_core.features.power.routes import update_screen_state
-                await update_screen_state({"state": payload.lower()})
+                await update_screen_state({"state": "on" if on else "off"})
                 return f"screen {payload}"
             case ["privacy", "set"] if cfg.get("control_screen") is True:
-                if payload not in ("ON", "OFF"):
-                    raise ValueError("not ON or OFF")
+                on = on_off(payload)
                 from mirrordash_core.features.power.privacy import set_privacy
-                await set_privacy(payload == "ON")
+                await set_privacy(on)
                 return f"privacy {payload}"
             case ["brightness", "set"] if cfg.get("control_screen") is True:
                 if not (payload.isascii() and payload.isdigit()) or not 10 <= int(payload) <= 100:
@@ -617,11 +622,10 @@ class MqttBridge:
                 self._brightness = int(payload)  # the last one, on the next pass (a slider sends many)
                 return f"brightness {payload}"
             case ["enabled", instance, "set"] if cfg.get("control_modules") is True:
-                if payload not in ("ON", "OFF"):
-                    raise ValueError("not ON or OFF")
+                on = on_off(payload)
                 if not isinstance(load_config().get("modules", {}).get(instance), dict):
                     raise ValueError("no such module instance")
-                self._enable[instance] = payload == "ON"  # together, at most every MODULE_CHANGE_INTERVAL
+                self._enable[instance] = on  # together, at most every MODULE_CHANGE_INTERVAL
                 return f"module {instance!r} {payload}"
             case ["m", instance, name, "set"]:
                 entity = self._modules.get(instance, {}).get(name)
