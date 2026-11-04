@@ -9,12 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 
 from mirrordash_core.admin import events_header, require_api_key, templates
 from mirrordash_core.config import load_config, save_config
-from mirrordash_core.features.mqtt.bridge import (
-    declarations,
-    mqtt_bridge,
-    new_client_id,
-    new_id,
-)
+from mirrordash_core.features.mqtt.bridge import mqtt_bridge, new_client_id, new_id
+from mirrordash_core.features.mqtt.entities import declarations
 from mirrordash_core.forms import read_form
 
 router = APIRouter(prefix="/admin")

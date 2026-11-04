@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from mirrordash_core.features.mqtt import bridge as mqtt
-from mirrordash_core.features.mqtt.bridge import (
-    MqttBridge,
+from mirrordash_core.features.mqtt.bridge import MqttBridge
+from mirrordash_core.features.mqtt.entities import (
     command_value,
     declarations,
     module_components,
