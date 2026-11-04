@@ -30,7 +30,8 @@ Rules:
 * No abstractions that weren't explicitly requested.
 * No dependency by reflex, in either direction: weigh a library on what it replaces, its upkeep and its cost on the Pi (memory in every module instance, a build on the device), then add it or write the code.
 * No boilerplate nobody asked for.
-* Deletion over addition. Boring over clever. Fewest files possible.
+* Deletion over addition. Boring over clever.
+* Many small files with one clear purpose each over a few big ones: a file a junior developer can read in one sitting and sum up in a sentence. Split a file when a part of it is a topic that can be understood on its own.
 * Shortest working diff wins, but only once you understand the problem. The smallest change in the wrong place isn't lazy, it's a second bug.
 * Question complex requests: "Do you actually need X, or does Y cover it?"
 * Pick the edge-case-correct option when two stdlib approaches are the same size, lazy means less code, not the flimsier algorithm.

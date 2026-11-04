@@ -43,259 +43,63 @@ a folder of its own (pkgs/<name>_<n>), where uv runs in a process of its own as 
 (site_main, forkserver.PACKAGE_UIDS: one per module and where it comes from), and the site is a link per module to its folder, which only the control
 process writes. So a package's build, the files it installs and its .pth reach no other module's folder or
 process, and never run as the core or the forkserver.
+
+This file is the control process (Control, serve) and the steps it runs as a module's user (site_main,
+probe_main). The module host's other files:
+  forkserver.py      makes every process, as the right user
+  instance.py        one instance's process: the module itself (Host, HostLink)
+  sandbox_checks.py  what a module could reach that it must not (the self-check)
+  site_folders.py    the module site: a folder per module, links to them, site_a and site_b
+  package_names.py   the name a module's folder and user go by
 """
 
 import asyncio
-import base64
 import contextlib
-import glob
-import hashlib
-import importlib.metadata
-import itertools
 import json
 import logging
 import os
-import re
-import shutil
 import socket
-import struct
 import sys
 import threading
 from pathlib import Path
-from types import SimpleNamespace
-
-from fastapi import APIRouter, FastAPI
 
 from mirrordash_core.config import get_module_dir
-from mirrordash_core.event_bus import event_bus
-from mirrordash_core.features.hardware.gpio import GpioLines
 from mirrordash_core.features.modules import forkserver
+from mirrordash_core.features.modules.instance import (
+    LINE_LIMIT,
+    HostLink,
+    LogForward,
+    instance_main,
+    read_lines,
+)
 from mirrordash_core.features.modules.loader import (
     SAFE_NAME,
-    ModuleLoader,
     folder_entry_points,
-    module_folders,
-    module_site,
-    render_preview,
+)
+from mirrordash_core.features.modules.package_names import package_key, package_user
+from mirrordash_core.features.modules.sandbox_checks import data_folders, sandbox_checks
+from mirrordash_core.features.modules.site_folders import (
+    empty_folder,
+    folder_holds_package,
+    link_module,
+    module_name_clash,
+    next_module_folder_name,
+    site_links,
+    site_paths,
 )
 from mirrordash_core.venv import point_link
 
 logger = logging.getLogger("mirrordash.core.modules.host")
 
-LINE_LIMIT = 16 * 1024 * 1024  # one message; a bigger one ends the connection
-RESPONSE_LIMIT = 4 * 1024 * 1024  # a module route's answer
-REQUEST_TIMEOUT = 30
-GPIO_TIMEOUT = 10
 CHECK_TIMEOUT = 180
 UV_TIMEOUT = 600  # one uv pip run, unless the core asks for another
 SITE_STEP_TIMEOUT = 200  # the other steps
 PROBE_TIMEOUT = 60
-VIDEO_WINDOW_TIMEOUT = 30  # the core asks the page (5 s) and switches the refresh rate first
 # The check of a changed site (service.py update_modules): these modules must import from it
 CHECK = ("import site, sys; site.addsitedir(sys.argv[1]); from importlib.metadata import entry_points; "
          "[ep.load() for ep in entry_points(group='mirrordash.modules') if ep.name in sys.argv[2:]]")
 
 
-SANDBOX_PORTS = (80, 8000)  # the mirror's own site (nginx) and the core behind it
-# The kernel's route table, to find the router, the way into the home network (/proc/net is hidden by ProcSubset=pid)
-ROUTE_TABLE_FILE = "/proc/self/net/route"
-# mirrordash-modules.service's InaccessiblePaths and ProtectHome
-SANDBOX_PATHS = {"/storage/mirrordash/data": "the core's data", "/storage/mirrordash/ssh": "the SSH keys",
-                 "/storage/mirrordash/system-connections": "the Wi-Fi passwords", "/storage/rauc": "the OS update keys",
-                 "/home": "the home folders", "/run/dbus": "the system bus"}
-# Its DevicePolicy=closed and the I2C rule (90-mirrordash-i2c.rules): GPIO only through the core, no other I2C bus
-SANDBOX_DEVICES = ("/dev/gpiochip*", "/dev/gpiomem*", "/dev/mem", "/dev/i2c-*", "/dev/input/event*", "/dev/video*",
-                   "/dev/snd/pcmC*D*c")  # a microphone; playback (pcmC*D*p) is the modules'
-MODULE_DEVICES = {"/dev/i2c-1"}  # the header's I2C bus
-# Where the unit's memory limit is: this process's cgroup (v2: one line "0::<path>") under the cgroup tree
-OWN_CGROUP_FILE = "/proc/self/cgroup"
-CGROUP_TREE = "/sys/fs/cgroup"
-
-
-def can_connect_to(host: str, port: int) -> bool:
-    """A connection gets through, or an answer comes back (refused): the address is in reach. A filter says EPERM."""
-    try:
-        socket.create_connection((host, port), timeout=1).close()
-    except ConnectionRefusedError:
-        return True
-    except OSError:
-        return False
-    return True
-
-
-def can_open_for_reading_and_writing(path: str) -> bool:
-    try:
-        os.close(os.open(path, os.O_RDWR | os.O_NONBLOCK))
-    except OSError:
-        return False
-    return True
-
-
-def default_gateway() -> str | None:
-    """The router's address, from the kernel's route table: a header line, then a line per route whose
-    Destination 00000000 is the default route, and whose Gateway is an IPv4 address as a hex number in the
-    machine's byte order (little-endian on a Pi: 0100A8C0 is 192.168.0.1)."""
-    with contextlib.suppress(OSError, ValueError, IndexError), open(ROUTE_TABLE_FILE) as route_table:
-        for columns in (line.split() for line in route_table.readlines()[1:]):
-            destination, gateway = columns[1], columns[2]
-            if destination == "00000000" and gateway != "00000000":
-                return socket.inet_ntoa(struct.pack("<L", int(gateway, 16)))
-    return None
-
-
-def memory_limit_missing() -> bool:
-    """Whether the unit's MemoryMax doesn't hold. It needs the kernel's memory controller (cgroup_enable=memory
-    in cmdline.txt, off in the Pi's firmware by default), and without it systemd starts the unit anyway with a
-    mere warning: one module could then use up the whole mirror's memory."""
-    try:
-        with open(OWN_CGROUP_FILE) as cgroup_file:
-            cgroup = next(line.strip().removeprefix("0::") for line in cgroup_file if line.startswith("0::"))
-        with open(f"{CGROUP_TREE}{cgroup}/memory.max") as memory_max:  # missing when the controller is off
-            return memory_max.read().strip() == "max"
-    except (OSError, StopIteration):
-        return True
-
-
-def data_folders() -> list[str]:
-    """The instances' data folders, as the control process sees them (a module's user can't list them)."""
-    with contextlib.suppress(OSError):
-        return sorted(entry.name for entry in os.scandir(get_module_dir() / "data") if SAFE_NAME.match(entry.name))
-    return []
-
-
-def sandbox_checks(data_folder_names: list[str] | None = None) -> list[tuple[str, bool]]:
-    """What the sandbox keeps from a module, looked at as one (probe_main): (what, reachable), each should
-    be False. systemd only warns when the kernel lacks what a filter needs (cgroup BPF for IPAddressDeny, the
-    device cgroup, namespaces), and a user per module holds only if its capabilities are gone and the
-    folders' modes are right, so the host looks: when the core connects, and from Logs → Diagnostics.
-    data_folder_names: the instances' data folders (default: those this process can list)."""
-    if data_folder_names is None:
-        data_folder_names = data_folders()
-    checks = [(f"the mirror's own port {port}", can_connect_to("127.0.0.1", port)) for port in SANDBOX_PORTS]
-    if gateway := default_gateway():
-        checks.append((f"the router ({gateway})", can_connect_to(gateway, 53)))
-    checks += [(f"{what} ({path})", os.access(path, os.R_OK)) for path, what in SANDBOX_PATHS.items()]
-    present_devices = {device for pattern in SANDBOX_DEVICES for device in glob.glob(pattern)}
-    checks += [(device, can_open_for_reading_and_writing(device)) for device in sorted(present_devices - MODULE_DEVICES)]
-    checks += [(f"another module's data ({name})", os.access(get_module_dir() / "data" / name, os.R_OK))
-               for name in data_folder_names]
-    checks.append((f"writing the module site ({module_site()})", os.access(module_site(), os.W_OK)))
-    checks.append(("writing a module's own folder", any(os.access(f, os.W_OK) for f in module_folders())))
-    checks.append(("capabilities (" + (", ".join(forkserver.held_capability_sets()) or "none") + ")",
-                   bool(forkserver.held_capability_sets())))
-    if os.environ.get("MIRRORDASH_SANDBOX"):  # only the unit has a memory limit
-        checks.append(("unlimited memory (MemoryMax doesn't hold: cgroup_enable=memory missing from cmdline.txt?)",
-                       memory_limit_missing()))
-    return checks
-
-
-def site_paths() -> tuple[Path, Path, Path]:
-    """(link, active, next): the module site is a link to site_a or site_b, as the core's venv is."""
-    link = module_site()
-    site_a, site_b = link.with_name("site_a"), link.with_name("site_b")
-    active = site_b if link.is_symlink() and os.readlink(link) == "site_b" else site_a
-    return link, active, site_a if active == site_b else site_b
-
-
-def site_links(site_dir: Path) -> dict[str, str]:
-    """A site's modules: {name: the name of its folder in pkgs}."""
-    with contextlib.suppress(OSError):
-        return {e.name: Path(os.readlink(e.path)).name for e in os.scandir(site_dir)
-                if e.is_symlink() and SAFE_NAME.match(e.name)}
-    return {}
-
-
-def link_module(site_dir: Path, name: str, folder: str) -> None:
-    """Point site_dir/name at pkgs/folder, at once."""
-    tmp = site_dir / f".{name}.tmp"
-    tmp.unlink(missing_ok=True)
-    os.symlink(f"../pkgs/{folder}", tmp)
-    os.replace(tmp, site_dir / name)
-
-
-def folder_holds_package(folder: Path, package: str) -> bool:
-    """Whether a module's folder has the package of that package_key installed."""
-    return any(package_key(d.name) == package for d in importlib.metadata.distributions(path=[str(folder)]))
-
-
-def next_module_folder_name(package: str) -> str:
-    """A new folder in pkgs for an install of package: <package>_<n>, n one past the highest there, so an
-    install never writes into the folder the running version uses."""
-    pkgs = get_module_dir() / "pkgs"
-    used_numbers = []
-    if pkgs.is_dir():
-        for entry in os.scandir(pkgs):
-            prefix, _, number = entry.name.rpartition("_")
-            if prefix == package and number.isdigit():
-                used_numbers.append(int(number))
-    return f"{package}_{max(used_numbers, default=0) + 1}"
-
-
-def module_name_clash(package: str, new_folder: Path, links: dict[str, str]) -> tuple[str, set[str]] | None:
-    """(the other package, the module names both have) when the modules in new_folder take a name another
-    package has: one in the site (links), or in the core's venv (the image's clock), which the site shadows
-    (loader.module_search_path), so only a newer version of that package may take them. None if no clash."""
-    claimed_names = folder_entry_points(str(new_folder))
-    pkgs = get_module_dir() / "pkgs"
-    others = [(other, folder_entry_points(str(pkgs / folder))) for other, folder in links.items()]
-    for distribution in importlib.metadata.distributions():
-        names = {ep.name.replace("-", "_") for ep in distribution.entry_points.select(group="mirrordash.modules")}
-        others.append((package_key(str(distribution.name)), names))
-    for other_package, names in others:
-        if other_package != package and (shared_names := claimed_names & names):
-            return other_package, shared_names
-    return None
-
-
-def package_key(target: str) -> str | None:
-    """The name a module's folder and user go by, from what uv installs: a GitHub repository's name, a
-    local folder's or a PyPI requirement's, lowercase with '-' between words. None for anything else."""
-    # here, not at the top: the forkserver imports this file, and every instance it forks would carry packaging
-    from packaging.requirements import InvalidRequirement, Requirement
-    from packaging.utils import canonicalize_name
-    if target.startswith("git+"):
-        name = target.split("@")[0].rstrip("/").rsplit("/", 1)[-1].removesuffix(".git")
-    elif "/" in target:
-        name = Path(target).name
-    else:
-        try:
-            name = Requirement(target).name
-        except InvalidRequirement:
-            return None
-    key = canonicalize_name(name)
-    return key if re.fullmatch(r"[a-z0-9-]{1,56}", key) else None
-
-
-def package_user(target: str) -> str | None:
-    """The key of the user a module installs as (package_uids.json): its name and where it comes from (a
-    GitHub repository, a folder, PyPI), so a module of an installed one's name from elsewhere never builds
-    as the user whose files the installed module's code is. None for what package_key refuses."""
-    if not (name := package_key(target)):
-        return None
-    if target.startswith("git+"):
-        source = target.split("@")[0].rstrip("/").removesuffix(".git").lower()  # the repository, any version
-    elif "/" in target:
-        source = target  # a local folder
-    else:
-        source = ""  # PyPI
-    short_source_hash = hashlib.sha256(source.encode()).hexdigest()[:7]
-    return f"{name}-{short_source_hash}"
-
-
-def empty_folder(folder: Path, keep_what_cannot_be_removed: bool = False) -> None:
-    """Everything in folder, not the folder: a module's folder is its user's in pkgs, which it can't write
-    (forkserver.give_folder_to_user makes it). keep_what_cannot_be_removed: for a site's folder of links,
-    where what an older shared site left and can't be removed stays (module_folders reads the links only)."""
-    folder.mkdir(parents=True, exist_ok=True)
-    for entry in os.scandir(folder):
-        try:
-            if entry.is_dir(follow_symlinks=False):
-                shutil.rmtree(entry.path)
-            else:
-                os.unlink(entry.path)
-        except OSError:
-            if not keep_what_cannot_be_removed:
-                raise
 
 
 async def run_command(*cmd: str, timeout: float) -> tuple[int, str]:
@@ -314,284 +118,11 @@ async def run_command(*cmd: str, timeout: float) -> tuple[int, str]:
     return process.returncode, stderr.decode(errors="replace")[-4000:]
 
 
-class HostLink:
-    """The modules' way to the core: what loader.py's helpers and broadcast_func call."""
-
-    def __init__(self, writer: asyncio.StreamWriter):
-        self.writer = writer
-        self.awake = asyncio.Event()  # set while the screen is on: fetch_json waits on it
-        self.awake.set()
-        self.hidden = False  # the screen hides its card: its schedule, or privacy mode
-        self.gen = 0
-        self.pending: dict[int, asyncio.Future] = {}
-        self.gpio_lines: dict[str, list[GpioLines]] = {}  # each instance's, released when its run_loop ends
-        self._ids = itertools.count(1)
-        self._lock = asyncio.Lock()
-
-    async def send(self, message: dict) -> None:
-        line = json.dumps(message, default=str).encode() + b"\n"
-        async with self._lock:
-            self.writer.write(line)
-            await self.writer.drain()
-
-    async def html(self, instance_id: str, html: str) -> None:
-        await self.send({"t": "html", "gen": self.gen, "instance": instance_id, "html": str(html)})
-
-    async def state(self, instance_id: str, name: str, value) -> None:
-        """`await self.expose("now_playing", title)` in a module: a value of something its config_schema.json's
-        "exposes" declares, published if the owner shares it (ARCHITECTURE #42)."""
-        await self.send({"t": "state", "instance": instance_id, "name": str(name), "value": value})
-
-    async def video_playing(self, instance_id: str, playing: bool) -> None:
-        await self.send({"t": "video_playing", "instance": instance_id, "on": bool(playing)})
-
-    @contextlib.asynccontextmanager
-    async def video_window(self, instance_id: str, *, fullscreen: bool = False, hz: int | None = None):
-        """features/video/window.py's video_window, held by the core for as long as the block runs."""
-        request = next(self._ids)
-        future = self.pending[request] = asyncio.get_running_loop().create_future()
-        try:
-            await self.send({"t": "video_window", "id": request, "instance": instance_id,
-                             "fullscreen": bool(fullscreen), "hz": hz})
-            window = (await asyncio.wait_for(future, VIDEO_WINDOW_TIMEOUT)).get("window")
-            if not isinstance(window, dict):
-                raise RuntimeError("the mirror couldn't place the video window (see its log)")
-            yield SimpleNamespace(**window)
-        finally:
-            self.pending.pop(request, None)
-            with contextlib.suppress(Exception):  # the core has gone: the host is about to exit anyway
-                await self.send({"t": "video_window_end", "id": request})
-
-    async def gpio(self, instance_id: str, pins: list[int], **options) -> GpioLines:
-        """`await self.gpio([17], output=True)` in a module: these GPIO lines, requested by the core if they
-        are free (features/hardware/gpio.py). options: output, initial, pull, edge, active_low, debounce_ms."""
-        request = next(self._ids)
-        future = self.pending[request] = asyncio.get_running_loop().create_future()
-        try:
-            await self.send({"t": "gpio", "id": request, "instance": instance_id, "pins": list(pins), **options})
-            reply = await asyncio.wait_for(future, GPIO_TIMEOUT)
-        finally:
-            self.pending.pop(request, None)
-        if "fd" not in reply:
-            raise RuntimeError(f"No GPIO {', '.join(map(str, pins))}: {reply.get('error') or 'the mirror did not answer'}")
-        lines = GpioLines(reply["fd"], pins)
-        self.gpio_lines.setdefault(instance_id, []).append(lines)
-        return lines
-
-    def release_gpio(self, instance_id: str) -> None:
-        """Its run_loop ended (loader.py): its lines go back, whether or not it closed them."""
-        for lines in self.gpio_lines.pop(instance_id, []):
-            lines.close()
-
-    def fd_arrived(self, request: int, fd: int) -> None:
-        """A file descriptor from the core (receive_fds): the answer to that GPIO request."""
-        future = self.pending.get(request)
-        if future and not future.done():
-            future.set_result({"fd": fd})
-        else:
-            os.close(fd)  # its request timed out meanwhile
-
-
-def receive_fds(conn: socket.socket, link: HostLink, loop: asyncio.AbstractEventLoop) -> None:
-    """In a thread: the instance's descriptor socket, each message a request id with one file descriptor."""
-    with conn:
-        while True:
-            try:
-                data, fds, _, _ = socket.recv_fds(conn, 8, 1)
-            except OSError:
-                return
-            if not data:
-                return
-            for fd in fds:
-                if len(data) == 8:
-                    loop.call_soon_threadsafe(link.fd_arrived, struct.unpack("<Q", data)[0], fd)
-                else:
-                    os.close(fd)
-
-
-class LogForward(logging.Handler):
-    """Every log record of the process goes to the core, which writes it to its log under mirrordash.modules
-    (the admin page's Logs). From any thread: a module's fetch logs from one."""
-
-    def __init__(self, link: HostLink, loop: asyncio.AbstractEventLoop):
-        super().__init__(logging.INFO)
-        self.link, self.loop = link, loop
-        self.setFormatter(logging.Formatter("%(message)s"))
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            message = {"t": "log", "name": record.name, "level": record.levelno, "text": self.format(record)}
-            asyncio.run_coroutine_threadsafe(self.link.send(message), self.loop)
-        except Exception:
-            pass  # never log from here: it would come back
-
-
-async def call_route(app, message: dict) -> tuple[int, list, bytes]:
-    """Run one HTTP call through a module's routes, as uvicorn would. (status, headers, body)."""
-    root = f"/api/modules/{message['instance']}"
-    path = root + str(message.get("path") or "/")
-    body = base64.b64decode(message.get("body") or "")
-    client = message.get("client")
-    scope = {
-        "type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "scheme": "http",
-        "method": str(message.get("method", "GET")), "path": path, "raw_path": path.encode(),
-        "root_path": root, "query_string": str(message.get("query", "")).encode("latin-1"),
-        "headers": [(str(k).lower().encode("latin-1"), str(v).encode("latin-1")) for k, v in message.get("headers", [])],
-        "client": (client, 0) if isinstance(client, str) else None, "server": ("mirrordash", 80),
-    }
-    received = False
-
-    async def receive() -> dict:
-        nonlocal received
-        if not received:
-            received = True
-            return {"type": "http.request", "body": body, "more_body": False}
-        await asyncio.get_running_loop().create_future()  # the client never leaves: the core holds it
-
-    status, headers, chunks, size = 500, [], [], 0
-
-    async def send(event: dict) -> None:
-        nonlocal status, headers, size
-        if event["type"] == "http.response.start":
-            status = event["status"]
-            headers = [[k.decode("latin-1"), v.decode("latin-1")] for k, v in event.get("headers", [])]
-        elif event["type"] == "http.response.body":
-            chunks.append(event.get("body", b""))
-            size += len(chunks[-1])
-            if size > RESPONSE_LIMIT:
-                raise ValueError(f"answer larger than {RESPONSE_LIMIT} bytes")
-
-    await asyncio.wait_for(app(scope, receive, send), REQUEST_TIMEOUT)
-    return status, headers, b"".join(chunks)
-
-
-async def read_lines(reader: asyncio.StreamReader, handle) -> None:
-    """handle(message) for each line from the core, until it closes."""
-    try:
-        while line := await reader.readline():
-            try:
-                handle(json.loads(line))
-            except Exception as e:
-                logger.error(f"Bad message from the core: {e}")
-    except (ConnectionError, ValueError) as e:  # ValueError: a line over LINE_LIMIT
-        logger.warning(f"The connection to the core ended: {e}")
-
-
-class Host:
-    """One instance's connection from the core, and the module it runs (in the instance's own process)."""
-
-    def __init__(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
-        self.reader = reader
-        self.link = HostLink(writer)
-        self.loader = ModuleLoader(self.link)
-        self.apps: dict[str, FastAPI] = {}  # a FastAPI app around each instance's router, made on its first call
-        self._start_lock = asyncio.Lock()
-        self._tasks: set[asyncio.Task] = set()
-
-    async def run(self) -> None:
-        loop = asyncio.get_running_loop()
-        forward = LogForward(self.link, loop)
-        logging.getLogger().addHandler(forward)
-
-        def share(name: str, data) -> None:
-            """A public event (event_bus.publish(..., public=True)), from any thread: to the core."""
-            message = {"t": "publish", "name": str(name), "data": data}
-            json.dumps(message)  # not JSON: the module's publish raises, rather than send it changed
-            loop.call_soon_threadsafe(lambda: self._spawn(self.link.send(message)))
-        event_bus.share = share
-        try:
-            await read_lines(self.reader, self._handle)
-        finally:
-            event_bus.share = None
-            logging.getLogger().removeHandler(forward)
-            for task in self._tasks:
-                task.cancel()
-            await self.loader.stop_modules()
-            self.link.writer.close()
-
-    def _spawn(self, coro) -> None:
-        """Run a message's work beside the read loop, so a slow route doesn't hold up the rest."""
-        task = asyncio.create_task(coro)
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-
-    def _handle(self, message: dict) -> None:
-        kind = message.get("t")
-        if kind == "start":
-            self._spawn(self._start(message))
-        elif kind == "awake":
-            self.link.awake.set() if message.get("on") else self.link.awake.clear()
-            self._spawn(self.loader.shown(self.link.awake.is_set() and not self.link.hidden))
-        elif kind == "hidden":
-            self.link.hidden = message.get("on") is True
-            self._spawn(self.loader.shown(self.link.awake.is_set() and not self.link.hidden))
-        elif kind == "event":
-            event_bus.publish(str(message.get("name")), message.get("data"))
-        elif kind == "http":
-            self._spawn(self._http(message))
-        elif kind == "preview":
-            self._spawn(self._preview(message))
-        elif kind == "control":
-            self._spawn(self.loader.control(str(message.get("name")), message.get("value")))
-        elif kind == "diagnose":
-            gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
-            self._spawn(self.link.send({"t": "reply", "id": message.get("id"), "gpio": gpio}))
-        elif kind == "reply":
-            future = self.link.pending.get(message.get("id"))
-            if future and not future.done():
-                future.set_result(message)
-
-    async def _start(self, message: dict) -> None:
-        async with self._start_lock:
-            await self.loader.stop_modules()
-            self.apps.clear()
-            self.link.gen = message.get("gen", 0)
-            self.link.awake.set() if message.get("awake", True) else self.link.awake.clear()
-            self.link.hidden = message.get("hidden") is True
-            await self.loader.start_modules(message.get("modules") or {}, message.get("globals") or {})
-            await self.loader.shown(self.link.awake.is_set() and not self.link.hidden)
-            await self.link.send({"t": "status", "gen": self.link.gen, "running": sorted(self.loader.tasks)})
-
-    async def _preview(self, message: dict) -> None:
-        """The admin's preview: the card the unsaved settings would show, from the module's sample answers
-        (loader.render_preview); html None when the module has none, or rendering failed."""
-        html = None
-        module_cfg = message.get("config")
-        if isinstance(module_cfg, dict) and isinstance(message.get("instance"), str):
-            try:
-                html = await render_preview(message["instance"], module_cfg, message.get("globals") or {}, self.link)
-            except Exception as e:
-                logger.warning(f"{message['instance']}: its preview failed: {e!r}")
-        await self.link.send({"t": "reply", "id": message.get("id"), "html": html if isinstance(html, str) else None})
-
-    async def _http(self, message: dict) -> None:
-        instance_id = message.get("instance")
-        router = getattr(self.loader.instances.get(instance_id), "router", None)
-        status, headers, body = 404, [["content-type", "application/json"]], b'{"detail":"Not Found"}'
-        if isinstance(router, APIRouter):
-            app = self.apps.get(instance_id)
-            if app is None:
-                app = self.apps[instance_id] = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-                app.include_router(router)
-            try:
-                status, headers, body = await call_route(app, message)
-            except Exception as e:
-                logger.error(f"{instance_id}: {message.get('method')} {message.get('path')} failed: {e!r}")
-                status, headers, body = 500, [["content-type", "text/plain"]], b"Internal Server Error"
-        await self.link.send({"t": "reply", "id": message.get("id"), "status": status, "headers": headers,
-                              "body": base64.b64encode(body).decode()})
 
 
 # The processes the forkserver makes (forkserver.run_forkserver's children), each an async function of its sockets
 
 
-async def instance_main(stream: socket.socket, fds: socket.socket, instance: str) -> None:
-    """One module instance, as its own user: the core's connection for it and the module (which adds its
-    own folder only: ModuleLoader.start_modules)."""
-    reader, writer = await asyncio.open_unix_connection(sock=stream, limit=LINE_LIMIT)
-    host = Host(reader, writer)
-    threading.Thread(target=receive_fds, args=(fds, host.link, asyncio.get_running_loop()), daemon=True).start()
-    await host.run()
 
 
 async def site_step(message: dict, folder: Path) -> tuple[int, str]:

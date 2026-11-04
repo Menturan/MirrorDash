@@ -12,7 +12,7 @@ mirrordash_core.features.modules.loader.MODULE_RESTART_DELAY = 0.01
 
 
 class FakeLink:
-    """host.py's HostLink without a core: what the modules' helpers call."""
+    """instance.py's HostLink without a core: what the modules' helpers call."""
     def __init__(self):
         self.awake = asyncio.Event()
         self.awake.set()
@@ -554,10 +554,10 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     a device, another module's data or the site within its reach, and for capabilities left over."""
     import socket
 
-    from mirrordash_core.features.modules import host
+    from mirrordash_core.features.modules import sandbox_checks as checks
 
     def holes():
-        return [what for what, reachable in host.sandbox_checks() if reachable]
+        return [what for what, reachable in checks.sandbox_checks() if reachable]
 
     listener = socket.create_server(("127.0.0.1", 0))
     port = listener.getsockname()[1]
@@ -573,26 +573,26 @@ def test_the_module_host_tells_when_its_sandbox_is_open(tmp_path, monkeypatch):
     (modules / "site_a" / "md-clock").symlink_to("../pkgs/md-clock_1")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(modules))
     # Not the capabilities of whatever runs the tests (a desktop session can hand down CapInh)
-    monkeypatch.setattr(host.forkserver, "held_capability_sets", lambda: [])
+    monkeypatch.setattr(checks.forkserver, "held_capability_sets", lambda: [])
     try:
-        monkeypatch.setattr(host, "SANDBOX_PORTS", (port,))
-        monkeypatch.setattr(host, "ROUTE_TABLE_FILE", str(tmp_path / "route"))
-        monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path): "the core's data"})
-        monkeypatch.setattr(host, "SANDBOX_DEVICES", (str(tmp_path / "gpiochip*"), str(tmp_path / "i2c-*")))
-        monkeypatch.setattr(host, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
+        monkeypatch.setattr(checks, "SANDBOX_PORTS", (port,))
+        monkeypatch.setattr(checks, "ROUTE_TABLE_FILE", str(tmp_path / "route"))
+        monkeypatch.setattr(checks, "SANDBOX_PATHS", {str(tmp_path): "the core's data"})
+        monkeypatch.setattr(checks, "SANDBOX_DEVICES", (str(tmp_path / "gpiochip*"), str(tmp_path / "i2c-*")))
+        monkeypatch.setattr(checks, "MODULE_DEVICES", {str(tmp_path / "i2c-1")})
         assert holes() == [f"the mirror's own port {port}", "the router (127.0.0.1)", f"the core's data ({tmp_path})",
                            str(tmp_path / "gpiochip0"), "another module's data (calendar)",
                            f"writing the module site ({modules / 'site'})", "writing a module's own folder"]
     finally:
         listener.close()
-    monkeypatch.setattr(host, "SANDBOX_PORTS", ())
-    monkeypatch.setattr(host, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
-    monkeypatch.setattr(host, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
+    monkeypatch.setattr(checks, "SANDBOX_PORTS", ())
+    monkeypatch.setattr(checks, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
+    monkeypatch.setattr(checks, "SANDBOX_PATHS", {str(tmp_path / "out-of-sight"): "the core's data"})
     for path in (tmp_path / "gpiochip0", modules / "data" / "calendar", modules / "site_a", modules / "pkgs" / "md-clock_1"):
         path.chmod(0o500 if path.is_dir() else 0)
     (modules / "data" / "calendar").chmod(0)
     try:
-        assert holes() == [] and ("capabilities (none)", False) in host.sandbox_checks()
+        assert holes() == [] and ("capabilities (none)", False) in checks.sandbox_checks()
     finally:
         for path in (modules / "data" / "calendar", modules / "site_a", modules / "pkgs" / "md-clock_1"):
             path.chmod(0o700)
@@ -604,17 +604,18 @@ async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, h
     the host refuses to start one, the core asks for none and says so on the Dashboard (fail closed)."""
     from mirrordash_core.features.modules import client as client_module
     from mirrordash_core.features.modules import host as host_module
+    from mirrordash_core.features.modules import sandbox_checks as checks
 
     (tmp_path / "cgroup").write_text("0::/system.slice/mirrordash-modules.service\n")
     limit = tmp_path / "tree" / "system.slice" / "mirrordash-modules.service" / "memory.max"
-    monkeypatch.setattr(host_module, "OWN_CGROUP_FILE", str(tmp_path / "cgroup"))
-    monkeypatch.setattr(host_module, "CGROUP_TREE", str(tmp_path / "tree"))
-    assert host_module.memory_limit_missing()  # no memory.max: the controller is off
+    monkeypatch.setattr(checks, "OWN_CGROUP_FILE", str(tmp_path / "cgroup"))
+    monkeypatch.setattr(checks, "CGROUP_TREE", str(tmp_path / "tree"))
+    assert checks.memory_limit_missing()  # no memory.max: the controller is off
     limit.parent.mkdir(parents=True)
     limit.write_text("max\n")
-    assert host_module.memory_limit_missing()
+    assert checks.memory_limit_missing()
     limit.write_text("291504128\n")
-    assert not host_module.memory_limit_missing()
+    assert not checks.memory_limit_missing()
     limit.write_text("max\n")
 
     socket_path = str(tmp_path / "host.sock")
@@ -623,10 +624,10 @@ async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, h
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
     monkeypatch.setattr(host_module.Control, "probe", lambda self: asyncio.sleep(0, host_module.sandbox_checks([])))
-    monkeypatch.setattr(host_module, "SANDBOX_PORTS", ())
-    monkeypatch.setattr(host_module, "SANDBOX_PATHS", {})
-    monkeypatch.setattr(host_module, "SANDBOX_DEVICES", ())
-    monkeypatch.setattr(host_module, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
+    monkeypatch.setattr(checks, "SANDBOX_PORTS", ())
+    monkeypatch.setattr(checks, "SANDBOX_PATHS", {})
+    monkeypatch.setattr(checks, "SANDBOX_DEVICES", ())
+    monkeypatch.setattr(checks, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
     monkeypatch.setattr(host_module.forkserver, "held_capability_sets", lambda: [])  # not the test runner's
     monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {"w": {"module": "md_w"}}, "globals": {}})

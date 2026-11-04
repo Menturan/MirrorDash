@@ -243,7 +243,7 @@ class ModuleHost:
         self.lan: list[str] | None = None  # what the instances may reach on the home network, once applied
         # ponytail: in memory, so a restart of the core tries them again (CRASH_LIMIT more crashes)
         self.paused: set[str] = set()  # instances that kept dying soon after their start: not started (resume)
-        # What the host's self-check found open (host.py sandbox_checks): no module runs while there is any
+        # What the host's self-check found open (sandbox_checks.py): no module runs while there is any
         self.sandbox_open: list[str] = []
         self._crashes: dict[str, int] = {}
         self._control: Connection | None = None

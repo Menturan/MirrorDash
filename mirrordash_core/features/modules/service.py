@@ -19,11 +19,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.host import package_key
 from mirrordash_core.features.modules.loader import (
     find_entry_point,
     module_entry_points,
 )
+from mirrordash_core.features.modules.package_names import package_key
 from mirrordash_core.features.settings.schema import get_module_schema
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_in_background, run_restart

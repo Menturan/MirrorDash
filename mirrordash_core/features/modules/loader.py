@@ -369,7 +369,7 @@ def _make_fetch(cache_dir: str | None, module_name: str, awake: asyncio.Event, k
 def _inject_module_helpers(plugin_instance, package_name: str, translations: dict, module_name: str, config: dict, link,
                            fixtures: dict[str, bytes] | None = None) -> None:
     """Inject translation, data fetching and template rendering helpers into the plugin instance if missing.
-    link is the way to the core (host.py's HostLink): the screen's state, video playing and its window."""
+    link is the way to the core (instance.py's HostLink): the screen's state, video playing and its window."""
     plugin_instance.translations = translations
 
     if not hasattr(plugin_instance, "translate"):

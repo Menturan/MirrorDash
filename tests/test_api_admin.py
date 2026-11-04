@@ -712,7 +712,7 @@ def test_version_key_orders_pre_releases_below_their_release():
 
 
 def test_package_key_names_a_module_by_its_package():
-    from mirrordash_core.features.modules.host import package_key
+    from mirrordash_core.features.modules.package_names import package_key
     assert package_key("Mirrordash_Clock[extra]>=1.2; python_version>'3'") == "mirrordash-clock"
     assert package_key("git+https://github.com/a/MirrorDash.News.git@v1.0") == "mirrordash-news"
     assert package_key("not a requirement!") is None
