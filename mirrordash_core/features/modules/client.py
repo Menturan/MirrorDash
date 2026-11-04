@@ -439,8 +439,11 @@ class ModuleHost:
             self._placement = {instance_id: {**placement(cfg, instance_id), "order": order, "scripts": scripts_allowed(
                                    find_entry_point(cfg.get("module", instance_id), eps), config)}
                                for order, (instance_id, cfg) in enumerate(modules.items())}
+            # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
+            from mirrordash_core.features.kiosk import guard
+            held = self.paused | guard.paused(config)
             wanted = {instance_id: cfg for instance_id, cfg in modules.items()
-                      if cfg.get("enabled", True) and instance_id not in self.paused}
+                      if cfg.get("enabled", True) and instance_id not in held}
             # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)
             holes = reply.get("sandbox_open")

@@ -36,6 +36,13 @@ class ConnectionManager:
         self.video_players: set[str] = set()
         self.pending: set[str] = set()  # the instances whose update waits for the next whole minute
         self._minute_task: asyncio.Task | None = None
+        # The crash guard (guard.py): the page's id (a new one is a new load), whether that page was loaded
+        # before this start of the core (it reloads itself, no crash), when the core asked the screen to
+        # reload, and the instances that played a video since the start
+        self.page_id: str | None = None
+        self.page_stale = False
+        self.reload_asked_at = 0.0
+        self.played_video: set[str] = set()
 
     def saw(self, client) -> None:
         """A request from a loopback client: the mirror's own screen, whose page sends "alive" every
@@ -89,7 +96,24 @@ class ConnectionManager:
             if self.video_players and message["module"] not in self.video_players:
                 self.pending.add(message["module"])
                 return
+        if message.get("action") == "reload":
+            self.reload_asked_at = time.monotonic()  # the page that comes back is no crash
         await self._send(message)
+
+    async def page_loaded(self, page_id, page_boot) -> None:
+        """The page says which load it is (js/kiosk/core.js): its id, and the core start it last heard of (null
+        when it just loaded). Another id than the last one's, when that page was of this start and the core
+        didn't ask for a reload, means the page was loaded anew: a crash, for the guard."""
+        from mirrordash_core.admin import BOOT_ID
+        from mirrordash_core.features.kiosk import guard
+        if not isinstance(page_id, str) or not 0 < len(page_id) <= 64:
+            return
+        previous, previous_stale = self.page_id, self.page_stale
+        self.page_id, self.page_stale = page_id, page_boot not in (None, BOOT_ID)
+        if previous in (None, page_id) or previous_stale or time.monotonic() - self.reload_asked_at < 120:
+            return
+        logger.warning("The screen's page was loaded anew without the core asking: counted as a crash")
+        await guard.page_crashed(set(self.played_video))
 
     async def _send(self, message: dict) -> None:
         # Iterate over a snapshot to avoid mutation during iteration; one stalled client must not delay the rest
@@ -113,6 +137,8 @@ class ConnectionManager:
         stops; the updates held meanwhile go out on each whole minute, and at once when the last stops."""
         was_playing = bool(self.video_players)
         (self.video_players.add if playing else self.video_players.discard)(instance_id)
+        if playing:
+            self.played_video.add(instance_id)  # the guard's step 2 pauses it
         if bool(self.video_players) == was_playing:
             return
         await self._send({"type": "video_is_playing", "playing": not was_playing})

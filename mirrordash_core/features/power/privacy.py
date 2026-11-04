@@ -25,13 +25,15 @@ def screen_message(config: dict | None = None) -> dict:
     """The screen-wide settings js/kiosk/core.js puts on <html>: privacy mode and what it shows, and how
     the modules look over a background photo (an unknown value: the default); and the module instances
     their schedules hide now, which it marks on their cards."""
+    from mirrordash_core.features.kiosk import guard
     config = config if config is not None else load_config()
     globals_config = config.get("globals") or {}
     shows, cards = globals_config.get("privacy_shows"), globals_config.get("cards_over_photo")
     return {"type": "screen", "privacy": privacy_on(config),
             "privacy_shows": shows if shows in PRIVACY_SHOWS else PRIVACY_SHOWS[0],
             "cards_over_photo": cards if cards in CARDS_OVER_PHOTO else CARDS_OVER_PHOTO[0],
-            "scheduled_out": scheduled_out(config, local_now(config))}
+            "scheduled_out": scheduled_out(config, local_now(config)),
+            **guard.screen_part(config)}  # the crash guard's step, and at the top step its message
 
 
 def hidden_instances(config: dict) -> set[str]:

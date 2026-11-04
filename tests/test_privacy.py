@@ -27,10 +27,10 @@ def saved():
 
 def test_the_screens_message_with_defaults_for_what_isnt_set_or_known():
     assert privacy.screen_message({}) == {"type": "screen", "privacy": False, "privacy_shows": "monogram",
-                                          "cards_over_photo": "see_through", "scheduled_out": []}
+                                          "cards_over_photo": "see_through", "scheduled_out": [], "guard": 0, "guard_message": None}
     config = {"privacy": {"on": True}, "globals": {"privacy_shows": "nothing", "cards_over_photo": "halo"}}
     assert privacy.screen_message(config) == {"type": "screen", "privacy": True, "privacy_shows": "nothing",
-                                              "cards_over_photo": "halo", "scheduled_out": []}
+                                              "cards_over_photo": "halo", "scheduled_out": [], "guard": 0, "guard_message": None}
     junk = {"privacy": {"on": "yes"}, "globals": {"privacy_shows": "<b>", "cards_over_photo": "<script>"}}
     assert privacy.screen_message(junk) == privacy.screen_message({})
 
@@ -41,7 +41,7 @@ async def test_switching_it_saves_it_apart_from_the_settings_form_and_tells_the_
     await privacy.set_privacy(True)
     assert config["privacy"] == {"on": True} and save.call_count == 1
     broadcast.assert_awaited_once_with({"type": "screen", "privacy": True, "privacy_shows": "nothing",
-                                        "cards_over_photo": "see_through", "scheduled_out": []})
+                                        "cards_over_photo": "see_through", "scheduled_out": [], "guard": 0, "guard_message": None})
     await privacy.set_privacy(True)  # already on: the screen hears it again, the card isn't written again
     assert save.call_count == 1
     await privacy.toggle_privacy()

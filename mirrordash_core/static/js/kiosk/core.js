@@ -16,6 +16,8 @@ let lostAt = null;
 // The MirrorDash version this page was loaded with (the server says it on every connect)
 let pageVersion = null;
 let pageBootId = null;
+// This load of the page: a new one the core didn't ask for is a crash, for its guard (kiosk/guard.py)
+const PAGE_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
 let hideStatusTimer = null;
 // The module instances their schedules hide now (the screen message, features/power/display_power.py)
 let scheduledOut = [];
@@ -261,6 +263,14 @@ function handleServerMessage(data) {
         document.querySelectorAll('[data-module]').forEach(card =>
             card.toggleAttribute('data-scheduled-out', scheduledOut.includes(card.dataset.module)));
         document.querySelectorAll('.carousel-group-container').forEach(updateCarouselGroup);
+        // The crash guard's message at its top step, in the mirror's language (the core sends the words)
+        const notice = document.getElementById('guard-notice');
+        const message = data.guard_message;
+        notice.hidden = !message;
+        if (message) {
+            notice.querySelector('.guard-notice__title').textContent = message.title;
+            notice.querySelector('.guard-notice__body').textContent = message.body;
+        }
     } else if (data.type === 'video_is_playing') {
         setVideoIsPlaying(data.playing === true);
     } else if (data.type === 'video_window') {
@@ -280,6 +290,8 @@ function connect() {
         retryDelay = 2000;
         lostAt = null;
         setStatus('connected');
+        // Which load this is, and the core start it last heard of (null: just loaded)
+        socket.send(JSON.stringify({ type: 'page', id: PAGE_ID, boot: pageBootId }));
         const statusEl = document.getElementById('ws-status');
         hideStatusTimer = setTimeout(() => statusEl.classList.add('ws-status--hidden'), 3000);
     };

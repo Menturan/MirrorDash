@@ -23,6 +23,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
+from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.client import module_host
@@ -213,6 +214,8 @@ async def save_module_config_route(module_name: str, request: Request, instance_
     is_new = instance_id not in load_config().get("modules", {})
     config, instance_id = await _config_from_form(module_name, request, instance_id)
     save_config(config)
+    guard.note("changed", instance_id)  # the crash guard's step 1 pauses the module changed last
+    guard.release(instance_id)  # saved again: back on the screen if the guard had paused it
     await module_host.reload_modules()
     # The settings stay open; a new instance's turn into its own, so a second Save doesn't add it again
     return notify("Added to the mirror." if is_new else "Settings saved.", refreshModules=True,
@@ -298,9 +301,17 @@ def _shown_name(package_name: str) -> str:
     return f"{name} ({version})" if version else name
 
 
+async def _noted(work, *packages: str):
+    """An install or update, then each package noted for the crash guard (its step 1: the module changed last)."""
+    result = await work
+    for package in packages:
+        guard.note("installed", package)
+    return result
+
+
 @router.post("/panels/modules/install", dependencies=[Depends(require_api_key)])
 async def install_panel_module(package_name: str = Form(...)):
-    job_id = start_job(lambda: install_module(package_name=package_name))
+    job_id = start_job(lambda: _noted(install_module(package_name=package_name), package_name))
     shown = _shown_name(package_name)
     return job_response(job_id, "Installing Module", f"Installing {shown}. This can take a few minutes...",
                         f"Installed {shown}.", "modules")
@@ -315,7 +326,7 @@ async def uninstall_panel_module(package_name: str = Form(...)):
 
 @router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
 async def upgrade_panel_module(package_name: str = Form(...)):
-    job_id = start_job(lambda: update_modules(package_name))
+    job_id = start_job(lambda: _noted(update_modules(package_name), package_name))
     shown = _shown_name(package_name)
     return job_response(job_id, "Upgrading Module", f"Upgrading {shown}. This can take a few minutes...",
                         f"Upgraded {shown}.", "modules")
@@ -328,6 +339,7 @@ async def upgrade_all_modules():
     if not updates:
         return notify("Every module is up to date.")
     names = ", ".join(update["package_name"] for update in updates)
-    job_id = start_job(lambda: update_modules(*(update["target"] for update in updates)))
+    targets = [update["target"] for update in updates]
+    job_id = start_job(lambda: _noted(update_modules(*targets), *targets))
     return job_response(job_id, "Updating Modules", f"Updating {names}. This can take a few minutes...",
                         f"Updated {names}.", "config")

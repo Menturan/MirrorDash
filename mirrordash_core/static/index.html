@@ -18,6 +18,12 @@
         <span class="ws-status__label">Connecting…</span>
     </div>
 
+    <!-- The crash guard's message at its top step (kiosk/guard.py, ARCHITECTURE #47): only the clock is shown -->
+    <div id="guard-notice" class="guard-notice" aria-live="polite" hidden>
+        <div class="guard-notice__title"></div>
+        <div class="guard-notice__body"></div>
+    </div>
+
     <!-- Internet offline indicator -->
     <div id="offline-indicator" class="offline-indicator" aria-live="polite" aria-label="Internet Connection" style="display: none;">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

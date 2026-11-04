@@ -150,6 +150,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if isinstance(message, dict) and message.get("type") == "video_window":
                     from mirrordash_core.features.video.window import window_reported
                     window_reported(message.get("module"), message.get("rect"))
+                elif isinstance(message, dict) and message.get("type") == "page":  # which load (the crash guard)
+                    await manager.page_loaded(message.get("id"), message.get("boot"))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:

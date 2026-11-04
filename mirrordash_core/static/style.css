@@ -324,6 +324,24 @@ html[data-video-is-playing] .carousel-slide {
     100% { opacity: 1;   transform: scale(1); }
 }
 
+/* The crash guard's message at the bottom edge (the centre stays empty): an alert card, until the owner acts */
+.guard-notice {
+    position: fixed;
+    left: 50%;
+    bottom: var(--safe-margin-bottom);
+    transform: translateX(-50%);
+    width: min(980px, calc(100vw - var(--safe-margin-left) - var(--safe-margin-right)));
+    box-sizing: border-box;
+    background: rgba(0, 0, 0, 0.93);
+    border: 1px solid var(--color-dimmed-charcoal);
+    border-radius: 16px;
+    padding: 28px 40px;
+    z-index: 999;
+}
+.guard-notice[hidden] { display: none; }
+.guard-notice__title { color: #ffffff; font-size: 24px; font-weight: 500; margin-bottom: 8px; }
+.guard-notice__body { color: var(--color-standard-gray, #999999); font-size: 18px; line-height: 1.5; }
+
 .offline-indicator {
     position: fixed;
     top: 45px;

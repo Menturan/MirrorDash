@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **When the screen keeps crashing**, the mirror pauses modules until it stops: first the module you changed last, then those in Background and Foreground and video, and at last everything but the clock, with a message on the screen. The Dashboard says what was paused and when; **Show Again** brings them back, and so does saving a paused module's settings. Before, a module that crashed the screen could leave it dead until the power was cut, and crash it again after.
+
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Request
 
 from mirrordash_core.admin import notify, require_api_key, templates
 from mirrordash_core.config import load_config
+from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.service import screen_layout
 
@@ -62,6 +63,7 @@ async def get_panel_dashboard(request: Request):
             "local_ip": local_ip,
             "active_count": len(module_host.running),
             "modules_paused": sorted(module_host.paused),
+            "screen_guard": guard.banner(load_config()),
             "sandbox_open": module_host.sandbox_open,
             "uptime_str": uptime_str,
             "ram_usage": ram_usage,
@@ -78,6 +80,13 @@ async def get_panel_dashboard(request: Request):
 async def resume_modules():
     await module_host.resume()
     return notify("Modules are starting again.")
+
+
+@router.post("/panels/dashboard/show-again", dependencies=[Depends(require_api_key)])
+async def show_paused_modules_again():
+    """The crash guard's banner: every module it paused back on the screen (ARCHITECTURE #47)."""
+    await guard.show_again()
+    return notify("The paused modules are on the screen again.")
 
 
 @router.get("/panels/dashboard/updates", dependencies=[Depends(require_api_key)])

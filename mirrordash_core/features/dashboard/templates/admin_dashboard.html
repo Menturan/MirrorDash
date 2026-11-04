@@ -61,6 +61,39 @@
         </div>
         {% endif %}
 
+        {% if screen_guard %}
+        {# The screen's crash guard (kiosk/guard.py, ARCHITECTURE #47): what it paused, and the way back #}
+        <div id="screen-guard" style="grid-column: span 12; background: linear-gradient(135deg, rgba(248, 113, 113, 0.15) 0%, rgba(248, 113, 113, 0.02) 100%); border: 1px solid rgba(248, 113, 113, 0.35); border-radius: 12px; padding: 16px 20px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+            <i class="fas fa-triangle-exclamation" style="font-size: 1.6rem; color: #f87171;" aria-hidden="true"></i>
+            <div style="flex: 1; min-width: 200px;">
+                {% if screen_guard.level == 1 %}
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">The screen crashed: one module paused</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    The mirror's page crashed twice in ten minutes ({{ screen_guard.crashes | join(" and ") }}), soon after
+                    <b>{{ screen_guard.first | join(", ") }}</b> was changed, so it's paused. Usually a module that asks for
+                    more graphics memory than the Raspberry Pi has. Lower its settings or update it, then show it again.
+                </p>
+                {% elif screen_guard.level == 2 %}
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">The screen crashed: full-screen modules and video paused</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    {% if screen_guard.first %}It crashed again after pausing <b>{{ screen_guard.first | join(", ") }}</b>,{% else %}It crashed {{ screen_guard.count }} times since {{ screen_guard.since }},{% endif %}
+                    so the full-screen modules and video are paused{% if screen_guard.more %}: <b>{{ screen_guard.more | join(", ") }}</b>{% endif %}.
+                    The other modules show as usual.
+                </p>
+                {% else %}
+                <h4 style="font-size: 0.95rem; font-weight: 700; color: #fca5a5; margin: 0;">The screen crashed: only the clock is shown</h4>
+                <p style="font-size: 0.8rem; color: var(--text-secondary); margin: 2px 0 0 0;">
+                    It kept crashing ({{ screen_guard.count }} times since {{ screen_guard.since }}), so every module but the
+                    clock is paused and the screen says so. Turn off or update the module you changed last, then show them
+                    again. Logs → System has the details.
+                </p>
+                {% endif %}
+            </div>
+            <button type="button" class="btn primary btn-sm" hx-post="/admin/panels/dashboard/show-again"
+                    hx-target="#screen-guard" hx-swap="delete"><i class="fas fa-play"></i> Show Again</button>
+        </div>
+        {% endif %}
+
         <!-- Asynchronous Update Alert Banner -->
         <div style="grid-column: span 12;" hx-get="/admin/panels/dashboard/updates" hx-trigger="load" hx-swap="outerHTML"></div>
 

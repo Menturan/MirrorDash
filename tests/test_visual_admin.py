@@ -1167,6 +1167,46 @@ def test_while_a_video_plays_the_page_holds_still(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_the_page_tells_its_load_and_shows_the_crash_guards_message(page):
+    """ARCHITECTURE #47: the page sends its load's id on connecting (a new one the core didn't ask for is a
+    crash), and at the guard's top step shows the core's words at the bottom edge until it's let go."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; this.sent = []; } send(m) { this.sent.push(m); } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    page.evaluate("window.__ws.readyState = 1; window.__ws.onopen()")
+    told = json.loads(page.evaluate("window.__ws.sent[0]"))
+    assert told["type"] == "page" and told["id"] and told["boot"] is None  # just loaded: no core start heard of yet
+    send = lambda msg: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(msg))
+    screen = {"type": "screen", "privacy": False, "privacy_shows": "monogram", "cards_over_photo": "see_through",
+              "scheduled_out": []}
+    notice = "document.getElementById('guard-notice')"
+    send({**screen, "guard": 0, "guard_message": None})
+    assert page.evaluate(f"{notice}.hidden")
+    send({**screen, "guard": 3, "guard_message": {"title": "Skärmen kraschade flera gånger", "body": "Modulerna är pausade."}})
+    assert not page.evaluate(f"{notice}.hidden")
+    assert page.evaluate(f"{notice}.querySelector('.guard-notice__title').textContent") == "Skärmen kraschade flera gånger"
+    box = page.evaluate(f"(() => {{ const r = {notice}.getBoundingClientRect(); return [r.bottom, innerHeight]; }})()")
+    assert box[1] - box[0] < 120  # at the bottom edge, the centre stays empty
+    send({**screen, "guard": 0, "guard_message": None})  # Show Again
+    assert page.evaluate(f"{notice}.hidden")
+
+
+@pytest.mark.only_browser("webkit")
 def test_the_page_says_where_a_modules_video_window_is(page):
     """features/video asks; the page answers with the data-video-window element's place in CSS pixels."""
     import json
