@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""What the Dashboard shows about the Pi itself: uptime, CPU temperature and load, memory, whether the
+clock is set from the internet, the network it is on, undervoltage, and the updates waiting. Each value
+is None (or a safe default) where the OS can't say, so the Dashboard also works on a developer's computer."""
 
 import logging
 import os

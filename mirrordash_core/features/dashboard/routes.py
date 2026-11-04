@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The admin page's Dashboard: the mirror's health at a glance (telemetry.py), the update banner and
+starting modules again after they were paused for crashing."""
 
 import asyncio
 import logging

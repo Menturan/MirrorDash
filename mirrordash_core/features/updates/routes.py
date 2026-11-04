@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The admin page's update buttons: check for and install a MirrorDash update or an OS update, rebuild
+the app's venv, and the nightly automatic update the OS image's timer asks for. The work is in service.py."""
 
 import asyncio
 import logging

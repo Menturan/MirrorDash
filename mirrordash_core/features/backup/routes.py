@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The admin page's Backup panel: make, list, download, delete, upload and restore backups.
+
+The work itself is in service.py; these routes answer the panel's buttons with HTML fragments (HTMX)."""
 
 import asyncio
 import html

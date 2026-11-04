@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The admin page's Logs panel: the app's log, the modules' log and the system's journal, the logs saved
+from earlier starts, and Diagnostics (the module sandbox's checks, downloadable as a text file)."""
 
 import html
 import logging

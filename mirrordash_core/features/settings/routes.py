@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The admin page's Settings tab: the global settings form (language, location, time format), privacy
+mode, developer logging and resetting the mirror to how it came."""
 
 import json
 import logging

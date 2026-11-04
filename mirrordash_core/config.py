@@ -1,4 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The mirror's settings: config.json, read and written for every feature.
+
+load_config() gives a copy of the settings (cached in memory); save_config() writes them whole, so a power
+cut leaves the old file or the new one, never half of one, and keeps the last good copy beside it
+(config.json.bak) for when the file doesn't read. The file lives in ~/.mirrordash, on a mirror a link to
+/storage/mirrordash/data, which outlives the read-only root (get_config_path). Also here: where modules keep their data (get_module_dir), the
+installed MirrorDash version and how versions sort."""
 
 import copy
 import json

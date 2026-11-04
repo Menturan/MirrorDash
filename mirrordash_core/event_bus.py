@@ -1,4 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""The event bus: one part of the app tells others that something happened, without knowing who listens.
+
+A publisher calls event_bus.publish("hardware.button", data); every callback subscribed to that name gets
+data, an async one on the app's event loop. In the core every event also goes on to the modules (forward,
+features/modules/client.py); in a module's own process a public event goes back to the core, which gives
+it to every module instance (share)."""
 
 import asyncio
 import inspect

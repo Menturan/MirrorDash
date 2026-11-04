@@ -1,4 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
+"""Schemas for the settings forms, and the check of every saved config (the trust boundary).
+
+A module describes its settings in a JSON schema (config_schema.json); get_module_schema reads it, without
+running the module. validate_config checks a config before it is saved: its shape, where each module
+sits, and each module's settings against its schema."""
 
 import base64
 import json
