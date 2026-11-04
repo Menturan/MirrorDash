@@ -1159,11 +1159,15 @@ def test_while_a_video_plays_the_page_holds_still(page):
     assert page.evaluate(f"{group}._carouselTimer") is None
     send({"module": "clock", "position": "top_right", "html": "<p>12:00</p>"})  # drawn while playing
     assert page.evaluate("document.querySelector('[data-module=clock]').hasAttribute('data-video-is-playing')")
+    send({"module": "snow", "position": "foreground", "html": "<div>*</div>"})
+    foreground = "getComputedStyle(document.getElementById('foreground')).display"
+    assert page.evaluate(foreground) == "none"  # decoration in front of a video: gone, its layers freed
 
     send({"type": "video_is_playing", "playing": False})
     assert page.evaluate("window.__heard") is False
     assert not page.evaluate(f"{slide}.hasAttribute('data-video-is-playing')")
     assert page.evaluate(f"{group}._carouselTimer") is not None
+    assert page.evaluate(foreground) != "none"
 
 
 @pytest.mark.only_browser("webkit")

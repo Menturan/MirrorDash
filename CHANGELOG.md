@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- While a module plays a video, whatever is in the Foreground position (such as the seasonal decoration) is hidden, and comes back when the video stops: nothing moves in front of the video, and the Raspberry Pi keeps up with it.
+
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
