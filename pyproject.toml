@@ -55,8 +55,13 @@ addopts = "--ignore=tests/test_visual_admin.py --browser chromium --browser webk
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "SIM"]
+select = ["E", "F", "I", "B", "UP", "SIM", "ASYNC", "RUF"]
 ignore = [
+    "ASYNC109",  # run_command(timeout=...) is the API: clearer than every caller wrapping it in asyncio.timeout()
+    # ponytail: small files (sysfs, config, an exists check) are read inline; it misses a new big copy on the
+    # event loop, so those go through asyncio.to_thread by hand (backup upload, create_backup)
+    "ASYNC230", "ASYNC240",
+    "RUF001", "RUF002", "RUF003",  # typographic quotes and › in user-facing text are on purpose
     "E501",    # long lines: the comments explain why, and wrapping them only hides that
     "E731",    # a named lambda reads fine for one-line helpers
     "B008",    # FastAPI's own pattern: Depends()/Body() as argument defaults
@@ -65,3 +70,7 @@ ignore = [
     "SIM108",  # a ternary isn't always easier to read than if/else
     "SIM114",  # merging if-branches with the same body hides why there are two cases
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may block, poll and fire tasks off: no event loop there serves a mirror; fakes keep class-level dicts
+"tests/**" = ["ASYNC", "RUF006", "RUF012"]

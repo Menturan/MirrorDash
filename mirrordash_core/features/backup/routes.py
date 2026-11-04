@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import html
 import logging
 import os
@@ -93,15 +94,17 @@ async def _summary_or_password_prompt(filename: str, is_local: bool, password: s
 async def upload_panel_backup(file: UploadFile = File(...)):
     if not file.filename.endswith(".mirror"):
         return _error("Invalid file type. File must have .mirror extension.")
-    with open(temp_upload(), "wb") as buffer:
-        shutil.copyfileobj(file.file, buffer)
+    def save():  # a backup is megabytes: written off the event loop, which serves the mirror meanwhile
+        with open(temp_upload(), "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    await asyncio.to_thread(save)
     return await _summary_or_password_prompt(file.filename, is_local=False)
 
 
 @router.post("/panels/backup/validate-local", dependencies=[Depends(require_api_key)])
 async def validate_panel_backup_local(filename: str = Form(...)):
     try:
-        shutil.copy(backup_file(filename), temp_upload())
+        await asyncio.to_thread(shutil.copy, backup_file(filename), temp_upload())
     except HTTPException as e:
         return _error(f"{e.detail}.")
     return await _summary_or_password_prompt(filename, is_local=True)

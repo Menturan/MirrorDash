@@ -799,7 +799,7 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     await core.start_modules()
     modules = tmp_path / "modules"
     site_link, pkgs = modules / "site", modules / "pkgs"
-    ran = lambda name: (tmp_path / f"pth-ran-{name}").exists()  # noqa: E731
+    ran = lambda name: (tmp_path / f"pth-ran-{name}").exists()
     try:
         await _until(lambda: core._control is not None)
         reply = await core.diagnose()  # Logs → Diagnostics: the host's own checks, as a module's user

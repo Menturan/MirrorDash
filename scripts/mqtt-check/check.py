@@ -68,7 +68,7 @@ async def run(name: str, port: int) -> list[str]:
         await asyncio.sleep(0.3)
         await b.start()
         expect("connects", await until(lambda: b.status == "connected"))
-        discovery = lambda topic: [json.loads(p) for t, p in seen if t == topic and p]  # noqa: E731
+        discovery = lambda topic: [json.loads(p) for t, p in seen if t == topic and p]
         expect("the mirror's discovery reaches Home Assistant",
                await until(lambda: discovery("homeassistant/device/check/config")))
         expect("the module's discovery, with only the allowed control",

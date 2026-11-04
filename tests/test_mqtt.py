@@ -240,7 +240,7 @@ def test_the_card_keeps_the_saved_password_and_checks_the_broker():
         with patch.object(routes, "load_config", return_value=config) as load, \
              patch.object(routes, "save_config", side_effect=lambda c: saved.update(c)), \
              patch.object(routes.mqtt_bridge, "restart", AsyncMock()):
-            post = lambda form: TestClient(app).post("/admin/panels/system/mqtt/save", data=form).status_code  # noqa: E731
+            post = lambda form: TestClient(app).post("/admin/panels/system/mqtt/save", data=form).status_code
             assert post({"host": "ha.local; rm -rf /"}) == 400
             assert post({"host": "ha.local", "password": "a\nb"}) == 400
             assert post({"host": "ha.local", "username": "mirror"}) == 200

@@ -60,7 +60,7 @@ async def check_core_update() -> dict:
     def _fetch_pypi_version(prerelease: bool) -> tuple[str, str | None]:
         """(the newest version, the Python it requires)."""
         try:
-            with urllib.request.urlopen(PYPI_URL, timeout=8) as response:  # noqa: S310
+            with urllib.request.urlopen(PYPI_URL, timeout=8) as response:
                 package_info = json.loads(response.read())
         except Exception as exc:
             raise RuntimeError(f"PyPI request failed: {exc}") from exc
@@ -349,7 +349,7 @@ async def check_os_update() -> dict:
         request = urllib.request.Request(RELEASES_URL, headers={"Accept": "application/vnd.github+json",
                                                                 "User-Agent": "MirrorDash"})
         try:
-            with urllib.request.urlopen(request, timeout=8) as response:  # noqa: S310
+            with urllib.request.urlopen(request, timeout=8) as response:
                 return json.loads(response.read())
         except Exception as exc:
             raise RuntimeError(f"GitHub request failed: {exc}") from exc
@@ -379,7 +379,7 @@ async def update_os(bundle: dict) -> None:
     def _download() -> None:
         # GitHub sends the file from another address (a redirect); urllib follows it
         partial = OS_BUNDLE_FILE.with_suffix(".part")
-        with urllib.request.urlopen(bundle["url"], timeout=60) as response, open(partial, "wb") as out:  # noqa: S310
+        with urllib.request.urlopen(bundle["url"], timeout=60) as response, open(partial, "wb") as out:
             shutil.copyfileobj(response, out, length=1024 * 1024)
         partial.replace(OS_BUNDLE_FILE)
 
@@ -420,7 +420,7 @@ async def get_disk_usage() -> dict:
         }
     except Exception as e:
         logger.error(f"Failed to retrieve disk usage: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {e}")
 
 
 async def auto_update() -> str:

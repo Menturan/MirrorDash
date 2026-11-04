@@ -94,7 +94,7 @@ async def get_discover_modules(request: Request):
 
 
 @router.get("/panels/modules/config/{module_name}", dependencies=[Depends(require_api_key)])
-async def get_module_config_form(request: Request, module_name: str, instance_id: str = None):
+async def get_module_config_form(request: Request, module_name: str, instance_id: str | None = None):
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
@@ -180,7 +180,7 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
 
 
 @router.post("/panels/modules/preview/{module_name}", dependencies=[Depends(require_api_key)])
-async def preview_module_route(module_name: str, request: Request, instance_id: str = None):
+async def preview_module_route(module_name: str, request: Request, instance_id: str | None = None):
     """The drawer's preview of the unsaved form (ARCHITECTURE #43), a page for a sandboxed iframe's srcdoc:
     the card the module renders from its sample answers, else the card the mirror shows now, else a word
     why there is none. X-Preview says which: sample, saved or none."""
@@ -208,7 +208,7 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
-async def save_module_config_route(module_name: str, request: Request, instance_id: str = None):
+async def save_module_config_route(module_name: str, request: Request, instance_id: str | None = None):
     """Save one instance's settings form (_config_from_form checks it first)."""
     is_new = instance_id not in load_config().get("modules", {})
     config, instance_id = await _config_from_form(module_name, request, instance_id)
@@ -220,7 +220,7 @@ async def save_module_config_route(module_name: str, request: Request, instance_
 
 
 @router.post("/panels/modules/config/{module_name}/remove", dependencies=[Depends(require_api_key)])
-async def remove_module_config_route(module_name: str, instance_id: str = None):
+async def remove_module_config_route(module_name: str, instance_id: str | None = None):
     config = load_config()
     modules_config = config.get("modules", {})
     instance_id = instance_id or find_module_config(modules_config, module_name)[0]
@@ -250,7 +250,7 @@ async def set_instances_enabled(changes: dict[str, bool]) -> None:
 
 
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])
-async def toggle_module_instance(module_name: str, instance_id: str = None):
+async def toggle_module_instance(module_name: str, instance_id: str | None = None):
     modules_config = load_config().get("modules", {})
     instance_id = instance_id or find_module_config(modules_config, module_name)[0]
     if instance_id not in modules_config:

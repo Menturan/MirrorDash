@@ -146,7 +146,7 @@ async def add_array_item_route(
     array_key: str,
     index: int,
     item_title: str,
-    module_name: str = None
+    module_name: str | None = None
 ):
     sub_properties = {}
     if name_prefix == "globals":

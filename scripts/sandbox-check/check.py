@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 os.environ["MIRRORDASH_MODULE_SOCKET"] = "/run/mirrordash-modules/host.sock"
 os.environ["MIRRORDASH_MODULE_DIR"] = "/storage/mirrordash/modules"
-from mirrordash_core.features.modules import client, files  # noqa: E402
+from mirrordash_core.features.modules import client, files
 
 M = "/storage/mirrordash/modules"
 config = {"modules": {"a": {"module": "md_probe", "other": "b"}, "b": {"module": "md_probe", "other": "a"}},

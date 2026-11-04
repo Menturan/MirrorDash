@@ -120,7 +120,7 @@ def test_local_now_uses_the_configured_timezone():
 
 def test_a_module_schedule_hides_it_outside_its_days_and_times():
     friday = datetime(2026, 11, 6)  # a Friday
-    at = lambda day, hour, minute=0: day.replace(hour=hour, minute=minute)  # noqa: E731
+    at = lambda day, hour, minute=0: day.replace(hour=hour, minute=minute)
     weekdays = {"days": ["mon", "tue", "wed", "thu", "fri"], "from": "06:00", "to": "09:00"}
     assert not is_scheduled_out(weekdays, at(friday, 6))
     assert not is_scheduled_out(weekdays, at(friday, 8, 59))

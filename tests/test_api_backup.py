@@ -79,7 +79,6 @@ def test_backup_list_with_files(mock_backup_dirs, client):
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
-    backups_dir, data_dir = mock_backup_dirs
     
     # Mock subprocess success
     mock_process = MagicMock()
@@ -148,7 +147,7 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_restore_backup_success(mock_subproc, mock_backup_dirs, module_site, client):
-    backups_dir, data_dir = mock_backup_dirs
+    backups_dir, _data_dir = mock_backup_dirs
     backups_dir.mkdir()
     
     # Create the tmp_upload.mirror file that restore expects to find

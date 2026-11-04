@@ -162,7 +162,7 @@ async def add_device(request: Request):
     if device_type in BUTTON_TYPES:
         device["actions"] = {press: "none" for press in PRESS_TYPES}
         device["long_press"] = DEFAULT_LONG_PRESS
-    return await _save_devices(request, config, devices + [device], f"{spec['label']} added.")
+    return await _save_devices(request, config, [*devices, device], f"{spec['label']} added.")
 
 
 @router.post("/panels/system/devices/remove", dependencies=[Depends(require_api_key)])

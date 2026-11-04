@@ -129,7 +129,7 @@ def package_dir(ep) -> Path | None:
     if not spec:
         return None
     if spec.submodule_search_locations:
-        return Path(list(spec.submodule_search_locations)[0], *rest[:-1])
+        return Path(next(iter(spec.submodule_search_locations)), *rest[:-1])
     return Path(spec.origin).parent if spec.origin else None
 
 
@@ -373,7 +373,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
     plugin_instance.translations = translations
 
     if not hasattr(plugin_instance, "translate"):
-        def translate(key: str, default: str = None) -> str:
+        def translate(key: str, default: str | None = None) -> str:
             val = plugin_instance.translations.get(key)
             if val is not None:
                 return val
