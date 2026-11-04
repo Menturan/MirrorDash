@@ -55,7 +55,7 @@ A map for someone new to the code: the parts, how they talk, and what happens in
 3. **`app.py`'s `lifespan`** applies the saved system settings (`system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
    - `module_host.start_modules()` (`features/modules/client.py`) connects to the module host and asks it to start every enabled instance,
    - `display_power_manager` (`features/power/`) turns the screen on and off on schedule,
-   - `gpio_inputs` (`features/hardware/devices.py`) listens for buttons and motion sensors,
+   - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
    - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42).
 4. **Cog** (`cog-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`features/kiosk/ws.py` keeps the last one of each, #9).

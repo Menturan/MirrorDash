@@ -162,7 +162,7 @@ class DisplayPowerManager:
                 "forced_off": self.forced_off}
 
     async def _run_loop(self) -> None:
-        from mirrordash_core.features.hardware.devices import gpio_inputs
+        from mirrordash_core.features.hardware.inputs import gpio_inputs
 
         while True:
             try:

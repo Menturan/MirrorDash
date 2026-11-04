@@ -528,8 +528,8 @@ class MqttBridge:
         from mirrordash_core.features.hardware.devices import (
             PRESENCE_TYPES,
             find_device,
-            gpio_inputs,
         )
+        from mirrordash_core.features.hardware.inputs import gpio_inputs
         from mirrordash_core.features.power.display_power import display_power_manager
         base, mqtt_config, system = self._base(), config.get("mqtt", {}), config.get("system", {})
         from mirrordash_core.features.power.privacy import privacy_on

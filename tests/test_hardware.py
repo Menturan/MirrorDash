@@ -9,7 +9,9 @@ from fastapi.testclient import TestClient
 from mirrordash_core.app import app
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware import devices as hardware
-from mirrordash_core.features.hardware.devices import PressClassifier
+from mirrordash_core.features.hardware import inputs as hardware_inputs
+from mirrordash_core.features.hardware import sensors
+from mirrordash_core.features.hardware.inputs import PressClassifier
 
 
 def presses(events, long_press=1.0):
@@ -76,11 +78,11 @@ def test_read_fan_state(tmp_path, monkeypatch):
     zone = tmp_path / "thermal_zone0"
     zone.mkdir()
     (zone / "temp").write_text("62500\n")
-    monkeypatch.setattr(hardware.glob, "glob", lambda pattern: [str(fan)] if "cooling" in pattern else [])
+    monkeypatch.setattr(sensors.glob, "glob", lambda pattern: [str(fan)] if "cooling" in pattern else [])
     real_join = os.path.join
-    monkeypatch.setattr(hardware.os.path, "join",
+    monkeypatch.setattr(sensors.os.path, "join",
                         lambda a, *b: real_join(str(zone), *b) if a == "/sys/class/thermal/thermal_zone0" else real_join(a, *b))
-    assert hardware.read_fan_state() == {"level": 2, "max_level": 4, "cpu_temperature_c": 62.5}
+    assert sensors.read_fan_state() == {"level": 2, "max_level": 4, "cpu_temperature_c": 62.5}
 
 
 def test_sync_only_writes_when_devices_change():
@@ -103,13 +105,13 @@ def test_read_iio_sensors(tmp_path, monkeypatch):
         (d / "name").write_text(name + "\n")
         for f, v in files.items():
             (d / f).write_text(v + "\n")
-    monkeypatch.setattr(hardware.glob, "glob", lambda pattern: [str(p) for p in tmp_path.iterdir()] if "iio" in pattern else [])
-    assert hardware._read_sensor_blocking("dht11") == {"temperature_c": 22.5, "humidity": 41}
-    assert hardware._read_sensor_blocking("light") == {"lux": 250.0}
+    monkeypatch.setattr(sensors.glob, "glob", lambda pattern: [str(p) for p in tmp_path.iterdir()] if "iio" in pattern else [])
+    assert sensors._read_sensor_blocking("dht11") == {"temperature_c": 22.5, "humidity": 41}
+    assert sensors._read_sensor_blocking("light") == {"lux": 250.0}
 
 
 def _pipe_inputs():
-    inputs = hardware.GpioInputs()
+    inputs = hardware_inputs.GpioInputs()
     r, w = os.pipe()
     os.set_blocking(r, False)
     inputs.file_descriptors["dev"] = r
@@ -118,7 +120,7 @@ def _pipe_inputs():
 
 def test_gpio_inputs_button_and_presence_events():
     """Raw struct input_event bytes -> button press, combined presence state and events."""
-    ev = hardware.GpioInputs.EVENT
+    ev = hardware_inputs.GpioInputs.EVENT
     key = lambda name, value: ev.pack(0, 0, 1, hardware.KEYCODES[name], value)
 
     async def scenario():
@@ -137,7 +139,7 @@ def test_gpio_inputs_button_and_presence_events():
             still_present = inputs.motion_active  # mmWave still sees someone
             os.write(w, key("mmwave", 0))
             inputs._on_readable("dev")
-            await asyncio.sleep(hardware.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
+            await asyncio.sleep(hardware_inputs.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
         finally:
             event_bus.unsubscribe("hardware.motion", handler)
             os.close(r)
@@ -157,12 +159,12 @@ def test_sensor_readings_are_published():
         handlers = {e: (lambda kind: lambda data: received.append((kind, data)))(e) for e in ("hardware.climate", "hardware.light")}
         for e, h in handlers.items():
             event_bus.subscribe(e, h)
-        inputs = hardware.GpioInputs()
+        inputs = hardware_inputs.GpioInputs()
         readings = {"dht11": {"temperature_c": 21.5, "humidity": 40}, "light": {"lux": 120.0}}
         cfg = {"system": {"devices": [{"type": "dht11", "pin": 4}, {"type": "light", "address": "0x23"}]}}
         try:
-            with patch("mirrordash_core.features.hardware.devices.load_config", return_value=cfg), \
-                 patch("mirrordash_core.features.hardware.devices.read_sensor", new_callable=AsyncMock, side_effect=lambda t: readings[t]):
+            with patch("mirrordash_core.features.hardware.inputs.load_config", return_value=cfg), \
+                 patch("mirrordash_core.features.hardware.inputs.read_sensor", new_callable=AsyncMock, side_effect=lambda t: readings[t]):
                 task = asyncio.create_task(inputs._publish_sensors())
                 await asyncio.sleep(0.02)
                 task.cancel()
@@ -239,14 +241,14 @@ def test_device_problem_does_not_block_other_settings():
     with patch("mirrordash_core.features.updates.service.load_config", return_value=cfg), \
          patch("mirrordash_core.system_settings.save_config") as save, \
          patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock), \
-         patch("mirrordash_core.features.hardware.devices.os.path.exists", return_value=False):
+         patch("mirrordash_core.features.hardware.inputs.os.path.exists", return_value=False):
         asyncio.run(update_system_settings(settings={"brightness": 40}))
         asyncio.run(update_system_settings(settings={"display_control": {"mode": "wake"}}))
     assert save.call_count == 2
 
 
 def test_each_button_has_its_own_presses_and_actions():
-    ev = hardware.GpioInputs.EVENT
+    ev = hardware_inputs.GpioInputs.EVENT
     key = lambda name, value: ev.pack(0, 0, 1, hardware.KEYCODES[name], value)
     cfg = {"system": {"devices": [
         {"type": "button", "pin": 17, "actions": {"single": "wake"}},
@@ -258,8 +260,8 @@ def test_each_button_has_its_own_presses_and_actions():
         event_bus.subscribe("hardware.button", handler)
         inputs, r, w = _pipe_inputs()
         try:
-            with patch("mirrordash_core.features.hardware.devices.load_config", return_value=cfg), \
-                 patch("mirrordash_core.features.hardware.devices.run_button_action", new_callable=AsyncMock):
+            with patch("mirrordash_core.features.hardware.inputs.load_config", return_value=cfg), \
+                 patch("mirrordash_core.features.hardware.inputs.run_button_action", new_callable=AsyncMock):
                 os.write(w, key("button", 1) + key("button_2", 1))  # both held at once
                 inputs._on_readable("dev")
                 await asyncio.sleep(0.05)
@@ -268,7 +270,7 @@ def test_each_button_has_its_own_presses_and_actions():
                 await asyncio.sleep(1.1)  # button_2 is still held: past its 1 s long press
                 os.write(w, key("button_2", 0))
                 inputs._on_readable("dev")
-                await asyncio.sleep(hardware.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
+                await asyncio.sleep(hardware_inputs.PressClassifier.MULTI_PRESS_WINDOW + 0.1)
         finally:
             event_bus.unsubscribe("hardware.button", handler)
             os.close(r)

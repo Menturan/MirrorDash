@@ -50,10 +50,8 @@ async def test_switching_it_saves_it_apart_from_the_settings_form_and_tells_the_
 
 @pytest.mark.asyncio
 async def test_the_buttons_privacy_action_switches_it(saved):
-    from mirrordash_core.features.hardware.devices import (
-        BUTTON_ACTIONS,
-        run_button_action,
-    )
+    from mirrordash_core.features.hardware.devices import BUTTON_ACTIONS
+    from mirrordash_core.features.hardware.inputs import run_button_action
     assert "privacy" in BUTTON_ACTIONS
     await run_button_action("privacy")
     assert saved[0]["privacy"] == {"on": True}

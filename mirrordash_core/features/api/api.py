@@ -63,13 +63,9 @@ async def get_status() -> dict:
         get_uptime_seconds,
     )
     from mirrordash_core.features.hardware import display
-    from mirrordash_core.features.hardware.devices import (
-        PRESENCE_TYPES,
-        find_device,
-        gpio_inputs,
-        read_fan_state,
-        read_sensor,
-    )
+    from mirrordash_core.features.hardware.devices import PRESENCE_TYPES, find_device
+    from mirrordash_core.features.hardware.inputs import gpio_inputs
+    from mirrordash_core.features.hardware.sensors import read_fan_state, read_sensor
     from mirrordash_core.features.modules.client import module_host
     from mirrordash_core.features.power.display_power import display_power_manager
 

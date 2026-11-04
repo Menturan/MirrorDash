@@ -15,7 +15,7 @@ from mirrordash_core.features.auth import routes as auth
 from mirrordash_core.features.backup import routes as backup
 from mirrordash_core.features.dashboard import routes as dashboard
 from mirrordash_core.features.hardware import routes as hardware
-from mirrordash_core.features.hardware.devices import gpio_inputs
+from mirrordash_core.features.hardware.inputs import gpio_inputs
 from mirrordash_core.features.kiosk import routes as kiosk
 from mirrordash_core.features.kiosk.internet import internet_monitor
 from mirrordash_core.features.logs import routes as logs

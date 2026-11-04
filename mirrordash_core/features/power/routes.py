@@ -151,7 +151,7 @@ async def reboot_mirror():
 async def get_screen_status():
     import math
 
-    from mirrordash_core.features.hardware.devices import gpio_inputs
+    from mirrordash_core.features.hardware.inputs import gpio_inputs
     from mirrordash_core.features.power.display_power import display_power_manager
 
     status = display_power_manager.status()

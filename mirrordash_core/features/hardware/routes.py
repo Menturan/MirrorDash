@@ -17,17 +17,19 @@ from mirrordash_core.features.hardware.devices import (
     FAN_TYPES,
     GPIO_HEADER_PINS,
     I2C_PINS,
-    IIO_SENSORS,
     LONG_PRESS_CHOICES,
     PRESENCE_TYPES,
     PRESS_TYPES,
     find_device,
     get_devices,
-    gpio_inputs,
     kernel_boot_id,
+    sync_gpio_overlays,
+)
+from mirrordash_core.features.hardware.inputs import gpio_inputs
+from mirrordash_core.features.hardware.sensors import (
+    IIO_SENSORS,
     read_fan_state,
     read_sensor,
-    sync_gpio_overlays,
 )
 from mirrordash_core.system_settings import get_system_settings
 
