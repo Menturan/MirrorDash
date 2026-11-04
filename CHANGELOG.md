@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### OS image
 
+- When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.

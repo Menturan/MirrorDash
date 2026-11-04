@@ -10,7 +10,9 @@ Environment="WAYLAND_DISPLAY=wayland-0"
 Environment="XDG_RUNTIME_DIR=/run/user/1000"
 Environment="COG_PLATFORM_WL_VIEW_FULLSCREEN=1"
 Environment="XCURSOR_THEME=empty"
-ExecStart=/usr/bin/cog -P wl --bg-color=black file:///home/pi/mirrordash/loading.html
+# A renderer that crashes (out of GPU memory, 2026-11-04) makes Cog exit, and systemd starts a new one in 2 s:
+# Cog's default shows a white crash page and stays on it, and only a new Cog gets the GPU memory back
+ExecStart=/usr/bin/cog -P wl --bg-color=black --webprocess-failure=exit file:///home/pi/mirrordash/loading.html
 # The screen runs the modules' cards: it gets the mirror itself and the internet, not the home network
 # (ARCHITECTURE #41). A module shows a camera at home through its own route, not from the page.
 # The ranges as mirrordash-modules.service's: every home-network and reserved range, and all of IPv6
