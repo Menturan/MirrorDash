@@ -10,12 +10,13 @@ import json
 import logging
 import re
 
-from mirrordash_core.forms import DAYS, POSITIONS
+from mirrordash_core.forms import CHOICE_FORMATS, DAYS, POSITIONS
 
 logger = logging.getLogger("mirrordash.core.settings")
 
 
 VALID_POSITIONS = set(POSITIONS)
+MAX_CHOICE_TEXT = 200  # characters of a choice's id or name, as the module host cuts them (choices.py MAX_TEXT)
 # How the anchors' cards look while a module is in the background layer (style.css); the first is the default
 CARDS_OVER_PHOTO = ("see_through", "halo", "half", "solid")
 
@@ -79,6 +80,14 @@ def _check_module_settings(name: str, cfg: dict, properties: dict) -> None:
             raise ValueError(f"Module '{name}' setting '{title}' must be {'an' if expected == 'integer' else 'a'} {expected}.")
         if prop.get("enum") is not None and value not in prop["enum"]:
             raise ValueError(f"Module '{name}' setting '{title}' must be one of: {prop['enum']}")
+        if prop.get("format") in CHOICE_FORMATS and not _is_choice(value):
+            raise ValueError(f"Module '{name}' setting '{title}' must be a choice: {{\"id\": text, \"name\": text}} or {{}}.")
+
+
+def _is_choice(value) -> bool:
+    """A list or search setting's value (ARCHITECTURE #48): {"id", "name"} as text, or {} for none."""
+    return isinstance(value, dict) and (value == {} or (
+        set(value) == {"id", "name"} and all(isinstance(v, str) and len(v) <= MAX_CHOICE_TEXT for v in value.values())))
 
 
 TIME_OR_BLANK = re.compile(r"(([01]\d|2[0-3]):[0-5]\d)?")  # system_settings.py's HHMM, or blank

@@ -42,6 +42,7 @@ from mirrordash_core.features.modules.module_files import (
     module_entry_points,
     scripts_allowed,
 )
+from mirrordash_core.features.modules.settings_process import SettingsProcesses
 from mirrordash_core.host import run_in_background
 from mirrordash_core.venv import get_venv_paths
 
@@ -186,6 +187,7 @@ class ModuleHost:
         self._process: asyncio.subprocess.Process | None = None
         self._socket_dir: str | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._settings = SettingsProcesses(self._open_instance, self._read)  # for modules none of whose instances runs
 
     # The rest of the core
 
@@ -227,6 +229,7 @@ class ModuleHost:
         """After a settings change: the screen reloads, and the instances whose settings changed start again."""
         manager.clear_cache()
         await manager.broadcast({"action": "reload"})
+        self._settings.close_all()  # a reinstalled module's settings process would answer with its old code
         if self._control:
             try:
                 await self._sync()
@@ -286,19 +289,34 @@ class ModuleHost:
         return await conn.request({"t": "http", **message}, REQUEST_TIMEOUT)
 
     async def preview(self, instance_id: str, module_cfg: dict) -> str | None:
-        """The card the admin's unsaved settings would show (ARCHITECTURE #43), rendered in the instance's
-        own process, or in one of another instance of the same module, never shown on the screen. None
-        when the module ships no sample answers. ConnectionError when no instance of it runs.
-        ponytail: the first instance of a module has no preview before it is saved; upgrade path: a
-        short-lived process of its own through _start."""
-        module = str(module_cfg.get("module") or instance_id).replace("-", "_")
-        conn = self._instances.get(instance_id) or next(
-            (c for c in self._instances.values() if c.module == module), None)
-        if conn is None or conn.module != module:
-            raise ConnectionError("no instance of the module runs")
+        """The card the admin's unsaved settings would show (ARCHITECTURE #43), rendered in a process of the
+        module (_connection_for), never shown on the screen. None when the module ships no sample answers."""
+        conn = await self._connection_for(instance_id, module_cfg)
         reply = await conn.request({"t": "preview", "instance": conn.instance, "config": module_cfg,
                                     "globals": load_config().get("globals", {})}, REQUEST_TIMEOUT)
         return reply.get("html") if isinstance(reply.get("html"), str) else None
+
+    async def choices(self, instance_id: str, module_cfg: dict, request: dict) -> dict:
+        """The choices of a list or search setting of the admin's unsaved form (ARCHITECTURE #48), from a
+        process of the module: {"choices": [...]} or {"error": text}. request: {kind, key, item, query}."""
+        conn = await self._connection_for(instance_id, module_cfg)
+        reply = await conn.request({"t": "choices", "instance": conn.instance, "config": module_cfg,
+                                    "globals": load_config().get("globals", {}), **request}, REQUEST_TIMEOUT)
+        return {key: reply[key] for key in ("choices", "error") if key in reply}
+
+    async def _connection_for(self, instance_id: str, module_cfg: dict) -> Connection:
+        """A process of the module to ask for the settings drawer: the instance's own, another instance's
+        of the same module, or else the module's settings process (settings_process.py), so a module
+        added a moment ago answers before it is saved. ConnectionError when the module host isn't there."""
+        module = str(module_cfg.get("module") or instance_id).replace("-", "_")
+        conn = self._instances.get(instance_id)
+        if conn is None or conn.module != module:
+            conn = next((c for c in self._instances.values() if c.module == module), None)
+        if conn is None:
+            if self._control is None:
+                raise ConnectionError("the module host isn't connected")
+            conn = await self._settings.get(module)
+        return conn
 
     async def diagnose(self) -> dict:
         """The sandbox's checks (host.py's Control._diagnose) and each instance's GPIO lines."""
@@ -415,6 +433,7 @@ class ModuleHost:
     def _disconnected(self) -> None:
         for instance_id in list(self._instances):
             self._stop(instance_id)
+        self._settings.close_all()
         if self._control:
             self._control.close()
         self._control = None
@@ -475,7 +494,18 @@ class ModuleHost:
                     logger.error(f"{instance_id}: no user left for a new module instance; not started")
 
     async def _start(self, instance_id: str, cfg: dict, globals_cfg: dict, awake: bool) -> None:
-        """A process for the instance: one end of its two socket pairs to the host, which runs it as its user."""
+        """A process for the instance, started with its settings."""
+        conn = await self._open_instance(instance_id)
+        conn.key = settings_key(cfg, globals_cfg)
+        conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
+        self._instances[instance_id] = conn
+        # Served first: if the start can't be sent, its connection ends there, and it is started again like a crash
+        run_in_background(self._serve(conn), name=f"module-{instance_id}")
+        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake,
+                         "hidden": instance_id in self._hidden})
+
+    async def _open_instance(self, instance_id: str) -> Connection:
+        """A process named instance_id: one end of its two socket pairs to the host, which runs it as its user."""
         messages_ours, messages_theirs = socket.socketpair()
         descriptors_ours, descriptors_theirs = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
         try:
@@ -489,14 +519,7 @@ class ModuleHost:
             messages_theirs.close()
             descriptors_theirs.close()
         reader, writer = await asyncio.open_unix_connection(sock=messages_ours, limit=LINE_LIMIT)
-        conn = Connection(reader, writer, descriptors_ours, instance_id)
-        conn.key = settings_key(cfg, globals_cfg)
-        conn.module = str(cfg.get("module") or instance_id).replace("-", "_")
-        self._instances[instance_id] = conn
-        # Served first: if the start can't be sent, its connection ends there, and it is started again like a crash
-        run_in_background(self._serve(conn), name=f"module-{instance_id}")
-        await conn.send({"t": "start", "gen": 1, "modules": {instance_id: cfg}, "globals": globals_cfg, "awake": awake,
-                         "hidden": instance_id in self._hidden})
+        return Connection(reader, writer, descriptors_ours, instance_id)
 
     async def _serve(self, conn: Connection) -> None:
         """An instance's connection until it ends; then, unless the core stopped it, start it again or,

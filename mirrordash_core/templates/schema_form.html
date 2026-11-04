@@ -155,6 +155,33 @@
     <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm"></div>
 {%- endmacro %}
 
+{% macro sub_password(f) -%}
+<div class="sub-form-group wide"><label for="{{ f.id }}">{{ f.title }}</label>
+    <div class="pw-field"><input type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" autocomplete="off"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
+{%- endmacro %}
+
+{# A list or search setting (ARCHITECTURE #48): its choices come from the module (choices.js setUpChoiceFields), saved
+   as [id] and [name]. A list is the browser's own <select>, a search a text box with suggestions; until the
+   module answers, the saved choice is the only option, so saving the form unchanged keeps it. #}
+{% macro choice(f, sub=false) -%}
+{% set saved = f.stored_value if f.stored_value is mapping and f.stored_value.get("id") else {} %}
+<div class="{{ 'sub-form-group' if sub else 'form-group schema-field' }} wide">
+    {%- if sub %}<label for="{{ f.id }}">{{ f.title }}</label>{% else %}{{ label(f) }}{% endif %}
+    <div class="choice-field" data-choice-field="{{ f.schema.format }}" data-choice-key="{{ f.key }}">
+    {%- if f.schema.format == "list" %}
+        <select id="{{ f.id }}" name="{{ f.name }}[id]" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input>
+            {%- if saved %}<option value="{{ saved.id }}" selected>{{ saved.name }}</option>{% else %}<option value="">Choose…</option>{% endif %}</select>
+    {%- else %}
+        <input type="hidden" name="{{ f.name }}[id]" value="{{ saved.id }}" data-choice-id>
+        <input type="text" id="{{ f.id }}" value="{{ saved.name }}" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input
+               role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ f.id }}-choices" autocomplete="off" spellcheck="false">
+        <ul class="choice-suggestions" id="{{ f.id }}-choices" role="listbox" hidden></ul>
+    {%- endif %}
+        <input type="hidden" name="{{ f.name }}[name]" value="{{ saved.name }}" data-choice-name>
+        <p class="field-description choice-status" aria-live="polite"></p>
+    </div></div>
+{%- endmacro %}
+
 {# One card in a list setting (e.g. a calendar), folded to one line (admin.js arrayItemSummary fills it in) #}
 {% macro array_item(index, item_title, fields, is_open) -%}
 <details class="array-item-card"{% if is_open %} open{% endif %}>

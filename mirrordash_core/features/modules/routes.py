@@ -26,6 +26,7 @@ from mirrordash_core.config import (
 from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
+from mirrordash_core.features.modules.choice_field import choice_request
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
@@ -206,6 +207,30 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
                  "max_width": card.get("max_width") or "", "opacity": card.get("opacity"),
                  "scripts": config is not None and scripts_allowed(find_entry_point(module_name), config),
                  "modules_css": MODULES_CSS.read_text(encoding="utf-8")})
+
+
+@router.post("/panels/modules/choices/{module_name}", dependencies=[Depends(require_api_key)])
+async def module_choices_route(module_name: str, request: Request, instance_id: str | None = None,
+                               field: str = "", query: str = "") -> dict:
+    """The choices of a list or search setting of the unsaved form (ARCHITECTURE #48), from the module:
+    {"choices": [{"id", "name", "detail"}, ...]} or {"error": text shown under the field}."""
+    try:
+        config, instance_id = await _config_from_form(module_name, request, instance_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            raise
+        return {"error": f"Fix the settings first: {e.detail}"}
+    module_cfg = config["modules"][instance_id]
+    try:
+        ask = choice_request(field, get_module_schema(find_entry_point(module_name)), module_cfg, query)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    try:
+        return await module_host.choices(instance_id, module_cfg, ask)
+    except TimeoutError:
+        return {"error": "The module didn't answer in time."}
+    except (ConnectionError, OSError):
+        return {"error": "The modules aren't running right now."}
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])

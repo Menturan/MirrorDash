@@ -21,6 +21,9 @@ for that one instance (Host):
                     hidden {on}                             the screen hides its card (schedule, privacy mode)
                     event {name, data}                      a hardware event for the modules' event bus
                     http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
+                    preview {id, instance, config, globals}  the card the admin's unsaved form would show (preview.py)
+                    choices {id, instance, config, globals, kind, key, item, query}
+                                                            a list or search setting's choices (choices.py)
                     diagnose {id}                           its GPIO lines (Logs → Diagnostics)
                     reply {id, window}                      the answer to video_window
                     control {name, value}                   a command for what it exposes, checked (on_control)

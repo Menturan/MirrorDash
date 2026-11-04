@@ -27,6 +27,7 @@ from fastapi import APIRouter, FastAPI
 
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import GpioLines
+from mirrordash_core.features.modules.choices import setting_choices
 from mirrordash_core.features.modules.loader import ModuleLoader
 from mirrordash_core.features.modules.preview import render_preview
 
@@ -256,6 +257,8 @@ class Host:
             self._spawn(self._http(message))
         elif kind == "preview":
             self._spawn(self._preview(message))
+        elif kind == "choices":
+            self._spawn(self._choices(message))
         elif kind == "control":
             self._spawn(self.loader.control(str(message.get("name")), message.get("value")))
         elif kind == "diagnose":
@@ -288,6 +291,14 @@ class Host:
             except Exception as e:
                 logger.warning(f"{message['instance']}: its preview failed: {e!r}")
         await self.link.send({"t": "reply", "id": message.get("id"), "html": html if isinstance(html, str) else None})
+
+    async def _choices(self, message: dict) -> None:
+        """The choices of a list or search setting in the admin's unsaved form (choices.py)."""
+        reply = {"error": "Not a list or search setting."}
+        if isinstance(message.get("config"), dict) and isinstance(message.get("instance"), str):
+            reply = await setting_choices(message["instance"], message["config"], message.get("globals") or {},
+                                          self.link, message)
+        await self.link.send({"t": "reply", "id": message.get("id"), **reply})
 
     async def _http(self, message: dict) -> None:
         instance_id = message.get("instance")

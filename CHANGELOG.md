@@ -9,6 +9,9 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **Module settings can be lists and searches filled by the module**, such as a list of the schools in the municipality you just picked, or a place found as you type. They work while you add a module, before it is saved, and the settings preview does too.
+- A password or API key in a list in a module's settings is hidden, with a **Show** button, like the others.
+
 - **When the screen keeps crashing**, the mirror pauses modules until it stops: first the module you changed last, then those in Background and Foreground and video, and at last everything but the clock, with a message on the screen. The Dashboard says what was paused and when; **Show Again** brings them back, and so does saving a paused module's settings. Before, a module that crashed the screen could leave it dead until the power was cut, and crash it again after.
 
 ### OS image

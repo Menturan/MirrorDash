@@ -186,6 +186,8 @@ The biggest part of the core, in `features/modules/`:
 | `api_proxy.py` | core | `/api/modules/<instance>/...` forwarded to a module's own routes |
 | `lan.py` | core | which home-network addresses each instance may reach |
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |
+| `choice_field.py` | core | which list or search setting the settings drawer asks the choices of (#48) |
+| `settings_process.py` | core | a short-lived process of a module none of whose instances runs, for the settings drawer (#48) |
 | `files.py` | core | files the owner uploads for a module (photos) |
 | `module_files.py` | both | finding installed modules and reading their files without running them |
 | `forkserver.py` | host | makes every process in the module host, as the right user |
@@ -194,6 +196,8 @@ The biggest part of the core, in `features/modules/`:
 | `loader.py` | host | starts a module and gives it its helpers |
 | `module_fetch.py` | host | the module's `self.fetch`, with a saved last good answer |
 | `preview.py` | host | the settings drawer's preview from sample answers (#43) |
+| `choices.py` | host | a list or search setting's choices from the module's `settings_list_<key>` / `settings_search_<key>` (#48) |
+| `throwaway.py` | host | a throwaway instance made from the unsaved form, for the preview and the choices |
 | `sandbox_checks.py` | host | what a module could reach that it must not |
 | `site_folders.py`, `package_names.py` | host | where and as whom each module is installed |
 

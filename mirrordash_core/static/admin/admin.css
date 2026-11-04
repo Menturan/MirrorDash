@@ -1467,6 +1467,13 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .swatch-row { display: flex; align-items: center; gap: 10px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .sub-form-group .swatch-value { width: 120px; }
+/* A list or search setting (ARCHITECTURE #48, choices.js): a search's suggestions under its box, the status under both */
+.choice-status { margin: 4px 0 0; }
+.choice-status:empty { display: none; }
+.choice-suggestions { list-style: none; margin: 4px 0 0; padding: 0; border: 1px solid #3f3f46; border-radius: 6px; background: #18181b; max-height: 16rem; overflow-y: auto; }
+.choice-suggestions li { padding: 7px 10px; font-size: 0.85rem; color: #e4e4e7; cursor: pointer; }
+.choice-suggestions li span { color: var(--text-muted); margin-left: 6px; }
+.choice-suggestions li.active, .choice-suggestions li:hover { background: #27272a; }
 .color-swatch-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #52525b; cursor: pointer; outline: none; transition: transform 0.1s; }
 .color-swatch-btn.active { border: 2px solid white; transform: scale(1.15); box-shadow: 0 0 8px white; }
 .icon-picker { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }

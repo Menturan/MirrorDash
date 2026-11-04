@@ -52,6 +52,8 @@ STANDARD_SCHEMA = {"properties": {
                  }},
 }}
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
+# A setting whose choices the module gives (ARCHITECTURE #48): saved as {"id", "name"}
+CHOICE_FORMATS = ("list", "search")
 # Fields shown as a password or a text box by their name when the schema doesn't say
 SECRET_KEYS = ("api_key", "password", "token", "secret")
 LONG_TEXT_KEYS = ("description", "text", "message", "preamble")
@@ -163,6 +165,7 @@ WIDGET_RULES = [
     (lambda key, p: bool(p.get("enum")), "select"),
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "string" and bool(_item_schema(p).get("enum")), "checkboxes"),
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "object", _array),
+    (lambda key, p: p.get("format") in CHOICE_FORMATS, "choice"),
     (lambda key, p: p.get("type") == "object", _object),
     (lambda key, p: p.get("type") in ("integer", "number") and "minimum" in p and "maximum" in p, "slider"),
     (lambda key, p: p.get("type") in ("integer", "number"), "number"),
@@ -198,6 +201,23 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     return "\n".join(parts)
 
 
+def _sub_choice(field: Field) -> str:
+    return _macros().choice(field, True)
+
+
+def _sub_widget(key: str, prop: dict):
+    """The input of a field in a list item (the colour and icon pickers by their names aside)."""
+    if prop.get("format") in CHOICE_FORMATS:
+        return _sub_choice
+    if prop.get("enum"):
+        return "sub_select"
+    if prop.get("format") == "icon":
+        return "sub_icon"
+    if prop.get("format") == "password" or key in SECRET_KEYS:
+        return "sub_password"
+    return "sub_text"
+
+
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str) -> str:
     """One card in a list setting (e.g. a calendar), with move up/down and remove."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key):
@@ -208,8 +228,7 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
         field = Field(key, prop, prop.get("default", "") if value is None else value,
                       _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
                       name_prefix, "")
-        widget = ({"color": "sub_swatches", "icon": "sub_icons"}.get(key) or
-                  ("sub_select" if prop.get("enum") else "sub_icon" if prop.get("format") == "icon" else "sub_text"))
+        widget = ({"color": "sub_swatches", "icon": "sub_icons"}.get(key) or _sub_widget(key, prop))
         fields.append(_render(widget, field))
     # A new, empty item opens to be filled in
     return str(_macros().array_item(index, str(item_title), Markup("".join(fields)), not any(item_val.values())))
@@ -304,6 +323,9 @@ def _cast_to_schema_type(value, prop: dict):
         if item_schema.get("type") == "object":
             return [cast_values_by_schema(item, item_schema) if isinstance(item, dict) else item for item in items]
         return items
+    if prop.get("format") in CHOICE_FORMATS:  # {"id", "name"} as text, or {} for no choice
+        return ({"id": str(value["id"]), "name": str(value.get("name", ""))}
+                if isinstance(value, dict) and value.get("id") not in (None, "") else {})
     if isinstance(value, dict):
         return cast_values_by_schema(value, prop)
     return value

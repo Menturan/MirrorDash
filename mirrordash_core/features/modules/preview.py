@@ -11,23 +11,15 @@ import asyncio
 import inspect
 import json
 import re
-import site
-import sys
-import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 
-from mirrordash_core.features.modules.loader import (
-    _inject_module_helpers,
-    _settings_for_instance,
-)
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,
-    load_translations,
     module_file,
-    module_folder,
     package_dir,
 )
+from mirrordash_core.features.modules.throwaway import throwaway_instance
 
 PREVIEW_TIMEOUT = 10  # seconds a preview's render() may take
 SAFE_FILE = re.compile(r"^[A-Za-z0-9_-][A-Za-z0-9_.-]{0,127}$")  # a file in a module's preview folder: no path
@@ -78,14 +70,6 @@ def preview_fixtures(pkg_dir: Path | None) -> dict[str, bytes] | None:
 
 
 
-async def _not_in_a_preview(*args, **kwargs):
-    raise RuntimeError("not in a preview")  # a RuntimeError, as self.gpio gives for a pin it can't have
-
-
-async def _shown_nowhere(*args, **kwargs) -> None:
-    """A preview's self.expose: the value goes nowhere, and the card is drawn as usual."""
-
-
 async def render_preview(instance_id: str, module_cfg: dict, globals_config: dict, link) -> str | None:
     """The card module_cfg (the admin's unsaved form) would show, rendered once by a throwaway instance from
     the module's sample answers (preview_fixtures, ARCHITECTURE #43); None when the module has none or no
@@ -94,19 +78,8 @@ async def render_preview(instance_id: str, module_cfg: dict, globals_config: dic
     ep = find_entry_point(module_cfg.get("module") or instance_id)
     if ep is None or (fixtures := preview_fixtures(pkg_dir := package_dir(ep))) is None:
         return None
-    if (folder := module_folder(ep)) and folder not in sys.path:
-        site.addsitedir(folder)
-    plugin_class = ep.load()
-    translations = load_translations(pkg_dir, globals_config.get("language", "en"))
-    with tempfile.TemporaryDirectory(prefix="preview-") as scratch:  # on a mirror under its cache folder (TMPDIR)
-        settings = _settings_for_instance(instance_id, module_cfg, globals_config, translations, scratch)
-        plugin = plugin_class(settings)
-        plugin.gpio = plugin.video_window = plugin.video_is_playing = _not_in_a_preview
-        plugin.expose = _shown_nowhere
-        _inject_module_helpers(plugin, plugin_class.__module__.split(".")[0], translations, instance_id, settings, link, fixtures)
+    with throwaway_instance(ep, pkg_dir, instance_id, module_cfg, globals_config, link, fixtures) as plugin:
         render = getattr(plugin, "render", None)
         if not inspect.iscoroutinefunction(render):
             return None
         return await asyncio.wait_for(render(), PREVIEW_TIMEOUT)
-
-
