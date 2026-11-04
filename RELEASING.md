@@ -169,11 +169,43 @@ says so.
 Everything is committed straight to `master`: there are no branches, pull requests or Dependabot (it
 works through pull requests). GitHub Actions runs the tests on every push instead.
 
-```
-git push (master)  ──► Tests
-release.py 1 or 2  ──► tag vX.Y.Z / vX.Y.ZrcN + GitHub release ──► Publish to PyPI: Tests → build → publish ──► mirrors update
-release.py 3       ──► Build OS Image: Tests → build ──► pre-release vX.Y.Z-osN ──► test mirrors install it (or flash the image)
-release.py 4       ──► that same pre-release becomes the vX.Y.Z-osN release (nothing is rebuilt)
+```mermaid
+flowchart LR
+    subgraph you["You run"]
+        direction TB
+        push["git push<br/>to master"]
+        r12["release.py<br/><b>1</b> test · <b>2</b> real"]
+        r3["release.py <b>3</b><br/>OS test version"]
+        r4["release.py <b>4</b><br/>OS release"]
+    end
+    subgraph github["GitHub Actions"]
+        direction TB
+        tests["<b>Tests</b>"]
+        publish["tag vX.Y.Z / vX.Y.ZrcN + release<br/>→ <b>Publish to PyPI</b><br/>Tests → build → publish"]
+        build["<b>Build OS Image</b><br/>Tests → build, about 30 min<br/>→ pre-release vX.Y.Z-osN"]
+        promote["the same pre-release becomes<br/>the vX.Y.Z-osN release<br/><i>nothing is rebuilt</i>"]
+    end
+    subgraph mirrors["The mirrors"]
+        direction TB
+        app["update the app<br/><i>a test version: only those with Test versions on</i>"]
+        testos["test mirrors install it<br/>or you flash the image"]
+        allos["every mirror is offered<br/>the system update"]
+    end
+    push --> tests
+    r12 --> publish --> app
+    r3 --> build --> testos
+    r4 --> promote --> allos
+    build -.-> promote
+
+    classDef side fill:#f6f8fa,stroke:#57606a,color:#1f2328
+    classDef core fill:#ddf4ff,stroke:#0969da,color:#1f2328
+    classDef mod fill:#fff8c5,stroke:#9a6700,color:#1f2328
+    class push,r12,r3,r4 side
+    class tests,publish,build,promote core
+    class app,testos,allos mod
+    style you fill:none,stroke:#57606a
+    style github fill:none,stroke:#0969da
+    style mirrors fill:none,stroke:#9a6700
 ```
 
 | Workflow (`.github/workflows/`) | Started by | What it does | Result |
