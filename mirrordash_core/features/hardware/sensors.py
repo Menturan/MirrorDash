@@ -8,11 +8,8 @@ one, at most once in SENSOR_CACHE_SECONDS, and gives the last good reading when 
 
 import asyncio
 import glob
-import logging
 import os
 import time
-
-logger = logging.getLogger("mirrordash.core.hardware")
 
 
 def _find_iio_dir(driver_name: str) -> str | None:

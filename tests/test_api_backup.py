@@ -356,7 +356,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, module_site, client
 
 @pytest.mark.asyncio
 async def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
-    from mirrordash_core.features.backup.service import (
+    from mirrordash_core.features.backup.archive import (
         _openssl,
         is_encrypted,
         read_manifest,
@@ -380,7 +380,7 @@ async def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_pat
 async def test_an_old_zipcrypto_backup_says_so(tmp_path):
     import subprocess
 
-    from mirrordash_core.features.backup.service import read_manifest
+    from mirrordash_core.features.backup.archive import read_manifest
     (tmp_path / "backup_manifest.json").write_text('{"backup_version": "1.0"}')
     subprocess.run(["zip", "-q", "-P", "secret", "old.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
     with pytest.raises(ValueError, match="older"):
@@ -408,7 +408,7 @@ def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, modul
     assert raw.startswith(b"Salted__") and b"wifi pass" not in raw and b"old-hash" not in raw
 
     async def contents(pw):
-        from mirrordash_core.features.backup.service import plain_zip
+        from mirrordash_core.features.backup.archive import plain_zip
         async with plain_zip(str(archive), pw) as zip_path:
             if zip_path is None:
                 return None

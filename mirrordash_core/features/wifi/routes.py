@@ -137,12 +137,8 @@ async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(d
     """Set a new mirror up from an encrypted backup: join a Wi-Fi network it carries, then restore it
     (modules come from GitHub, so the network comes first). Open like the rest of the setup page only
     while the mirror has no admin password: before that anyone near it could set it up anyway."""
-    from mirrordash_core.features.backup.service import (
-        backup_wifi,
-        read_manifest,
-        restore_backup,
-        temp_upload,
-    )
+    from mirrordash_core.features.backup.archive import backup_wifi, read_manifest
+    from mirrordash_core.features.backup.service import restore_backup, temp_upload
     size = 0
     with open(temp_upload(), "wb") as out:
         while chunk := await file.read(1024 * 1024):

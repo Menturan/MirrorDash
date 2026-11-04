@@ -1,17 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Backups: a .mirror file is a zip of the settings, the data dir, the modules' data and the source of
 local modules, with a manifest of the installed modules to reinstall. With a password the whole zip is
-encrypted with openssl and also carries what logs in (the admin password, the pi user's, the Wi-Fi)."""
+encrypted with openssl and also carries what logs in (the admin password, the pi user's, the Wi-Fi).
+
+This file makes, lists, deletes and restores backups. Beside it:
+  archive.py          the .mirror file: zip, encryption, reading its manifest
+  secret_settings.py  the secrets a plain backup leaves out, and keeping this mirror's own on a restore
+  safe_copy.py        copying the modules' data out of and back into the module host's folder
+  routes.py           the admin page's Backup panel
+"""
 
 import asyncio
 import contextlib
-import copy
 import importlib.metadata
 import json
 import logging
 import os
 import shutil
-import stat
 import tempfile
 import zipfile
 from datetime import datetime
@@ -25,6 +30,15 @@ from mirrordash_core.config import (
     get_module_dir,
     load_config,
     save_config,
+)
+from mirrordash_core.features.backup.archive import _openssl, is_encrypted, plain_zip
+from mirrordash_core.features.backup.safe_copy import (
+    _replace_in_module_folder,
+    copy_out_of_module_folder,
+)
+from mirrordash_core.features.backup.secret_settings import (
+    _keep_this_mirrors_secrets,
+    without_secrets,
 )
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 from mirrordash_core.features.modules.client import module_host
@@ -50,16 +64,9 @@ NEVER_BACKED_UP = ("config.json", "config.json.bak", "config.json.broken-*", "se
 TEMPORARY_FILES = ("*.tmp", "*.lock", "*-journal", "*-wal", "*-shm")
 # What a local module's folder holds that isn't its source
 NOT_MODULE_SOURCE = (".git", "__pycache__", ".venv", "dist", "build", "*.pyc", ".idea")
-# The zip's own encryption, which only MirrorDash versions before openssl used (zipfile can't read it)
-ZIP_ENTRY_IS_ENCRYPTED = 0x1
 
 # In a plain backup only: the pi user's password (an encrypted one carries it, and the Wi-Fi)
 SECRET_FILES = ("pi_password.hash",)
-
-# openssl enc's header: the backup is encrypted. ponytail: AES-256-CBC with PBKDF2, no MAC; a changed
-# file fails to unpack as a zip rather than being detected. Upgrade path: AES-GCM with `cryptography`
-# (`openssl enc` refuses AEAD ciphers, also in 3.x).
-ENCRYPTED_MAGIC = b"Salted__"
 
 
 def get_modules_dir() -> Path:
@@ -89,156 +96,6 @@ def venv_distributions(venv_dir: Path | None = None, **kwargs):
     if venv_dir is not None:
         kwargs["path"] = [str(p) for p in Path(venv_dir).glob("lib/python3.*/site-packages")]
     return importlib.metadata.distributions(**kwargs)
-
-
-# Open a folder, and fail (ELOOP/ENOTDIR) rather than follow a link in its place
-DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-
-
-def copy_out_of_module_folder(src: Path, dst: Path, ignore) -> None:
-    """shutil.copytree(src, dst, ignore=ignore) out of a folder the module host writes, through file
-    descriptors (os.fwalk, O_NOFOLLOW): no symlink is followed, not even one swapped in while it copies,
-    so the host can't carry the core's data into a backup. Links themselves are left out."""
-    for root, dirs, files, root_fd in os.fwalk(src, follow_symlinks=False):
-        target = dst / os.path.relpath(root, src)
-        target.mkdir(parents=True, exist_ok=True)
-        ignored = ignore(root, dirs + files)
-        dirs[:] = [d for d in dirs if d not in ignored]
-        for name in files:
-            if name in ignored:
-                continue
-            try:
-                # O_NONBLOCK: a FIFO put there opens at once instead of hanging, and is then skipped below
-                file_descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=root_fd)
-            except OSError:  # a link (ELOOP), or gone meanwhile
-                continue
-            with open(file_descriptor, "rb") as source_file:
-                if stat.S_ISREG(os.fstat(file_descriptor).st_mode):
-                    with open(target / name, "wb") as copy:
-                        shutil.copyfileobj(source_file, copy)
-
-
-def _open_dir(root: Path, parts: tuple[str, ...]) -> int:
-    """root/parts... opened as a directory, each part made if missing and none followed if it is a link."""
-    folder_descriptor = os.open(root, DIR_FLAGS)
-    try:
-        for part in parts:
-            with contextlib.suppress(FileExistsError):
-                os.mkdir(part, dir_fd=folder_descriptor)
-            parent_descriptor = folder_descriptor
-            folder_descriptor = os.open(part, DIR_FLAGS, dir_fd=parent_descriptor)
-            os.close(parent_descriptor)
-    except OSError:
-        os.close(folder_descriptor)
-        raise
-    return folder_descriptor
-
-
-def _copy_into_open_folder(src: Path, dir_fd: int) -> None:
-    """src's files into the open directory, group-writable for the module host (pi writes them); links
-    left out. Nothing at dir_fd is followed: made with O_EXCL and O_NOFOLLOW."""
-    for entry in os.scandir(src):
-        if entry.is_symlink():
-            continue
-        if entry.is_dir():
-            os.mkdir(entry.name, dir_fd=dir_fd)
-            fd = os.open(entry.name, DIR_FLAGS, dir_fd=dir_fd)
-            try:
-                os.fchmod(fd, 0o2770)
-                _copy_into_open_folder(Path(entry.path), fd)
-            finally:
-                os.close(fd)
-        else:
-            fd = os.open(entry.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o660, dir_fd=dir_fd)
-            with open(fd, "wb") as out, open(entry.path, "rb") as f:
-                os.fchmod(fd, 0o660)
-                shutil.copyfileobj(f, out)
-
-
-def _replace_in_module_folder(src: Path, dest: Path) -> bool:
-    """Copy src over dest, in a folder the module host writes, through file descriptors: no symlink there
-    is followed, not even one swapped in meanwhile (a link would have pi delete or write wherever it
-    points, the core's data dir). False when a folder on the way is a link."""
-    host_dir = get_module_dir()
-    root, parts = (host_dir, dest.parent.relative_to(host_dir).parts) if dest.is_relative_to(host_dir) \
-        else (dest.parent, ())
-    try:
-        parent = _open_dir(root, parts)
-    except OSError as e:
-        logger.error(f"{dest.parent} isn't a folder of its own ({e}): {dest.name} was not restored")
-        return False
-    try:
-        with contextlib.suppress(FileNotFoundError):
-            if stat.S_ISDIR(os.stat(dest.name, dir_fd=parent, follow_symlinks=False).st_mode):
-                shutil.rmtree(dest.name, dir_fd=parent)  # fd-based: follows no link either
-            else:
-                os.unlink(dest.name, dir_fd=parent)
-        os.mkdir(dest.name, dir_fd=parent)
-        fd = os.open(dest.name, DIR_FLAGS, dir_fd=parent)
-        try:
-            os.fchmod(fd, 0o2770)
-            _copy_into_open_folder(src, fd)
-        finally:
-            os.close(fd)
-    finally:
-        os.close(parent)
-    return True
-
-
-# The secrets in the config a plain backup leaves out, as (section, key): the admin password's hash and
-# recovery code, the MQTT broker's password, and the Matter pairing code (it lets a phone add the mirror)
-SECRET_CONFIG_ENTRIES = (("admin_auth", None), ("mqtt", "password"), ("matter", "passcode"), ("matter", "discriminator"))
-
-
-def secret_module_settings(instance_config: dict) -> set[str]:
-    """The settings of a module instance that are secrets (an API key, a password): what its config_schema
-    shows as a password field (format password, or a name like api_key or token, forms.py)."""
-    from mirrordash_core.features.modules.module_files import find_entry_point
-    from mirrordash_core.features.settings.schema import get_module_schema
-    from mirrordash_core.forms import SECRET_KEYS
-    ep = find_entry_point(str(instance_config.get("module", "")))
-    properties = ((get_module_schema(ep) if ep else None) or {}).get("properties", {})
-    return {key for key, prop in properties.items()
-            if isinstance(prop, dict) and (prop.get("format") == "password" or key in SECRET_KEYS)}
-
-
-def without_secrets(config: dict) -> dict:
-    """The config for a plain backup: no password, key or pairing code in it (_keep_this_mirrors_secrets
-    puts the mirror's own back on a restore)."""
-    config = copy.deepcopy(config)
-    for section, key in SECRET_CONFIG_ENTRIES:
-        if key is None:
-            config.pop(section, None)
-        elif isinstance(config.get(section), dict):
-            config[section].pop(key, None)
-    for instance_config in config.get("modules", {}).values():
-        if isinstance(instance_config, dict):
-            for key in secret_module_settings(instance_config):
-                instance_config.pop(key, None)
-    return config
-
-
-def _keep_this_mirrors_secrets(restored: dict, current: dict) -> None:
-    """A plain backup has no secrets: what it left out comes from this mirror's own settings, where it has
-    them (the same module instance for a module's key)."""
-    for section, key in SECRET_CONFIG_ENTRIES:
-        current_section = current.get(section)
-        if key is None:
-            if not restored.get(section) and current_section:
-                restored[section] = current_section
-        elif isinstance(current_section, dict) and key in current_section:
-            restored_section = restored.setdefault(section, {})
-            if isinstance(restored_section, dict) and key not in restored_section:
-                restored_section[key] = current_section[key]
-    current_modules = current.get("modules", {})
-    for instance_id, instance_config in restored.get("modules", {}).items():
-        current_instance = current_modules.get(instance_id)
-        if not (isinstance(instance_config, dict) and isinstance(current_instance, dict)
-                and current_instance.get("module") == instance_config.get("module")):
-            continue
-        for key in secret_module_settings(instance_config):
-            if key not in instance_config and key in current_instance:
-                instance_config[key] = current_instance[key]
 
 
 def installed_modules() -> list[dict]:
@@ -275,62 +132,6 @@ def backup_file(filename: str) -> str:
     if not os.path.isfile(path):  # "" or "." is the folder itself
         raise HTTPException(status_code=404, detail="Backup file not found")
     return path
-
-
-def is_encrypted(path: str) -> bool:
-    """Whether a backup file is encrypted (made with a password)."""
-    with open(path, "rb") as f:
-        return f.read(len(ENCRYPTED_MAGIC)) == ENCRYPTED_MAGIC
-
-
-async def _openssl(password: str, *args: str) -> bool:
-    """`openssl enc` with the backup's cipher; the password goes in the environment, never on the
-    command line (where `ps` shows it, and where a space split it with the old zip tool)."""
-    proc = await asyncio.create_subprocess_exec(
-        "openssl", "enc", "-aes-256-cbc", "-pbkdf2", "-iter", "600000", *args, "-pass", "env:MIRRORDASH_BACKUP_PASS",
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE,
-        env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "MIRRORDASH_BACKUP_PASS": password})
-    _, err = await proc.communicate()
-    if proc.returncode != 0:
-        logger.info(f"openssl enc failed: {err.decode(errors='replace').strip()}")
-    return proc.returncode == 0
-
-
-@contextlib.asynccontextmanager
-async def plain_zip(path: str, password: str | None):
-    """The backup as a zip: the file itself, or decrypted into a temporary file. None when it's
-    encrypted and the password is missing or wrong."""
-    if not is_encrypted(path):
-        yield path
-        return
-    if not password:
-        yield None
-        return
-    with tempfile.NamedTemporaryFile(dir=os.path.dirname(path), suffix=".zip") as tmp:
-        # A wrong password fails at the padding, or (about 1 in 256) gives bytes that aren't a zip
-        ok = await _openssl(password, "-d", "-in", path, "-out", tmp.name)
-        yield tmp.name if ok and zipfile.is_zipfile(tmp.name) else None
-
-
-async def read_manifest(path: str, password: str | None = None) -> dict | None:
-    """A backup's manifest, or None when it's encrypted and the password is missing or wrong.
-    Raises zipfile.BadZipFile, KeyError or ValueError for a file that isn't a backup."""
-    async with plain_zip(path, password) as zip_path:
-        if zip_path is None:
-            return None
-        with zipfile.ZipFile(zip_path) as zf:
-            if zf.getinfo("backup_manifest.json").flag_bits & ZIP_ENTRY_IS_ENCRYPTED:
-                raise ValueError("This backup was made by an older MirrorDash version and can't be read.")
-            return json.loads(zf.read("backup_manifest.json").decode("utf-8"))
-
-
-async def backup_wifi(path: str, password: str | None) -> list[dict]:
-    """The Wi-Fi networks an encrypted backup carries ([] for a plain one or a wrong password)."""
-    async with plain_zip(path, password) as zip_path:
-        if zip_path is None:
-            return []
-        with zipfile.ZipFile(zip_path) as zf:
-            return json.loads(zf.read("wifi.json")) if "wifi.json" in zf.namelist() else []
 
 
 async def list_backups() -> dict:

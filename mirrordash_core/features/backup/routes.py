@@ -20,12 +20,12 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.features.auth.routes import MIN_PASSWORD
+from mirrordash_core.features.backup.archive import read_manifest
 from mirrordash_core.features.backup.service import (
     backup_file,
     create_backup,
     delete_backup,
     list_backups,
-    read_manifest,
     restore_backup,
     temp_upload,
 )

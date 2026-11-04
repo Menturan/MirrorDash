@@ -15,7 +15,7 @@ AUTH = {"admin_auth": {"hash": hash_password("secret", "salt"), "salt": "salt"}}
 
 def make_backup(tmp_path, password: str | None, wifi: list | None) -> bytes:
     """A minimal .mirror file: plain, or encrypted with openssl like create_backup does."""
-    from mirrordash_core.features.backup.service import _openssl
+    from mirrordash_core.features.backup.archive import _openssl
     plain = tmp_path / "plain.zip"
     with zipfile.ZipFile(plain, "w") as zf:
         zf.writestr("backup_manifest.json", json.dumps({"backup_version": "2.0", "modules": []}))
