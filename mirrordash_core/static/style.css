@@ -272,12 +272,6 @@ html[data-video-is-playing] .carousel-slide {
     transition: none;
 }
 
-/* While a video plays the foreground is gone, not just still: decoration in front of a video is in the way,
-   and its full-screen layers hold GPU memory and redraws the Pi 3 needs for the video (ARCHITECTURE #33) */
-html[data-video-is-playing] #foreground {
-    display: none;
-}
-
 /* ============================================================
    #9: WebSocket connection status indicator
    ============================================================ */
