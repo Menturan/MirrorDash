@@ -191,7 +191,7 @@ _switch_task: asyncio.Task | None = None
 async def post_wifi_connect(request: Request):
     """Answers first, then switches: the phone loses the mirror the moment it changes network."""
     global _switch_task
-    form = await request.form()
+    form = await request.form(max_files=0)
     ssid = str(form.get("ssid") or "").strip()
     if not ssid:
         raise HTTPException(status_code=400, detail="Choose a network")

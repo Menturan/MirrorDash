@@ -142,7 +142,7 @@ async def get_devices_card(request: Request):
 
 @router.post("/panels/system/devices/add", dependencies=[Depends(require_api_key)])
 async def add_device(request: Request):
-    form = await request.form()
+    form = await request.form(max_files=0)
     device_type = form.get("type", "")
     config = load_config()
     devices = list(config.get("system", {}).get("devices", []))
@@ -168,7 +168,7 @@ async def add_device(request: Request):
 @router.post("/panels/system/devices/remove", dependencies=[Depends(require_api_key)])
 async def remove_device(request: Request):
 
-    device_type = (await request.form()).get("type", "")
+    device_type = (await request.form(max_files=0)).get("type", "")
     config = load_config()
     devices = [device for device in config.get("system", {}).get("devices", []) if device.get("type") != device_type]
     label = DEVICE_TYPES.get(device_type, {}).get("label", "Device")
@@ -177,7 +177,7 @@ async def remove_device(request: Request):
 
 @router.post("/panels/system/devices/button-actions", dependencies=[Depends(require_api_key)])
 async def save_button_actions(request: Request):
-    form = await request.form()
+    form = await request.form(max_files=0)
     actions = {press: form.get(f"action_{press}", "none") for press in PRESS_TYPES}
     if any(action not in BUTTON_ACTIONS for action in actions.values()):
         return notify("Unknown button action.", "error")

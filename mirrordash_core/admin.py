@@ -69,9 +69,12 @@ def _live_sessions() -> dict[str, float]:
     global _sessions
     if _sessions is None:
         try:
-            _sessions = json.loads(_sessions_file().read_text())
+            saved = json.loads(_sessions_file().read_text())
         except (OSError, ValueError):
-            _sessions = {}
+            saved = {}
+        # A damaged file logs every browser out instead of failing every admin request
+        _sessions = ({k: v for k, v in saved.items() if isinstance(v, (int, float))}
+                     if isinstance(saved, dict) else {})
     now = time.time()
     for key in [k for k, expires in _sessions.items() if expires < now]:
         del _sessions[key]

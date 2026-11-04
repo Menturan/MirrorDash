@@ -295,3 +295,7 @@ def test_a_device_this_version_doesnt_know_and_a_pin_that_isnt_a_number(mock_loa
     r = client.post("/admin/panels/system/devices/add", data={"type": "pir", "pin": "²"})
     assert r.status_code == 200 and "can't be used" in _message(r)
     mock_save.assert_not_called()
+    # A file where the pin goes: a 400, not a str method called on an upload (a server error)
+    r = client.post("/admin/panels/system/devices/add", data={"type": "pir"}, files={"pin": ("pin", b"22")})
+    assert r.status_code == 400
+    mock_save.assert_not_called()

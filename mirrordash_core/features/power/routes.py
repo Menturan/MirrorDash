@@ -110,7 +110,7 @@ async def post_panel_usb(request: Request):
 @router.post("/panels/power/screen", dependencies=[Depends(require_api_key)])
 @router.post("/panels/system/screen", dependencies=[Depends(require_api_key)])
 async def post_panel_screen(request: Request):
-    form_data = await request.form()
+    form_data = await request.form(max_files=0)
     state = form_data.get("state")
     if state not in ("on", "off"):
         raise HTTPException(status_code=400, detail="Invalid state")

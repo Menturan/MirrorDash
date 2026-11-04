@@ -216,9 +216,10 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
 
 
 async def read_form(request) -> dict:
-    """The posted form as nested data: `a[b][c]` keys become dicts, repeated keys lists."""
+    """The posted form as nested data: `a[b][c]` keys become dicts, repeated keys lists.
+    max_files=0 here and in every text form: a posted file is a 400, never an UploadFile where a str goes."""
     flat = {}
-    for key, value in (await request.form()).multi_items():
+    for key, value in (await request.form(max_files=0)).multi_items():
         if key not in flat:
             flat[key] = value
         elif isinstance(flat[key], list):

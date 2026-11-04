@@ -1864,6 +1864,18 @@ def test_a_new_password_logs_every_other_browser_out():
     assert not admin.session_valid(other) and not admin.session_valid(mine)
 
 
+def test_a_damaged_sessions_file_logs_out_instead_of_breaking_the_admin_page(tmp_path, monkeypatch):
+    from mirrordash_core import admin
+    monkeypatch.setattr(admin, "_sessions_file", lambda: tmp_path / "sessions.json")
+    for damaged in ('["a list"]', '{"hash": "not a time"}', '"a string"'):
+        (tmp_path / "sessions.json").write_text(damaged)
+        admin._sessions = None  # a restart reads it back
+        assert not admin.session_valid("any-token")
+    admin._sessions = None
+    (tmp_path / "sessions.json").write_text('{"kept": 9e99, "bad": "x"}')
+    assert admin._live_sessions() == {"kept": 9e99}  # the good sessions survive
+
+
 def test_a_modules_traceback_stays_in_its_own_log(tmp_path, monkeypatch):
     """A traceback's lines belong to the entry above them, and one module's log isn't another's whose
     name starts the same."""

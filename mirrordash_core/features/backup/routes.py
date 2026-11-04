@@ -130,7 +130,7 @@ async def restore_panel_backup(
 
 @router.post("/panels/backup/create", dependencies=[Depends(require_api_key)])
 async def create_panel_backup(request: Request):
-    form_data = await request.form()
+    form_data = await request.form(max_files=0)
     encrypt = form_data.get("encrypt") == "true"
     password = form_data.get("password")
 
