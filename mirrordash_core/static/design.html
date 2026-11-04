@@ -1276,6 +1276,7 @@
                     MirrorDash auto-generates admin settings forms from each module's <code style="background:#1c1c1e;padding:2px 6px;border-radius:4px;font-size:0.85em;">config_schema.json</code>.
                     The form generator reads standard JSON Schema properties and picks the correct input control automatically.
                     Below are all supported field types — copy the schema snippet into your module's <code style="background:#1c1c1e;padding:2px 6px;border-radius:4px;font-size:0.85em;">config_schema.json</code> to get the rendered control.
+                    The admin page is in English only: write titles, descriptions and errors in English (a module's <code style="background:#1c1c1e;padding:2px 6px;border-radius:4px;font-size:0.85em;">translations/</code> are for what the mirror shows).
                 </p>
 
                 <!-- 1. Text Input -->
@@ -1403,7 +1404,7 @@
                 <div class="component-card">
                     <div class="component-meta">
                         <span class="component-name">Dropdown Select</span>
-                        <span class="component-tag">type: string  +  enum</span>
+                        <span class="component-tag">type: string  +  enum  (+ enum_titles)</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
@@ -1413,8 +1414,8 @@
                                     <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Display language for labels and dates.</p>
                                 </div>
                                 <select class="form-control">
-                                    <option value="sv" selected>SV</option>
-                                    <option value="en">EN</option>
+                                    <option value="sv" selected>Swedish</option>
+                                    <option value="en">English</option>
                                 </select>
                             </div>
                         </div>
@@ -1425,8 +1426,10 @@
   "title": "Language",
   "description": "Display language for labels and dates.",
   "enum": ["sv", "en"],
+  "enum_titles": ["Swedish", "English"],
   "default": "sv"
 }</code></pre>
+                            <p class="field-description" style="margin:8px 0 0;">Without enum_titles an option shows its value in capitals, _ as a space (SV, EN).</p>
                         </div>
                     </div>
                 </div>
@@ -1435,7 +1438,7 @@
                 <div class="component-card">
                     <div class="component-meta">
                         <span class="component-name">Multi-select Checkboxes</span>
-                        <span class="component-tag">type: array  +  items.enum</span>
+                        <span class="component-tag">type: array  +  items.type: string  +  items.enum</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
@@ -1487,9 +1490,11 @@
                         <p style="font-weight: 600; color: white; margin-bottom: 6px;">Dynamic Sub-field Types & Naming Conventions:</p>
                         <ul style="margin: 0 0 14px 18px; padding-left: 0; display: flex; flex-direction: column; gap: 4px;">
                             <li><strong>Color Swatches:</strong> A property named exactly <code>"color"</code> triggers a grid of preset swatches (White, Ice Blue, Rose Pink, Green, Red, Gray, Charcoal) along with a text box for custom Hex/CSS values.</li>
-                            <li><strong>Icon Picker:</strong> A property named exactly <code>"icon"</code> or ending in <code>"_icon"</code> renders a visual grid of outline icon picker buttons (Calendar, Clock, Home, etc.) plus a text box for custom Lucide icon keywords.</li>
+                            <li><strong>Icon Picker:</strong> A property named exactly <code>"icon"</code> renders a visual grid of outline icon picker buttons (Calendar, Clock, Home, etc.) plus a text box for custom Lucide icon keywords. Any other property with <code>"format": "icon"</code> gets the icon box that suggests names while typing.</li>
                             <li><strong>Dropdown Selection:</strong> Any property defining an <code>"enum"</code> array of options automatically renders as a selection dropdown (<code>&lt;select&gt;</code>) instead of a text entry box.</li>
-                            <li><strong>Default Inputs:</strong> All other schema properties of type <code>"string"</code>, <code>"number"</code>, or <code>"integer"</code> default to standard text input fields.</li>
+                            <li><strong>List / Search:</strong> <code>"format": "list"</code> or <code>"search"</code> (below) take the item's whole width; the module gets the item's other fields, so a school list can follow the municipality picked in the same item.</li>
+                            <li><strong>Password:</strong> <code>"format": "password"</code>, or a key named <code>api_key</code>, <code>password</code>, <code>token</code> or <code>secret</code>, is hidden, with a Show button.</li>
+                            <li><strong>Default Inputs:</strong> Everything else (<code>"string"</code>, <code>"number"</code>, <code>"integer"</code>, and <code>"boolean"</code> too) is a plain text box: for a yes/no in a list item use an <code>"enum"</code>.</li>
                         </ul>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
@@ -1526,6 +1531,7 @@
       },
       "custom_icon": {
         "type": "string",
+        "format": "icon",
         "title": "Custom Icon"
       },
       "color": {
@@ -1533,8 +1539,7 @@
         "title": "Indicator Color",
         "default": "#ffffff"
       }
-    },
-    "required": ["entity_id"]
+    }
   },
   "default": []
 }</code></pre>
@@ -1615,7 +1620,7 @@
                 <div class="component-card">
                     <div class="component-meta">
                         <span class="component-name">Password / API Key</span>
-                        <span class="component-tag">type: string  +  format: password  (or key: api_key / token / secret)</span>
+                        <span class="component-tag">type: string  +  format: password  (or key: api_key / password / token / secret)</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
@@ -1644,7 +1649,7 @@
                 <div class="component-card">
                     <div class="component-meta">
                         <span class="component-name">Textarea</span>
-                        <span class="component-tag">type: string  +  format: textarea  (or key: description / message / text)</span>
+                        <span class="component-tag">type: string  +  format: textarea  (or key: description / text / message / preamble)</span>
                     </div>
                     <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
                         <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
@@ -1698,6 +1703,181 @@
                     </div>
                 </div>
 
+
+                <!-- Time -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Time</span>
+                        <span class="component-tag">type: string  +  format: time  ("HH:MM" or blank)</span>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Switch to Tomorrow At</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">After this the next school day is shown.</p>
+                                </div>
+                                <input type="time" value="13:00" class="form-control">
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"switch_time": {
+  "type": "string",
+  "format": "time",
+  "title": "Switch to Tomorrow At",
+  "description": "After this the next school day is shown.",
+  "default": "13:00"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Home Network Address -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Home Network Address</span>
+                        <span class="component-tag">type: string  +  format: lan-url</span>
+                    </div>
+                    <div class="component-desc" style="padding: 16px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.5; background: rgba(255,255,255,0.015);">A module reaches the home network only at the addresses typed into these fields. The default is shown as a hint and never filled in: saving the form must not open an address the owner didn't type.</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Home Assistant Address</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Where Home Assistant answers on your home network.</p>
+                                </div>
+                                <input type="text" class="form-control" placeholder="http://homeassistant.local:8123">
+                                <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"url": {
+  "type": "string",
+  "format": "lan-url",
+  "title": "Home Assistant Address",
+  "description": "Where Home Assistant answers on your home network.",
+  "default": "http://homeassistant.local:8123"
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Files -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Files</span>
+                        <span class="component-tag">format: files  +  accept: image  (no type, no default)</span>
+                    </div>
+                    <div class="component-desc" style="padding: 16px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.5; background: rgba(255,255,255,0.015);">Files the owner uploads (images shrunk on the phone first) go to the module's cache folder, not into its settings. Not in a list item or a nested object.</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Photos</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Shown one after another.</p>
+                                </div>
+                                <div class="files-row"><label class="btn secondary btn-sm"><i class="fas fa-plus"></i> Add photos</label>
+                                <p class="field-description files-status">12 photos</p></div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"photos": {
+  "format": "files",
+  "accept": "image",
+  "max_files": 500,
+  "title": "Photos",
+  "description": "Shown one after another."
+}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- List (choices from the module) -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">List (choices from the module)</span>
+                        <span class="component-tag">type: object  +  format: list  →  async def settings_list_&lt;key&gt;(self, item)</span>
+                    </div>
+                    <div class="component-desc" style="padding: 16px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.5; background: rgba(255,255,255,0.015);">For choices that come from outside the module (schools, calendars, entities); choices known when the module is written are an <code>"enum"</code>. The key is lowercase letters, digits and _ (the method's name is made from it). A <code>ValueError</code>'s text is shown under the field; the choice saved stays until the owner picks another. A module not saved yet answers too (a short-lived process of it).</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">School</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Pick the school whose lunch is shown.</p>
+                                </div>
+                                <div class="choice-field">
+                                    <select class="form-control"><option>Fridhemsskolan · Gävle</option><option>Hemlingborg Skola · Gävle</option></select>
+                                    <p class="field-description choice-status error-text" style="margin-top:6px;">Enter the Skolmaten API key first</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"school": {
+  "type": "object",
+  "format": "list",
+  "title": "School",
+  "description": "Pick the school whose lunch is shown."
+}
+
+# plugin.py: the choices, asked when the form opens
+# and again when another field changes
+async def settings_list_school(self, item):
+    # item: the other fields of its list item (or
+    # the whole form); self.config: the unsaved form
+    if not self.config.get("api_key"):
+        raise ValueError("Enter the API key first")
+    data, error = await self.fetch_json(...)
+    return [{"id": s["id"], "name": s["name"],
+             "detail": s["town"]} for s in data]
+
+# saved as {"id": "913", "name": "Fridhemsskolan"}</code></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search (choices from the module) -->
+                <div class="component-card">
+                    <div class="component-meta">
+                        <span class="component-name">Search (choices from the module)</span>
+                        <span class="component-tag">type: object  +  format: search  →  async def settings_search_&lt;key&gt;(self, item, query)</span>
+                    </div>
+                    <div class="component-desc" style="padding: 16px 20px; border-bottom: 1px solid #27272a; font-size: 0.8rem; color: #a1a1aa; line-height: 1.5; background: rgba(255,255,255,0.015);">For choices too many to list (places, stations). Same answer and saved value as a list; the suggestions are picked with the mouse or the arrow keys and Enter.</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;min-height:120px;">
+                        <div class="component-body component-body--left" style="background:#111;padding:2rem;border-right:1px solid #27272a;">
+                            <div class="form-group" style="margin-bottom:0;width:100%;">
+                                <div class="form-label-desc" style="margin-bottom:8px;">
+                                    <label style="font-weight:600;color:white;">Place</label>
+                                    <p class="field-description" style="font-size:0.75rem;margin:2px 0 0 0;color:#a1a1aa;">Start typing to find it.</p>
+                                </div>
+                                <div class="choice-field">
+                                    <input type="text" value="Gäv" class="form-control">
+                                    <ul class="choice-suggestions"><li class="active">Gävle<span>Gävleborgs län</span></li><li>Gävle strand<span>Gävle</span></li></ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-container" style="margin:0;border-radius:0;border:none;border-top:1px solid #27272a;">
+                            <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                            <pre><code>"place": {
+  "type": "object",
+  "format": "search",
+  "title": "Place",
+  "description": "Start typing to find it."
+}
+
+# plugin.py: asked as the owner types
+async def settings_search_place(self, item, query):
+    data, error = await self.fetch_json(
+        "https://api.example.com/places", params={"q": query})
+    return [{"id": p["id"], "name": p["name"],
+             "detail": p["region"]} for p in data or []]</code></pre>
+                        </div>
+                    </div>
+                </div>
             </section>
 
 
