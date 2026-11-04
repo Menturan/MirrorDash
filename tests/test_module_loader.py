@@ -488,7 +488,7 @@ async def test_lan_access_is_what_the_owner_typed_on_the_home_network(tmp_path, 
     """Only "format": "lan-url" settings count, only home-network addresses come out of them, and each
     instance's user may reach its own (mirrordash-module-network's nftables rules), not another's."""
     from mirrordash_core.features.modules import client as client_module
-    from mirrordash_core.features.modules.client import lan_addresses, lan_hosts
+    from mirrordash_core.features.modules.lan import lan_addresses, lan_hosts
 
     schemas = {"md_ha": {"properties": {"url": {"type": "string", "format": "lan-url"}, "other": {"type": "string"}}}}
     modules = {"ha": {"module": "md_ha", "url": "http://192.168.1.20:8123", "other": "http://10.0.0.1"},
@@ -500,7 +500,7 @@ async def test_lan_access_is_what_the_owner_typed_on_the_home_network(tmp_path, 
             "127.0.0.1": [], "192.168.1.20": ["192.168.1.20"], "8.8.8.8": [], "fd00::5": ["fd00::5"]}
 
         (tmp_path / "helper").write_text("")
-        monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "helper"))
+        monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "helper"))
         monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", str(tmp_path / "host.sock"))
         process = MagicMock(returncode=0, communicate=AsyncMock(return_value=(b"", b"")))
         with patch("asyncio.create_subprocess_exec", AsyncMock(return_value=process)) as run:
@@ -528,7 +528,7 @@ async def _until(check, timeout=5.0):
 
 async def _call(path: str, method: str = "GET", headers=()) -> tuple[int, dict, bytes]:
     """One HTTP call straight into the core's /api/modules mount."""
-    from mirrordash_core.features.modules.client import module_routes
+    from mirrordash_core.features.modules.api_proxy import module_routes
     scope = {"type": "http", "method": method, "path": "/api/modules" + path, "root_path": "/api/modules",
              "query_string": b"", "headers": [(k.encode(), v.encode()) for k, v in headers],
              "client": ("192.168.1.5", 1234)}
@@ -629,7 +629,7 @@ async def test_no_module_runs_while_the_sandbox_is_open(tmp_path, monkeypatch, h
     monkeypatch.setattr(checks, "SANDBOX_DEVICES", ())
     monkeypatch.setattr(checks, "ROUTE_TABLE_FILE", str(tmp_path / "no-route"))
     monkeypatch.setattr(host_module.forkserver, "held_capability_sets", lambda: [])  # not the test runner's
-    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {"w": {"module": "md_w"}}, "globals": {}})
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
     core = client_module.ModuleHost()
@@ -791,7 +791,7 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
     monkeypatch.setenv("MIRRORDASH_MODULE_SOCKET", socket_path)
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
-    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {"modules": {}, "globals": {}})
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
     core = client_module.ModuleHost()
@@ -899,7 +899,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     monkeypatch.setattr(mirrordash_core.features.modules.loader, "module_entry_points", lambda: [EntryPoint()])
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)  # one process: no loop back
-    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "no-helper"))
     config = {"modules": {"garage": {"module": "md_garage", "position": "top_left"}}, "globals": {"language": "en"},
               "admin_auth": {"hash": "secret"}}
     monkeypatch.setattr(client_module, "load_config", lambda: config)

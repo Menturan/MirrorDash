@@ -92,7 +92,7 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     monkeypatch.setattr(mirrordash_core.features.modules.loader, "module_entry_points", lambda: [EntryPoint()])
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
-    monkeypatch.setattr(client_module, "LAN_HELPER", str(tmp_path / "no-helper"))
+    monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "no-helper"))
     monkeypatch.setattr(client_module, "load_config", lambda: {
         "modules": {"relay": {"module": "md_relay"}}, "globals": {}, **CONFIG})
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
