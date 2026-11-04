@@ -22,6 +22,8 @@ MIRRORDASH_DEV=1 uv run python -m mirrordash_core.main
 
 ## Where things are
 
+[HOW_IT_WORKS.md](HOW_IT_WORKS.md) shows how the parts fit together, what happens when the mirror starts, how a module's card reaches the screen and how a setting is saved, with the words the code uses. Read it before your first change.
+
 | Path | What |
 |---|---|
 | `mirrordash_core/features/<feature>/` | One folder per feature (modules, settings, hardware, power, backup, updates, wifi, kiosk, …): its routes, logic and templates |
