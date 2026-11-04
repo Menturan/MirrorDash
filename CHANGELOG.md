@@ -13,6 +13,7 @@ There are two kinds of releases:
 
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
+- The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
 
 ## [0.12.0] - 2026-11-03
 

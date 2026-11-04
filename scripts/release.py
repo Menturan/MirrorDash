@@ -26,6 +26,7 @@ import tomllib
 import urllib.request
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import NoReturn
 
 ROOT = Path(__file__).resolve().parent.parent
 VENV_PYTHON = ROOT / ".venv" / "bin" / "python"
@@ -38,7 +39,7 @@ TEST_IMAGE_DIR = ROOT / "build_workspace" / "test-image"
 DRY = "--dry-run" in sys.argv
 
 
-def die(msg):
+def die(msg) -> NoReturn:
     print(f"\n  Stopped: {msg}")
     sys.exit(1)
 

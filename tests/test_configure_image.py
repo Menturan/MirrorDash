@@ -337,9 +337,11 @@ def test_the_module_host_is_walled_off_and_its_network_helper_takes_only_home_ad
     assert written.index("daddr fd00::5 accept") < written.index("daddr { 192.168.1.20 } reject") and written.startswith("table inet mirrordash_modules\ndelete table")
     assert run() == 0 and log.read_text().splitlines()[-1] == "IPAddressAllow=127.0.0.53" and " accept\n" not in rules.read_text()
     for bad in ("192.168.1.20", "70100=8.8.8.8", "70100=127.0.0.1", "70100=0.0.0.0", "70100=224.0.0.1",
-                "70100=192.168.1.0/24", "1000=192.168.1.20", "960=192.168.1.20", "--now", "70100=::1"):
+                "70100=192.168.1.0/24", "1000=192.168.1.20", "960=192.168.1.20", "--now", "70100=::1",
+                "70100=fe80::1%eth0", "70100=fe80::1%x\n}\n}\nflush ruleset\n#"):  # a scope is free text, into nft's rules
         log.unlink(missing_ok=True)
-        assert run(bad) != 0 and not log.exists(), bad
+        rules.unlink(missing_ok=True)
+        assert run(bad) != 0 and not log.exists() and not rules.exists(), bad
 
 
 def test_hydrate_never_follows_a_link_pi_planted(tmp_path):

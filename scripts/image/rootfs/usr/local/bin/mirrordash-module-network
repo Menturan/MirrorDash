@@ -36,6 +36,10 @@ def parse_allowed_addresses(arguments: list[str]) -> list[tuple[int, ipaddress.I
             sys.exit(f"not a module user: {uid}")
         if not address.is_private or address.is_loopback or address.is_unspecified or address.is_multicast:
             sys.exit(f"not a home-network address: {address_text}")
+        # ipaddress takes any text after % as an IPv6 scope ("fe80::1%x; flush ruleset"), and the address
+        # goes into nft's rules as text: none at all (the core strips it, client.lan_addresses)
+        if getattr(address, "scope_id", None):
+            sys.exit(f"no scope in an address: {address_text}")
         allowed.append((uid, address))
     return allowed
 
