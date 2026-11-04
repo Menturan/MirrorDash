@@ -4,25 +4,34 @@ A map for someone new to the code: the parts, how they talk, and what happens in
 
 ## The big picture
 
-```
- ┌────────────────────────── Raspberry Pi ───────────────────────────┐
- │                                                                   │
- │  Cog (a browser, full screen)        Phone or computer            │
- │  shows the mirror: index.html        opens the admin page: /admin │
- │        │  WebSocket /ws                     │  HTTP (HTMX)        │
- │        ▼                                    ▼                     │
- │  ┌──────────────────────── the core ───────────────────────────┐  │
- │  │ mirrordash.service, user pi: FastAPI + uvicorn              │  │
- │  │ mirrordash_core/  app.py puts the features/ together        │  │
- │  └───────────────┬─────────────────────────────────────────────┘  │
- │                  │  unix socket, one JSON message per line        │
- │  ┌───────────────▼─────────────── the module host ─────────────┐  │
- │  │ mirrordash-modules.service, a sandbox                       │  │
- │  │ every module instance: its own process, its own user        │  │
- │  └─────────────────────────────────────────────────────────────┘  │
- │                                                                   │
- │  The OS image: read-only root, data on /storage, A/B updates      │
- └───────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph pi["Raspberry Pi · the OS image: read-only root, data on /storage, A/B updates"]
+        direction TB
+        subgraph clients[" "]
+            direction LR
+            screen["🪞 <b>The screen</b><br/>Cog, full screen<br/><i>static/index.html</i>"]
+            admin["📱 <b>The admin page</b><br/>phone or computer<br/><i>/admin</i>"]
+        end
+        core["<b>The core</b><br/>mirrordash.service · user pi · FastAPI<br/><i>mirrordash_core/</i>: settings, hardware, screen, admin page"]
+        subgraph host["<b>The module host</b> · mirrordash-modules.service · a sandbox"]
+            direction LR
+            m1["clock<br/><i>user 70100</i>"] ~~~ m2["weather<br/><i>user 70101</i>"] ~~~ m3["calendar<br/><i>user 70102</i>"]
+        end
+    end
+    screen <-- "WebSocket /ws · cards" --> core
+    admin <-- "HTTP + HTMX · panels" --> core
+    core <-- "unix socket · one JSON message per line" --> host
+
+    classDef side fill:#f6f8fa,stroke:#57606a,color:#1f2328
+    classDef core fill:#ddf4ff,stroke:#0969da,color:#1f2328
+    classDef mod fill:#fff8c5,stroke:#9a6700,color:#1f2328
+    class screen,admin side
+    class core core
+    class m1,m2,m3 mod
+    style clients fill:none,stroke:none
+    style pi fill:none,stroke:#8c959f,stroke-dasharray:4 4
+    style host fill:none,stroke:#9a6700
 ```
 
 - **The core** is one Python program (FastAPI). It serves the mirror's screen and the admin page, keeps the settings in `config.json`, runs the hardware (screen power, GPIO, Wi-Fi) and never runs a module's code.
@@ -50,6 +59,40 @@ A map for someone new to the code: the parts, how they talk, and what happens in
 
 ## Flow 1: the mirror starts
 
+```mermaid
+flowchart TB
+    subgraph server["1 · The core starts"]
+        direction LR
+        systemd["systemd starts<br/><b>mirrordash.service</b>"] --> launch["<b>scripts/launch.sh</b><br/>picks the active venv<br/><i>broken: Safe Mode</i>"] --> main["<b>main.py</b><br/>logging, then uvicorn"] --> lifespan["<b>app.py</b> lifespan<br/>applies the saved<br/>system settings"]
+    end
+    subgraph started["2 · app.py starts each part on its own"]
+        direction LR
+        p1["<b>module_host</b><br/><i>modules/client.py</i>"] ~~~ p2["<b>display_power_manager</b><br/><i>power/</i>"] ~~~ p3["<b>gpio_inputs</b><br/><i>hardware/inputs.py</i>"] ~~~ p4["<b>internet_monitor</b><br/><i>kiosk/</i>"] ~~~ p5["<b>mqtt_bridge</b><br/><i>mqtt/</i>"]
+    end
+    subgraph modules["3 · The module host"]
+        direction LR
+        start["each enabled<br/>instance starts"] --> card["and sends<br/>its card"]
+    end
+    subgraph screen["4 · The screen"]
+        direction LR
+        cog["Cog shows<br/><b>loading.html</b>"] --> page["the mirror's page<br/>connects to <b>/ws</b>"] --> shown["every card<br/>on the screen"]
+    end
+    server --> started
+    started -- "module_host asks for the instances" --> modules
+    modules -- "the cards, through the core" --> screen
+
+    classDef side fill:#f6f8fa,stroke:#57606a,color:#1f2328
+    classDef core fill:#ddf4ff,stroke:#0969da,color:#1f2328
+    classDef mod fill:#fff8c5,stroke:#9a6700,color:#1f2328
+    class systemd,launch,main,lifespan,p1,p2,p3,p4,p5 core
+    class start,card mod
+    class cog,page,shown side
+    style server fill:none,stroke:#0969da
+    style started fill:none,stroke:#0969da,stroke-dasharray:4 4
+    style modules fill:none,stroke:#9a6700
+    style screen fill:none,stroke:#57606a
+```
+
 1. **systemd** starts `mirrordash.service`, which runs `scripts/launch.sh`. It picks the active venv (the link `/storage/mirrordash/venv`), falls back to the image's own copy if that is broken (safe mode, #17) and starts `python -m mirrordash_core.main`.
 2. **`main.py`** sets up logging (`~/.mirrordash/logs/`) and starts uvicorn with the app from **`app.py`**.
 3. **`app.py`'s `lifespan`** applies the saved system settings (`system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
@@ -62,9 +105,28 @@ A map for someone new to the code: the parts, how they talk, and what happens in
 
 ## Flow 2: a module's card reaches the screen
 
-```
-module's render()  →  instance.py HostLink.html  →  socket  →  client.py ModuleHost._handle
-   →  ws.py manager.broadcast  →  WebSocket  →  core.js showModuleHtml  →  the card on the screen
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false}}}%%
+sequenceDiagram
+    autonumber
+    box rgb(255,248,197) The module host · the instance's own process
+        participant M as Module<br/>render()
+        participant L as HostLink<br/>instance.py
+    end
+    box rgb(221,244,255) The core
+        participant H as ModuleHost<br/>client.py
+        participant W as manager<br/>kiosk/ws.py
+    end
+    box rgb(246,248,250) The screen
+        participant S as core.js
+    end
+    M->>L: HTML
+    L->>H: {"t": "html", "html": …} over its own connection
+    Note over H: checked like input from outside:<br/>only its own card, at most 512 kB,<br/>at most two sends a second
+    H->>W: broadcast(placement + HTML)
+    Note over W: keeps the last card<br/>for a screen that connects later
+    W->>S: WebSocket message
+    Note over S: showModuleHtml: the card in its area,<br/>in a shadow root, scripts only if trusted
 ```
 
 1. **In the module's own process** (`features/modules/instance.py`), the module returns HTML from `render()` (or calls its `broadcast_func`). `loader.py` started it and gave it its helpers: `self.fetch` (`module_fetch.py`), `self.render_template`, `self.translate` and more.
@@ -76,6 +138,33 @@ module's render()  →  instance.py HostLink.html  →  socket  →  client.py M
 The other way, the core sends an instance: the screen going on or off (its fetches sleep meanwhile, #29), hardware events (`event_bus.py`), calls to its own routes (`api_proxy.py`, #40) and Home Assistant commands (`on_control`).
 
 ## Flow 3: the owner saves a module's settings
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false}}}%%
+sequenceDiagram
+    autonumber
+    actor O as Owner
+    box rgb(246,248,250) The browser
+        participant A as Admin page
+    end
+    box rgb(221,244,255) The core
+        participant R as routes.py<br/>save_module_config_route
+        participant C as config.py
+        participant H as ModuleHost<br/>client.py
+    end
+    box rgb(255,248,197) The module host
+        participant X as the instance
+    end
+    O->>A: changes a setting, Save
+    A->>R: POST the form
+    Note over R: read_form · cast_values_by_schema ·<br/>validate_config (the trust boundary)
+    R->>C: save_config
+    Note over C: written whole,<br/>the last good copy kept
+    R->>H: reload_modules()
+    H->>X: stop it and start it with the new settings
+    X-->>H: its new card, on to the screen (flow 2)
+    R-->>A: "Settings saved."
+```
 
 1. **The admin page** shows the settings form, built from the module's JSON schema (`config_schema.json`) by `forms.py`, without running the module.
 2. **Save** posts it to `features/modules/routes.py` `save_module_config_route`, which:

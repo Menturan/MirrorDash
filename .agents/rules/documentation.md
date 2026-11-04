@@ -20,6 +20,8 @@ trigger: always_on
 | `RELEASING.md` | The release workflow, OIDC configurations, or pre-release checklists change |
 | `.claude/skills/*/SKILL.md` | How a new module or a release is made changes |
 
+**Diagrams are Mermaid, never ASCII art** (GitHub draws them, in light and dark, and they stay editable text): a `flowchart` for how parts fit, a `sequenceDiagram` for a flow across processes. Keep the colours of `HOW_IT_WORKS.md`: the core blue (`fill:#ddf4ff,stroke:#0969da`), the module host yellow (`#fff8c5`, `#9a6700`), the screen and the admin page grey (`#f6f8fa`, `#57606a`). A file tree stays text.
+
 After changing any doc, heading or doc link (also in admin templates and `docs/`), run `uv run pytest -q tests/test_docs.py`: it checks that every `#anchor` lands on a heading, every relative link on a file, and every admin path (*Settings → …*) on a label.
 
 The website's pictures are copies, not links: after changing `mirrordash_concept.png`, remake them with `cwebp -q 82 mirrordash_concept.png -o docs/concept.webp`, `cwebp -q 80 -resize 700 0 mirrordash_concept.png -o docs/concept-700.webp` and a 1.9:1 crop to `docs/og.jpg` (`convert … -crop`), and update the sizes in `docs/index.html`.
