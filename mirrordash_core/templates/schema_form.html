@@ -67,7 +67,7 @@
 
 {% macro accordion(f, inner) -%}
 <details class="form-accordion"><summary>{{ f.title }}</summary>
-    <div class="form-accordion-body"><p class="field-description">{{ f.description }}</p>{{ inner }}</div></details>
+    <div class="form-accordion-body">{% if f.description %}<p class="field-description">{{ f.description }}</p>{% endif %}{{ inner }}</div></details>
 {%- endmacro %}
 
 {% macro slider(f) -%}

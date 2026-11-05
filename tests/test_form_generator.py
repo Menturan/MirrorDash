@@ -6,6 +6,21 @@ from mirrordash_core.forms import (
 )
 
 
+def test_fields_with_a_group_share_one_section_saved_as_before():
+    schema = {"properties": {
+        "source": {"type": "string", "title": "Source"},
+        "immich_url": {"type": "string", "title": "Immich Address", "group": "Immich"},
+        "unsplash_key": {"type": "string", "format": "password", "title": "Unsplash Key", "group": "Unsplash"},
+        "immich_key": {"type": "string", "format": "password", "title": "Immich Key", "group": "Immich"},
+    }}
+    html = render_schema_form(schema, {}, "modules[photos]", "photos")
+    assert html.count('<details class="form-accordion">') == 2
+    immich, unsplash = html.index("<summary>Immich</summary>"), html.index("<summary>Unsplash</summary>")
+    # the section where its first field is, with all of its fields; the names as without a group
+    assert html.index("Source") < immich < html.index("Immich Address") < html.index("Immich Key") < unsplash
+    assert 'name="modules[photos][immich_key]"' in html
+
+
 def test_show_if_hides_a_field_while_the_other_field_does_not_match():
     import re
     schema = {"properties": {

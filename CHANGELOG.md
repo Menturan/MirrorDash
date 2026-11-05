@@ -9,7 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved.
+- **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved. Modules can also put settings in sections that open with a click.
+
 
 ### OS image
 

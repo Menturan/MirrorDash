@@ -191,13 +191,15 @@ def _render(widget, field: Field) -> str:
 
 
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "") -> str:
-    """The form for a schema's properties: the core's standard fields first, then the module's own."""
+    """The form for a schema's properties: the core's standard fields first, then the module's own. Fields
+    with the same "group" (a title) share a collapsible section where the first of them is; only the form
+    changes, they're saved as if they had none (ARCHITECTURE #51)."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
         raise ValueError("Unsafe form name prefix or module name")
     properties = _safe_properties(schema.get("properties", {}))
     required = schema.get("required") if isinstance(schema.get("required"), list) else []
     keys = [k for k in STANDARD_FIELDS if k in properties] + [k for k in properties if k not in STANDARD_FIELDS]
-    parts = []
+    parts, groups = [], {}
     for key in keys:
         prop = properties[key]
         value = current_values.get(key)
@@ -206,8 +208,17 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name, key in required)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
-        parts.append(_shown_if(_render(widget, field), prop, properties, current_values, name_prefix))
-    return "\n".join(parts)
+        html = _shown_if(_render(widget, field), prop, properties, current_values, name_prefix)
+        if group := str(prop.get("group") or ""):
+            if group not in groups:
+                groups[group] = []
+                parts.append((group, groups[group]))
+            groups[group].append(html)
+        else:
+            parts.append(html)
+    return "\n".join(part if isinstance(part, str)
+                     else _macros().accordion({"title": part[0], "description": ""}, Markup("\n".join(part[1])))
+                     for part in parts)
 
 
 def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, name_prefix: str) -> str:
