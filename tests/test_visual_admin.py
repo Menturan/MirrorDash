@@ -694,6 +694,12 @@ def test_show_if_follows_a_dropdown_and_a_switch(page, server_url):
     assert url.is_visible()
     page.locator("input[type=checkbox][name='modules[demo][show_cover]']").evaluate("box => box.click()")
     assert cover.is_hidden()
+    # a hidden field breaking a rule is shown, so the browser can point at it instead of a save that does nothing
+    page.select_option("select[name='modules[demo][source]']", "uploaded")
+    page.add_script_tag(url="/static/admin/admin.js")  # its invalid handler; the admin page has it
+    page.evaluate("""() => { const url = document.querySelector("[name='modules[demo][immich_url]']");
+        url.required = true; url.value = ''; url.form.reportValidity(); }""")
+    assert url.is_visible()
 
 
 @pytest.mark.only_browser("webkit")
