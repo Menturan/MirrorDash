@@ -684,6 +684,18 @@ def test_module_script_gets_its_own_shadow_root(page):
     assert page.evaluate("() => window.ran") is None and page.evaluate(read, "evil") == "untouched"
 
 
+def test_show_if_follows_a_dropdown_and_a_switch(page, server_url):
+    """show_if.js on /design's examples: the field appears and goes as the other field changes."""
+    page.goto(f"{server_url}/design#forms")
+    url = page.locator(".show-if:has([name='modules[demo][immich_url]'])")
+    cover = page.locator(".show-if:has([name='modules[demo][cover_style]'])")
+    assert url.is_hidden() and cover.is_visible()
+    page.select_option("select[name='modules[demo][source]']", "immich")
+    assert url.is_visible()
+    page.locator("input[type=checkbox][name='modules[demo][show_cover]']").evaluate("box => box.click()")
+    assert cover.is_hidden()
+
+
 @pytest.mark.only_browser("webkit")
 def test_every_design_component_looks_the_same_in_a_card_without_scripts(page):
     """What /design shows a module (modules.css, Lucide icons, the Inter font) works in a card whose module

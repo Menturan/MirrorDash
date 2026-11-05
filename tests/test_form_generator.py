@@ -40,6 +40,17 @@ def test_show_if_hides_a_field_while_the_other_field_does_not_match():
     assert url[1] == ""
 
 
+def test_show_if_follows_a_switch_saved_true_or_false():
+    schema = {"properties": {
+        "show_cover": {"type": "boolean", "title": "Show Cover", "default": True},
+        "cover_style": {"type": "string", "title": "Cover", "show_if": {"show_cover": [True]}},
+    }}
+    def shown(values):
+        html = render_schema_form(schema, values, "modules[spotify]", "spotify")
+        return 'data-show-if="{&#34;modules[spotify][show_cover]&#34;: [&#34;true&#34;]}">' in html  # as show_if.js reads it
+    assert shown({}) and shown({"show_cover": True}) and not shown({"show_cover": False})
+
+
 def test_parse_flat_form_data():
     flat = {
         "globals[language]": "sv",

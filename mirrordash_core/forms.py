@@ -222,18 +222,21 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
 
 
 def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, name_prefix: str) -> str:
-    """A field with "show_if": {"source": ["immich"]} is shown only while each named field of its form has
-    one of the values (ARCHITECTURE #50): hidden from the start here, so it doesn't flash, then show_if.js
-    follows the form. Hidden it is still sent, so its value stays saved."""
+    """A field with "show_if": {"source": ["immich"]} (or {"show_cover": [true]}, a switch) is shown only
+    while each named field of its form has one of the values (ARCHITECTURE #50): hidden from the start here,
+    so it doesn't flash, then show_if.js follows the form. Hidden it is still sent, so its value stays saved."""
     rules = prop.get("show_if")
     if not isinstance(rules, dict):
         return html
-    rules = {key: [str(v) for v in (values if isinstance(values, list) else [values])]
+
+    def text(value):  # a switch's True as the browser has it: "true"
+        return json.dumps(value) if isinstance(value, bool) else str(value)
+    rules = {key: [text(v) for v in (values if isinstance(values, list) else [values])]
              for key, values in rules.items() if key in properties}  # keys from _safe_properties: SAFE_KEY
 
     def current(key):
         value = current_values.get(key)
-        return str(properties[key].get("default", "") if value is None else value)
+        return text(properties[key].get("default", "") if value is None else value)
     shown = all(current(key) in values for key, values in rules.items())
     names = {(f"{name_prefix}[{key}]" if name_prefix else key): values for key, values in rules.items()}
     return Markup('<div class="show-if" data-show-if="{}"{}>{}</div>').format(

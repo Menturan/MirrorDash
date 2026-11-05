@@ -59,11 +59,18 @@ EXAMPLES = [
     ("Shown Only for a Choice", "show_if: {\"<other key>\": [values]}  on any field",
      "Try it: pick Immich. The field shows only while the other one has one of the values (several keys: all must "
      "match). Hidden it keeps its saved value, so the module reads it whatever is picked. Point it at a dropdown or a "
-     "text box of the same form (not a switch, not in a list item).", {
+     "text box of the same form, or a switch with [true] or [false] (not a field in a list item).", {
          "source": {"type": "string", "title": "Source", "enum": ["uploaded", "immich"],
                     "enum_titles": ["Photos uploaded here", "Immich"], "default": "uploaded"},
          "immich_url": {"type": "string", "format": "lan-url", "title": "Immich Address",
                         "show_if": {"source": ["immich"]}}},
+     {}, [], ""),
+    ("Shown Only While a Switch Is On", "show_if: {\"<switch key>\": [true]}",
+     "Try it: turn Show Cover off. The same keyword on a switch: [true] while it's on, [false] while it's off.", {
+         "show_cover": {"type": "boolean", "title": "Show Cover", "default": True},
+         "cover_style": {"type": "string", "title": "Cover", "enum": ["gray", "color"],
+                         "enum_titles": ["Black and white", "In colour"], "default": "gray",
+                         "show_if": {"show_cover": [True]}}},
      {}, [], ""),
     ("Boxes to Tick", "type: array  +  items.type: string  +  items.enum  (also in a list item)", "", {
         "builtin_feeds": {"type": "array", "title": "Built-in Feeds", "description": "The news sources to show.",
