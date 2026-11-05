@@ -9,19 +9,21 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- **Module settings can be lists and searches filled by the module**, such as a list of the schools in the municipality you just picked, or a place found as you type. They work while you add a module, before it is saved, and the settings preview does too.
-- A password or API key in a list in a module's settings is hidden, with a **Show** button, like the others.
-- A module's list settings can have boxes to tick in each row. Home Assistant uses it: choose for each entity which of its humidity, battery, signal and voltage are shown under it (all, as before, until you untick one).
-- **A module's settings say what's missing before they're saved**: a setting the module needs, a number out of its
-  range or text in the wrong format is pointed out at the field, also in a folded list item, instead of being saved.
-- **When the screen keeps crashing**, the mirror pauses modules until it stops: first the module you changed last, then those in Background and Foreground and video, and at last everything but the clock, with a message on the screen. The Dashboard says what was paused and when; **Show Again** brings them back, and so does saving a paused module's settings. Before, a module that crashed the screen could leave it dead until the power was cut, and crash it again after.
-
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.13.0] - 2026-11-05
+
+- **Module settings can be lists and searches filled by the module**, such as a list of the schools in the municipality you just picked, or a place found as you type. They work while you add a module, before it is saved, and the settings preview does too.
+- A password or API key in a list in a module's settings is hidden, with a **Show** button, like the others.
+- A module's list settings can have boxes to tick in each row. Home Assistant uses it: choose for each entity which of its humidity, battery, signal and voltage are shown under it (all, as before, until you untick one).
+- **A module's settings say what's missing before they're saved**: a setting the module needs, a number out of its
+  range or text in the wrong format is pointed out at the field, also in a folded list item, instead of being saved.
+- **When the screen keeps crashing**, the mirror pauses modules until it stops: first the module you changed last, then those in Background and Foreground and video, and at last everything but the clock, with a message on the screen. The Dashboard says what was paused and when; **Show Again** brings them back, and so does saving a paused module's settings. Before, a module that crashed the screen could leave it dead until the power was cut, and crash it again after.
 
 ## [0.12.0] - 2026-11-03
 
