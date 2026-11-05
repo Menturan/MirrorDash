@@ -147,6 +147,12 @@ step_installing_packages() {
   apt-get update
   # The base image is weeks old: bring every preinstalled package (ca-certificates, openssl, ...) up to date
   apt-get full-upgrade -y
+  # Only the newest kernel of each kind starts (kernel8.img, kernel_2712.img) and nothing here builds
+  # kernel modules: a kernel before it (apt keeps one as a fallback, APT::NeverAutoRemove, so it goes
+  # by name) and the headers are dead weight in the image.
+  newest=$(linux-version list | linux-version sort | tail -1)
+  apt-get purge -y 'linux-headers-*' 'linux-kbuild-*' $(dpkg-query -W -f='${Package}\n' 'linux-image-*' 'linux-base-*' \
+      | grep -E -- '-[0-9.]+\+rpt-' | grep -v -- "-${newest%%-rpi-*}-")
   apt-get install -y --no-install-recommends \
       labwc \
       seatd \
