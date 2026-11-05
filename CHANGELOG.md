@@ -9,19 +9,20 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved. Modules can also put settings in sections that open with a click.
-- The choices in a module's dropdowns read as words (Open meteo) instead of in capitals (OPEN METEO) when the module doesn't name them.
-- A setting a module update adds starts at its own default on a mirror that had the module already.
-- The rows of a module's lists (a calendar, an entity) have the same switches, sliders and boxes as the rest of its settings, with their explanations; a colour is picked the same way everywhere.
-- A backup without a password also leaves out the passwords and keys in a module's lists, and restoring it keeps this mirror's own.
-
-
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.14.0] - 2026-11-05
+
+- **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved. Modules can also put settings in sections that open with a click.
+- The choices in a module's dropdowns read as words (Open meteo) instead of in capitals (OPEN METEO) when the module doesn't name them.
+- A setting a module update adds starts at its own default on a mirror that had the module already.
+- The rows of a module's lists (a calendar, an entity) have the same switches, sliders and boxes as the rest of its settings, with their explanations; a colour is picked the same way everywhere.
+- A backup without a password also leaves out the passwords and keys in a module's lists, and restoring it keeps this mirror's own.
 
 ## [0.13.0] - 2026-11-05
 
