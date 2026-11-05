@@ -38,7 +38,7 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^[0-9][0-9.]*-[0-9]+$ ]] || { echo "Not a Debian version: $VERSION"; exit 1; }
           apt-get update
-          apt-get install -y --no-install-recommends devscripts debian-keyring ccache ca-certificates dpkg-dev equivs procps
+          apt-get install -y --no-install-recommends devscripts debian-keyring ccache ca-certificates dpkg-dev equivs procps curl
           df -h / && nproc && free -g
           mkdir src && cd src
           # dget checks the .dsc's signature against Debian's keyring and the files against the .dsc
