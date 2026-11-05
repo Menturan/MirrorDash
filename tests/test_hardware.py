@@ -292,6 +292,10 @@ def test_a_device_this_version_doesnt_know_and_a_pin_that_isnt_a_number(mock_loa
     assert client.get("/admin/panels/system/gpio-status").status_code == 200
     r = client.get("/admin/panels/system/devices")
     assert r.status_code == 200 and "Push button" in r.text
+    # A button saved without its actions (the test mirror's, 2026-11-05): each press shows "none", as it does
+    mock_load.return_value = {"system": {"devices": [{"type": "button", "pin": 3}]}}
+    r = client.get("/admin/panels/system/devices")
+    assert r.status_code == 200 and r.text.count('value="none" selected') == 4
     # "²" is a digit to Python, but no number int() takes: refused like any wrong pin, not a server error
     mock_load.return_value = {"system": {"devices": []}}
     r = client.post("/admin/panels/system/devices/add", data={"type": "pir", "pin": "²"})

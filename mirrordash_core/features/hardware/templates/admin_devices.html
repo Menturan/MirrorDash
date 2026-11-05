@@ -38,7 +38,7 @@
                 <label for="action-{{ d.type }}-{{ press }}" style="font-size: 0.8rem; color: white; min-width: 110px;">{{ label }}</label>
                 <select id="action-{{ d.type }}-{{ press }}" name="action_{{ press }}" class="form-control" style="flex: 1; min-width: 180px;">
                     {% for value, action_label in button_actions.items() %}
-                        <option value="{{ value }}" {% if d.actions[press] == value %}selected{% endif %}>{{ action_label }}</option>
+                        <option value="{{ value }}" {% if (d.actions or {}).get(press, "none") == value %}selected{% endif %}>{{ action_label }}</option>
                     {% endfor %}
                 </select>
             </div>
