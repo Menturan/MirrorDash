@@ -9,11 +9,12 @@ import secrets
 import time
 
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from mirrordash_core.admin import PACKAGE_DIR, templates
 from mirrordash_core.config import load_config
 from mirrordash_core.features.auth.routes import auth_state
+from mirrordash_core.features.kiosk.design_forms import design_cards
 from mirrordash_core.features.kiosk.ws import manager, on_screen
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
@@ -76,8 +77,11 @@ async def get_index(request: Request):
 
 
 @router.get("/design")
-async def get_design() -> FileResponse:
-    return FileResponse(str(PACKAGE_DIR / "static" / "design.html"))
+async def get_design() -> HTMLResponse:
+    """The component library: static, but for its settings section, drawn by the form's own code (design_forms.py)."""
+    page = (PACKAGE_DIR / "static" / "design.html").read_text(encoding="utf-8")
+    forms = templates.get_template("design_forms.html").render(cards=design_cards())
+    return HTMLResponse(page.replace("<!-- design-forms: drawn by the server (features/kiosk/design_forms.py) -->", forms))
 
 
 @router.get("/health")

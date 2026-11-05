@@ -1,0 +1,30 @@
+{# /design#forms (features/kiosk/design_forms.py): every kind of setting, drawn by the admin form's own code
+   from the JSON beside it. In the admin page the same fields come alive (choices, uploads, Show). #}
+<section id="forms" class="explorer-section">
+    <h2 class="explorer-section-title">Configuration Form Controls</h2>
+    <p class="explorer-section-desc">
+        MirrorDash builds each module's settings form from its <code>config_schema.json</code>, picking the control by
+        the property's type, format and name. Every field below is drawn by that same code from the JSON beside it:
+        copy the JSON into your schema's <code>"properties"</code> to get the control. They come alive in the admin page
+        (choices, uploads, Show). The admin page is in English only: write titles, descriptions and errors in English
+        (a module's <code>translations/</code> are for the mirror).
+    </p>
+    {% for card in cards %}
+    <div class="component-card">
+        <div class="component-meta">
+            <span class="component-name">{{ card.name }}</span>
+            <span class="component-tag">{{ card.tag }}</span>
+        </div>
+        {%- if card.desc %}
+        <div class="component-desc design-form-desc">{{ card.desc }}</div>
+        {%- endif %}
+        <div class="design-form-grid">
+            <div class="component-body component-body--left design-form-demo"><form onsubmit="return false">{{ card.form }}</form></div>
+            <div class="code-container design-form-code">
+                <button class="copy-btn" onclick="copyCode(this)">Copy</button>
+                <pre><code>{{ card.code }}</code></pre>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</section>
