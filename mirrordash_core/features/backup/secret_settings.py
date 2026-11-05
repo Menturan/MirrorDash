@@ -12,13 +12,15 @@ import copy
 # The secrets in the config a plain backup leaves out, as (section, key): the admin password's hash and
 # recovery code, the MQTT broker's password, and the Matter pairing code (it lets a phone add the mirror)
 SECRET_CONFIG_ENTRIES = (("admin_auth", None), ("mqtt", "password"), ("matter", "passcode"), ("matter", "discriminator"))
+# Setting names that hold a secret even when the schema forgot "format": "password" (the form shows those as
+# typed; mirrordash-sdk validate warns): a backup leaves them out all the same
+SECRET_KEYS = ("api_key", "password", "token", "secret")
 
 def secret_module_settings(instance_config: dict) -> set[str]:
-    """The settings of a module instance that are secrets (an API key, a password): what its config_schema
-    shows as a password field (format password, or a name like api_key or token, forms.py)."""
+    """The settings of a module instance that are secrets (an API key, a password): those its config_schema
+    marks "format": "password", and those with a name like api_key or token."""
     from mirrordash_core.features.modules.module_files import find_entry_point
     from mirrordash_core.features.settings.schema import get_module_schema
-    from mirrordash_core.forms import SECRET_KEYS
     ep = find_entry_point(str(instance_config.get("module", "")))
     properties = ((get_module_schema(ep) if ep else None) or {}).get("properties", {})
     return {key for key, prop in properties.items()

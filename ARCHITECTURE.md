@@ -455,3 +455,18 @@ The analysis (2026-10-24). Built since: step 0, step 1 and the screen, in #41; "
 * **Rationale**: Settings a module's owner seldom touches (advanced ones, one service's of several) out of the way without moving them. A nested `"type": "object"` draws the same section, but moves the saved keys and hides a lan-url (#41) or password (#39) inside it from the core's other readers of a schema.
 * **Limits**: Groups don't apply inside a list item's fields; a section is never open by default.
 * **Checked**: `tests/test_form_generator.py` (one section per group, where its first field is, the form names as without a group), the card on `/design#forms`.
+
+## 52. A Module Gets Its Schema's Defaults
+> **In short:** A setting the owner never saved reaches the module as its schema's `default`, so a module reads `config["city"]` and writes each default once, in `config_schema.json`.
+
+* **Decision**: When the core starts an instance (`client.py`'s sync), `features/modules/defaults.py` fills each setting missing from the saved ones with its `default`, in nested objects too. A `lan-url` never saved arrives as `""` (its default is a hint in the form, never an address the module may reach, #41); a list or search choice as `{}`, as a saved "none". A setting without a default stays missing. The preview and the settings process get the unsaved form, which holds every field already.
+* **Rationale**: Each module wrote its defaults twice, in the schema and in `config.get("city", "Stockholm")`, and the two drifted. A setting a module update added was missing from every instance saved before it, which is why the second copy was needed.
+* **Limits**: A setting saved empty (`""`) stays empty: only a missing one is filled.
+* **Checked**: `tests/test_module_defaults.py`.
+
+## 53. The Type Picks a Setting's Box, the Format Changes It
+> **In short:** Which box a setting gets follows its `type` and its `format` only: never its key's name, and a slider only with `"format": "slider"`.
+
+* **Decision**: `forms.py`'s `WIDGET_RULES` and `_sub_widget` read the type, `enum` and `format`. Gone: a key named `api_key`, `password`, `token` or `secret` drawn as a password, `description`, `text`, `message` or `preamble` as a text box, `color` as a colour picker, and in a list item `color` as swatches and `icon` as a grid of sixteen icons (`format: color` gives the swatches there; `format: icon` the box that suggests every Lucide name, as everywhere else). `minimum` and `maximum` are rules on a number box (#49); `"format": "slider"` with both makes a slider. An `enum` without `enum_titles` shows its value with `_` as a space and a capital first (`open_meteo`: Open meteo), not in capitals. `mirrordash-sdk validate` warns about a key like `api_key` without `format: password`, an `enum` without titles and a keyword it doesn't know.
+* **Rationale**: A module's author read a table of hidden rules: a field named `text` became a big box, adding a range to a number turned it into a slider. One rule (the type, changed by the format) is learnt once. A plain backup still leaves out a setting named like a secret without the format (`backup/secret_settings.py`): a safety net, not a way to draw it.
+* **Checked**: `tests/test_form_box_by_format.py`, `tests/test_setting_rules.py`, the cards on `/design#forms`.

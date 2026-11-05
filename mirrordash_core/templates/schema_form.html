@@ -17,10 +17,11 @@
 {%- if f.schema.pattern is string %} pattern="{{ f.schema.pattern }}"{% if f.schema.pattern_message %} title="{{ f.schema.pattern_message }}"{% endif %}{% endif -%}
 {%- endmacro %}
 
-{# An enum option's name: the schema's enum_titles (or enumNames) beside its enum, else the value in capitals #}
+{# An enum option's name: the schema's enum_titles (or enumNames) beside its enum, else the value with _ as a
+   space and its first letter in capitals ("open_meteo" → "Open meteo") #}
 {% macro option_title(prop, index) -%}
 {% set titles = prop.get("enum_titles") or prop.get("enumNames") %}
-{{- titles[index] if titles and index < titles|length else (prop["enum"][index]|string).replace("_", " ").upper() -}}
+{{- titles[index] if titles and index < titles|length else ((prop["enum"][index]|string).replace("_", " ")[:1]|upper) ~ (prop["enum"][index]|string).replace("_", " ")[1:] -}}
 {%- endmacro %}
 
 {% macro options(prop, current) -%}
@@ -151,15 +152,6 @@
     <button type="button" class="color-swatch-btn{% if f.stored_value == value %} active{% endif %}" style="background-color: {{ preview_hex_color }};" title="{{ title }}" onclick="selectSubFieldColor(this, '{{ f.id }}', '{{ value }}')"></button>
     {%- endfor %}</div>
     <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm swatch-value" oninput="updateSwatchSelection(this)"></div></div>
-{%- endmacro %}
-
-{% macro sub_icons(f) -%}
-<div class="sub-form-group wide"><label for="{{ f.id }}">{{ f.title }}</label>
-    <div class="icon-picker"><div class="icon-grid">
-    {%- for icon in ICONS %}
-    <button type="button" class="icon-picker-btn{% if f.stored_value == icon %} active{% endif %}" title="{{ icon }}" onclick="selectSubFieldIcon(this, '{{ f.id }}', '{{ icon }}')"><i data-lucide="{{ icon }}"></i></button>
-    {%- endfor %}</div>
-    <div class="icon-custom"><span>Custom Name:</span><input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>
 {%- endmacro %}
 
 {% macro sub_icon(f) -%}

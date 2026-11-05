@@ -28,10 +28,9 @@ async def settings_search_place(self, item, query):
 
 LIST_ITEM_FIELDS = (
     "<ul>"
-    "<li><strong>Colour swatches:</strong> a key named exactly <code>\"color\"</code>; <strong>an icon grid:</strong> a key named exactly <code>\"icon\"</code>.</li>"
+    "<li><strong>Colour swatches:</strong> <code>\"format\": \"color\"</code>; <strong>the icon box</strong> (names suggested while typing): <code>\"format\": \"icon\"</code>.</li>"
     "<li><strong>A dropdown:</strong> an <code>\"enum\"</code>; <strong>boxes to tick:</strong> an array of enum strings.</li>"
-    "<li><strong>The icon box</strong> (names suggested while typing): <code>\"format\": \"icon\"</code>.</li>"
-    "<li><strong>Hidden, with Show:</strong> <code>\"format\": \"password\"</code>, or a key named <code>api_key</code>, <code>password</code>, <code>token</code> or <code>secret</code>.</li>"
+    "<li><strong>Hidden, with Show:</strong> <code>\"format\": \"password\"</code>.</li>"
     "<li><strong>List and search</strong> take the item's whole width; the module gets the item's other fields.</li>"
     "<li><strong>Everything else</strong> (text, numbers, and a <code>\"boolean\"</code> too) is a text box: for a yes/no in an item use an <code>\"enum\"</code>.</li>"
     "</ul><p>Items fold to one line (the first field, the next one dimmed under it); a new one opens by itself.</p>")
@@ -47,12 +46,14 @@ EXAMPLES = [
     ("Number Input", "type: integer / number", "", {
         "max_events": {"type": "integer", "title": "Max Events", "description": "Events shown at most.", "default": 10}},
      {}, [], ""),
-    ("Range Slider", "type: integer / number  +  minimum  +  maximum", "", {
-        "volume": {"type": "integer", "title": "Volume", "description": "How loud, 0–100.", "minimum": 0, "maximum": 100,
-                   "default": 35}},
+    ("Range Slider", "type: integer / number  +  format: slider  +  minimum  +  maximum",
+     "minimum and maximum alone are rules on a number box; format: slider makes it a slider between them.", {
+        "volume": {"type": "integer", "format": "slider", "title": "Volume", "description": "How loud, 0–100.",
+                   "minimum": 0, "maximum": 100, "default": 35}},
      {}, [], ""),
     ("Dropdown Select", "type: string  +  enum  (+ enum_titles)",
-     "Without enum_titles an option shows its value in capitals, _ as a space (SV, EN).", {
+     "Without enum_titles an option shows its value with _ as a space and a capital first (open_meteo: Open meteo): "
+     "write enum_titles for words people read.", {
          "language": {"type": "string", "title": "Language", "enum": ["sv", "en"], "enum_titles": ["Swedish", "English"],
                       "default": "sv"}},
      {}, [], ""),
@@ -87,7 +88,7 @@ EXAMPLES = [
                          "readings": {"type": "array", "title": "Readings", "items": {
                              "type": "string", "enum": ["battery", "signal"], "enum_titles": ["Battery", "Signal"]}},
                          "custom_icon": {"type": "string", "format": "icon", "title": "Icon"},
-                         "color": {"type": "string", "title": "Colour", "default": "#ffffff"}}}}},
+                         "color": {"type": "string", "format": "color", "title": "Colour", "default": "#ffffff"}}}}},
      {"entities": [{"entity_id": "sensor.living_room", "layout": "detailed", "readings": ["battery"], "color": "#ffffff"},
                    {}]}, [], ""),
     ("Nested Object (Accordion)", "type: object", "", {
@@ -100,14 +101,14 @@ EXAMPLES = [
          "timeout": {"type": "integer", "title": "Timeout (s)", "default": 30, "group": "Advanced"},
          "retries": {"type": "integer", "title": "Retries", "default": 3, "group": "Advanced"}},
      {}, [], ""),
-    ("Colour Picker", "type: string  +  format: color  (or a key named \"color\")", "", {
+    ("Colour Picker", "type: string  +  format: color  (swatches in a list item)", "", {
         "accent_color": {"type": "string", "format": "color", "title": "Accent Colour", "default": "#ffffff"}},
      {}, [], ""),
-    ("Password / API Key", "type: string  +  format: password  (or key: api_key / password / token / secret)", "", {
+    ("Password / API Key", "type: string  +  format: password  (mirrordash-sdk validate warns about a key like api_key without it)", "", {
         "api_key": {"type": "string", "format": "password", "title": "API Key", "description": "From the service.",
                     "default": ""}},
      {"api_key": "supersecretkey"}, [], ""),
-    ("Textarea", "type: string  +  format: textarea  (or key: description / text / message / preamble)", "", {
+    ("Textarea", "type: string  +  format: textarea", "", {
         "message": {"type": "string", "format": "textarea", "title": "Greeting", "default": "Good morning!"}},
      {}, [], ""),
     ("Icon", "type: string  +  format: icon  (a Lucide name, suggested while typing in the admin page)", "", {

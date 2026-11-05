@@ -18,7 +18,7 @@ SCHEMA = {
     "properties": {
         "url": {"type": "string", "title": "Address", "pattern": "https?://.+", "pattern_message": "Starts with http:// or https://"},
         "switch_time": {"type": "string", "title": "Switch At", "pattern": "([01]\\d|2[0-3]):[0-5]\\d"},
-        "days": {"type": "integer", "title": "Days", "minimum": 1, "maximum": 10},
+        "days": {"type": "integer", "title": "Days", "format": "slider", "minimum": 1, "maximum": 10},
         "token": {"type": "string", "title": "Token", "format": "password", "minLength": 10, "maxLength": 40},
         "show_header": {"type": "boolean", "title": "Show Header"},
         "school": {"type": "object", "format": "list", "title": "School"},
@@ -59,7 +59,7 @@ def test_empty_breaks_only_required_and_unsent_keys_are_left_alone():
 def test_the_form_asks_the_browser_for_the_same_rules():
     html = render_schema_form(SCHEMA, GOOD, "modules[s]", "md_s")
     assert '<input required pattern="https?://.+" title="Starts with http:// or https://" type="text"' in html
-    assert 'type="range" min="1" max="10"' in html  # both bounds: a slider, never out of them
+    assert 'type="range" min="1" max="10"' in html  # a slider: never out of its bounds
     assert 'minlength="10" maxlength="40" type="password"' in html
     assert '<select required id=' in html  # the school list: "Choose…" is no choice
     row = render_array_item("modules[s]", "calendars", SCHEMA["properties"]["calendars"]["items"]["properties"], 0, {},

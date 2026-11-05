@@ -55,10 +55,7 @@ STANDARD_SCHEMA = {"properties": {
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # A setting whose choices the module gives (ARCHITECTURE #48): saved as {"id", "name"}
 CHOICE_FORMATS = ("list", "search")
-# Fields shown as a password or a text box by their name when the schema doesn't say
-SECRET_KEYS = ("api_key", "password", "token", "secret")
-LONG_TEXT_KEYS = ("description", "text", "message", "preamble")
-# The colour and icon pickers in list items (e.g. calendar entries).
+# The colour picker in list items ("format": "color", e.g. a calendar's colour).
 # Each swatch: (name, the value saved, the colour shown on the button)
 SWATCHES = [
     ("White", "#ffffff", "#ffffff"),
@@ -69,8 +66,6 @@ SWATCHES = [
     ("Gray", "var(--color-standard-gray)", "#999999"),
     ("Charcoal", "var(--color-dimmed-charcoal)", "#666666"),
 ]
-ICONS = ["calendar", "clock", "users", "briefcase", "home", "heart", "gift", "trophy",
-         "music", "plane", "shopping-cart", "utensils", "alert-circle", "book-open", "coffee", "film"]
 
 
 def cast_standard_fields(module_cfg: dict) -> dict:
@@ -94,7 +89,7 @@ def _html_id(*parts) -> str:
 def _macros():
     """templates/schema_form.html's macros, autoescaped: everything in a schema comes from a module's author."""
     env = Environment(loader=PackageLoader("mirrordash_core"), autoescape=True)
-    env.globals.update(html_id=_html_id, SWATCHES=SWATCHES, ICONS=ICONS)
+    env.globals.update(html_id=_html_id, SWATCHES=SWATCHES)
     return env.get_template("schema_form.html").module
 
 
@@ -165,8 +160,9 @@ def _is_choices(key: str, prop: dict) -> bool:
     return prop.get("type") == "array" and _item_schema(prop).get("type") == "string" and bool(_item_schema(prop).get("enum"))
 
 
-# Which input a schema property gets: the first rule that matches (type, then format, then name); a
-# macro's name in templates/schema_form.html, or a function for the fields that hold fields
+# Which input a schema property gets: the first rule that matches. The type picks it, the format changes
+# it, never the key's name (ARCHITECTURE #53); a macro's name in templates/schema_form.html, or a function
+# for the fields that hold fields
 WIDGET_RULES = [
     (lambda key, p: p.get("format") == "files", "files"),
     (lambda key, p: p.get("type") == "boolean", "toggle"),
@@ -175,11 +171,12 @@ WIDGET_RULES = [
     (lambda key, p: p.get("type") == "array" and _item_schema(p).get("type") == "object", _array),
     (lambda key, p: p.get("format") in CHOICE_FORMATS, "choice"),
     (lambda key, p: p.get("type") == "object", _object),
-    (lambda key, p: p.get("type") in ("integer", "number") and "minimum" in p and "maximum" in p, "slider"),
+    (lambda key, p: p.get("type") in ("integer", "number") and p.get("format") == "slider"
+     and "minimum" in p and "maximum" in p, "slider"),
     (lambda key, p: p.get("type") in ("integer", "number"), "number"),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "color" or key == "color"), "color"),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "password" or key in SECRET_KEYS), "password"),
-    (lambda key, p: p.get("type") == "string" and (p.get("format") == "textarea" or key in LONG_TEXT_KEYS), "textarea"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "color", "color"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "password", "password"),
+    (lambda key, p: p.get("type") == "string" and p.get("format") == "textarea", "textarea"),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "lan-url", "lan_url"),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "icon", "icon"),
     (lambda key, p: p.get("type") == "string" and p.get("format") == "time", "time"),
@@ -248,18 +245,14 @@ def _sub_choice(field: Field) -> str:
 
 
 def _sub_widget(key: str, prop: dict):
-    """The input of a field in a list item (the colour and icon pickers by their names aside)."""
+    """The input of a field in a list item."""
     if prop.get("format") in CHOICE_FORMATS:
         return _sub_choice
     if prop.get("enum"):
         return "sub_select"
     if _is_choices(key, prop):
         return "sub_checkboxes"
-    if prop.get("format") == "icon":
-        return "sub_icon"
-    if prop.get("format") == "password" or key in SECRET_KEYS:
-        return "sub_password"
-    return "sub_text"
+    return {"icon": "sub_icon", "color": "sub_swatches", "password": "sub_password"}.get(prop.get("format"), "sub_text")
 
 
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str,
@@ -273,8 +266,7 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
         field = Field(key, prop, prop.get("default", "") if value is None else value,
                       _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
                       name_prefix, "", key in required)
-        widget = ({"color": "sub_swatches", "icon": "sub_icons"}.get(key) or _sub_widget(key, prop))
-        fields.append(_render(widget, field))
+        fields.append(_render(_sub_widget(key, prop), field))
     # A new, empty item opens to be filled in
     return str(_macros().array_item(index, str(item_title), Markup("".join(fields)), not any(item_val.values())))
 

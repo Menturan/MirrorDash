@@ -907,34 +907,12 @@ function selectSubFieldColor(btn, inputId, value) {
     });
 }
 
-function selectSubFieldIcon(btn, inputId, value) {
-    const inputEl = document.getElementById(inputId);
-    if (inputEl) {
-        inputEl.value = value;
-    }
-    const cardEl = btn.closest('.array-item-card');
-    const btns = cardEl.querySelectorAll('.icon-picker-btn');
-    btns.forEach(b => {
-        const isSelected = b === btn;
-        b.classList.toggle('active', isSelected);
-    });
-}
-
 function updateSwatchSelection(input) {
     const cardEl = input.closest('.array-item-card');
     const swatches = cardEl.querySelectorAll('.color-swatch-btn');
     swatches.forEach(sw => {
         const isSelected = sw.title.toLowerCase() === input.value.toLowerCase() || sw.getAttribute('onclick').includes(input.value);
         sw.classList.toggle('active', isSelected);
-    });
-}
-
-function updateIconSelection(input) {
-    const cardEl = input.closest('.array-item-card');
-    const btns = cardEl.querySelectorAll('.icon-picker-btn');
-    btns.forEach(b => {
-        const isSelected = b.title.toLowerCase() === input.value.toLowerCase();
-        b.classList.toggle('active', isSelected);
     });
 }
 
@@ -964,7 +942,7 @@ function arrayItemSummary(card) {
     const sub = card.querySelector('.array-item-sub');
     if (!title || !sub) return;
     const filled = [...card.querySelectorAll('.array-item-fields input[type="text"]')]
-        .filter(input => !input.closest('.icon-custom, .swatch-row') && input.value.trim());
+        .filter(input => !input.closest('.swatch-row') && !input.matches('[data-icon-input]') && input.value.trim());
     const label = filled.find(input => /name\]$/.test(input.name)) || filled[0];
     const index = [...card.parentElement.querySelectorAll('.array-item-card')].indexOf(card);
     title.textContent = label ? label.value : `# ${index + 1}: ${title.dataset.itemTitle || 'Item'}`;
@@ -1000,14 +978,6 @@ function reindexArrayContainer(container) {
                         if (onclick) {
                             const newOnclick = onclick.replace(/selectSubFieldColor\(this,\s*'[^']+',/g, `selectSubFieldColor(this, '${newId}',`);
                             sw.setAttribute('onclick', newOnclick);
-                        }
-                    });
-                    const iconPickerBtns = card.querySelectorAll('.icon-picker-btn');
-                    iconPickerBtns.forEach(pb => {
-                        const onclick = pb.getAttribute('onclick');
-                        if (onclick) {
-                            const newOnclick = onclick.replace(/selectSubFieldIcon\(this,\s*'[^']+',/g, `selectSubFieldIcon(this, '${newId}',`);
-                            pb.setAttribute('onclick', newOnclick);
                         }
                     });
                 }

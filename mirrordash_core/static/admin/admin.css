@@ -1477,14 +1477,6 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .choice-suggestions li.active, .choice-suggestions li:hover { background: #27272a; }
 .color-swatch-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #52525b; cursor: pointer; outline: none; transition: transform 0.1s; }
 .color-swatch-btn.active { border: 2px solid white; transform: scale(1.15); box-shadow: 0 0 8px white; }
-.icon-picker { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
-.icon-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; width: 100%; }
-.icon-picker-btn { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; background: #09090b; border: 1px solid #27272a; border-radius: 4px; color: #a1a1aa; cursor: pointer; outline: none; transition: background 0.1s; }
-.icon-picker-btn.active { background: #3f3f46; border-color: white; color: white; }
-.icon-picker-btn i, .icon-picker-btn svg { width: 14px; height: 14px; stroke-width: 2px; }
-.icon-custom { display: flex; align-items: center; gap: 8px; width: 100%; }
-.icon-custom span { font-size: 0.75rem; color: #71717a; }
-.icon-custom .form-control { flex-grow: 1; }
 
 /* A module's settings in the Configure drawer (features/modules/templates/admin_module_config.html) */
 .module-config-form { background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a; }

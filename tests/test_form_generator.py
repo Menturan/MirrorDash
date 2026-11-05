@@ -156,7 +156,7 @@ def test_extra_form_controls():
             "brightness": {
                 "type": "integer",
                 "minimum": 10,
-                "maximum": 100,
+                "maximum": 100, "format": "slider",
                 "default": 85
             },
             "bg_color": {

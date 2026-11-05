@@ -10,6 +10,8 @@ There are two kinds of releases:
 ## [Unreleased]
 
 - **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved. Modules can also put settings in sections that open with a click.
+- The choices in a module's dropdowns read as words (Open meteo) instead of in capitals (OPEN METEO) when the module doesn't name them.
+- A setting a module update adds starts at its own default on a mirror that had the module already.
 
 
 ### OS image

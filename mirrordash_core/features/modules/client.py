@@ -35,6 +35,7 @@ from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import free_pins, header_chip, request_lines
 from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import lan
+from mirrordash_core.features.modules.defaults import with_defaults
 from mirrordash_core.features.modules.forkserver import MODULE_UIDS
 from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
@@ -461,8 +462,12 @@ class ModuleHost:
             # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
             from mirrordash_core.features.kiosk import guard
             held = self.paused | guard.paused(config)
-            wanted = {instance_id: cfg for instance_id, cfg in modules.items()
-                      if cfg.get("enabled", True) and instance_id not in held}
+            from mirrordash_core.features.settings.schema import (
+                _installed_module_schemas,  # as lan.py: no import cycle
+            )
+            schemas = _installed_module_schemas()
+            wanted = {instance_id: with_defaults(cfg, schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {})
+                      for instance_id, cfg in modules.items() if cfg.get("enabled", True) and instance_id not in held}
             # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)
             holes = reply.get("sandbox_open")
