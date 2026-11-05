@@ -20,6 +20,9 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     container: debian:trixie
+    defaults:
+      run:
+        shell: bash  # a container step runs sh otherwise
     env:
       VERSION: ${{ inputs.version }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -69,7 +72,7 @@ jobs:
 
       - name: Cache and disk
         if: always()
-        run: ccache -s; df -h /; ls -la src/*.deb 2>/dev/null || true
+        run: ccache -s || true; df -h /; ls -la src/*.deb 2>/dev/null || true
 
       - name: Save the packages
         uses: actions/upload-artifact@v7
