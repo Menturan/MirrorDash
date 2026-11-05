@@ -38,7 +38,7 @@ jobs:
         run: |
           [[ "$VERSION" =~ ^[0-9][0-9.]*-[0-9]+$ ]] || { echo "Not a Debian version: $VERSION"; exit 1; }
           apt-get update
-          apt-get install -y --no-install-recommends devscripts debian-keyring ccache ca-certificates dpkg-dev equivs
+          apt-get install -y --no-install-recommends devscripts debian-keyring ccache ca-certificates dpkg-dev equivs procps
           df -h / && nproc && free -g
           mkdir src && cd src
           # dget checks the .dsc's signature against Debian's keyring and the files against the .dsc
@@ -57,10 +57,17 @@ jobs:
           cd src/wpewebkit-*/
           apt-get build-dep -y .
           dch --local "~mirrordash" --distribution trixie "Rebuilt for trixie, whose own WPE gets no security fixes."
+          # No precompiled headers: each runner builds them with different bytes, so ccache could reuse
+          # no object compiled against one (learnt from dariyooo/wpe-webkit-binaries)
+          sed -i 's/^EXTRA_CMAKE_ARGUMENTS = -DPORT=WPE /&-DCMAKE_DISABLE_PRECOMPILE_HEADERS=ON /' debian/rules
+          grep -q DISABLE_PRECOMPILE_HEADERS debian/rules
+          # WebCore's unified sources take 2-3 GB each to compile: one job per 4 GB, or the compiler is killed
+          jobs=$(( $(free -g | awk '/^Mem:/{print $2}') / 4 )); jobs=$(( jobs < 1 ? 1 : jobs > $(nproc) ? $(nproc) : jobs ))
+          echo "$(nproc) CPUs, $(free -g | awk '/^Mem:/{print $2}') GB: $jobs jobs"
           start=$(date +%s)
-          # No debug info (the -g Debian's rules turn into -g1): smaller objects, a quicker link, room on the disk
+          # No debug info (the -g Debian's rules turn into -g1): smaller objects, a quicker link
           DEB_CFLAGS_STRIP="-g" DEB_CXXFLAGS_STRIP="-g" \
-            DEB_BUILD_OPTIONS="nocheck nodoc noautodbgsym parallel=$(nproc)" dpkg-buildpackage -B -us -uc
+            DEB_BUILD_OPTIONS="nocheck nodoc noautodbgsym parallel=$jobs" dpkg-buildpackage -B -us -uc
           echo "Build took $(( ($(date +%s) - start) / 60 )) minutes"
 
       - name: Save the compiler cache (also after a timeout, so the next run goes on from here)
