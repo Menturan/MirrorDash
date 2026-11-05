@@ -1507,7 +1507,10 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
     position: sticky; bottom: 0; background: #0f0f11; border-top: 1px solid #27272a; border-radius: 0 0 6px 6px; z-index: 1; }
 /* The drawer's settings two by two; the long ones (lists, keys, addresses, text) across */
 .module-config-own, .standard-settings-content { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-.module-config-own > :is(h5, .schema-group, .form-accordion, .wide), .standard-settings-content > :is(.schema-group, .wide) { grid-column: 1 / -1; }
+:is(.module-config-own, .module-config-own > .show-if) > :is(h5, .schema-group, .form-accordion, .wide), .standard-settings-content > :is(.schema-group, .wide) { grid-column: 1 / -1; }
+/* A setting with show_if (show_if.js): its field stays in the grid; hidden while the other field doesn't match */
+.show-if { display: contents; }
+.show-if[hidden] { display: none; }
 .standard-settings-content .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; }  /* the schedule's days in a row */
 @media (max-width: 600px) { .module-config-own, .standard-settings-content { grid-template-columns: minmax(0, 1fr); } }
 .standard-settings-accordion { margin-top: 14px; border: 1px solid #27272a; border-radius: 6px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }

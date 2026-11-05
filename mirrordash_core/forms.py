@@ -4,6 +4,7 @@ posted form read back into nested data. One macro per kind of field, in template
 
 import functools
 import itertools
+import json
 import logging
 import re
 from dataclasses import dataclass
@@ -205,8 +206,27 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name, key in required)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
-        parts.append(_render(widget, field))
+        parts.append(_shown_if(_render(widget, field), prop, properties, current_values, name_prefix))
     return "\n".join(parts)
+
+
+def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, name_prefix: str) -> str:
+    """A field with "show_if": {"source": ["immich"]} is shown only while each named field of its form has
+    one of the values (ARCHITECTURE #50): hidden from the start here, so it doesn't flash, then show_if.js
+    follows the form. Hidden it is still sent, so its value stays saved."""
+    rules = prop.get("show_if")
+    if not isinstance(rules, dict):
+        return html
+    rules = {key: [str(v) for v in (values if isinstance(values, list) else [values])]
+             for key, values in rules.items() if key in properties}  # keys from _safe_properties: SAFE_KEY
+
+    def current(key):
+        value = current_values.get(key)
+        return str(properties[key].get("default", "") if value is None else value)
+    shown = all(current(key) in values for key, values in rules.items())
+    names = {(f"{name_prefix}[{key}]" if name_prefix else key): values for key, values in rules.items()}
+    return Markup('<div class="show-if" data-show-if="{}"{}>{}</div>').format(
+        json.dumps(names), "" if shown else Markup(" hidden"), Markup(html))
 
 
 def _sub_choice(field: Field) -> str:

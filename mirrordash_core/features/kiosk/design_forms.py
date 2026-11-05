@@ -56,6 +56,15 @@ EXAMPLES = [
          "language": {"type": "string", "title": "Language", "enum": ["sv", "en"], "enum_titles": ["Swedish", "English"],
                       "default": "sv"}},
      {}, [], ""),
+    ("Shown Only for a Choice", "show_if: {\"<other key>\": [values]}  on any field",
+     "Try it: pick Immich. The field shows only while the other one has one of the values (several keys: all must "
+     "match). Hidden it keeps its saved value, so the module reads it whatever is picked. Point it at a dropdown or a "
+     "text box of the same form (not a switch, not in a list item).", {
+         "source": {"type": "string", "title": "Source", "enum": ["uploaded", "immich"],
+                    "enum_titles": ["Photos uploaded here", "Immich"], "default": "uploaded"},
+         "immich_url": {"type": "string", "format": "lan-url", "title": "Immich Address",
+                        "show_if": {"source": ["immich"]}}},
+     {}, [], ""),
     ("Boxes to Tick", "type: array  +  items.type: string  +  items.enum  (also in a list item)", "", {
         "builtin_feeds": {"type": "array", "title": "Built-in Feeds", "description": "The news sources to show.",
                           "items": {"type": "string", "enum": ["bbc_news", "sr_ekot", "cnn_edition"],
@@ -77,6 +86,12 @@ EXAMPLES = [
     ("Nested Object (Accordion)", "type: object", "", {
         "advanced": {"type": "object", "title": "Advanced Settings", "description": "For those who need them.",
                      "properties": {"timeout": {"type": "integer", "title": "Timeout", "default": 30}}}},
+     {}, [], ""),
+    ("Settings in a Section", "\"group\": \"<title>\"  on each field  (saved flat, as without it)",
+     "The fields with the same group share one section that opens with a click, where the first of them is. Only the "
+     "form changes: the keys stay where they were, so prefer it to a nested object. It works with show_if.", {
+         "timeout": {"type": "integer", "title": "Timeout (s)", "default": 30, "group": "Advanced"},
+         "retries": {"type": "integer", "title": "Retries", "default": 3, "group": "Advanced"}},
      {}, [], ""),
     ("Colour Picker", "type: string  +  format: color  (or a key named \"color\")", "", {
         "accent_color": {"type": "string", "format": "color", "title": "Accent Colour", "default": "#ffffff"}},

@@ -6,6 +6,25 @@ from mirrordash_core.forms import (
 )
 
 
+def test_show_if_hides_a_field_while_the_other_field_does_not_match():
+    import re
+    schema = {"properties": {
+        "source": {"type": "string", "enum": ["uploaded", "immich"], "default": "uploaded", "title": "Source"},
+        "immich_url": {"type": "string", "title": "Immich Address", "show_if": {"source": ["immich"]}},
+        "order": {"type": "string", "title": "Order", "show_if": {"source": ["uploaded", "immich"], "nope": ["x"]}},
+    }}
+
+    def wrappers(values):
+        html = render_schema_form(schema, values, "modules[photos]", "photos")
+        return re.findall(r'<div class="show-if" data-show-if="([^"]*)"( hidden)?>', html), html
+    (url, order), html = wrappers({})  # the default: uploaded
+    assert url == ("{&#34;modules[photos][source]&#34;: [&#34;immich&#34;]}", " hidden")
+    assert order[1] == ""  # an unknown field in show_if is left out, not hidden for good
+    assert 'name="modules[photos][immich_url]"' in html  # hidden, still sent: its value stays saved
+    (url, _), _ = wrappers({"source": "immich"})
+    assert url[1] == ""
+
+
 def test_parse_flat_form_data():
     flat = {
         "globals[language]": "sv",

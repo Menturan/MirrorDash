@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved.
+
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
