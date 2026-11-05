@@ -100,15 +100,19 @@ done
 # does nothing, and the squashfs root has no writable layer at all. Never ship that.
 # The list is read in full first: `| grep -q` stops reading at the first match, the container is
 # killed for it, and with pipefail that counted as a failure even when overlayroot was there.
-# Both initramfs files: Pi 3/4 and Pi 5 each have their own.
-for initramfs in initramfs8 initramfs_2712; do
+# Both initramfs files: Pi 3/4 (rpi-v8) and Pi 5 (rpi-2712) each have their own, and each must be
+# built for the newest kernel of its kind: kernel8.img/kernel_2712.img are always the newest, and an
+# initramfs left from the kernel before it holds modules that kernel can't load.
+for pair in initramfs8:v8 initramfs_2712:2712; do
+    initramfs=${pair%%:*}
+    kernel=$(ls "$MOUNT_DIR/lib/modules" | grep -- "-rpi-${pair#*:}$" | sort -V | tail -1)
     initramfs_files=$(systemd-nspawn -q -D "$MOUNT_DIR" lsinitramfs "/boot/firmware/$initramfs") || true
     if ! grep -q overlayroot <<< "$initramfs_files"; then
         fail "overlayroot is missing from $initramfs: the root would have no writable layer."
     fi
     # The root is a squashfs, a module in Pi OS's kernels: without it the root can't be mounted
-    if ! grep -q kernel/fs/squashfs/squashfs.ko <<< "$initramfs_files"; then
-        fail "squashfs is missing from $initramfs: the mirror couldn't mount its root."
+    if ! grep -q "modules/$kernel/kernel/fs/squashfs/squashfs.ko" <<< "$initramfs_files"; then
+        fail "squashfs for kernel $kernel is missing from $initramfs: the mirror couldn't mount its root."
     fi
     if ! grep -q plymouth/themes/mirrordash/mirrordash.script <<< "$initramfs_files"; then
         fail "The MirrorDash boot theme is missing from $initramfs."

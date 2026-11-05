@@ -891,7 +891,9 @@ step_system_cleanup() {
   sed -i '/ \/ /s/^/#/' /etc/fstab
   # ponytail: a non-zero exit is tolerated (it crashed under nspawn before); build_image.sh instead
   # checks the result: overlayroot, squashfs and the boot theme must be inside the initramfs.
-  update-initramfs -u || echo "Warning: update-initramfs exited with a non-zero status"
+  # -c -k all: every installed kernel gets its own. -u only rebuilds the ones that exist already, and
+  # a kernel installed above (update-initramfs was switched off then) has none yet.
+  update-initramfs -c -k all || echo "Warning: update-initramfs exited with a non-zero status"
   mv /etc/fstab.bak /etc/fstab
   trap - EXIT ERR INT TERM
 
