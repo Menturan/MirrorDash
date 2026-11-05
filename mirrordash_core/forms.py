@@ -55,7 +55,7 @@ STANDARD_SCHEMA = {"properties": {
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # A setting whose choices the module gives (ARCHITECTURE #48): saved as {"id", "name"}
 CHOICE_FORMATS = ("list", "search")
-# The colour picker in list items ("format": "color", e.g. a calendar's colour).
+# The colour box's swatches ("format": "color", e.g. a calendar's colour); any CSS colour may be typed beside them.
 # Each swatch: (name, the value saved, the colour shown on the button)
 SWATCHES = [
     ("White", "#ffffff", "#ffffff"),
@@ -240,35 +240,16 @@ def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, nam
         json.dumps(names), "" if shown else Markup(" hidden"), Markup(html))
 
 
-def _sub_choice(field: Field) -> str:
-    return _macros().choice(field, True)
-
-
-def _sub_widget(key: str, prop: dict):
-    """The input of a field in a list item."""
-    if prop.get("format") in CHOICE_FORMATS:
-        return _sub_choice
-    if prop.get("enum"):
-        return "sub_select"
-    if _is_choices(key, prop):
-        return "sub_checkboxes"
-    return {"icon": "sub_icon", "color": "sub_swatches", "password": "sub_password"}.get(prop.get("format"), "sub_text")
-
-
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str,
                       required: list | tuple = ()) -> str:
-    """One card in a list setting (e.g. a calendar), with move up/down and remove."""
-    if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key):
+    """One card in a list setting (e.g. a calendar), with move up/down and remove. Its fields are drawn as
+    the form's own (render_schema_form): every kind of box, show_if and group work in a row too (#54)."""
+    if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key) or type(index) is not int:
         raise ValueError("Unsafe form name prefix or list name")
-    fields = []
-    for key, prop in _safe_properties(sub_properties).items():
-        value = item_val.get(key)
-        field = Field(key, prop, prop.get("default", "") if value is None else value,
-                      _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
-                      name_prefix, "", key in required)
-        fields.append(_render(_sub_widget(key, prop), field))
+    fields = render_schema_form({"properties": sub_properties, "required": list(required)}, item_val,
+                                f"{name_prefix}[{array_key}][{index}]")
     # A new, empty item opens to be filled in
-    return str(_macros().array_item(index, str(item_title), Markup("".join(fields)), not any(item_val.values())))
+    return str(_macros().array_item(index, str(item_title), Markup(fields), not any(item_val.values())))
 
 
 async def read_form(request) -> dict:

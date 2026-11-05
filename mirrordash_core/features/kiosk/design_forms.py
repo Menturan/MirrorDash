@@ -27,13 +27,10 @@ async def settings_search_place(self, item, query):
     return [{"id": p["id"], "name": p["name"], "detail": p["region"]} for p in data or []]'''
 
 LIST_ITEM_FIELDS = (
-    "<ul>"
-    "<li><strong>Colour swatches:</strong> <code>\"format\": \"color\"</code>; <strong>the icon box</strong> (names suggested while typing): <code>\"format\": \"icon\"</code>.</li>"
-    "<li><strong>A dropdown:</strong> an <code>\"enum\"</code>; <strong>boxes to tick:</strong> an array of enum strings.</li>"
-    "<li><strong>Hidden, with Show:</strong> <code>\"format\": \"password\"</code>.</li>"
-    "<li><strong>List and search</strong> take the item's whole width; the module gets the item's other fields.</li>"
-    "<li><strong>Everything else</strong> (text, numbers, and a <code>\"boolean\"</code> too) is a text box: for a yes/no in an item use an <code>\"enum\"</code>.</li>"
-    "</ul><p>Items fold to one line (the first field, the next one dimmed under it); a new one opens by itself.</p>")
+    "<p>A row's fields are drawn as the form's own: every kind of setting on this page works in a row, "
+    "<code>show_if</code> (naming a field of the same row) and <code>group</code> too, and a <code>lan-url</code> "
+    "in a row opens that address to the module. Files can't be in a row. A list or search choice gets the row's "
+    "other fields. Rows fold to one line (the first field, the next one dimmed under it); a new one opens by itself.</p>")
 
 # (name, tag, words above it or "", the settings, saved values, required keys, code after the JSON)
 EXAMPLES = [
@@ -88,9 +85,11 @@ EXAMPLES = [
                          "readings": {"type": "array", "title": "Readings", "items": {
                              "type": "string", "enum": ["battery", "signal"], "enum_titles": ["Battery", "Signal"]}},
                          "custom_icon": {"type": "string", "format": "icon", "title": "Icon"},
-                         "color": {"type": "string", "format": "color", "title": "Colour", "default": "#ffffff"}}}}},
-     {"entities": [{"entity_id": "sensor.living_room", "layout": "detailed", "readings": ["battery"], "color": "#ffffff"},
-                   {}]}, [], ""),
+                         "color": {"type": "string", "format": "color", "title": "Colour", "default": "#ffffff"},
+                         "own_name": {"type": "boolean", "title": "Own Name", "default": False},
+                         "custom_name": {"type": "string", "title": "Name", "show_if": {"own_name": [True]}}}}}},
+     {"entities": [{"entity_id": "sensor.living_room", "layout": "detailed", "readings": ["battery"], "color": "#ffffff",
+                    "own_name": True, "custom_name": "Living room"}, {}]}, [], ""),
     ("Nested Object (Accordion)", "type: object", "", {
         "advanced": {"type": "object", "title": "Advanced Settings", "description": "For those who need them.",
                      "properties": {"timeout": {"type": "integer", "title": "Timeout", "default": 30}}}},
@@ -101,7 +100,7 @@ EXAMPLES = [
          "timeout": {"type": "integer", "title": "Timeout (s)", "default": 30, "group": "Advanced"},
          "retries": {"type": "integer", "title": "Retries", "default": 3, "group": "Advanced"}},
      {}, [], ""),
-    ("Colour Picker", "type: string  +  format: color  (swatches in a list item)", "", {
+    ("Colour Picker", "type: string  +  format: color  (the swatches, or any CSS colour typed)", "", {
         "accent_color": {"type": "string", "format": "color", "title": "Accent Colour", "default": "#ffffff"}},
      {}, [], ""),
     ("Password / API Key", "type: string  +  format: password  (mirrordash-sdk validate warns about a key like api_key without it)", "", {

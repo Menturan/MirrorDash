@@ -684,6 +684,23 @@ def test_module_script_gets_its_own_shadow_root(page):
     assert page.evaluate("() => window.ran") is None and page.evaluate(read, "evil") == "untouched"
 
 
+def test_a_rows_switch_and_show_if_work_and_follow_the_row_when_it_moves(page, server_url):
+    """A list row has the form's own boxes: its switch hides its Name (show_if), and after the row moves its
+    names, ids and show_if rule carry its new place (admin.js reindexArrayContainer)."""
+    page.goto(f"{server_url}/design#forms")
+    page.add_script_tag(url="/static/admin/admin.js")  # moving rows; the admin page has it
+    card = page.locator(".component-card", has_text="List of Items")
+    card.evaluate("c => c.querySelectorAll('.array-item-card').forEach(row => row.open = true)")  # a filled row folds
+    name = card.locator(".show-if:has([name$='[custom_name]'])").first
+    assert name.is_visible()
+    card.locator(".array-item-card").nth(1).locator("button[title='Move up']").evaluate("b => b.click()")
+    moved = card.locator(".array-item-card").nth(1)  # the living room, now the second row
+    assert moved.locator("[name='modules[demo][entities][1][own_name]'][type=checkbox]").count() == 1
+    assert "[entities][1][own_name]" in moved.locator(".show-if").first.get_attribute("data-show-if")
+    moved.locator("input[type=checkbox][name$='[own_name]']").evaluate("box => box.click()")
+    assert moved.locator(".show-if").first.is_hidden()
+
+
 def test_show_if_follows_a_dropdown_and_a_switch(page, server_url):
     """show_if.js on /design's examples: the field appears and goes as the other field changes."""
     page.goto(f"{server_url}/design#forms")

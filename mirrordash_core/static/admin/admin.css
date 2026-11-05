@@ -1425,9 +1425,6 @@ input:checked + .slider:before {
 .range-row { display: flex; align-items: center; gap: 12px; }
 .range-row input { flex: 1; accent-color: white; }
 .range-row output { font-family: monospace; font-size: 13px; min-width: 28px; text-align: right; color: white; }
-.color-row { display: flex; align-items: center; gap: 10px; }
-.color-row input[type="color"] { border: none; background: none; width: 36px; height: 36px; cursor: pointer; padding: 0; flex-shrink: 0; }
-.color-row input[type="text"] { flex: 1; }
 textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b; border: 1px solid #27272a; color: white; padding: 8px; border-radius: 4px; font-family: var(--font-family); }
 
 /* List settings: one line per item that opens to its fields, with colour and icon pickers */
@@ -1459,15 +1456,17 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .array-item-tools .btn { padding: 2px 6px; font-size: 0.75rem; }
 .array-item-card .array-item-fields { padding: 4px 12px 12px 34px; }
 @media (prefers-reduced-motion: reduce) { .array-item-chevron { transition: none; } }
-.array-item-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.sub-form-group { margin-bottom: 8px; }
-.sub-form-group.wide { grid-column: span 2; }
-.sub-form-group > label, .sub-form-label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
-.sub-form-group .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; font-size: 0.85rem; }  /* a list item's choices in a row */
-.sub-form-group .form-control { font-size: 0.85rem; height: auto; padding: 4px 8px; background: #09090b; border: 1px solid #27272a; color: white; }
+/* A row's fields are the form's own (forms.py render_array_item), two by two, a little smaller */
+.array-item-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 16px; align-items: start; }
+.array-item-fields .form-group { margin-bottom: 10px; }
+.array-item-fields :is(label, .field-description) { font-size: 0.8rem; }
+.array-item-fields .form-control { font-size: 0.85rem; padding: 4px 8px; }
+.array-item-fields .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; font-size: 0.85rem; }  /* a row's choices side by side */
+.sub-form-group { margin-bottom: 8px; }  /* the power settings' indented groups (admin_power.html) */
+.sub-form-group > label { font-size: 0.8rem; color: #a1a1aa; display: block; margin-bottom: 4px; }
 .swatch-row { display: flex; align-items: center; gap: 10px; }
 .swatches { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.sub-form-group .swatch-value { width: 120px; }
+.swatch-value { width: 160px; }
 /* A list or search setting (ARCHITECTURE #48, choices.js): a search's suggestions under its box, the status under both */
 .choice-status { margin: 4px 0 0; }
 .choice-status:empty { display: none; }
@@ -1499,7 +1498,7 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
     position: sticky; bottom: 0; background: #0f0f11; border-top: 1px solid #27272a; border-radius: 0 0 6px 6px; z-index: 1; }
 /* The drawer's settings two by two; the long ones (lists, keys, addresses, text) across */
 .module-config-own, .standard-settings-content, .form-accordion-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-:is(.module-config-own, .form-accordion-body, .standard-settings-content, .show-if) > :is(h5, .schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
+:is(.module-config-own, .form-accordion-body, .standard-settings-content, .show-if, .array-item-fields) > :is(h5, .schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
 /* A setting with show_if (show_if.js): its field stays in the grid; hidden while the other field doesn't match */
 .show-if { display: contents; }
 .show-if[hidden] { display: none; }

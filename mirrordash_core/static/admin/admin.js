@@ -899,7 +899,7 @@ function selectSubFieldColor(btn, inputId, value) {
     if (inputEl) {
         inputEl.value = value;
     }
-    const cardEl = btn.closest('.array-item-card');
+    const cardEl = btn.closest('.swatch-row');
     const swatches = cardEl.querySelectorAll('.color-swatch-btn');
     swatches.forEach(sw => {
         const isSelected = sw === btn;
@@ -908,7 +908,7 @@ function selectSubFieldColor(btn, inputId, value) {
 }
 
 function updateSwatchSelection(input) {
-    const cardEl = input.closest('.array-item-card');
+    const cardEl = input.closest('.swatch-row');
     const swatches = cardEl.querySelectorAll('.color-swatch-btn');
     swatches.forEach(sw => {
         const isSelected = sw.title.toLowerCase() === input.value.toLowerCase() || sw.getAttribute('onclick').includes(input.value);
@@ -954,35 +954,23 @@ document.addEventListener('input', (event) => {
     if (card) arrayItemSummary(card);
 });
 
+// A row's place is in its fields' names ("modules[c][calendars][2][url]") and in the ids, labels, Show buttons,
+// colour swatches and show_if rules made from them (forms.py _html_id): after a move or a removal each row
+// takes its new place in all of them
+const REINDEXED = ['name', 'id', 'for', 'data-reveal', 'aria-controls', 'onclick', 'data-show-if'];
+const htmlId = (text) => text.replace(/[[\]_]/g, '-');
 function reindexArrayContainer(container) {
     if (!container) return;
-    const cards = container.querySelectorAll('.array-item-card');
-    cards.forEach((card, idx) => {
+    container.querySelectorAll(':scope > .array-item-card').forEach((card, idx) => {
         arrayItemSummary(card);
-
-        const inputs = card.querySelectorAll('input, select, textarea');
-        inputs.forEach(input => {
-            const name = input.getAttribute('name');
-            if (name) {
-                const newName = name.replace(/(\[[a-zA-Z_-]+\])\[\d+\]/, `$1[${idx}]`);
-                input.setAttribute('name', newName);
-                
-                const id = input.getAttribute('id');
-                if (id) {
-                    const newId = `field-${newName}`.replace(/\[/g, '-').replace(/\]/g, '-').replace(/_/g, '-').replace(/--/g, '-').replace(/-$/, '');
-                    input.setAttribute('id', newId);
-                    
-                    const colorSwatchBtns = card.querySelectorAll('.color-swatch-btn');
-                    colorSwatchBtns.forEach(sw => {
-                        const onclick = sw.getAttribute('onclick');
-                        if (onclick) {
-                            const newOnclick = onclick.replace(/selectSubFieldColor\(this,\s*'[^']+',/g, `selectSubFieldColor(this, '${newId}',`);
-                            sw.setAttribute('onclick', newOnclick);
-                        }
-                    });
-                }
-            }
-        });
+        const match = card.querySelector('[name]')?.getAttribute('name').match(/^(.*?\[[A-Za-z0-9_-]+\])\[(\d+)\]/);
+        if (!match || match[2] === String(idx)) return;
+        const [before, after] = [`${match[1]}[${match[2]}]`, `${match[1]}[${idx}]`];
+        const swap = (text) => text.split(before).join(after).split(htmlId(before)).join(htmlId(after));
+        card.querySelectorAll('*').forEach((el) => REINDEXED.forEach((attr) => {
+            const value = el.getAttribute(attr);
+            if (value) el.setAttribute(attr, swap(value));
+        }));
     });
 }
 

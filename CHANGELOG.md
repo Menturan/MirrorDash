@@ -12,6 +12,8 @@ There are two kinds of releases:
 - **A module's settings can follow a choice**: Photos shows only the settings of the source you pick (Immich's address and key for Immich, and so on) instead of all six sources' in one long list. The others keep what you saved. Modules can also put settings in sections that open with a click.
 - The choices in a module's dropdowns read as words (Open meteo) instead of in capitals (OPEN METEO) when the module doesn't name them.
 - A setting a module update adds starts at its own default on a mirror that had the module already.
+- The rows of a module's lists (a calendar, an entity) have the same switches, sliders and boxes as the rest of its settings, with their explanations; a colour is picked the same way everywhere.
+- A backup without a password also leaves out the passwords and keys in a module's lists, and restoring it keeps this mirror's own.
 
 
 ### OS image

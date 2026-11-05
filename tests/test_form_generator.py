@@ -189,7 +189,7 @@ def test_extra_form_controls():
     assert 'value="50"' in html
     
     # Assert color picker
-    assert 'type="color"' in html
+    assert html.count("color-swatch-btn") == 7 and "swatch-value" in html  # the swatches and the value as text
     assert 'value="#ffffff"' in html
     
     # Assert password field
@@ -275,7 +275,7 @@ def test_render_array_item_checkboxes():
     prop = {"type": "array", "title": "Extra readings",
             "items": {"type": "string", "enum": ["humidity", "linkquality"], "enum_titles": ["Humidity", "Signal"]}}
     html = render_array_item("m", "entities", {"readings": prop}, 0, {"readings": ["linkquality"]}, "Entity")
-    assert 'type="checkbox" name="m[entities][0][readings]" value="humidity">' in html
+    assert 'name="m[entities][0][readings]" value="humidity">' in html
     assert 'value="linkquality" checked' in html and "<span>Signal</span>" in html
     # None ticked saves as [], not missing: the module then shows none instead of its default
     parsed = parse_flat_form_data({"entities[0][readings]": ""})

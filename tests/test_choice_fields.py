@@ -31,7 +31,7 @@ def test_a_list_and_a_search_are_drawn_with_the_saved_choice_full_width():
     assert 'data-choice-field="search"' in html and 'role="combobox"' in html
     assert 'name="modules[s][city][id]" value="7"' in html and 'name="modules[s][city][name]" value="Gävle"' in html
     row = render_array_item("modules[s]", "schools", ROW, 0, {"school": {"id": "913", "name": "Fridhemsskolan"}}, "School")
-    assert '<div class="sub-form-group wide">' in row and 'data-choice-field="list"' in row
+    assert '<div class="form-group schema-field wide">' in row and 'data-choice-field="list"' in row
     assert '<option value="913" selected>Fridhemsskolan</option>' in row  # saved unchanged until the module answers
     assert '<option value="">Choose…</option>' in render_array_item("modules[s]", "schools", ROW, 1, {}, "School")
 

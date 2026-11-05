@@ -31,14 +31,29 @@ def lan_hosts(modules: dict) -> dict[str, set[str]]:
         if not cfg.get("enabled", True):
             continue
         schema = schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {}
-        for key, prop in schema.get("properties", {}).items():
-            value = cfg.get(key)
-            if isinstance(prop, dict) and prop.get("format") == "lan-url" and isinstance(value, str) and value.strip():
-                value = value.strip()
-                host = urllib.parse.urlsplit(value if "//" in value else "//" + value).hostname
-                if host:
-                    hosts.setdefault(instance_id, set()).add(host)
+        for value in _lan_urls(cfg, schema.get("properties")):
+            host = urllib.parse.urlsplit(value if "//" in value else "//" + value).hostname
+            if host:
+                hosts.setdefault(instance_id, set()).add(host)
     return hosts
+
+
+def _lan_urls(values, properties):
+    """The addresses typed in the lan-url settings of these values: at the top, in a nested object and in a
+    list's rows (a printer per row, ARCHITECTURE #54)."""
+    if not isinstance(values, dict) or not isinstance(properties, dict):
+        return
+    for key, prop in properties.items():
+        value = values.get(key)
+        if not isinstance(prop, dict):
+            continue
+        if prop.get("format") == "lan-url" and isinstance(value, str) and value.strip():
+            yield value.strip()
+        elif isinstance(prop.get("properties"), dict):
+            yield from _lan_urls(value, prop["properties"])
+        elif isinstance(prop.get("items"), dict) and isinstance(value, list):
+            for row in value:
+                yield from _lan_urls(row, prop["items"].get("properties"))
 
 
 async def lan_addresses(hosts: set[str]) -> dict[str, list[str]]:
