@@ -41,7 +41,7 @@ class ConnectionManager:
         # reload, and the instances that played a video since the start
         self.page_id: str | None = None
         self.page_stale = False
-        self.reload_asked_at = 0.0
+        self.reload_asked_at = float("-inf")  # never: time.monotonic() counts from boot, so 0 is "just now" on a fresh Pi
         self.played_video: set[str] = set()
 
     def saw(self, client) -> None:
