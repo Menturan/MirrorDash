@@ -46,6 +46,7 @@ from mirrordash_core.features.modules.service import (
     update_modules,
 )
 from mirrordash_core.features.settings.schema import get_module_schema
+from mirrordash_core.features.settings.setting_rules import check_setting_rules
 from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
@@ -152,9 +153,12 @@ def _new_instance_id(module_name: str, modules_config: dict) -> str:
                 if f"{module_name}_{number}".replace("-", "_") not in taken)
 
 
-async def _config_from_form(module_name: str, request: Request, instance_id: str | None) -> tuple[dict, str]:
+async def _config_from_form(module_name: str, request: Request, instance_id: str | None,
+                            check_rules: bool = False) -> tuple[dict, str]:
     """One instance's settings form as the whole config would be with it: its values as the module's
-    schema types them, then checked whole by validate_config (the trust boundary). (config, instance_id);
+    schema types them, then checked whole by validate_config (the trust boundary), and with check_rules (a
+    save) against the rules its schema sets on what is typed (setting_rules.py, ARCHITECTURE #49): not for
+    the preview or a list's choices, which run on a form still being filled in. (config, instance_id);
     HTTPException 404/400 when the module or the form is wrong."""
     ep = find_entry_point(module_name)
     if not ep:
@@ -176,6 +180,8 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
     from mirrordash_core.features.settings.schema import validate_config
     try:
         validate_config(config)
+        if check_rules and schema:
+            check_setting_rules(instance_config, schema)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return config, instance_id
@@ -237,7 +243,7 @@ async def module_choices_route(module_name: str, request: Request, instance_id: 
 async def save_module_config_route(module_name: str, request: Request, instance_id: str | None = None):
     """Save one instance's settings form (_config_from_form checks it first)."""
     is_new = instance_id not in load_config().get("modules", {})
-    config, instance_id = await _config_from_form(module_name, request, instance_id)
+    config, instance_id = await _config_from_form(module_name, request, instance_id, check_rules=True)
     save_config(config)
     guard.note("changed", instance_id)  # the crash guard's step 1 pauses the module changed last
     guard.release(instance_id)  # saved again: back on the screen if the guard had paused it

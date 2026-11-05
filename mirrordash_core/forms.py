@@ -117,6 +117,7 @@ class Field:
     name: str  # the input's form name, e.g. "modules[clock][show_seconds]"
     prefix: str  # the form name of what the field sits in
     module_name: str
+    required: bool = False  # in its schema's "required": the browser won't send the form empty (setting_rules.py)
 
     @property
     def value(self) -> str:
@@ -142,8 +143,9 @@ def _array(field: Field) -> str:
     item_title = str(items_schema.get("title", "Item"))
     # Only objects: a list saved by an older version of the module (["https://..."]) has no fields to show
     items = [item for item in field.stored_value if isinstance(item, dict)] if isinstance(field.stored_value, list) else []
-    cards = "\n".join(render_array_item(field.prefix, field.key, items_schema.get("properties", {}), i, item, item_title)
-                      for i, item in enumerate(items))
+    required = items_schema.get("required") if isinstance(items_schema.get("required"), list) else []
+    cards = "\n".join(render_array_item(field.prefix, field.key, items_schema.get("properties", {}), i, item, item_title,
+                                         required) for i, item in enumerate(items))
     return _macros().array(field, Markup(cards), item_title)
 
 
@@ -192,6 +194,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
         raise ValueError("Unsafe form name prefix or module name")
     properties = _safe_properties(schema.get("properties", {}))
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
     keys = [k for k in STANDARD_FIELDS if k in properties] + [k for k in properties if k not in STANDARD_FIELDS]
     parts = []
     for key in keys:
@@ -200,7 +203,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
         default = "" if prop.get("format") == "lan-url" else prop.get("default", "")  # lan_url: a hint only
         field = Field(key, prop, default if value is None else value,
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
-                      name_prefix, module_name)
+                      name_prefix, module_name, key in required)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
         parts.append(_render(widget, field))
     return "\n".join(parts)
@@ -225,7 +228,8 @@ def _sub_widget(key: str, prop: dict):
     return "sub_text"
 
 
-def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str) -> str:
+def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str,
+                      required: list | tuple = ()) -> str:
     """One card in a list setting (e.g. a calendar), with move up/down and remove."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_KEY.match(array_key):
         raise ValueError("Unsafe form name prefix or list name")
@@ -234,7 +238,7 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
         value = item_val.get(key)
         field = Field(key, prop, prop.get("default", "") if value is None else value,
                       _html_id("field", name_prefix, array_key, index, key), f"{name_prefix}[{array_key}][{index}][{key}]",
-                      name_prefix, "")
+                      name_prefix, "", key in required)
         widget = ({"color": "sub_swatches", "icon": "sub_icons"}.get(key) or _sub_widget(key, prop))
         fields.append(_render(widget, field))
     # A new, empty item opens to be filled in

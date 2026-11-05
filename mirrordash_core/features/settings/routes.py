@@ -150,7 +150,7 @@ async def add_array_item_route(
     item_title: str,
     module_name: str | None = None
 ):
-    sub_properties = {}
+    sub_properties, required = {}, []
     if name_prefix == "globals":
         schema = await get_globals_schema()
         sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
@@ -167,7 +167,8 @@ async def add_array_item_route(
             schema = get_module_schema(ep) if ep else None
             if schema:
                 try:
-                    sub_properties = schema.get("properties", {}).get(array_key, {}).get("items", {}).get("properties", {})
+                    items = schema.get("properties", {}).get(array_key, {}).get("items", {})
+                    sub_properties, required = items.get("properties", {}), items.get("required", [])
                 except AttributeError:  # a schema of the wrong shape
                     pass
 
@@ -179,7 +180,8 @@ async def add_array_item_route(
             sub_properties=sub_properties,
             index=index,
             item_val={},
-            item_title=item_title
+            item_title=item_title,
+            required=required if isinstance(required, list) else [],
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

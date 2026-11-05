@@ -169,7 +169,9 @@ sequenceDiagram
 1. **The admin page** shows the settings form, built from the module's JSON schema (`config_schema.json`) by `forms.py`, without running the module.
 2. **Save** posts it to `features/modules/routes.py` `save_module_config_route`, which:
    - reads the form (`forms.read_form`) and types each value by the schema (`cast_values_by_schema`),
-   - checks the whole config (`features/settings/schema.py` `validate_config`, the trust boundary),
+   - checks the whole config (`features/settings/schema.py` `validate_config`, the trust boundary) and this instance's
+     settings against the rules its schema sets on what is typed (`features/settings/setting_rules.py`: required,
+     pattern, minimum/maximum, length; the browser checks the same ones first),
    - saves it (`config.py` `save_config`: written whole, the last good copy kept).
 3. **`module_host.reload_modules()`** tells the screen to reload and runs `_sync`: an instance whose settings changed is stopped and started again with the new ones; the others keep running and send their cards again.
 4. **The answer** is a small event for the page (`admin.notify`): "Settings saved." The settings drawer stays open.

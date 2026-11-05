@@ -6,6 +6,17 @@
 <div class="form-label-desc"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label><p class="field-description">{{ f.description }}</p></div>
 {%- endmacro %}
 
+{# The schema's rules as the browser's own checks (setting_rules.py checks them again on save, ARCHITECTURE #49);
+   pattern_message is the tooltip the browser shows with a value of the wrong format #}
+{% macro rules(f) -%}
+{%- if f.required %} required{% endif -%}
+{%- if f.schema.minimum is number %} min="{{ f.schema.minimum }}"{% endif -%}
+{%- if f.schema.maximum is number %} max="{{ f.schema.maximum }}"{% endif -%}
+{%- if f.schema.minLength is number %} minlength="{{ f.schema.minLength }}"{% endif -%}
+{%- if f.schema.maxLength is number %} maxlength="{{ f.schema.maxLength }}"{% endif -%}
+{%- if f.schema.pattern is string %} pattern="{{ f.schema.pattern }}"{% if f.schema.pattern_message %} title="{{ f.schema.pattern_message }}"{% endif %}{% endif -%}
+{%- endmacro %}
+
 {# An enum option's name: the schema's enum_titles (or enumNames) beside its enum, else the value in capitals #}
 {% macro option_title(prop, index) -%}
 {% set titles = prop.get("enum_titles") or prop.get("enumNames") %}
@@ -27,7 +38,7 @@
 
 {% macro select(f) -%}
 <div class="form-group schema-field">{{ label(f) }}
-    <select id="{{ f.id }}" name="{{ f.name }}" class="form-control">{{ options(f.schema, f.stored_value) }}</select></div>
+    <select{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}" class="form-control">{{ options(f.schema, f.stored_value) }}</select></div>
 {%- endmacro %}
 
 {# The boxes of a list of choices; the hidden empty value saves "none ticked" as []. Without ids when in a
@@ -67,47 +78,47 @@
 
 {% macro number(f) -%}
 <div class="form-group schema-field">{{ label(f) }}
-    <input type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+    <input{{ rules(f) }} type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
 {%- endmacro %}
 
 {% macro color(f) -%}
 <div class="form-group schema-field">{{ label(f) }}
     <div class="color-row"><input type="color" id="{{ f.id }}-picker" value="{{ f.value }}" oninput="document.getElementById('{{ f.id }}').value = this.value">
-    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control" oninput="document.getElementById('{{ f.id }}-picker').value = this.value"></div></div>
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control" oninput="document.getElementById('{{ f.id }}-picker').value = this.value"></div></div>
 {%- endmacro %}
 
 {% macro password(f) -%}
 <div class="form-group schema-field wide">{{ label(f) }}
-    <div class="pw-field"><input type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
+    <div class="pw-field"><input{{ rules(f) }} type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
 {%- endmacro %}
 
 {% macro textarea(f) -%}
 <div class="form-group schema-field wide">{{ label(f) }}
-    <textarea id="{{ f.id }}" name="{{ f.name }}" rows="3" class="form-control schema-textarea">{{ f.value }}</textarea></div>
+    <textarea{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}" rows="3" class="form-control schema-textarea">{{ f.value }}</textarea></div>
 {%- endmacro %}
 
 {% macro text(f) -%}
 <div class="form-group schema-field">{{ label(f) }}
-    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
 {%- endmacro %}
 
 {# "HH:MM" or blank, in the browser's own time picker (24h or 12h as the phone has it) #}
 {% macro time(f) -%}
 <div class="form-group schema-field">{{ label(f) }}
-    <input type="time" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+    <input{{ rules(f) }} type="time" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
 {%- endmacro %}
 
 {# An address at home the module may reach (client.py lets the module host through to it). The schema's
    default is only a hint, never filled in: saving the form must not open an address the owner didn't type. #}
 {% macro lan_url(f) -%}
 <div class="form-group schema-field wide">{{ label(f) }}
-    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.schema.get('default', '') }}" class="form-control">
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.schema.get('default', '') }}" class="form-control">
     <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>
 {%- endmacro %}
 
 {# A Lucide icon's name, drawn beside it as it is typed; admin.js suggests the names of the page's Lucide. #}
 {% macro icon_input(f, size="") -%}
-<div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control{{ size }}" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div>
+<div class="icon-row"><span class="icon-preview" aria-hidden="true"></span><input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control{{ size }}" list="lucide-icons" data-icon-input autocomplete="off" spellcheck="false"></div>
 {%- endmacro %}
 
 {% macro icon(f) -%}
@@ -139,7 +150,7 @@
     {%- for title, value, preview_hex_color in SWATCHES %}
     <button type="button" class="color-swatch-btn{% if f.stored_value == value %} active{% endif %}" style="background-color: {{ preview_hex_color }};" title="{{ title }}" onclick="selectSubFieldColor(this, '{{ f.id }}', '{{ value }}')"></button>
     {%- endfor %}</div>
-    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm swatch-value" oninput="updateSwatchSelection(this)"></div></div>
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm swatch-value" oninput="updateSwatchSelection(this)"></div></div>
 {%- endmacro %}
 
 {% macro sub_icons(f) -%}
@@ -148,7 +159,7 @@
     {%- for icon in ICONS %}
     <button type="button" class="icon-picker-btn{% if f.stored_value == icon %} active{% endif %}" title="{{ icon }}" onclick="selectSubFieldIcon(this, '{{ f.id }}', '{{ icon }}')"><i data-lucide="{{ icon }}"></i></button>
     {%- endfor %}</div>
-    <div class="icon-custom"><span>Custom Name:</span><input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>
+    <div class="icon-custom"><span>Custom Name:</span><input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" oninput="updateIconSelection(this)"></div></div></div>
 {%- endmacro %}
 
 {% macro sub_icon(f) -%}
@@ -163,17 +174,17 @@
 
 {% macro sub_select(f) -%}
 <div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
-    <select id="{{ f.id }}" name="{{ f.name }}" class="form-control form-control-sm">{{ options(f.schema, f.stored_value) }}</select></div>
+    <select{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}" class="form-control form-control-sm">{{ options(f.schema, f.stored_value) }}</select></div>
 {%- endmacro %}
 
 {% macro sub_text(f) -%}
 <div class="sub-form-group"><label for="{{ f.id }}">{{ f.title }}</label>
-    <input type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm"></div>
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm"></div>
 {%- endmacro %}
 
 {% macro sub_password(f) -%}
 <div class="sub-form-group wide"><label for="{{ f.id }}">{{ f.title }}</label>
-    <div class="pw-field"><input type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" autocomplete="off"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
+    <div class="pw-field"><input{{ rules(f) }} type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control form-control-sm" autocomplete="off"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
 {%- endmacro %}
 
 {# A list or search setting (ARCHITECTURE #48): its choices come from the module (choices.js setUpChoiceFields), saved
@@ -185,11 +196,11 @@
     {%- if sub %}<label for="{{ f.id }}">{{ f.title }}</label>{% else %}{{ label(f) }}{% endif %}
     <div class="choice-field" data-choice-field="{{ f.schema.format }}" data-choice-key="{{ f.key }}">
     {%- if f.schema.format == "list" %}
-        <select id="{{ f.id }}" name="{{ f.name }}[id]" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input>
+        <select{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}[id]" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input>
             {%- if saved %}<option value="{{ saved.id }}" selected>{{ saved.name }}</option>{% else %}<option value="">Choose…</option>{% endif %}</select>
     {%- else %}
         <input type="hidden" name="{{ f.name }}[id]" value="{{ saved.id }}" data-choice-id>
-        <input type="text" id="{{ f.id }}" value="{{ saved.name }}" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input
+        <input{{ rules(f) }} type="text" id="{{ f.id }}" value="{{ saved.name }}" class="form-control{{ ' form-control-sm' if sub else '' }}" data-choice-input
                role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="{{ f.id }}-choices" autocomplete="off" spellcheck="false">
         <ul class="choice-suggestions" id="{{ f.id }}-choices" role="listbox" hidden></ul>
     {%- endif %}

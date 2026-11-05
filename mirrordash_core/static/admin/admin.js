@@ -541,6 +541,11 @@ function setUpIconInputs(root) {
     inputs.forEach(drawIcon);
 }
 document.addEventListener('input', (event) => { if (event.target.matches?.('[data-icon-input]')) drawIcon(event.target); });
+// A setting the browser finds breaks its schema's rules (schema_form.html rules, ARCHITECTURE #49) may sit in a
+// folded list item or section: open them, or the browser can't point at it and the save just doesn't happen
+document.addEventListener('invalid', (event) => {
+    for (let fold = event.target.closest('details'); fold; fold = fold.parentElement.closest('details')) fold.open = true;
+}, true);
 // The whole settings form, or a new item in one of its lists
 document.body.addEventListener('htmx:afterSwap', (event) => {
     if (!event.target.closest?.('#config-fields-global')) return;
