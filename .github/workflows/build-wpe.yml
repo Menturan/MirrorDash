@@ -1,0 +1,80 @@
+name: Build WPE WebKit
+
+# Trixie's WPE WebKit (2.48.3) gets no security fixes ("wpewebkit is generally unsupported from
+# bookworm onwards", Debian's security-support.deb13), and WebKitGTK, which Debian does keep up to
+# date, gets no GL on the Pi 3 (measured 2026-11-05). So: Debian sid's wpewebkit, rebuilt for trixie
+# arm64 as it is. For now an experiment that measures what the build costs; nothing installs it yet.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Debian source version of wpewebkit (sid), e.g. 2.54.2-1"
+        required: true
+        default: "2.54.2-1"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    container: debian:trixie
+    env:
+      VERSION: ${{ inputs.version }}
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 4G
+      CCACHE_COMPRESS: "1"
+      # Debian's rules pick clang through CMake; CMake reads these as its compiler launcher
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      DEBFULLNAME: MirrorDash CI
+      DEBEMAIL: noreply@github.com
+    steps:
+      - name: Tools and Debian's signed source
+        run: |
+          [[ "$VERSION" =~ ^[0-9][0-9.]*-[0-9]+$ ]] || { echo "Not a Debian version: $VERSION"; exit 1; }
+          apt-get update
+          apt-get install -y --no-install-recommends devscripts debian-keyring ccache ca-certificates dpkg-dev equivs
+          df -h / && nproc && free -g
+          mkdir src && cd src
+          # dget checks the .dsc's signature against Debian's keyring and the files against the .dsc
+          dget "https://deb.debian.org/debian/pool/main/w/wpewebkit/wpewebkit_${VERSION}.dsc"
+
+      - name: Restore the compiler cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: wpe-ccache-${{ inputs.version }}-${{ github.run_id }}
+          restore-keys: wpe-ccache-
+
+      - name: Build
+        timeout-minutes: 330
+        run: |
+          cd src/wpewebkit-*/
+          apt-get build-dep -y .
+          dch --local "~mirrordash" --distribution trixie "Rebuilt for trixie, whose own WPE gets no security fixes."
+          start=$(date +%s)
+          # No debug info (the -g Debian's rules turn into -g1): smaller objects, a quicker link, room on the disk
+          DEB_CFLAGS_STRIP="-g" DEB_CXXFLAGS_STRIP="-g" \
+            DEB_BUILD_OPTIONS="nocheck nodoc noautodbgsym parallel=$(nproc)" dpkg-buildpackage -B -us -uc
+          echo "Build took $(( ($(date +%s) - start) / 60 )) minutes"
+
+      - name: Save the compiler cache (also after a timeout, so the next run goes on from here)
+        if: always()
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: wpe-ccache-${{ inputs.version }}-${{ github.run_id }}
+
+      - name: Cache and disk
+        if: always()
+        run: ccache -s; df -h /; ls -la src/*.deb 2>/dev/null || true
+
+      - name: Save the packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: wpewebkit-${{ inputs.version }}-trixie-arm64
+          path: src/*.deb
+          if-no-files-found: error
+          retention-days: 14
