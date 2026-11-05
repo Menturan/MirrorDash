@@ -912,10 +912,8 @@ step_system_cleanup() {
   apt-get purge -y --auto-remove man-db vim-tiny nano wireless-tools || true
   apt-get clean
   apt-get autoremove -y
-
-  echo "Purging heavy international fonts..."
-  apt-get purge -y "fonts-noto-cjk*" "fonts-noto-core*" "fonts-kacst*" "fonts-tlwg*" "fonts-nanum*" || true
-  apt-get autoremove -y
+  # Pi OS Lite's remote access and camera apps: the mirror has neither a use for them nor a camera
+  apt-get purge -y --auto-remove rpi-connect-lite 'rpicam-apps*' 'librpicam-app*' 'libcamera*' || true
 
   echo "Removing heavy UI assets..."
   rm -rf /usr/share/icons/Adwaita
