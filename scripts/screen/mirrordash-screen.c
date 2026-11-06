@@ -8,7 +8,7 @@
 
 static const char *DEFAULT_PAGE = "file:///home/pi/mirrordash/loading.html";
 
-static void web_process_died(WebKitWebView *view, WebKitWebProcessTerminationReason reason, gpointer loop)
+static void web_process_died(G_GNUC_UNUSED WebKitWebView *view, WebKitWebProcessTerminationReason reason, gpointer loop)
 {
     fprintf(stderr, "The web process ended (%s); starting again gets its memory back\n",
             reason == WEBKIT_WEB_PROCESS_EXCEEDED_MEMORY_LIMIT ? "out of memory" : "crashed");
