@@ -117,6 +117,16 @@ def test_a_crashed_renderer_ends_the_screen_so_systemd_starts_a_new_one():
     assert "scripts/screen/mirrordash-screen.c" in SETUP and "-o /usr/local/bin/mirrordash-screen" in SETUP
 
 
+def test_the_screen_never_changes_site_on_its_own_and_stays_on_the_mirrors_page():
+    """WPE 2.54 aborts on a change of site while the screen is off (2026-11-06, 12 of 12 starts from
+    file://), and a module's script could send the page anywhere: the start page is shown as the
+    server's own, and navigations off it are refused."""
+    launcher = (ROOT / "scripts" / "screen" / "mirrordash-screen.c").read_text()
+    assert 'ORIGIN = "http://localhost:8000/"' in launcher
+    assert "webkit_web_view_load_html(view, loading, ORIGIN)" in launcher
+    assert '"decide-policy"' in launcher and "g_str_has_prefix(uri, ORIGIN)" in launcher
+
+
 def test_hydrate_moves_the_apps_python_to_storage(tmp_path):
     """A venv that uses the root's Python gets a copy of it on /storage and is pointed at that, so an
     OS update with another Python never leaves the venvs unable to start (it used to delete them)."""
