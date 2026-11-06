@@ -173,7 +173,9 @@ step_installing_packages() {
       zip \
       overlayroot \
       ddcutil \
+      v4l-utils \
       git
+  # v4l-utils: cec-ctl turns a TV off and on with the screen over HDMI-CEC (features/hardware/cec.py)
 
   # HDMI screens take brightness over DDC/CI (I2C on the HDMI cable); ddcutil needs /dev/i2c-*
   echo "i2c-dev" > /etc/modules-load.d/mirrordash-i2c.conf

@@ -93,6 +93,7 @@ The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside
 *   *From the last activity* keeps it on while someone is still there; *A fixed time* turns it off after exactly that time, for example for a doorbell.
 *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 *   While the screen is off, the modules don't fetch new data (saving API calls). When it comes back on, those whose update was due fetch it right away.
+*   A TV turns off and on with the screen over HDMI-CEC (*Turn a TV off and on with the screen*, on by default), as its remote would. If someone is watching another input on it, the mirror leaves it alone. A computer monitor goes to standby by itself when the screen turns off. Not yet tried on a TV.
 
 Always use **Shut Down** (Power tab) before unplugging the mirror. To start it again, unplug the power and plug it back in, or use a button on GPIO 3 (below).
 

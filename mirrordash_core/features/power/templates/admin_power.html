@@ -129,6 +129,17 @@
                 </div>
             </div>
 
+            <!-- A TV off and on with the screen, over HDMI-CEC (features/hardware/cec.py) -->
+            <div style="margin-top: 20px;">
+                <label style="display: flex; gap: 10px; align-items: center; font-size: 0.85rem; color: white;">
+                    <input type="hidden" name="display_control[cec]" value="false">
+                    <input type="checkbox" name="display_control[cec]" value="true" {% if settings.display_control.cec is not defined or settings.display_control.cec %}checked{% endif %} style="width: 18px; height: 18px; flex-shrink: 0;">
+                    Turn a TV off and on with the screen (HDMI-CEC)
+                </label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 26px;">
+                    A TV often only shows "No signal" when the screen turns off; this turns it off for real, as its remote does. A TV showing another input is left alone. Monitors without HDMI-CEC aren't affected.
+                </p>
+            </div>
         </form>
     </section>
 

@@ -115,6 +115,7 @@ class Wake(BaseModel, strict=True, extra="allow"):
 
 class DisplayControl(BaseModel, strict=True, extra="allow"):
     mode: Literal["manual", "interval", "wake"] = "manual"
+    cec: bool = True  # a TV off and on with the screen, over HDMI-CEC (features/hardware/cec.py)
     interval: Interval = Interval()
     wake: Wake = Wake()
 
@@ -172,8 +173,9 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     incoming = settings.get("display_control") or {}
     if not isinstance(incoming, dict) or not all(isinstance(incoming.get(part, {}), dict) for part in ("interval", "wake")):
         raise HTTPException(status_code=400, detail="Invalid display power settings")
-    if "mode" in incoming:
-        display_control["mode"] = incoming["mode"]
+    for key in ("mode", "cec"):
+        if key in incoming:
+            display_control[key] = incoming[key]
     for part in ("interval", "wake"):
         if part in incoming:
             display_control[part] = {**display_control.get(part, {}), **incoming[part]}
@@ -231,6 +233,8 @@ async def save_system_settings_route(request: Request):
              for end in ("start", "end") if f"{end}_h" in picked and f"{end}_m" in picked}
     if times:
         display_control["interval"] = times
+    if "cec" in display_control:  # the checkbox: "true", or the hidden "false" under it
+        display_control["cec"] = display_control["cec"] in (True, "true")
     for key in ("prerelease", "auto_update", "ssh"):  # a lone "false" (an unchecked box) stays text in read_form
         if key in parsed:
             parsed[key] = parsed[key] in (True, "true")

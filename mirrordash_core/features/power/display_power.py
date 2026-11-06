@@ -28,8 +28,10 @@ from datetime import time as time_of_day
 from zoneinfo import ZoneInfo
 
 from mirrordash_core.config import load_config
+from mirrordash_core.features.hardware.cec import set_tv_power
 from mirrordash_core.features.hardware.display import set_screen_power
 from mirrordash_core.forms import DAYS
+from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.power")
 
@@ -197,7 +199,14 @@ class DisplayPowerManager:
             await broadcast_screen(config)
 
     async def set_state(self, on: bool) -> bool:
+        # A TV over HDMI-CEC: asked to turn off before the signal goes (a TV that switches inputs on its
+        # own would otherwise show another one, which is then left on); turned on after the signal is back
+        tv = load_config().get("system", {}).get("display_control", {}).get("cec", True)
+        if tv and not on:
+            await set_tv_power(False)
         success = await set_screen_power(on)
+        if tv and on and success:
+            run_in_background(set_tv_power(True))
         if success:
             self.is_on = on
             self.awake.set() if on else self.awake.clear()

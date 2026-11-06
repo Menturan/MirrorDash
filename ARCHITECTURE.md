@@ -55,6 +55,12 @@ Each decision starts with **In short**, a sentence or two: read only those to sk
 - [47. The Screen's Crash Guard: Modules Paused in Steps When the Page Keeps Crashing](#47-the-screens-crash-guard-modules-paused-in-steps-when-the-page-keeps-crashing)
 - [48. List and Search Settings: the Module Gives the Choices, Asked With the Unsaved Form](#48-list-and-search-settings-the-module-gives-the-choices-asked-with-the-unsaved-form)
 - [49. Rules on What the Owner Types: the Schema's Own Keywords, Checked by the Browser and on Save](#49-rules-on-what-the-owner-types-the-schemas-own-keywords-checked-by-the-browser-and-on-save)
+- [50. A Setting Shown Only for a Choice: show_if](#50-a-setting-shown-only-for-a-choice-show_if)
+- [51. Setting Groups: Flat Settings Drawn in a Collapsible Section](#51-setting-groups-flat-settings-drawn-in-a-collapsible-section)
+- [52. A Module Gets Its Schema's Defaults](#52-a-module-gets-its-schemas-defaults)
+- [53. The Type Picks a Setting's Box, the Format Changes It](#53-the-type-picks-a-settings-box-the-format-changes-it)
+- [54. A List's Rows Are Drawn as the Form Is](#54-a-lists-rows-are-drawn-as-the-form-is)
+- [55. A TV Turned Off and On With the Screen Over HDMI-CEC](#55-a-tv-turned-off-and-on-with-the-screen-over-hdmi-cec)
 
 ---
 
@@ -122,7 +128,7 @@ Each decision starts with **In short**, a sentence or two: read only those to sk
 ## 11. Display Power Automation Strategies
 > **In short:** One manager turns the screen on and off: on a schedule, by a presence sensor or a button, on the owner's time zone.
 
-* **Decision**: Integrated a central `DisplayPowerManager` daemon executing alongside the module loader lifespan. It supports time schedules, presence sensors and push buttons, read from kernel input devices (see #19 and #20). The Time of Day Schedule mode respects the global timezone configuration (e.g. `Europe/Stockholm`) when fetching the current time, ensuring timezone-aware scheduling.
+* **Decision**: Integrated a central `DisplayPowerManager` daemon executing alongside the module loader lifespan. It supports time schedules, presence sensors and push buttons, read from kernel input devices (see #19 and #20). A TV on the cable follows over HDMI-CEC (#55). The Time of Day Schedule mode respects the global timezone configuration (e.g. `Europe/Stockholm`) when fetching the current time, ensuring timezone-aware scheduling.
 * **Rationale**: Smart mirrors require automated power conservation. Supporting time scheduling, presence sensors, and buttons allows different hardware setups to save energy automatically. Timezone awareness prevents schedule misalignment if the host machine (e.g., Raspberry Pi) is configured to UTC or another local time.
 
 ## 12. User Data Outside the Package
@@ -478,3 +484,11 @@ The analysis (2026-10-24). Built since: step 0, step 1 and the screen, in #41; "
 * **Rationale**: A module's author learnt two tables: a `boolean` in a row was a text box to type `true` into, a slider, a time or a home address there only text. One way of drawing a field is one thing to learn and fewer macros to keep.
 * **Limits**: A row's fields show their descriptions now, so a row is taller. ponytail: a row's labels still point at ids made before a move only until it is reindexed, which every move and removal does.
 * **Checked**: `tests/test_form_box_by_format.py`, `tests/test_lan_in_rows.py`, `tests/test_backup_nested_secrets.py`, the browser test of a row's switch, show_if and move (`tests/test_visual_admin.py`), the List of Items card on `/design#forms`.
+
+## 55. A TV Turned Off and On With the Screen Over HDMI-CEC
+> **In short:** When the screen turns off or on, a TV on the HDMI cable is told to as well, over HDMI-CEC, as its remote would; a TV showing another input is left alone. On by default, a switch on the Power tab. Not yet tried on a real TV.
+
+* **Decision**: `DisplayPowerManager.set_state` (`features/power/display_power.py`) calls `set_tv_power` (`features/hardware/cec.py`) unless `system.display_control.cec` is false: before the HDMI output goes off, and in the background after it is back on. `set_tv_power` runs `cec-ctl` (v4l-utils, in the image by name) on the kernel's adapter (`/dev/cec0` from `vc4_hdmi`; the first with a physical address, for the Pi 4/5's two ports), as the playback device "MirrorDash", claimed again each time. It polls the TV (logical address 0) and stops there when nothing answers: a monitor. Off: it asks who is the active source (`<Request Active Source>`, a second for answers) and sends `<Standby>` to the TV only when the mirror is, or nobody says. On: `<Image View On>` and `<Active Source>`, unless the TV reports it is on (`<Give Device Power Status>`) while another device is the source. A screen without a physical address (a TV that drops its hotplug line in standby) only gets `<Image View On>`, from Unregistered, which the kernel allows for this. Every screen control goes through `set_state` (the schedule, presence, the button, the admin page, `/api/v1`, Matter, MQTT), so all of them reach the TV.
+* **Rationale**: Turning the HDMI output off (`wlr-randr --off`, or DPMS with `wlopm`, which leave the same state in KMS: the CRTC off, no signal) puts a monitor in standby, but what a screen does without a signal is up to the screen, and many TVs show "No signal" for minutes or keep their panel lit. CEC's `<Standby>` is the TV's own off. Sent to the TV alone, never to everyone (15), which would turn a soundbar or receiver off too. The checks keep the mirror from turning off a TV someone watches on another input, or switching it to the mirror. Off waits for the TV before the signal goes, since a TV that switches inputs on its own would otherwise be showing another one, and be left on. cec-ctl was already in the image (a dependency) and handles claiming, retries and replies; the ioctls by hand would be ours to keep.
+* **Measured** on a Pi 3B (2026-11-06): the adapter keeps its address and sends with the HDMI output off, by `wlr-randr` and by `wlopm` alike; the monitor there (Samsung S24D300) has no CEC, so the poll goes unanswered and a screen change waits 0.7 s for it, nothing else is sent. **Not yet tried on a TV**: the active-source and power-status answers are parsed as cec-ctl prints them, not as seen from one.
+* **Checked**: `tests/test_cec.py` (off and on, a TV on another input, a monitor, no adapter, no physical address, the setting off).

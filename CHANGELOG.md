@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A TV turns off and on with the mirror** over HDMI-CEC, as its remote would, instead of only showing "No signal". A TV showing another input is left alone, and monitors aren't affected. On by default; *Power* has a switch for it. Not yet tried on a TV: tell us how yours does.
+
 ### OS image
 
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
