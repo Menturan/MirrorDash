@@ -131,8 +131,9 @@ def patch_all_system():
                     # Ignore if the module doesn't import or define this function
                     pass
         
-        # The installed modules are the two above (clock on the mirror, calendar not yet)
-        for m in ("loader", "service"):
+        # The installed modules are the two above (clock on the mirror, calendar not yet). module_files is
+        # where find_entry_point looks (the settings drawer); the others imported the name before the patch.
+        for m in ("module_files", "loader", "service"):
             stack.enter_context(patch(f"mirrordash_core.features.modules.{m}.module_entry_points", lambda: list(FAKE_MODULES)))
         stack.enter_context(patch("mirrordash_core.features.backup.service.module_entry_points", lambda: list(FAKE_MODULES)))
 
