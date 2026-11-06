@@ -68,8 +68,8 @@ echo y | uv run --project "$SDK" mirrordash-sdk release X.Y.Z       # after the 
 It validates, runs the module's tests, sets the version, tags `vX.Y.Z`, pushes and makes the GitHub Release
 (notes generated from the commits). Mirrors offer it on the module's card. A new module starts at `1.0.0`.
 
-For `mirrordash-clock`: the OS image pins it in `CLOCK_REF` in `scripts/configure_image.sh`; offer to move it
-to the new tag (it reaches mirrors with the next OS image).
+For `mirrordash-clock`: the OS image installs its newest release by itself, so the new tag reaches mirrors
+with the next OS image; nothing to bump.
 
 ## The SDK
 

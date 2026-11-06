@@ -69,9 +69,6 @@ purge_installed() {
   [ -z "$present" ] || apt-get purge -y --auto-remove $present
 }
 STATE_FILE="/var/lib/mirrordash-setup-state"
-# Pinned so a given tag always produces the same image. Bump deliberately.
-UV_SERIES="0.13"  # uv is 0.x: a new minor can break (0.13 changed the default Python); its patches come by themselves
-CLOCK_REF="v1.4.0"  # a tag in Menturan/mirrordash-clock (must be its newest release, or mirrors offer a "newer" old one)
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
@@ -375,12 +372,12 @@ EOF
 step_installing_app() {
   # Install uv globally (standalone binary) securely via release artifact
   echo "Downloading uv binary securely to /usr/local/bin..."
-  # The newest $UV_SERIES.x release, from PyPI (uv's versions there are its GitHub tags; no API rate limit)
+  # The newest uv, from PyPI (its versions there are its GitHub tags; no API rate limit). uv is 0.x and a
+  # new minor can break, but the golden venv below does what a mirror does with it (uv venv, uv pip install
+  # of the app and a module from git), so a uv that breaks that stops the build here, not on a mirror.
   local uv_version
-  uv_version=$(curl -sSLf https://pypi.org/pypi/uv/json | python3 -c 'import json, sys
-s = sys.argv[1] + "."
-v = [k for k, files in json.load(sys.stdin)["releases"].items() if k.startswith(s) and k[len(s):].isdigit() and files]
-print(max(v, key=lambda k: int(k[len(s):])))' "$UV_SERIES")
+  uv_version=$(curl -sSLf --retry 3 https://pypi.org/pypi/uv/json | python3 -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])')
+  echo "uv $uv_version"
   curl -sSLf "https://github.com/astral-sh/uv/releases/download/${uv_version}/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
   chmod +x /usr/local/bin/uv
 
@@ -390,6 +387,13 @@ print(max(v, key=lambda k: int(k[len(s):])))' "$UV_SERIES")
   # Setup symlink structures (A/B venv layout & persistent data)
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/venv "$PI_HOME/mirrordash/.venv"
   sudo -u "$PI_USER" HOME="$PI_HOME" ln -sfT /storage/mirrordash/data "$PI_HOME/.mirrordash"
+
+  # The clock module's newest release (it must be: a mirror offers the newest as an update): GitHub sends
+  # /releases/latest on to its tag, so no API and no rate limit
+  local CLOCK_REF
+  CLOCK_REF=$(curl -fsSI --retry 3 https://github.com/Menturan/mirrordash-clock/releases/latest \
+    | awk -F/ 'tolower($1) ~ /^location:/ {print $NF}' | tr -d '\r')
+  [[ "$CLOCK_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "No release of mirrordash-clock found: '$CLOCK_REF'"; exit 1; }
 
   # Create base_venv (Golden Copy), then install the app into it
   sudo -u "$PI_USER" HOME="$PI_HOME" CLOCK_REF="$CLOCK_REF" PATH="$PI_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin" bash -e << 'EOF'
