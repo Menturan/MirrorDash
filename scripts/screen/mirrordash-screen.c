@@ -50,6 +50,15 @@ int main(void)
         return 1;
     }
     GMainLoop *loop = g_main_loop_new(NULL, FALSE);
+    // Started while the screen is off (wlr-randr --off takes its output away): wait for it. A view made
+    // without a screen ties its frames to none, never draws, never shows, and stayed black once the
+    // screen came on (Pi 3, 2026-11-06); turned off and on later, a running view carries on.
+    if (wpe_display_get_n_screens(display) == 0) {
+        fprintf(stderr, "Waiting for the screen to turn on\n");
+        gulong waiting = g_signal_connect_swapped(display, "screen-added", G_CALLBACK(g_main_loop_quit), loop);
+        g_main_loop_run(loop);
+        g_signal_handler_disconnect(display, waiting);
+    }
     WebKitWebView *view = WEBKIT_WEB_VIEW(g_object_new(WEBKIT_TYPE_WEB_VIEW, "display", display, NULL));
     WebKitColor black = { 0, 0, 0, 1 };
     webkit_web_view_set_background_color(view, &black);

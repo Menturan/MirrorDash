@@ -127,6 +127,13 @@ def test_the_screen_never_changes_site_on_its_own_and_stays_on_the_mirrors_page(
     assert '"decide-policy"' in launcher and "g_str_has_prefix(uri, ORIGIN)" in launcher
 
 
+def test_a_screen_started_while_it_is_off_waits_for_it_before_making_the_view():
+    """A view made without a screen never draws, and stayed black once the screen came on (2026-11-06)."""
+    launcher = (ROOT / "scripts" / "screen" / "mirrordash-screen.c").read_text()
+    waiting, view = launcher.index("wpe_display_get_n_screens(display) == 0"), launcher.index("WEBKIT_TYPE_WEB_VIEW")
+    assert waiting < view and '"screen-added"' in launcher
+
+
 def test_hydrate_moves_the_apps_python_to_storage(tmp_path):
     """A venv that uses the root's Python gets a copy of it on /storage and is pointed at that, so an
     OS update with another Python never leaves the venvs unable to start (it used to delete them)."""
