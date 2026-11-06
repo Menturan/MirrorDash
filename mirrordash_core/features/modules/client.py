@@ -607,9 +607,8 @@ class ModuleHost:
             if isinstance(message.get("id"), int) and (error := self._hand_over_gpio_lines(message, conn)):
                 logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
                 await self._send_quietly(conn, {"t": "reply", "id": message["id"], "error": error})
-        elif kind == "video_window_end":
-            if message.get("id") in conn.windows:
-                conn.windows[message["id"]].set()
+        elif kind == "video_window_end" and message.get("id") in conn.windows:
+            conn.windows[message["id"]].set()
 
     def _log_from_module(self, message: dict, conn: Connection) -> None:
         """A log line from the host: under the instance's own name (or the host's), at most LOG_BURST in
