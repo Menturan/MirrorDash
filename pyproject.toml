@@ -17,12 +17,12 @@ classifiers = [
 ]
 keywords = ["magicmirror", "raspberrypi", "kiosk", "fastapi", "dashboard"]
 dependencies = [
-    "fastapi~=0.158.0",
-    "uvicorn[standard]~=0.54.0",
-    "jinja2~=3.1.6",
-    "python-multipart~=0.0.32",
+    "fastapi>=0.158",
+    "uvicorn[standard]>=0.54",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
     "babel>=2.17",
-    "aiomqtt~=2.5.1",
+    "aiomqtt>=2.5.1",
     "packaging>=24",
 ]
 
@@ -32,7 +32,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "pytest-mock>=3.12.0",
     "pytest-playwright>=0.5.0",
-    "httpx>=0.27.0",
+    "httpx2>=2.16",  # Starlette's TestClient (plain httpx is deprecated there)
 ]
 
 [project.urls]
@@ -49,6 +49,7 @@ packages = ["mirrordash_core"]
 
 [tool.pytest.ini_options]
 addopts = "--ignore=tests/test_visual_admin.py --browser chromium --browser webkit"
+asyncio_default_fixture_loop_scope = "function"
 
 # Lint (CI runs `ruff check`): the rules that catch real mistakes, not a style. Run `uvx ruff check --fix`.
 [tool.ruff]
