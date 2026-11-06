@@ -937,6 +937,10 @@ step_system_cleanup() {
   apt-get autoremove -y
   # Pi OS Lite's remote access and camera apps: the mirror has neither a use for them nor a camera
   apt-get purge -y --auto-remove rpi-connect-lite 'rpicam-apps*' 'librpicam-app*' 'libcamera*' || true
+  # Pi OS Lite's compiler (kept by dpkg-dev's recommends after step_screen's purge), its firmware
+  # bleeding-edge tool and a Matroska editor with Qt: ~200 MB nothing on a mirror uses. binutils
+  # stays: rpi-eeprom (a Pi 4/5's bootloader updates) depends on it.
+  apt-get purge -y --auto-remove dpkg-dev gcc-14 cpp-14 libgcc-14-dev rpi-update mkvtoolnix || true
 
   echo "Removing heavy UI assets..."
   rm -rf /usr/share/icons/Adwaita

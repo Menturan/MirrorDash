@@ -137,6 +137,9 @@ wpe_version=$(systemd-nspawn -q -D "$MOUNT_DIR" dpkg-query -W -f='${Version}' li
 if [[ "$wpe_version" != *~mirrordash* ]]; then
     fail "WPE WebKit is $wpe_version, not a build from Menturan/mirrordash-wpe: it would get no security fixes."
 fi
+if systemd-nspawn -q -D "$MOUNT_DIR" test -e /usr/bin/gcc-14; then
+    fail "A compiler is left in the image (~200 MB nothing uses; see step_system_cleanup)."
+fi
 
 # A unit directive the image's systemd doesn't know or can't parse (renamed in a newer systemd, a typo) is only
 # a warning at boot: the module sandbox, say, would start without it. systemd-analyze reports those as
