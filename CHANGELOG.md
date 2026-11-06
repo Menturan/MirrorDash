@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- The admin page's icons are Font Awesome 7: the menu's labels line up.
 - **A TV turns off and on with the mirror** over HDMI-CEC, as its remote would, instead of only showing "No signal". A TV showing another input is left alone, and monitors aren't affected. On by default; *Power* has a switch for it. Not yet tried on a TV: tell us how yours does.
 
 ### OS image
@@ -16,7 +17,7 @@ There are two kinds of releases:
 - **The screen's browser engine gets security fixes again**: the mirror shows its page with WPE WebKit 2.54, rebuilt each time Debian has a new one, instead of the older version (2.48) Debian no longer fixes. The Raspberry Pi 3 has a little more memory to spare with it.
 - A screen turned off by the schedule or *Off until woken* no longer makes the screen's browser crash and restart every second in the background until it is turned on again.
 - A module can no longer send the screen to another web page.
-
+- The OS image is about 200 MB smaller: a compiler, a firmware tool for developers and a video editor that came with Raspberry Pi OS are gone.
 - When the screen's page crashes (a module that asks for more graphics memory than the Raspberry Pi has), the screen is back by itself within seconds, instead of a white error page that stayed until the mirror was restarted. A page that freezes is restarted after about 3 minutes instead of 6–11.
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
