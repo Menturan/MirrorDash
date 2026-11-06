@@ -69,6 +69,9 @@ purge_installed() {
   [ -z "$present" ] || apt-get purge -y --auto-remove $present
 }
 STATE_FILE="/var/lib/mirrordash-setup-state"
+# Bumped on purpose, after reading its changelog: uv is 0.x and a new minor can break (0.13 changed the
+# default Python). Its patches (fixes) come by themselves.
+UV_SERIES="0.13"
 
 # Reset state if requested
 if [ "$1" = "--fresh" ] || [ "$1" = "--reset" ]; then
@@ -157,6 +160,7 @@ step_installing_packages() {
   # kernel modules: a kernel before it (apt keeps one as a fallback, APT::NeverAutoRemove, so it goes
   # by name) and the headers are dead weight in the image.
   newest=$(linux-version list | linux-version sort | tail -1)
+  # shellcheck disable=SC2046 # one word per package
   apt-get purge -y 'linux-headers-*' 'linux-kbuild-*' $(dpkg-query -W -f='${Package}\n' 'linux-image-*' 'linux-base-*' \
       | grep -E -- '-[0-9.]+\+rpt-' | grep -v -- "-${newest%%-rpi-*}-")
   apt-get install -y --no-install-recommends \
@@ -372,13 +376,20 @@ EOF
 step_installing_app() {
   # Install uv globally (standalone binary) securely via release artifact
   echo "Downloading uv binary securely to /usr/local/bin..."
-  # The newest uv, from PyPI (its versions there are its GitHub tags; no API rate limit). uv is 0.x and a
-  # new minor can break, but the golden venv below does what a mirror does with it (uv venv, uv pip install
-  # of the app and a module from git), so a uv that breaks that stops the build here, not on a mirror.
-  local uv_version
-  uv_version=$(curl -sSLf --retry 3 https://pypi.org/pypi/uv/json | python3 -c 'import json, sys; print(json.load(sys.stdin)["info"]["version"])')
+  # The newest $UV_SERIES.x release, from PyPI (uv's versions there are its GitHub tags; no API rate limit)
+  local uv_version uv_tar=uv-aarch64-unknown-linux-gnu.tar.gz uv_dl
+  uv_version=$(curl -sSLf --retry 3 https://pypi.org/pypi/uv/json | python3 -c 'import json, sys
+s = sys.argv[1] + "."
+v = [k for k, files in json.load(sys.stdin)["releases"].items() if k.startswith(s) and k[len(s):].isdigit() and files]
+print(max(v, key=lambda k: int(k[len(s):])))' "$UV_SERIES")
   echo "uv $uv_version"
-  curl -sSLf "https://github.com/astral-sh/uv/releases/download/${uv_version}/uv-aarch64-unknown-linux-gnu.tar.gz" | tar -xz -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  # Checked against the checksum uv publishes with it: a broken or swapped download stops the build
+  uv_dl=$(mktemp -d)
+  curl -sSLf --retry 3 -o "$uv_dl/$uv_tar" "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_tar}"
+  curl -sSLf --retry 3 -o "$uv_dl/$uv_tar.sha256" "https://github.com/astral-sh/uv/releases/download/${uv_version}/${uv_tar}.sha256"
+  (cd "$uv_dl" && sha256sum --check --strict "$uv_tar.sha256")
+  tar -xzf "$uv_dl/$uv_tar" -C /usr/local/bin --strip-components=1 uv-aarch64-unknown-linux-gnu/uv
+  rm -rf "$uv_dl"
   chmod +x /usr/local/bin/uv
 
   # Create app directory

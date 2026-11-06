@@ -1,0 +1,7 @@
+# The GitHub Actions the workflows use: a pull request when one has a new version (read its notes, merge)
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
