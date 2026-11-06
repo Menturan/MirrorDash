@@ -137,7 +137,7 @@ wpe_version=$(systemd-nspawn -q -D "$MOUNT_DIR" dpkg-query -W -f='${Version}' li
 if [[ "$wpe_version" != *~mirrordash* ]]; then
     fail "WPE WebKit is $wpe_version, not a build from Menturan/mirrordash-wpe: it would get no security fixes."
 fi
-if systemd-nspawn -q -D "$MOUNT_DIR" test -e /usr/bin/gcc-14; then
+if compgen -G "$MOUNT_DIR/usr/bin/gcc-[0-9]*" > /dev/null; then
     fail "A compiler is left in the image (~200 MB nothing uses; see step_system_cleanup)."
 fi
 
