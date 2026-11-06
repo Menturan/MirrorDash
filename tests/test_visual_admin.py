@@ -10,7 +10,7 @@ import pytest
 import uvicorn
 
 # The admin pages run in Chromium. The mirror's own pages (kiosk, modules) run in WebKit, the engine
-# of the mirror's Cog browser: marked only_browser("webkit"). Both come from addopts in pyproject.toml.
+# of the mirror's screen (WPE WebKit): marked only_browser("webkit"). Both come from addopts in pyproject.toml.
 pytestmark = pytest.mark.only_browser("chromium")
 
 # Setup mock config

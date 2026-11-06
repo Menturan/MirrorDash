@@ -4,7 +4,7 @@ How to work on the MirrorDash core. The detailed rules are in `.agents/rules/`; 
 
 ## Overview
 
-MirrorDash is a modular, ambient information display system designed for Raspberry Pi running in Kiosk mode. The backend is a FastAPI/Python server. The frontend is pure HTML, CSS, and JavaScript served to Cog (WebKit) in full-screen kiosk mode.
+MirrorDash is a modular, ambient information display system designed for Raspberry Pi running in Kiosk mode. The backend is a FastAPI/Python server. The frontend is pure HTML, CSS, and JavaScript shown full screen by WPE WebKit (our own launcher, `mirrordash-screen`).
 
 **Key principle:** The mirror is a passive, glanceable display — not an interactive application.
 
@@ -50,7 +50,7 @@ Not lazy about: understanding the problem (read it fully and trace the real flow
 | Templating | Jinja2 (server-side, rendered per module) |
 | Real-time | WebSockets (one persistent connection per browser client) |
 | Module System | Python `importlib.metadata` entry points (`mirrordash.modules` group) |
-| Deployment | Raspberry Pi OS Trixie (Debian 13), read-only root (overlayroot) with data on `/storage`, Wayland (labwc), Cog kiosk |
+| Deployment | Raspberry Pi OS Trixie (Debian 13), read-only root (overlayroot) with data on `/storage`, Wayland (labwc), WPE WebKit 2.54 (Menturan/mirrordash-wpe) and its launcher `mirrordash-screen` |
 
 ## Code Layout
 

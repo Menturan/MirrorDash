@@ -10,7 +10,7 @@ flowchart TB
         direction TB
         subgraph clients[" "]
             direction LR
-            screen["🪞 <b>The screen</b><br/>Cog, full screen<br/><i>static/index.html</i>"]
+            screen["🪞 <b>The screen</b><br/>WPE WebKit, full screen<br/><i>static/index.html</i>"]
             admin["📱 <b>The admin page</b><br/>phone or computer<br/><i>/admin</i>"]
         end
         core["<b>The core</b><br/>mirrordash.service · user pi · FastAPI<br/><i>mirrordash_core/</i>: settings, hardware, screen, admin page"]
@@ -36,7 +36,7 @@ flowchart TB
 
 - **The core** is one Python program (FastAPI). It serves the mirror's screen and the admin page, keeps the settings in `config.json`, runs the hardware (screen power, GPIO, Wi-Fi) and never runs a module's code.
 - **The module host** runs the modules: the clock, the weather, a calendar. Each module comes from its own repository (made with the [SDK](https://github.com/Menturan/mirrordash-sdk)) and is installed as a Python package. On a mirror each instance runs sandboxed, as a user of its own, so a broken or hostile module can't reach the core's files, the passwords or the other modules (#41).
-- **The screen** is a web page (`static/index.html`, `static/js/kiosk/core.js`) in Cog, a full-screen browser. It draws what the core sends over one WebSocket and does nothing else (#2).
+- **The screen** is a web page (`static/index.html`, `static/js/kiosk/core.js`) in WPE WebKit, shown full screen by our own launcher (`mirrordash-screen`, ARCHITECTURE #56). It draws what the core sends over one WebSocket and does nothing else (#2).
 - **The admin page** (`templates/admin.html`, `static/admin/`) is where the owner changes things. Each tab is a panel the server renders as HTML; HTMX swaps it in.
 - **The OS image** (`scripts/`) is Raspberry Pi OS with a read-only root (#5), the owner's data on `/storage` (#12), and updates that install to a second copy of the system and switch over only when it boots (#31).
 
@@ -75,7 +75,7 @@ flowchart TB
     end
     subgraph screen["4 · The screen"]
         direction LR
-        cog["Cog shows<br/><b>loading.html</b>"] --> page["the mirror's page<br/>connects to <b>/ws</b>"] --> shown["every card<br/>on the screen"]
+        cog["mirrordash-screen shows<br/><b>loading.html</b>"] --> page["the mirror's page<br/>connects to <b>/ws</b>"] --> shown["every card<br/>on the screen"]
     end
     server --> started
     started -- "module_host asks for the instances" --> modules
@@ -101,7 +101,7 @@ flowchart TB
    - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
    - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42).
-4. **Cog** (`cog-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`features/kiosk/ws.py` keeps the last one of each, #9).
+4. **mirrordash-screen** (`screen-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`features/kiosk/ws.py` keeps the last one of each, #9).
 
 ## Flow 2: a module's card reaches the screen
 

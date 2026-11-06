@@ -98,7 +98,7 @@ This creates a module with example data and starts a mirror on your computer tha
 ## Under the hood
 
 * **Server:** FastAPI (Python 3.14). Modules push their content to the screen over a WebSocket, and a page that reconnects gets everything again right away.
-* **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by Cog (WPE WebKit) on labwc. Every mirror has its component library at `/design`.
+* **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by WPE WebKit (our own launcher, `mirrordash-screen`) on labwc. Every mirror has its component library at `/design`.
 * **Modules:** each is its own Python package, found through entry points, and runs in a sandboxed process as a user of its own. A module that crashes is restarted on its own.
 * **System:** Raspberry Pi OS (Debian 13) with a read-only root (overlayroot). Settings, modules and Wi-Fi live on a separate partition. Updates go into a second environment, and the mirror switches back if the new one doesn't start.
 
