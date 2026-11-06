@@ -158,7 +158,6 @@ step_installing_packages() {
       seatd \
       dbus-user-session \
       fonts-liberation \
-      cog \
       wlr-randr \
       avahi-daemon \
       plymouth \
@@ -191,7 +190,7 @@ MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup 
 MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
 
 step_media() {
-  # The libraries the copied plugins need (objdump -p, NEEDED); most come with Cog anyway
+  # The libraries the copied plugins need (objdump -p, NEEDED); most come with WPE WebKit (step_screen) anyway
   apt-get install -y --no-install-recommends \
       gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-tools \
       libgstreamer-plugins-bad1.0-0 libgudev-1.0-0 libv4l-0t64 libxml2 libsoup-3.0-0 libmpg123-0t64 libfaad2 \
@@ -984,9 +983,10 @@ START_TIME_TOTAL=$SECONDS
 
 run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent Storage" step_expanding_partition
 run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
+# The screen before the media stack: WPE WebKit brings most of the libraries the copied plugins need
+run_step "2d" "screen" "Installing the Screen (WPE WebKit and Its Launcher)" step_screen
 run_step "2b" "media" "Installing the Media Stack (GStreamer)" step_media
 run_step "2c" "matter" "Installing the Matter Node" step_matter
-run_step "2d" "screen" "Installing the Screen (WPE WebKit and Its Launcher)" step_screen
 run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
 run_step "4" "configuring_nginx" "Configuring nginx Reverse Proxy" step_configuring_nginx
 run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_configuring_console_login
