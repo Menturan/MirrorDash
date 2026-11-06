@@ -40,7 +40,7 @@ def test_ip_filters_name_only_what_systemd_knows():
                 f"{path.name}: {word}"
     home = {"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "link-local", "::/0"}
     assert home | {"localhost"} <= set(words(unit("/etc/systemd/system/mirrordash-modules.service"), "IPAddressDeny"))
-    assert home <= set(words(unit("/etc/systemd/system/cog-kiosk.service"), "IPAddressDeny"))
+    assert home <= set(words(unit("/etc/systemd/system/screen-kiosk.service"), "IPAddressDeny"))
 
 
 def test_polkit_names_the_actions_it_allows():

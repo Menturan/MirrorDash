@@ -129,10 +129,19 @@ if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/bin/ddcutil; then
     fail "ddcutil is missing: brightness would not work on HDMI screens."
 fi
 
+# The screen: our launcher, on our WPE (Menturan/mirrordash-wpe), never trixie's, which gets no fixes
+if ! systemd-nspawn -q -D "$MOUNT_DIR" test -x /usr/local/bin/mirrordash-screen; then
+    fail "mirrordash-screen is missing: the mirror would show nothing."
+fi
+wpe_version=$(systemd-nspawn -q -D "$MOUNT_DIR" dpkg-query -W -f='${Version}' libwpewebkit-2.0-1) || true
+if [[ "$wpe_version" != *~mirrordash* ]]; then
+    fail "WPE WebKit is $wpe_version, not a build from Menturan/mirrordash-wpe: it would get no security fixes."
+fi
+
 # A unit directive the image's systemd doesn't know or can't parse (renamed in a newer systemd, a typo) is only
 # a warning at boot: the module sandbox, say, would start without it. systemd-analyze reports those as
 # <file>:<line>; a program that only exists on a running mirror (/storage) is no such line.
-unit_warnings=$(systemd-nspawn -q -D "$MOUNT_DIR" bash -c 'cd /etc/systemd/system && systemd-analyze verify --man=no cog-kiosk.service labwc-kiosk.service mirrordash*.service mirrordash*.timer 2>&1' || true)
+unit_warnings=$(systemd-nspawn -q -D "$MOUNT_DIR" bash -c 'cd /etc/systemd/system && systemd-analyze verify --man=no screen-kiosk.service labwc-kiosk.service mirrordash*.service mirrordash*.timer 2>&1' || true)
 if grep -E '\.(service|timer|path):[0-9]+: ' <<< "$unit_warnings"; then
     fail "The image's systemd ignores directives in the units above."
 fi

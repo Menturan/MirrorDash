@@ -1,8 +1,8 @@
 #!/bin/bash
 # Every minute (mirrordash-app-watch.timer). The app: four failed rounds in a row, so an app restarting for
 # an update (minutes on a Pi 3) isn't taken for a hung one. The screen: two rounds of a page silent for over
-# 150 s (it says "alive" every minute), about 3 minutes; a crashed renderer doesn't wait for this, Cog exits
-# at once (--webprocess-failure=exit, cog-kiosk.service). The counts live in /run (RAM), like the Wi-Fi watch's.
+# 150 s (it says "alive" every minute), about 3 minutes; a crashed renderer doesn't wait for this, the screen exits
+# at once (mirrordash-screen, screen-kiosk.service). The counts live in /run (RAM), like the Wi-Fi watch's.
 set -u
 STATE=${MIRRORDASH_WATCH_STATE:-/run/mirrordash-app-watch}  # overridable for tests/test_configure_image.py
 mkdir -p "$STATE"
@@ -26,7 +26,7 @@ rm -f "$STATE/app"
 # Seconds since the mirror's own screen showed it's alive; null while the screen is off
 seen=$(sed -n 's/.*"screen_seen_seconds_ago":\([0-9]*\).*/\1/p' <<< "$health")
 if [ -n "$seen" ] && [ "$seen" -gt 150 ]; then
-    act screen 2 "The screen's page has been silent for ${seen}s; restarting the kiosk" screen-lost && systemctl restart cog-kiosk.service
+    act screen 2 "The screen's page has been silent for ${seen}s; restarting the kiosk" screen-lost && systemctl restart screen-kiosk.service
 else
     rm -f "$STATE/screen"
 fi

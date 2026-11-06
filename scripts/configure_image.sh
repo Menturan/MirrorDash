@@ -220,6 +220,28 @@ step_media() {
 
 # Matter (ARCHITECTURE #35): matter.js is the one library that can be a Matter device and pair over Wi-Fi.
 # Pure JavaScript (no native code), from matter/package-lock.json; npm is only needed to install it.
+# The screen's engine and launcher. WPE WebKit comes from Menturan/mirrordash-wpe: Debian sid's,
+# rebuilt for trixie, whose own (2.48) gets no security fixes; the newest release, whatever it is.
+# The launcher (scripts/screen/mirrordash-screen.c) is compiled against it here, and the compiler goes.
+step_screen() {
+  local base="https://github.com/Menturan/mirrordash-wpe/releases/latest/download" dir=/tmp/wpe
+  mkdir -p "$dir" && cd "$dir"
+  curl -fsSL -o SHA256SUMS "$base/SHA256SUMS"
+  for deb in $(awk '{print $2}' SHA256SUMS | grep -E '^libwpewebkit-2\.0-(1|dev)_[^/]+\.deb$'); do
+    curl -fsSL -o "$deb" "$base/$deb"
+  done
+  sha256sum --check --ignore-missing --strict SHA256SUMS
+  apt-get install -y --no-install-recommends ./libwpewebkit-2.0-1_*.deb ./libwpewebkit-2.0-dev_*.deb gcc libc6-dev pkg-config
+
+  local source=/opt/MirrorDash/scripts/screen/mirrordash-screen.c
+  [ -f "$source" ] || { source="$dir/mirrordash-screen.c"; curl -fsSL -o "$source" "$GITHUB_RAW/scripts/screen/mirrordash-screen.c"; }
+  # shellcheck disable=SC2046  # pkg-config's flags are separate words
+  gcc -std=c11 -O2 -Wall -Wextra -Werror -o /usr/local/bin/mirrordash-screen "$source" \
+      $(pkg-config --cflags --libs wpe-webkit-2.0 wpe-platform-2.0)
+  apt-get purge -y --auto-remove libwpewebkit-2.0-dev gcc libc6-dev pkg-config
+  cd / && rm -rf "$dir"
+}
+
 step_matter() {
   apt-get install -y --no-install-recommends nodejs npm
   local dir=/opt/mirrordash-matter f
@@ -325,15 +347,15 @@ EOF
   mkdir -p /usr/share/icons/default
   printf '[Icon Theme]\nInherits=empty\n' > /usr/share/icons/default/index.theme
 
-  echo "Configuring cog kiosk systemd service..."
-  put 0644 /etc/systemd/system/cog-kiosk.service
+  echo "Configuring the screen's systemd service..."
+  put 0644 /etc/systemd/system/screen-kiosk.service
 
-  # labwc has no readiness notification, so start cog when its Wayland socket appears
-  # (otherwise cog races labwc and aborts with "preferred module 'wl' not supported").
-  # PathExists re-triggers after labwc restarts, since BindsTo stops cog with it.
-  put 0644 /etc/systemd/system/cog-kiosk.path
-  systemctl --root=/ disable cog-kiosk.service 2>/dev/null || true
-  systemctl --root=/ enable cog-kiosk.path
+  # labwc has no readiness notification, so start the screen when its Wayland socket appears
+  # (otherwise it races labwc and finds no display).
+  # PathExists re-triggers after labwc restarts, since BindsTo stops the screen with it.
+  put 0644 /etc/systemd/system/screen-kiosk.path
+  systemctl --root=/ disable screen-kiosk.service 2>/dev/null || true
+  systemctl --root=/ enable screen-kiosk.path
 
   echo "Masking default getty and autologin on tty1 to prevent terminal login preemption..."
   systemctl --root=/ mask getty@tty1.service autologin@tty1.service
@@ -964,6 +986,7 @@ run_step "1" "expanding_partition" "Expanding Partition & Setting up Persistent 
 run_step "2" "installing_packages" "Updating and Installing APT Packages" step_installing_packages
 run_step "2b" "media" "Installing the Media Stack (GStreamer)" step_media
 run_step "2c" "matter" "Installing the Matter Node" step_matter
+run_step "2d" "screen" "Installing the Screen (WPE WebKit and Its Launcher)" step_screen
 run_step "3" "setting_hostname" "Setting Hostname & Enabling mDNS" step_setting_hostname
 run_step "4" "configuring_nginx" "Configuring nginx Reverse Proxy" step_configuring_nginx
 run_step "5" "configuring_console_login" "Configuring Console Auto-Login" step_configuring_console_login

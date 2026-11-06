@@ -102,15 +102,19 @@ def test_app_watch_restarts_what_hangs(tmp_path):
     assert rounds("", 1) == ["restart mirrordash.service"]  # the fourth in a row (the count goes on)
     assert rounds('{"status":"ok","screen_seen_seconds_ago":30}', 3) == []  # an answer resets the count
     assert rounds('{"status":"ok","screen_seen_seconds_ago":140}', 3) == []  # a missed "alive" isn't a hang
-    assert rounds('{"status":"ok","screen_seen_seconds_ago":160}', 2) == ["restart cog-kiosk.service"]
+    assert rounds('{"status":"ok","screen_seen_seconds_ago":160}', 2) == ["restart screen-kiosk.service"]
     assert rounds('{"status":"ok","screen_seen_seconds_ago":null}', 4) == []  # screen off
 
 
-def test_a_crashed_renderer_ends_cog_so_systemd_starts_a_new_one():
-    """Cog's default after a renderer crash is a white error page it stays on (2026-11-04, out of GPU
-    memory): the mirror then needed a restart. Exiting lets systemd start a fresh Cog, which frees it."""
-    cog = unit("/etc/systemd/system/cog-kiosk.service")
-    assert "--webprocess-failure=exit" in cog and "Restart=always" in cog and "StartLimitIntervalSec=0" in cog
+def test_a_crashed_renderer_ends_the_screen_so_systemd_starts_a_new_one():
+    """A browser's default after a renderer crash is an error page it stays on (2026-11-04, out of GPU
+    memory): the mirror then needed a restart. Exiting lets systemd start a fresh screen, which frees it."""
+    screen = unit("/etc/systemd/system/screen-kiosk.service")
+    assert "ExecStart=/usr/local/bin/mirrordash-screen" in screen
+    assert "Restart=always" in screen and "StartLimitIntervalSec=0" in screen
+    launcher = (ROOT / "scripts" / "screen" / "mirrordash-screen.c").read_text()
+    assert '"web-process-terminated"' in launcher and "g_main_loop_quit" in launcher
+    assert "scripts/screen/mirrordash-screen.c" in SETUP and "-o /usr/local/bin/mirrordash-screen" in SETUP
 
 
 def test_hydrate_moves_the_apps_python_to_storage(tmp_path):
