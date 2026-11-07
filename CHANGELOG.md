@@ -9,8 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- A system update that didn't start properly is tried again by the automatic updates on the next nights, three times in all, instead of never: a passing fault no longer keeps a mirror off updates for good. A newer system version is always tried.
-
 ### OS image
 
 - A system update no longer goes back to the old system when a Raspberry Pi 3's Wi-Fi doesn't start right after the download: the new system waits for the mirror to restart the Wi-Fi first.
@@ -22,6 +20,10 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.15.1] - 2026-11-07
+
+- A system update that didn't start properly is tried again by the automatic updates on the next nights, three times in all, instead of never: a passing fault no longer keeps a mirror off updates for good. A newer system version is always tried.
 
 ## [0.15.0] - 2026-11-07
 
