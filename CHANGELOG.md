@@ -9,12 +9,14 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **Notifications**: a bell at the top of the admin page tells what happened to your mirror in plain words: updates of MirrorDash, the system and the modules, an update that failed or waits for you, a module that kept crashing, the Wi-Fi or screen that was restarted, a power cut. Mark them read one by one or all at once. While an error is unread, the mirror shows *Error: see the admin page* at the top.
 - **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
 - A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
 - **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
 
 ### OS image
 
+- The mirror notices when it went off without shutting down (a power cut, or a freeze you pulled the plug on) and says so on the admin page's bell.
 - A system update no longer goes back to the old system when a Raspberry Pi 3's Wi-Fi doesn't start right after the download: the new system waits for the mirror to restart the Wi-Fi first.
 - **The screen's browser engine gets security fixes again**: the mirror shows its page with WPE WebKit 2.54, rebuilt each time Debian has a new one, instead of the older version (2.48) Debian no longer fixes. The Raspberry Pi 3 has a little more memory to spare with it.
 - A screen turned off by the schedule or *Off until woken* no longer makes the screen's browser crash and restart every second in the background until it is turned on again.

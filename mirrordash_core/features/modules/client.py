@@ -542,6 +542,9 @@ class ModuleHost:
         self._crashes[instance_id] = crashes
         if crashes >= CRASH_LIMIT:
             self.paused.add(instance_id)
+            from mirrordash_core import notifications
+            notifications.add("error", f"{instance_id} kept crashing and was stopped. Start it again on the Dashboard; "
+                              "Logs → Modules tells why.")
             logger.error(f"{instance_id} stopped {crashes} times in a row soon after it started (it used up the modules' "
                          "memory, see 'oom-kill' in Logs → Raspberry Pi, or crashed): it stays off until the modules "
                          "are started again on the Dashboard")

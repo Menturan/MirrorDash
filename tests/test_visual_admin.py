@@ -1308,3 +1308,55 @@ def test_a_carousel_group_name_with_quotes_and_a_title_with_markup_stay_text(pag
                   json.dumps({"module": "clock", "position": "top_left", "carousel_group": group, "html": "<p class='time'>12:00</p>"}))
     assert page.locator("[data-module='clock']").evaluate("e => e.shadowRoot.querySelector('.time').textContent") == "12:00"
     assert page.evaluate("document.querySelectorAll('.carousel-group-container').length") == 1
+
+
+def test_the_bell_counts_lists_and_marks_read(page, server_url):
+    """Unread notifications are counted on the bell; its list opens on a click, marks one read, and the
+    count follows."""
+    from mirrordash_core import notifications
+    notifications.add("info", "MirrorDash updated to 0.16.0")
+    notifications.add("error", "Clock kept crashing and was stopped")
+    navigate_authenticated(page, server_url)
+    count = page.locator("#notif-count")
+    count.wait_for()
+    assert count.inner_text().startswith("2")
+    page.click(".notif-bell")
+    page.wait_for_selector(".notif-item.error")
+    if os.environ.get("MIRRORDASH_SCREENSHOTS"):
+        page.screenshot(path=os.path.join(os.environ["MIRRORDASH_SCREENSHOTS"], "bell.png"))
+    page.locator(".notif-item.error .notif-read").click()
+    page.wait_for_selector(".notif-item.error.read")
+    page.wait_for_function("document.getElementById('notif-count').innerText.startsWith('1')")
+    page.mouse.click(5, 400)  # a click outside closes the list
+    assert not page.locator(".notif-menu").is_visible()
+
+
+@pytest.mark.only_browser("webkit")
+def test_the_mirror_shows_an_unread_error(page):
+    """While an error notification is unread, the mirror says to read it on the admin page."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    send = lambda msg: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(msg))
+    badge = page.locator("#error-badge")
+    send({"type": "hello", "version": "1.0.0", "boot_id": "a", "online": False, "error": True})
+    assert badge.is_visible() and "admin page" in badge.inner_text()
+    if os.environ.get("MIRRORDASH_SCREENSHOTS"):
+        page.screenshot(path=os.path.join(os.environ["MIRRORDASH_SCREENSHOTS"], "mirror-error.png"))
+    send({"type": "notices", "error": False})
+    assert not badge.is_visible()

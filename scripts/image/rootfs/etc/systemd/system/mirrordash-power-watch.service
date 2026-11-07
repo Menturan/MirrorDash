@@ -1,0 +1,15 @@
+[Unit]
+Description=MirrorDash: tell when the mirror went off without shutting down (a power cut)
+After=mirrordash-storage-init.service
+Requires=mirrordash-storage-init.service
+# Before the app, so the bell hears of it at its first look for saved logs
+Before=mirrordash.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/mirrordash/power-watch start
+ExecStop=/usr/local/lib/mirrordash/power-watch stop
+
+[Install]
+WantedBy=multi-user.target

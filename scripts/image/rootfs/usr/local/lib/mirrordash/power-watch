@@ -1,0 +1,23 @@
+#!/bin/bash
+# Did the mirror shut down properly last time? A file on /storage says "running" from start to shutdown:
+#   start  the file still there from last time means the mirror went off without shutting down (a power
+#          cut, or a freeze the owner pulled the plug on): saved as a power-lost log, which the app tells
+#          the owner of on the admin page's bell. Then the file is written for this run.
+#   stop   a proper shutdown or restart takes it away.
+# ponytail: the journal is in RAM, so the saved log has only this start, not what led to the stop.
+set -u
+FILE=${MIRRORDASH_RUNNING_FILE:-/storage/mirrordash/running}  # overridable for tests/test_configure_image.py
+SAVE_LOG=${MIRRORDASH_SAVE_LOG:-/usr/local/lib/mirrordash/save-log}
+
+case "${1:-}" in
+  start)
+    if [ -e "$FILE" ] || [ -L "$FILE" ]; then
+        "$SAVE_LOG" power-lost -b >/dev/null || true
+    fi
+    # A new empty file. Not touch: this runs as root in pi's folder, and touch follows a link
+    rm -f "$FILE"
+    install -m 644 /dev/null "$FILE" ;;
+  stop)
+    rm -f "$FILE" ;;
+  *) echo "usage: power-watch start|stop" >&2; exit 2 ;;
+esac

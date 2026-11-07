@@ -100,7 +100,8 @@ flowchart TB
    - `display_power_manager` (`features/power/`) turns the screen on and off on schedule, and a TV with it over HDMI-CEC (`features/hardware/cec.py`),
    - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
-   - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42).
+   - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42),
+   - `notification_watch` (`features/notifications/`) tells the bell of versions that went up since the last start and, once a minute, of new saved logs (#57).
 4. **mirrordash-screen** (`screen-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`features/kiosk/ws.py` keeps the last one of each, #9).
 
 ## Flow 2: a module's card reaches the screen
@@ -210,6 +211,7 @@ The biggest part of the core, in `features/modules/`:
 - **Something on the screen itself:** `static/js/kiosk/core.js` and `static/style.css`; what modules may use is `static/modules.css`, shown at `/design`. Follow [DESIGN.md](DESIGN.md).
 - **A new command that needs root:** a script in `scripts/image/rootfs/usr/local/bin/` that checks its own arguments (the app's user calls it), a line in `scripts/image/rootfs/etc/sudoers.d/mirrordash`, and `put 0755 /usr/local/bin/<name>` in `scripts/configure_image.sh` (#36).
 - **A new module:** not here; use the SDK, or the `new-module` skill in `.claude/skills/`.
+- **Something the owner should hear about** (an event, not a log line): `notifications.add(level, text)` from `mirrordash_core/notifications.py`; an event of a root script is a saved log (`save-log KIND`, with its text and level in `features/logs/saved.py`), which becomes one by itself (ARCHITECTURE #57).
 - **Anything that changes how something works:** read its decision in [ARCHITECTURE.md](ARCHITECTURE.md) first, and add one when you make a new choice.
 
 Each file starts with a docstring saying what it is for: read that first, then the functions you need.

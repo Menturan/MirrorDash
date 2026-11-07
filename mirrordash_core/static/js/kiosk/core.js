@@ -250,6 +250,7 @@ function handleServerMessage(data) {
         pageVersion = data.version;
         pageBootId = data.boot_id;
         showOffline(data.online === false);
+        document.getElementById('error-badge').hidden = data.error !== true;
         setVideoIsPlaying(data.video_is_playing === true);
     } else if (data.type === 'screen') {
         // The screen-wide settings (features/power/privacy.py), for style.css: privacy mode and what it
@@ -277,6 +278,9 @@ function handleServerMessage(data) {
         answerWhereTheVideoWindowIs(data.module);
     } else if (data.type === 'internet') {
         showOffline(!data.online);
+    } else if (data.type === 'notices') {
+        // An unread error on the admin page's bell (mirrordash_core/notifications.py)
+        document.getElementById('error-badge').hidden = data.error !== true;
     } else {
         showModuleHtml(data);
     }

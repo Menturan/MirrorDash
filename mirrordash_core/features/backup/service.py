@@ -58,8 +58,8 @@ BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
 
 # Files in the data dir that never go in a backup nor come back from one: the config goes in on its
 # own (sanitized unless encrypted), its last good copy and a broken one hold the credentials a plain
-# backup leaves out, and a login cookie must not work on another mirror.
-NEVER_BACKED_UP = ("config.json", "config.json.bak", "config.json.broken-*", "sessions.json", "backups")
+# backup leaves out, a login cookie must not work on another mirror, and the notifications are this mirror's history.
+NEVER_BACKED_UP = ("config.json", "config.json.bak", "config.json.broken-*", "sessions.json", "backups", "notifications.json")
 # Files a database or an editor keeps only while it works: never worth restoring
 TEMPORARY_FILES = ("*.tmp", "*.lock", "*-journal", "*-wal", "*-shm")
 # What a local module's folder holds that isn't its source

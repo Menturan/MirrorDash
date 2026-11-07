@@ -16,6 +16,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from mirrordash_core import notifications
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
 from mirrordash_core.features.kiosk import guard
@@ -85,7 +86,7 @@ def github_module(item: dict) -> dict:
     return {
         "name": item["name"],
         "install_name": f"git+{item['html_url']}.git",
-        "title": _module_title(item["name"]),
+        "title": module_title(item["name"]),
         "description": item.get("description") or "No description available.",
         "source": "github",
         "official": (author or "").lower() == OFFICIAL_OWNER,
@@ -294,6 +295,9 @@ async def update_modules(*package_names: str) -> dict:
                 else:
                     logger.warning(f"Upgrade of {package_name} failed, it stays as it was: {err}")
                     failed[package_name] = err.strip()
+            for package_name in failed:
+                notifications.add("warning", f"{module_title(_name_spellings(package_name)[0])} couldn't be updated "
+                                  "and stays as it was")
             if not updated:
                 raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {'; '.join(failed.values())}")
             await _put_back(site, failed)
@@ -437,7 +441,7 @@ LAST_SCAN_TIMESTAMP = None
 _LAST_LAZY_SCAN = float("-inf")  # time.monotonic() of the last scan list_community_modules started
 
 
-def _module_title(package_name: str) -> str:
+def module_title(package_name: str) -> str:
     """"mirrordash-weather-radar" -> "Weather Radar"."""
     return package_name.replace("mirrordash-", "").replace("mirrordash_", "").replace("-", " ").title()
 
@@ -477,7 +481,7 @@ def pypi_module(name: str, package_info: dict) -> dict:
     return {
         "name": name,
         "install_name": name,
-        "title": _module_title(name),
+        "title": module_title(name),
         "description": info.get("summary") or "No description available.",
         "source": "pypi",
         "official": False,

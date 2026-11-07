@@ -15,6 +15,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
+from mirrordash_core import notifications
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
@@ -468,6 +469,12 @@ def count_tries(config: dict, *names_versions: tuple[str, str]) -> None:
     save_config(config)
 
 
+def _tell_waits(what: str) -> None:
+    """The nightly update gave up on a version: an error on the bell, once for that version."""
+    notifications.add("error", f"{what}. The nightly update waits for a newer version; Settings → Updates can "
+                      "still install this one.", once=True)
+
+
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
     as pressing the buttons on the Updates card, one a night: the system, else MirrorDash, else the modules
@@ -477,6 +484,7 @@ async def auto_update() -> str:
     waits for someone to choose Install Anyway. Returns what it started."""
     from mirrordash_core.admin import job_status, start_job
     from mirrordash_core.features.modules.service import (
+        module_title,
         modules_to_auto_update,
         noted,
         update_modules,
@@ -491,6 +499,8 @@ async def auto_update() -> str:
         os_info = {}  # GitHub unreachable tonight: MirrorDash can still be up to date
     skipped_build = skipped_os_build(load_config())
     bundle = os_info.get("bundle")
+    if os_info.get("update_available") and bundle["build"] == skipped_build:
+        _tell_waits(f"The system update {bundle.get('tag') or format_build(skipped_build)} didn't start properly three times")
     if os_info.get("update_available") and bundle["build"] != skipped_build:
         start_job(lambda: update_os(bundle))
         return "system"
@@ -500,13 +510,22 @@ async def auto_update() -> str:
     config = load_config()
     new_version = core_update.get("latest_version")
     skipped = core_update["update_available"] and update_tries(config, "mirrordash", new_version) >= UPDATE_TRIES
+    if skipped:
+        _tell_waits(f"MirrorDash {new_version} failed three nights in a row")
+    if waiting:
+        notifications.add("warning", f"MirrorDash {new_version} needs Python {core_update['needs_python']}, and "
+                          f"{', '.join(incompatible.get('modules', {}))} doesn't work with it. It waits until you choose "
+                          "Install Anyway in Settings → Updates.", once=True)
     if core_update["update_available"] and not waiting and not skipped:
         count_tries(config, ("mirrordash", new_version))
-        start_job(update_core)
+        start_job(update_core, failure="MirrorDash couldn't be updated")
         return "mirrordash"
-    if config.get("system", {}).get("auto_update_modules", False) and \
-            (updates := [update for update in await modules_to_auto_update(config)
-                         if update_tries(config, update["package_name"], update["latest_version"]) < UPDATE_TRIES]):
+    offered = await modules_to_auto_update(config) if config.get("system", {}).get("auto_update_modules", False) else []
+    for update in offered:
+        if update_tries(config, update["package_name"], update["latest_version"]) >= UPDATE_TRIES:
+            _tell_waits(f"{module_title(update['package_name'])} {update['latest_version']} failed three nights in a row")
+    if updates := [update for update in offered
+                   if update_tries(config, update["package_name"], update["latest_version"]) < UPDATE_TRIES]:
         count_tries(config, *((update["package_name"], update["latest_version"]) for update in updates))
         targets = [update["target"] for update in updates]
         start_job(lambda: noted(update_modules(*targets), *targets))

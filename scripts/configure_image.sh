@@ -706,6 +706,11 @@ step_systemd_service() {
   put 0644 /etc/systemd/system/mirrordash-clock-save.timer
   systemctl --root=/ enable mirrordash-clock.service mirrordash-clock-save.timer
 
+  # A power cut (the mirror went off without shutting down) as a saved log, for the admin page's bell
+  put 0755 /usr/local/lib/mirrordash/power-watch
+  put 0644 /etc/systemd/system/mirrordash-power-watch.service
+  systemctl --root=/ enable mirrordash-power-watch.service
+
   # Nightly updates, when Settings → Updates has them on (the app decides what to install)
   put 0644 /etc/systemd/system/mirrordash-auto-update.service
   put 0644 /etc/systemd/system/mirrordash-auto-update.timer

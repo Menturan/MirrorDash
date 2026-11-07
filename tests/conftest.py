@@ -21,6 +21,14 @@ def _clear_remote_json_cache():
 
 
 @pytest.fixture(autouse=True)
+def _own_notifications(monkeypatch, tmp_path):
+    """Notifications go to the test's own folder, never the developer's ~/.mirrordash (updates, a crashing
+    module and the app's start all add them)."""
+    from mirrordash_core import notifications
+    monkeypatch.setattr(notifications, "_path", lambda: tmp_path / "notifications.json")
+
+
+@pytest.fixture(autouse=True)
 def _fresh_logins(monkeypatch):
     """Every test starts logged out and with no wrong passwords counted against its address."""
     from mirrordash_core import admin

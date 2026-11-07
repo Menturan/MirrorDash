@@ -89,7 +89,7 @@ def _render(name: str, **context) -> str:
 async def trigger_system_update(skip: str = ""):
     """skip: modules (entry point names, comma-separated) to turn off, see "Install Anyway"."""
     modules = tuple(name for name in skip.split(",") if name)
-    job_id = start_job(lambda: update_core(modules))
+    job_id = start_job(lambda: update_core(modules), failure="MirrorDash couldn't be updated")
     return job_response(job_id, "Updating MirrorDash", "Installing the new version. This can take a few minutes...",
                         "MirrorDash was updated successfully.")
 

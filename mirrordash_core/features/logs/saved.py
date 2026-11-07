@@ -31,7 +31,16 @@ KINDS = {
     "storage-repair": "The storage partition had errors and was repaired at start",
     "app-hung": "MirrorDash stopped answering and was restarted",
     "screen-lost": "The mirror's screen stopped and was restarted",
+    "power-lost": "The mirror shut down without warning (power cut or freeze) and started again",
 }
+# How each kind is told on the bell (features/notifications/watch.py): an error needs the owner, a warning
+# fixed itself
+ERRORS = {"app-safe-mode", "os-install", "p1-update"}
+
+
+def kind_of(filename: str) -> str | None:
+    """The KINDS key a saved log's file name starts with."""
+    return next((kind for kind in KINDS if filename.startswith(kind + "-")), None)
 
 
 def saved_logs() -> list[dict]:
@@ -42,7 +51,7 @@ def saved_logs() -> list[dict]:
         return []
     logs = []
     for path in sorted(files, key=lambda p: p.stat().st_mtime, reverse=True):
-        kind = next((label for prefix, label in KINDS.items() if path.name.startswith(prefix + "-")), "Saved log")
+        kind = KINDS.get(kind_of(path.name), "Saved log")
         stat = path.stat()
         logs.append({"filename": path.name, "kind": kind,
                      "created": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M"),

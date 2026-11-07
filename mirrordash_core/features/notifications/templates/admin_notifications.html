@@ -1,0 +1,22 @@
+{% set icons = {"info": "fa-circle-info", "warning": "fa-triangle-exclamation", "error": "fa-circle-exclamation"} %}
+<div class="notif-head">
+    <h3>Notifications</h3>
+    {% if items | rejectattr("read") | list %}
+    <button type="button" hx-post="/admin/notifications/read-all" hx-target="closest .notif-menu"><i class="fas fa-check-double"></i> Mark all read</button>
+    {% endif %}
+</div>
+{% for item in items %}
+<div class="notif-item {{ item.level }}{% if item.read %} read{% endif %}">
+    <i class="fas {{ icons[item.level] }}" aria-label="{{ item.level | capitalize }}"></i>
+    <div class="notif-body">
+        <div class="notif-text">{{ item.text }}</div>
+        <div class="notif-meta"><span>{{ item.when }}</span>{% if item.log %}<a href="/admin/logs/saved/{{ item.log | urlencode }}">Download log</a>{% endif %}</div>
+    </div>
+    {% if not item.read %}
+    <button type="button" class="notif-read" title="Mark read" aria-label="Mark read"
+            hx-post="/admin/notifications/{{ item.id | urlencode }}/read" hx-target="closest .notif-menu"><i class="fas fa-check"></i></button>
+    {% endif %}
+</div>
+{% else %}
+<p class="notif-empty">Nothing has happened to the mirror yet.</p>
+{% endfor %}

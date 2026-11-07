@@ -329,7 +329,7 @@ def test_mirror_page_hears_the_version_first(client):
     with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"), \
          TestClient(app, client=("127.0.0.1", 50000)).websocket_connect("/ws") as ws:
         assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "boot_id": BOOT_ID, "online": True,
-                                    "video_is_playing": False}
+                                    "video_is_playing": False, "error": False}
         assert ws.receive_json()["type"] == "screen"  # privacy mode before any card
         assert ws.receive_json()["module"] == "clock"  # then the modules, as before
     manager.latest_messages = {}
@@ -1816,7 +1816,7 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
          patch.object(service, "check_os_update", AsyncMock(return_value=os_info)), \
          patch.object(service, "check_core_update", AsyncMock(return_value=app)), \
          patch("mirrordash_core.admin.job_status", return_value={"state": "running" if case == "busy" else "done"}), \
-         patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)), \
+         patch("mirrordash_core.admin.start_job", side_effect=lambda work, failure=None: started.append(work)), \
          patch("mirrordash_core.config.save_config"), \
          patch("mirrordash_core.features.modules.service.modules_to_auto_update",
                AsyncMock(return_value=[{"package_name": "x", "latest_version": "2", "target": "x@2"}])):

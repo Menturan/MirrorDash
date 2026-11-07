@@ -342,11 +342,21 @@ html[data-video-is-playing] .carousel-slide {
 .guard-notice__title { color: #ffffff; font-size: 24px; font-weight: 500; margin-bottom: 8px; }
 .guard-notice__body { color: var(--color-standard-gray, #999999); font-size: 18px; line-height: 1.5; }
 
-.offline-indicator {
+/* Offline and the error badge, one under the other at the top edge */
+.system-badges {
     position: fixed;
     top: 45px;
     left: 50%;
     transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    z-index: 1000;
+    pointer-events: none;
+}
+
+.offline-indicator {
     background: rgba(0, 0, 0, 0.85);
     border: 1px solid var(--outline-variant);
     border-radius: var(--radius-full);
@@ -354,7 +364,6 @@ html[data-video-is-playing] .carousel-slide {
     display: flex;
     align-items: center;
     gap: 8px;
-    z-index: 1000;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     color: var(--color-status-warning);
@@ -363,6 +372,9 @@ html[data-video-is-playing] .carousel-slide {
     box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     transition: opacity 0.5s ease-in-out;
 }
+/* An unread error notification (mirrordash_core/notifications.py): the error colour, no motion (calm) */
+.error-badge { color: var(--color-error); }
+.error-badge[hidden] { display: none; }
 
 /* ============================================================
    Module Loading Skeletons

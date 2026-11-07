@@ -24,6 +24,8 @@
         <div class="guard-notice__body"></div>
     </div>
 
+    <!-- The system's badges at the top edge: Offline, and an unread error on the admin page (notifications.py) -->
+    <div class="system-badges">
     <!-- Internet offline indicator -->
     <div id="offline-indicator" class="offline-indicator" aria-live="polite" aria-label="Internet Connection" style="display: none;">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -33,6 +35,13 @@
             <line x1="2" y1="2" x2="22" y2="22"></line>
         </svg>
         <span class="ws-status__label">Offline</span>
+    </div>
+    <div id="error-badge" class="offline-indicator error-badge" aria-live="polite" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="8" y2="12"></line><line x1="12" x2="12.01" y1="16" y2="16"></line>
+        </svg>
+        <span class="ws-status__label">Error: see the admin page</span>
+    </div>
     </div>
 
     <div class="container">

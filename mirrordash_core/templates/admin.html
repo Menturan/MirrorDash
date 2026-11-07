@@ -112,6 +112,12 @@
                 <h1 id="tab-headline">Dashboard</h1>
                 <p id="tab-description">How the mirror is doing right now.</p>
             </div>
+            <!-- The bell (features/notifications/): the list loads each time it opens -->
+            <details class="notif" hx-get="/admin/notifications" hx-trigger="toggle[this.open]" hx-target="find .notif-menu">
+                <summary class="notif-bell" aria-label="Notifications"><i class="fas fa-bell" aria-hidden="true"></i>
+                    <span hx-get="/admin/notifications/count" hx-trigger="load" hx-target="this" hx-swap="outerHTML"></span></summary>
+                <div class="notif-menu" role="region" aria-label="Notifications"></div>
+            </details>
         </header>
 
         <div id="global-status" class="alert toast" role="alert" aria-live="assertive" hidden></div>

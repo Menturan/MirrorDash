@@ -58,14 +58,16 @@ class ConnectionManager:
 
         # The mirror page's code comes with MirrorDash: on another version than the page was loaded
         # with (an update or a rollback), the page reloads itself (js/kiosk/core.js). "online" sets
-        # its Offline badge (internet.py; changes come later as {"type": "internet"}), and
+        # its Offline badge (internet.py; changes come later as {"type": "internet"}), "error" its badge of an
+        # unread error notification (notifications.py; later as {"type": "notices"}), and
         # "video_is_playing" whether the modules update once a minute (later as {"type": "video_is_playing"}).
+        from mirrordash_core import notifications
         from mirrordash_core.admin import BOOT_ID
         from mirrordash_core.features.kiosk.internet import internet_monitor
         from mirrordash_core.features.power.privacy import screen_message
         try:
             await websocket.send_json({"type": "hello", "version": get_core_version(), "boot_id": BOOT_ID, "online": internet_monitor.online,
-                                      "video_is_playing": bool(self.video_players)})
+                                      "video_is_playing": bool(self.video_players), "error": notifications.has_unread_error()})
             # Privacy mode and the other screen-wide settings, before any module's card (privacy.py)
             await websocket.send_json(screen_message())
         except Exception as e:

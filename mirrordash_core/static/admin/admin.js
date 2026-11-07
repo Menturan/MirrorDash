@@ -787,6 +787,11 @@ window.pollRestartAndReload = function(options = {}) {
     setTimeout(tick, 1000);
 };
 
+// The bell's list closes on a click outside it, or Escape, like any dropdown
+const closeBell = () => document.querySelector('details.notif[open]')?.removeAttribute('open');
+document.addEventListener('click', (event) => { if (!event.target.closest('details.notif')) closeBell(); });
+document.addEventListener('keydown', (event) => { if (event.key === 'Escape') closeBell(); });
+
 // Server responses ask for UI feedback through HX-Trigger-After-Swap events (see ui_events()).
 document.body.addEventListener('md-notify', (e) => showGlobal(e.detail.message, e.detail.kind));
 document.body.addEventListener('md-follow', (e) => window.pollRestartAndReload(e.detail));

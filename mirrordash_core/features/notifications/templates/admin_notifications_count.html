@@ -1,0 +1,2 @@
+<span id="notif-count" class="notif-count" hx-get="/admin/notifications/count" hx-target="this" hx-trigger="every 60s [document.visibilityState === 'visible'], md-notifications from:body"
+      hx-swap="outerHTML" {% if not count %}hidden{% endif %}>{{ count if count < 100 else "99+" }}<span class="sr-only"> unread</span></span>

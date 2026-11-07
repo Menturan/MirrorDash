@@ -241,8 +241,9 @@ _job: dict = {"id": None, "state": "idle", "error": ""}
 _job_task: asyncio.Task | None = None
 
 
-def start_job(work: Callable[[], Awaitable[object]]) -> str | None:
-    """Run work() in the background. Returns the job id, or None if a job is already running."""
+def start_job(work: Callable[[], Awaitable[object]], failure: str | None = None) -> str | None:
+    """Run work() in the background. Returns the job id, or None if a job is already running. failure: when
+    given, a failed job is a warning on the bell, "<failure>: <the error>" (notifications.py)."""
     global _job_task
     if _job["state"] == "running":
         return None
@@ -255,6 +256,9 @@ def start_job(work: Callable[[], Awaitable[object]]) -> str | None:
             _job["state"] = "restarting"  # every package operation ends by restarting the app
         except Exception as e:
             _job.update(state="failed", error=str(getattr(e, "detail", "") or e))
+            if failure:
+                from mirrordash_core import notifications
+                notifications.add("warning", f"{failure}: {_job['error']}")
 
     _job_task = asyncio.create_task(runner())
     return job_id
