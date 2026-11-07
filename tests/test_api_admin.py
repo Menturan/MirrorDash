@@ -843,6 +843,7 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mo
         "volume": "60",
         "rotation": "left",
         "resolution": "auto",
+        "auto_update_modules": "true",
         "display_control[mode]": "interval",
         "display_control[interval][start_h]": "8",
         "display_control[interval][start_m]": "15",
@@ -859,6 +860,7 @@ def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mo
     assert saved_cfg["system"]["brightness"] == 70
     assert saved_cfg["system"]["volume"] == 60
     assert saved_cfg["system"]["rotation"] == "left"
+    assert saved_cfg["system"]["auto_update_modules"] is True  # the checkbox's "true", as a bool
     assert saved_cfg["system"]["display_control"]["interval"]["start"] == "08:15"
     assert saved_cfg["system"]["display_control"]["interval"]["end"] == "22:45"
 
@@ -1008,6 +1010,28 @@ def test_only_the_owners_choice_of_modules_runs_scripts_on_the_screen(mock_resta
         assert scripts_allowed(in_site, config)
         assert client.post("/admin/panels/modules/scripts/mirrordash_news", data={"on": "false"}, headers=headers).status_code == 200
         assert not scripts_allowed(in_site, config)
+
+
+def test_a_module_turned_off_stays_out_of_the_nightly_update(module_site, client):
+    """The switch in a module's settings keeps every card of it out of the nightly module update; the
+    others with a newer release still go."""
+    from mirrordash_core.features.modules import service as modules
+    from mirrordash_core.features.modules.module_files import module_site as site
+    config = {}
+    eps = {name: SimpleNamespace(dist=SimpleNamespace(locate_file=lambda _, n=name: site() / n.replace("_", "-")))
+           for name in ("mirrordash_news", "mirrordash_weather")}
+    updates = [{"module_name": name, "target": f"{name}@new"} for name in eps]
+    headers = {"X-API-Key": "secret"}
+    with patch.object(modules, "load_config", return_value=config), patch.object(modules, "save_config"), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value=config), \
+         patch("mirrordash_core.features.modules.routes.find_entry_point", side_effect=eps.get), \
+         patch.object(modules, "find_entry_point", side_effect=eps.get), \
+         patch.object(modules, "module_updates", AsyncMock(return_value=(updates, None))):
+        assert client.post("/admin/panels/modules/auto-update/mirrordash_news", data={"on": "false"}, headers=headers).status_code == 200
+        assert config["module_auto_update_off"] == ["mirrordash-news"]
+        assert asyncio.run(modules.modules_to_auto_update(config)) == ["mirrordash_weather@new"]
+        assert client.post("/admin/panels/modules/auto-update/mirrordash_news", data={"on": "true"}, headers=headers).status_code == 200
+        assert asyncio.run(modules.modules_to_auto_update(config)) == ["mirrordash_news@new", "mirrordash_weather@new"]
 
 
 @patch("mirrordash_core.fetch.urllib.request.urlopen")
@@ -1762,33 +1786,36 @@ def test_a_packages_own_text_is_never_markup_in_the_admin_page():
 
 
 @pytest.mark.parametrize("case", ["off", "busy", "system first", "skipped build", "newer than skipped", "mirrordash",
-                                  "waiting", "up to date"])
+                                  "waiting", "up to date", "modules", "modules off", "modules while waiting"])
 def test_the_nightly_update_does_what_the_buttons_would(case):
     """Off → nothing; the system before MirrorDash; a system build whose trial failed OS_TRIAL_TRIES
     times isn't tried again by itself, but a newer build after it is; a newer Python some modules don't
-    work with waits for the owner's choice."""
+    work with waits for the owner's choice; the modules last, when the owner turned that on, also while
+    MirrorDash waits for that choice."""
     from mirrordash_core.features.updates import service
-    system = {"auto_update": case != "off"}
+    system = {"auto_update": case != "off", "auto_update_modules": case in ("modules", "modules while waiting")}
     if case in ("skipped build", "newer than skipped"):
         system["auto_update_failed"] = {"build": "20261020-0300", "times": service.OS_TRIAL_TRIES}
     os_info = {"update_available": case in ("system first", "skipped build", "newer than skipped"), "failed_build": None,
                "bundle": {"build": "20261027-0300" if case == "newer than skipped" else "20261020-0300"}}
-    app = {"update_available": case in ("skipped build", "mirrordash", "waiting"), "latest_version": "1.0.0",
-           "needs_python": "3.15" if case == "waiting" else None}
+    app = {"update_available": case in ("skipped build", "mirrordash", "waiting", "modules while waiting"),
+           "latest_version": "1.0.0", "needs_python": "3.15" if "waiting" in case else None}
     started = []
     service.incompatible.clear()
-    if case == "waiting":
+    if "waiting" in case:
         service.incompatible.update(version="1.0.0", python="3.15", modules={"x": "y"})
     with patch.object(service, "load_config", return_value={"system": system}), \
          patch.object(service, "check_os_update", AsyncMock(return_value=os_info)), \
          patch.object(service, "check_core_update", AsyncMock(return_value=app)), \
          patch("mirrordash_core.admin.job_status", return_value={"state": "running" if case == "busy" else "done"}), \
-         patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)):
+         patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)), \
+         patch("mirrordash_core.features.modules.service.modules_to_auto_update", AsyncMock(return_value=["x@2"])):
         result = asyncio.run(service.auto_update())
     service.incompatible.clear()
     assert result == {"off": "off", "busy": "busy", "system first": "system", "skipped build": "mirrordash", "newer than skipped": "system",
-                      "mirrordash": "mirrordash", "waiting": "waiting for a choice", "up to date": "up to date"}[case]
-    assert len(started) == (1 if result in ("system", "mirrordash") else 0)
+                      "mirrordash": "mirrordash", "waiting": "waiting for a choice", "up to date": "up to date",
+                      "modules": "modules", "modules off": "up to date", "modules while waiting": "modules"}[case]
+    assert len(started) == (1 if result in ("system", "mirrordash", "modules") else 0)
 
 
 def test_a_failed_system_build_is_tried_again_a_few_nights_then_left(tmp_path):

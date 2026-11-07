@@ -107,6 +107,20 @@
                 <span class="slider round"></span>
             </label>
         </form>
+
+        <!-- Modules too, last in the nightly chain (updates/service.py auto_update); saves on change -->
+        <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
+              hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <label for="core-auto-update-modules" style="font-weight: 500; font-size: 0.9rem; color: white;">Update modules automatically</label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">At night, once MirrorDash{% if os_build %} and the system are{% else %} is{% endif %} up to date, every module with a newer version is updated, except the ones you turned off in their own settings. Only while the mirror installs updates automatically.</p>
+            </div>
+            <label class="switch">
+                <input type="hidden" name="auto_update_modules" value="false">
+                <input type="checkbox" id="core-auto-update-modules" name="auto_update_modules" value="true" {% if auto_update_modules %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+        </form>
     </section>
 
     <!-- Matter: loaded on its own, re-rendered after every change -->

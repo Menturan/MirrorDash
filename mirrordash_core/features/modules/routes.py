@@ -35,12 +35,14 @@ from mirrordash_core.features.modules.module_files import (
     site_name,
 )
 from mirrordash_core.features.modules.service import (
+    allow_auto_update,
     allow_scripts,
     check_module_update,
     install_module,
     list_community_modules,
     list_modules,
     module_updates,
+    noted,
     screen_layout,
     uninstall_module,
     update_modules,
@@ -128,6 +130,7 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
                               f"{form_name_prefix}[schedule]"),
         "module_form": form(module_own_properties),
         "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, load_config()),
+        "auto_update_allowed": site_name(ep) not in load_config().get("module_auto_update_off", []),
     })
 
 
@@ -141,6 +144,17 @@ async def set_module_scripts(module_name: str, request: Request):
     allow_scripts(name, allowed)
     await module_host.reload_modules()  # the screen reloads: a script that ran keeps its timers until then
     return notify(f"{module_name}'s scripts {'run' if allowed else 'no longer run'} on the mirror.")
+
+
+@router.post("/panels/modules/auto-update/{module_name}", dependencies=[Depends(require_api_key)])
+async def set_module_auto_update(module_name: str, request: Request):
+    """The owner's yes or no to the nightly update updating a module (modules_to_auto_update)."""
+    ep = find_entry_point(module_name)
+    if not (name := site_name(ep) if ep else None):
+        raise HTTPException(status_code=404, detail="Module not found")
+    allowed = (await read_form(request)).get("on") in (True, "true")
+    allow_auto_update(name, allowed)
+    return notify(f"{module_name} is updated {'automatically' if allowed else 'only when you press Update'}.")
 
 
 def _new_instance_id(module_name: str, modules_config: dict) -> str:
@@ -332,17 +346,9 @@ def _shown_name(package_name: str) -> str:
     return f"{name} ({version})" if version else name
 
 
-async def _noted(work, *packages: str):
-    """An install or update, then each package noted for the crash guard (its step 1: the module changed last)."""
-    result = await work
-    for package in packages:
-        guard.note("installed", package)
-    return result
-
-
 @router.post("/panels/modules/install", dependencies=[Depends(require_api_key)])
 async def install_panel_module(package_name: str = Form(...)):
-    job_id = start_job(lambda: _noted(install_module(package_name=package_name), package_name))
+    job_id = start_job(lambda: noted(install_module(package_name=package_name), package_name))
     shown = _shown_name(package_name)
     return job_response(job_id, "Installing Module", f"Installing {shown}. This can take a few minutes...",
                         f"Installed {shown}.", "modules")
@@ -357,7 +363,7 @@ async def uninstall_panel_module(package_name: str = Form(...)):
 
 @router.post("/panels/modules/upgrade", dependencies=[Depends(require_api_key)])
 async def upgrade_panel_module(package_name: str = Form(...)):
-    job_id = start_job(lambda: _noted(update_modules(package_name), package_name))
+    job_id = start_job(lambda: noted(update_modules(package_name), package_name))
     shown = _shown_name(package_name)
     return job_response(job_id, "Upgrading Module", f"Upgrading {shown}. This can take a few minutes...",
                         f"Upgraded {shown}.", "modules")
@@ -371,6 +377,6 @@ async def upgrade_all_modules():
         return notify("Every module is up to date.")
     names = ", ".join(update["package_name"] for update in updates)
     targets = [update["target"] for update in updates]
-    job_id = start_job(lambda: _noted(update_modules(*targets), *targets))
+    job_id = start_job(lambda: noted(update_modules(*targets), *targets))
     return job_response(job_id, "Updating Modules", f"Updating {names}. This can take a few minutes...",
                         f"Updated {names}.", "config")

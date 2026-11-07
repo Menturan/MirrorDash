@@ -72,6 +72,7 @@ async def get_panel_config(request: Request):
             "current_version": current_version,
             "prerelease": config.get("system", {}).get("prerelease", False),
             "auto_update": config.get("system", {}).get("auto_update", True),
+            "auto_update_modules": config.get("system", {}).get("auto_update_modules", False),
             "ssh": await get_ssh_status(),
             "privacy": privacy_on(config),
             # None where there are no system updates (an image from before A/B, a development machine)

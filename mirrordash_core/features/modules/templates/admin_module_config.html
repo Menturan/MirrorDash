@@ -66,5 +66,20 @@
         </label>
     </div>
 </form>
+{# Also for every card of this module: kept out of the nightly update (Settings → Updates) when off #}
+<form hx-post="/admin/panels/modules/auto-update/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+    <div class="form-group">
+        <div class="form-label-desc">
+            <label for="module-auto-update">Update automatically</label>
+            <p class="field-description">At night, with <em>Update modules automatically</em> on in Settings → Updates.
+                Off: this module is only updated when you press Update. For every card of this module.</p>
+        </div>
+        <label class="switch">
+            <input type="hidden" name="on" value="false">
+            <input type="checkbox" id="module-auto-update" name="on" value="true" {% if auto_update_allowed %}checked{% endif %}>
+            <span class="slider round"></span>
+        </label>
+    </div>
+</form>
 {% endif %}
 <script>triggerLucide();</script>

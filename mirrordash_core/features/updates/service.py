@@ -443,11 +443,17 @@ async def get_disk_usage() -> dict:
 
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
-    as pressing the buttons on the Updates card, the system first. It never guesses for the owner:
+    as pressing the buttons on the Updates card, one a night: the system, else MirrorDash, else the modules
+    (when the owner turned that on, minus the ones turned off in their settings). It never guesses for the owner:
     a system build whose trial boot failed is tried again only up to OS_TRIAL_TRIES times, and a newer
     Python that some modules don't work with waits for someone to choose Install Anyway. Returns what it
     started."""
     from mirrordash_core.admin import job_status, start_job
+    from mirrordash_core.features.modules.service import (
+        modules_to_auto_update,
+        noted,
+        update_modules,
+    )
     if not load_config().get("system", {}).get("auto_update", True):
         return "off"
     if job_status()["state"] == "running":
@@ -462,9 +468,15 @@ async def auto_update() -> str:
         start_job(lambda: update_os(bundle))
         return "system"
     core_update = await check_core_update()
-    if not core_update["update_available"]:
-        return "up to date"
-    if core_update.get("needs_python") and incompatible.get("version") == core_update["latest_version"]:
-        return "waiting for a choice"  # some modules don't work with the newer Python
-    start_job(update_core)
-    return "mirrordash"
+    # some modules don't work with the newer Python: MirrorDash waits, the modules needn't
+    waiting = bool(core_update.get("needs_python")) and incompatible.get("version") == core_update["latest_version"]
+    if core_update["update_available"] and not waiting:
+        start_job(update_core)
+        return "mirrordash"
+    config = load_config()
+    # ponytail: a module whose new version fails its check is rolled back (no restart) and tried again every
+    # night: a download and a check a night. Count failed versions like auto_update_failed if that ever matters.
+    if config.get("system", {}).get("auto_update_modules", False) and (targets := await modules_to_auto_update(config)):
+        start_job(lambda: noted(update_modules(*targets), *targets))
+        return "modules"
+    return "waiting for a choice" if waiting else "up to date"

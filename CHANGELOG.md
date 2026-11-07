@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
+
 ### OS image
 
 - A system update no longer goes back to the old system when a Raspberry Pi 3's Wi-Fi doesn't start right after the download: the new system waits for the mirror to restart the Wi-Fi first.

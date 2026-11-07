@@ -18,10 +18,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
+from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,
     module_entry_points,
+    site_name,
 )
 from mirrordash_core.features.modules.package_names import package_key
 from mirrordash_core.features.settings.schema import get_module_schema
@@ -203,13 +205,40 @@ async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
     run_in_background(run_restart())
 
 
+def _set_listed(key: str, name: str | None, listed: bool) -> None:
+    """Put the module installed in site/<name> in config's list `key`, or take it out."""
+    config = load_config()
+    names = set(config.get(key, []))
+    if name and (name in names) != listed:
+        config[key] = sorted(names | {name} if listed else names - {name})
+        save_config(config)
+
+
 def allow_scripts(name: str | None, allowed: bool) -> None:
     """Whether the module installed in site/<name> runs its card's scripts on the screen (scripts_allowed)."""
-    config = load_config()
-    names = set(config.get("module_scripts", []))
-    if name and (name in names) != allowed:
-        config["module_scripts"] = sorted(names | {name} if allowed else names - {name})
-        save_config(config)
+    _set_listed("module_scripts", name, allowed)
+
+
+def allow_auto_update(name: str | None, allowed: bool) -> None:
+    """Whether the nightly update may update the module installed in site/<name> (modules_to_auto_update)."""
+    _set_listed("module_auto_update_off", name, not allowed)
+
+
+async def modules_to_auto_update(config: dict) -> list[str]:
+    """What the nightly update installs (update_modules' targets): every module with a newer release,
+    but not the ones the owner turned off in their settings (config's "module_auto_update_off")."""
+    held = set(config.get("module_auto_update_off", []))
+    updates, _ = await module_updates()
+    return [update["target"] for update in updates
+            if (ep := find_entry_point(update["module_name"])) is None or site_name(ep) not in held]
+
+
+async def noted(work, *packages: str):
+    """An install or update, then each package noted for the crash guard (its step 1: the module changed last)."""
+    result = await work
+    for package in packages:
+        guard.note("installed", package)
+    return result
 
 
 async def install_module(package_name: str) -> dict:
