@@ -1761,16 +1761,18 @@ def test_a_packages_own_text_is_never_markup_in_the_admin_page():
     assert 'hx-vals=\'{"package_name": "mirrordash-x"}\'' in badge and "Notes" in badge
 
 
-@pytest.mark.parametrize("case", ["off", "busy", "system first", "skipped build", "mirrordash", "waiting", "up to date"])
+@pytest.mark.parametrize("case", ["off", "busy", "system first", "skipped build", "newer than skipped", "mirrordash",
+                                  "waiting", "up to date"])
 def test_the_nightly_update_does_what_the_buttons_would(case):
-    """Off → nothing; the system before MirrorDash; a system build whose trial failed isn't retried
-    by itself; a newer Python some modules don't work with waits for the owner's choice."""
+    """Off → nothing; the system before MirrorDash; a system build whose trial failed OS_TRIAL_TRIES
+    times isn't tried again by itself, but a newer build after it is; a newer Python some modules don't
+    work with waits for the owner's choice."""
     from mirrordash_core.features.updates import service
     system = {"auto_update": case != "off"}
-    if case == "skipped build":
+    if case in ("skipped build", "newer than skipped"):
         system["auto_update_failed"] = {"build": "20261020-0300", "times": service.OS_TRIAL_TRIES}
-    os_info = {"update_available": case in ("system first", "skipped build"), "failed_build": None,
-               "bundle": {"build": "20261020-0300"}}
+    os_info = {"update_available": case in ("system first", "skipped build", "newer than skipped"), "failed_build": None,
+               "bundle": {"build": "20261027-0300" if case == "newer than skipped" else "20261020-0300"}}
     app = {"update_available": case in ("skipped build", "mirrordash", "waiting"), "latest_version": "1.0.0",
            "needs_python": "3.15" if case == "waiting" else None}
     started = []
@@ -1784,7 +1786,7 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
          patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)):
         result = asyncio.run(service.auto_update())
     service.incompatible.clear()
-    assert result == {"off": "off", "busy": "busy", "system first": "system", "skipped build": "mirrordash",
+    assert result == {"off": "off", "busy": "busy", "system first": "system", "skipped build": "mirrordash", "newer than skipped": "system",
                       "mirrordash": "mirrordash", "waiting": "waiting for a choice", "up to date": "up to date"}[case]
     assert len(started) == (1 if result in ("system", "mirrordash") else 0)
 

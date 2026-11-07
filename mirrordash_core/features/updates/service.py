@@ -316,6 +316,7 @@ def newest_os_bundle(releases: list[dict], prerelease: bool) -> dict | None:
 # The nightly update tries a build whose trial boot failed again, up to this many trials in all: a
 # passing fault (the Pi 3's Wi-Fi chip not starting after the download) must not keep a set-and-forget
 # mirror off updates for good, and a build that is really broken costs a few nights' restarts, then waits.
+# Only that build waits: a newer one is tried as usual (with its own count).
 OS_TRIAL_TRIES = 3
 
 

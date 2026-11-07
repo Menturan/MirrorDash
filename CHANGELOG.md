@@ -9,7 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- A system update that didn't start properly is tried again by the automatic updates on the next nights, three times in all, instead of never: a passing fault no longer keeps a mirror off updates for good.
+- A system update that didn't start properly is tried again by the automatic updates on the next nights, three times in all, instead of never: a passing fault no longer keeps a mirror off updates for good. A newer system version is always tried.
 
 ### OS image
 
