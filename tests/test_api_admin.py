@@ -1029,9 +1029,9 @@ def test_a_module_turned_off_stays_out_of_the_nightly_update(module_site, client
          patch.object(modules, "module_updates", AsyncMock(return_value=(updates, None))):
         assert client.post("/admin/panels/modules/auto-update/mirrordash_news", data={"on": "false"}, headers=headers).status_code == 200
         assert config["module_auto_update_off"] == ["mirrordash-news"]
-        assert asyncio.run(modules.modules_to_auto_update(config)) == ["mirrordash_weather@new"]
+        assert asyncio.run(modules.modules_to_auto_update(config)) == updates[1:]
         assert client.post("/admin/panels/modules/auto-update/mirrordash_news", data={"on": "true"}, headers=headers).status_code == 200
-        assert asyncio.run(modules.modules_to_auto_update(config)) == ["mirrordash_news@new", "mirrordash_weather@new"]
+        assert asyncio.run(modules.modules_to_auto_update(config)) == updates
 
 
 @patch("mirrordash_core.fetch.urllib.request.urlopen")
@@ -1786,19 +1786,27 @@ def test_a_packages_own_text_is_never_markup_in_the_admin_page():
 
 
 @pytest.mark.parametrize("case", ["off", "busy", "system first", "skipped build", "newer than skipped", "mirrordash",
-                                  "waiting", "up to date", "modules", "modules off", "modules while waiting"])
+                                  "waiting", "up to date", "modules", "modules off", "modules while waiting",
+                                  "mirrordash tried enough", "mirrordash newer than tried", "modules tried enough"])
 def test_the_nightly_update_does_what_the_buttons_would(case):
     """Off → nothing; the system before MirrorDash; a system build whose trial failed OS_TRIAL_TRIES
     times isn't tried again by itself, but a newer build after it is; a newer Python some modules don't
     work with waits for the owner's choice; the modules last, when the owner turned that on, also while
-    MirrorDash waits for that choice."""
+    MirrorDash waits for that choice; a version of MirrorDash or a module started UPDATE_TRIES nights already
+    isn't tried again by itself, a newer one is."""
     from mirrordash_core.features.updates import service
-    system = {"auto_update": case != "off", "auto_update_modules": case in ("modules", "modules while waiting")}
+    system = {"auto_update": case != "off", "auto_update_modules": case in ("modules", "modules while waiting", "modules tried enough"),
+              "auto_update_tries": {"mirrordash": {"version": "0.9.0" if case == "mirrordash newer than tried" else "1.0.0",
+                                                   "times": service.UPDATE_TRIES},
+                                    "x": {"version": "2", "times": service.UPDATE_TRIES if case == "modules tried enough" else 0}}}
     if case in ("skipped build", "newer than skipped"):
         system["auto_update_failed"] = {"build": "20261020-0300", "times": service.OS_TRIAL_TRIES}
     os_info = {"update_available": case in ("system first", "skipped build", "newer than skipped"), "failed_build": None,
                "bundle": {"build": "20261027-0300" if case == "newer than skipped" else "20261020-0300"}}
-    app = {"update_available": case in ("skipped build", "mirrordash", "waiting", "modules while waiting"),
+    if case in ("skipped build", "mirrordash"):
+        del system["auto_update_tries"]["mirrordash"]
+    app = {"update_available": case in ("skipped build", "mirrordash", "waiting", "modules while waiting",
+                                        "mirrordash tried enough", "mirrordash newer than tried"),
            "latest_version": "1.0.0", "needs_python": "3.15" if "waiting" in case else None}
     started = []
     service.incompatible.clear()
@@ -1809,13 +1817,39 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
          patch.object(service, "check_core_update", AsyncMock(return_value=app)), \
          patch("mirrordash_core.admin.job_status", return_value={"state": "running" if case == "busy" else "done"}), \
          patch("mirrordash_core.admin.start_job", side_effect=lambda work: started.append(work)), \
-         patch("mirrordash_core.features.modules.service.modules_to_auto_update", AsyncMock(return_value=["x@2"])):
+         patch("mirrordash_core.config.save_config"), \
+         patch("mirrordash_core.features.modules.service.modules_to_auto_update",
+               AsyncMock(return_value=[{"package_name": "x", "latest_version": "2", "target": "x@2"}])):
         result = asyncio.run(service.auto_update())
     service.incompatible.clear()
     assert result == {"off": "off", "busy": "busy", "system first": "system", "skipped build": "mirrordash", "newer than skipped": "system",
                       "mirrordash": "mirrordash", "waiting": "waiting for a choice", "up to date": "up to date",
-                      "modules": "modules", "modules off": "up to date", "modules while waiting": "modules"}[case]
+                      "modules": "modules", "modules off": "up to date", "modules while waiting": "modules",
+                      "mirrordash tried enough": "skipped", "mirrordash newer than tried": "mirrordash",
+                      "modules tried enough": "up to date"}[case]
     assert len(started) == (1 if result in ("system", "mirrordash", "modules") else 0)
+
+
+def test_modules_go_together_until_one_fails_then_one_a_night():
+    """A batch that fails is undone whole, so after one the modules go one a night, the least tried first:
+    the one that doesn't load uses up its tries, the others get through. A started try is counted."""
+    from mirrordash_core.features.updates import service
+    updates = [{"package_name": name, "latest_version": "2", "target": f"{name}@2"} for name in ("a", "b", "c")]
+
+    def tonight(times):
+        config = {"system": {"auto_update_tries": {name: {"version": "2", "times": n} for name, n in times.items()}}}
+        return [update["package_name"] for update in service.modules_for_tonight(config, updates)]
+
+    assert tonight({}) == ["a", "b", "c"]
+    assert tonight({"a": 1, "b": 1, "c": 1}) == ["a"]
+    assert tonight({"a": 2, "b": 1, "c": 1}) == ["b"]
+    assert tonight({"a": service.UPDATE_TRIES, "c": 1}) == ["b"]  # b's try got it installed: not offered here any more
+    assert tonight({name: service.UPDATE_TRIES for name in "abc"}) == []
+    config = {"system": {"auto_update_tries": {"a": {"version": "1", "times": 2}}}}
+    with patch("mirrordash_core.config.save_config"):
+        service.count_tries(config, ("a", "2"), ("b", "2"))
+        service.count_tries(config, ("b", "2"))
+    assert config["system"]["auto_update_tries"] == {"a": {"version": "2", "times": 1}, "b": {"version": "2", "times": 2}}
 
 
 def test_a_failed_system_build_is_tried_again_a_few_nights_then_left(tmp_path):

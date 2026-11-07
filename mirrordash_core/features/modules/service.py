@@ -224,12 +224,12 @@ def allow_auto_update(name: str | None, allowed: bool) -> None:
     _set_listed("module_auto_update_off", name, not allowed)
 
 
-async def modules_to_auto_update(config: dict) -> list[str]:
-    """What the nightly update installs (update_modules' targets): every module with a newer release,
+async def modules_to_auto_update(config: dict) -> list[dict]:
+    """What the nightly update may install (module_updates' dicts): every module with a newer release,
     but not the ones the owner turned off in their settings (config's "module_auto_update_off")."""
     held = set(config.get("module_auto_update_off", []))
     updates, _ = await module_updates()
-    return [update["target"] for update in updates
+    return [update for update in updates
             if (ep := find_entry_point(update["module_name"])) is None or site_name(ep) not in held]
 
 

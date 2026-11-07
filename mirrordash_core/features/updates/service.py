@@ -441,13 +441,51 @@ async def get_disk_usage() -> dict:
         raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {e}")
 
 
+# The nightly update tries a new version of MirrorDash or of a module up to this many nights, as a system
+# build (OS_TRIAL_TRIES). Counted when it starts: still offered the next night, the try failed, whether the
+# install did or the new version crashed and launch.sh rolled it back. Only that version waits: a newer one
+# gets its own count, and the buttons install it any time.
+UPDATE_TRIES = OS_TRIAL_TRIES
+
+
+def update_tries(config: dict, name: str, version: str) -> int:
+    """How many nights the nightly update started installing this version of name ("mirrordash" or a
+    module's package name), from config's system.auto_update_tries."""
+    tries = config.get("system", {}).get("auto_update_tries")
+    tried = tries.get(name) if isinstance(tries, dict) else None
+    if isinstance(tried, dict) and tried.get("version") == version and isinstance(tried.get("times"), int):
+        return tried["times"]
+    return 0
+
+
+def count_tries(config: dict, *names_versions: tuple[str, str]) -> None:
+    """One more night's try for each (name, version), saved before the update starts."""
+    from mirrordash_core.config import save_config
+    system = config.setdefault("system", {})
+    counted = {name: {"version": version, "times": update_tries(config, name, version) + 1} for name, version in names_versions}
+    tries = system.get("auto_update_tries")
+    system["auto_update_tries"] = {**(tries if isinstance(tries, dict) else {}), **counted}
+    save_config(config)
+
+
+def modules_for_tonight(config: dict, updates: list[dict]) -> list[dict]:
+    """Which module updates the nightly update installs: all at once (one restart) while none has failed
+    yet; else one, the least tried, since one that doesn't load undoes the whole batch and would count
+    against the others too. None past UPDATE_TRIES."""
+    tries = {update["package_name"]: update_tries(config, update["package_name"], update["latest_version"]) for update in updates}
+    left = [update for update in updates if tries[update["package_name"]] < UPDATE_TRIES]
+    if any(tries[update["package_name"]] for update in left):
+        return [min(left, key=lambda update: tries[update["package_name"]])]
+    return left
+
+
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
     as pressing the buttons on the Updates card, one a night: the system, else MirrorDash, else the modules
     (when the owner turned that on, minus the ones turned off in their settings). It never guesses for the owner:
-    a system build whose trial boot failed is tried again only up to OS_TRIAL_TRIES times, and a newer
-    Python that some modules don't work with waits for someone to choose Install Anyway. Returns what it
-    started."""
+    a system build whose trial boot failed is tried again only up to OS_TRIAL_TRIES times, a version of
+    MirrorDash or a module up to UPDATE_TRIES nights, and a newer Python that some modules don't work with
+    waits for someone to choose Install Anyway. Returns what it started."""
     from mirrordash_core.admin import job_status, start_job
     from mirrordash_core.features.modules.service import (
         modules_to_auto_update,
@@ -470,13 +508,17 @@ async def auto_update() -> str:
     core_update = await check_core_update()
     # some modules don't work with the newer Python: MirrorDash waits, the modules needn't
     waiting = bool(core_update.get("needs_python")) and incompatible.get("version") == core_update["latest_version"]
-    if core_update["update_available"] and not waiting:
+    config = load_config()
+    new_version = core_update.get("latest_version")
+    skipped = core_update["update_available"] and update_tries(config, "mirrordash", new_version) >= UPDATE_TRIES
+    if core_update["update_available"] and not waiting and not skipped:
+        count_tries(config, ("mirrordash", new_version))
         start_job(update_core)
         return "mirrordash"
-    config = load_config()
-    # ponytail: a module whose new version fails its check is rolled back (no restart) and tried again every
-    # night: a download and a check a night. Count failed versions like auto_update_failed if that ever matters.
-    if config.get("system", {}).get("auto_update_modules", False) and (targets := await modules_to_auto_update(config)):
+    if config.get("system", {}).get("auto_update_modules", False) and \
+            (updates := modules_for_tonight(config, await modules_to_auto_update(config))):
+        count_tries(config, *((update["package_name"], update["latest_version"]) for update in updates))
+        targets = [update["target"] for update in updates]
         start_job(lambda: noted(update_modules(*targets), *targets))
         return "modules"
-    return "waiting for a choice" if waiting else "up to date"
+    return "waiting for a choice" if waiting else "skipped" if skipped else "up to date"
