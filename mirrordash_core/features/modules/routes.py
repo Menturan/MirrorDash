@@ -379,4 +379,4 @@ async def upgrade_all_modules():
     targets = [update["target"] for update in updates]
     job_id = start_job(lambda: noted(update_modules(*targets), *targets))
     return job_response(job_id, "Updating Modules", f"Updating {names}. This can take a few minutes...",
-                        f"Updated {names}.", "config")
+                        f"Updated {names}. One that didn't work stays as it was and still shows its update.", "config")

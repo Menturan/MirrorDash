@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 - **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
 - A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
+- **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
 
 ### OS image
 

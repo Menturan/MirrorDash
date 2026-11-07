@@ -468,17 +468,6 @@ def count_tries(config: dict, *names_versions: tuple[str, str]) -> None:
     save_config(config)
 
 
-def modules_for_tonight(config: dict, updates: list[dict]) -> list[dict]:
-    """Which module updates the nightly update installs: all at once (one restart) while none has failed
-    yet; else one, the least tried, since one that doesn't load undoes the whole batch and would count
-    against the others too. None past UPDATE_TRIES."""
-    tries = {update["package_name"]: update_tries(config, update["package_name"], update["latest_version"]) for update in updates}
-    left = [update for update in updates if tries[update["package_name"]] < UPDATE_TRIES]
-    if any(tries[update["package_name"]] for update in left):
-        return [min(left, key=lambda update: tries[update["package_name"]])]
-    return left
-
-
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
     as pressing the buttons on the Updates card, one a night: the system, else MirrorDash, else the modules
@@ -516,7 +505,8 @@ async def auto_update() -> str:
         start_job(update_core)
         return "mirrordash"
     if config.get("system", {}).get("auto_update_modules", False) and \
-            (updates := modules_for_tonight(config, await modules_to_auto_update(config))):
+            (updates := [update for update in await modules_to_auto_update(config)
+                         if update_tries(config, update["package_name"], update["latest_version"]) < UPDATE_TRIES]):
         count_tries(config, *((update["package_name"], update["latest_version"]) for update in updates))
         targets = [update["target"] for update in updates]
         start_job(lambda: noted(update_modules(*targets), *targets))

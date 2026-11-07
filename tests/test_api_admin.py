@@ -1830,21 +1830,9 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
     assert len(started) == (1 if result in ("system", "mirrordash", "modules") else 0)
 
 
-def test_modules_go_together_until_one_fails_then_one_a_night():
-    """A batch that fails is undone whole, so after one the modules go one a night, the least tried first:
-    the one that doesn't load uses up its tries, the others get through. A started try is counted."""
+def test_a_nights_try_is_counted_per_version():
+    """Each night's start counts for that version only: a newer one starts again from one."""
     from mirrordash_core.features.updates import service
-    updates = [{"package_name": name, "latest_version": "2", "target": f"{name}@2"} for name in ("a", "b", "c")]
-
-    def tonight(times):
-        config = {"system": {"auto_update_tries": {name: {"version": "2", "times": n} for name, n in times.items()}}}
-        return [update["package_name"] for update in service.modules_for_tonight(config, updates)]
-
-    assert tonight({}) == ["a", "b", "c"]
-    assert tonight({"a": 1, "b": 1, "c": 1}) == ["a"]
-    assert tonight({"a": 2, "b": 1, "c": 1}) == ["b"]
-    assert tonight({"a": service.UPDATE_TRIES, "c": 1}) == ["b"]  # b's try got it installed: not offered here any more
-    assert tonight({name: service.UPDATE_TRIES for name in "abc"}) == []
     config = {"system": {"auto_update_tries": {"a": {"version": "1", "times": 2}}}}
     with patch("mirrordash_core.config.save_config"):
         service.count_tries(config, ("a", "2"), ("b", "2"))

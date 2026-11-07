@@ -186,9 +186,9 @@ async def _pinned_to_latest_release(package_name: str) -> str:
     return package_name if "@" in package_name else f"{package_name}@{tag}"
 
 
-async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
+async def _change_packages(what: str, *changes: list[str]) -> None:
     """Run uv pip changes, one module each, in the next module site (module_host.packages, ARCHITECTURE
-    #41); keep it only if uv (and `verify`, given the site) succeed."""
+    #41); keep it only if uv succeeds."""
     try:
         async with module_host.packages() as site:
             for uv_arguments in changes:
@@ -196,8 +196,6 @@ async def _change_packages(what: str, *changes: list[str], verify=None) -> None:
                 if code != 0:
                     logger.error(f"{what} failed: {err}")
                     raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
-            if verify:
-                await verify(site)
     except HTTPException:
         raise
     except Exception as e:
@@ -236,7 +234,8 @@ async def modules_to_auto_update(config: dict) -> list[dict]:
 async def noted(work, *packages: str):
     """An install or update, then each package noted for the crash guard (its step 1: the module changed last)."""
     result = await work
-    for package in packages:
+    # only what was really upgraded: update_modules puts back one that didn't work
+    for package in result.get("updated", packages) if isinstance(result, dict) else packages:
         guard.note("installed", package)
     return result
 
@@ -255,28 +254,60 @@ async def install_module(package_name: str) -> dict:
     return {"status": "success", "message": f"Installed {package_name}. Restarting..."}
 
 
+def _name_spellings(package_name: str) -> list[str]:
+    """A module's name as - and as _ (its entry point may use either); a git URL's package is named after
+    the repository (mirrordash-calendar)."""
+    owner_repo = github_owner_repo(package_name) if package_name.startswith("git+https://github.com/") else None
+    name = owner_repo[1] if owner_repo else package_name
+    return [name, name.replace("-", "_"), name.replace("_", "-")]
+
+
+async def _put_back(site, package_names) -> None:
+    """Reinstall these modules in the changed site as they are in the running one (where they came from)."""
+    from mirrordash_core.features.backup.service import installed_modules
+    from mirrordash_core.features.updates.service import module_target
+    running = {package_key(module["package_name"]): module for module in installed_modules()}
+    for package_name in package_names:
+        module = running.get(package_key(_local_target(package_name)))
+        code, err = await site.pip("install", *module_target(module)) if module else (1, "it isn't installed now")
+        if code != 0:
+            raise HTTPException(status_code=500, detail=f"Putting {package_name} back failed, nothing was changed: {err}")
+
+
 async def update_modules(*package_names: str) -> dict:
-    """Upgrade one or more modules in one venv swap, so MirrorDash restarts once (Settings → Updates → Update All)."""
-    name_spellings = []  # each module's name as - and as _: its entry point may use either
+    """Upgrade one or more modules in one change of the module site, so MirrorDash restarts once (Settings →
+    Updates → Update All, and the nightly update). Each must install and load on its own, by the module host
+    in its sandbox, never as the core's user: one that doesn't is put back as it was and the others still go.
+    When none does, nothing is changed. Returns which were upgraded ("updated")."""
     for package_name in package_names:
         check_package_name(package_name)
-        # A git URL's package is named after the repository (mirrordash-calendar)
-        owner_repo = github_owner_repo(package_name) if package_name.startswith("git+https://github.com/") else None
-        name = owner_repo[1] if owner_repo else package_name
-        name_spellings += [name, name.replace("-", "_"), name.replace("_", "-")]
-
-    async def loads_in_new_site(site):
-        """The upgraded modules must still import, or the change is undone: by the module host, in its
-        sandbox, never as the core's user."""
-        code, err = await site.check(name_spellings)
-        if code != 0:
-            logger.warning(f"Upgrade check failed for {', '.join(package_names)}: {err}. Initiating rollback...")
-            raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
-
     logger.info(f"Upgrading packages: {', '.join(package_names)}")
-    await _change_packages("Upgrade", *(["install", "--upgrade", _local_target(name)] for name in package_names),
-                           verify=loads_in_new_site)
-    return {"status": "success", "message": f"Upgraded {', '.join(package_names)}. Restarting..."}
+    updated, failed = [], {}
+    try:
+        async with module_host.packages() as site:
+            for package_name in package_names:
+                code, err = await site.pip("install", "--upgrade", _local_target(package_name))
+                if code == 0:
+                    code, err = await site.check(_name_spellings(package_name))
+                if code == 0:
+                    updated.append(package_name)
+                else:
+                    logger.warning(f"Upgrade of {package_name} failed, it stays as it was: {err}")
+                    failed[package_name] = err.strip()
+            if not updated:
+                raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {'; '.join(failed.values())}")
+            await _put_back(site, failed)
+            if failed or len(updated) > 1:  # a dependency one of them moved can break another
+                code, err = await site.check([name for package_name in updated for name in _name_spellings(package_name)])
+                if code != 0:
+                    raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {err}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Upgrade failed: {e}")
+    run_in_background(run_restart())
+    kept = f" {', '.join(failed)} didn't work and stayed as it was." if failed else ""
+    return {"status": "success", "message": f"Upgraded {', '.join(updated)}.{kept} Restarting...", "updated": updated}
 
 
 async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL) -> dict | None:
