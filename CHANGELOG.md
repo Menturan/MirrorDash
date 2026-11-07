@@ -9,9 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- The admin page's icons are Font Awesome 7: the menu's labels line up.
-- **A TV turns off and on with the mirror** over HDMI-CEC, as its remote would, instead of only showing "No signal". A TV showing another input is left alone, and monitors aren't affected. On by default; *Power* has a switch for it. Not yet tried on a TV: tell us how yours does.
-
 ### OS image
 
 - **The screen's browser engine gets security fixes again**: the mirror shows its page with WPE WebKit 2.54, rebuilt each time Debian has a new one, instead of the older version (2.48) Debian no longer fixes. The Raspberry Pi 3 has a little more memory to spare with it.
@@ -22,6 +19,11 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.15.0] - 2026-11-07
+
+- The admin page's icons are Font Awesome 7: the menu's labels line up.
+- **A TV turns off and on with the mirror** over HDMI-CEC, as its remote would, instead of only showing "No signal". A TV showing another input is left alone, and monitors aren't affected. On by default; *Power* has a switch for it. Not yet tried on a TV: tell us how yours does.
 
 ## [0.14.0] - 2026-11-05
 
