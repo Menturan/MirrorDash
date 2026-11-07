@@ -7,14 +7,18 @@ OnFailure=mirrordash-save-trial-log.service
 [Service]
 Type=oneshot
 ExecCondition=/usr/local/lib/mirrordash/rauc-bootloader is-update-trial
-# No GitHub, no mark-good: the next restart rolls back, which is safe (the skip only applies to that build)
-ExecStart=/usr/bin/curl -fsS -o /dev/null -m 10 --retry 20 --retry-delay 5 --retry-all-errors https://github.com
+# No GitHub, no mark-good: the next restart rolls back, which is safe (the nightly update tries that
+# build again, OS_TRIAL_TRIES times). Up to 8 minutes, so the Wi-Fi watch (mirrordash-wifi-watch.timer:
+# first at 3 minutes) can restart a Wi-Fi chip that didn't start before this gives up: a Pi 3's chip
+# after the update's long download ("Downloaded RAM image is corrupted", 2026-10-19 and 2026-11-07)
+ExecStart=/usr/bin/curl -fsS -o /dev/null -m 10 --retry 100 --retry-delay 5 --retry-max-time 480 --retry-all-errors https://github.com
 ExecStart=/usr/bin/curl -fsS -o /dev/null --retry 60 --retry-delay 5 --retry-all-errors http://localhost:8000/health
 ExecStart=/usr/bin/rauc status mark-good
 # Then renew p1's firmware if the new system brought newer (update-p1, above). The "-": whatever
 # happens there, the new system stays; a failure only leaves its log under Saved Logs.
 ExecStart=-/bin/sh -c '/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update -b -n 500'
-TimeoutStartSec=12min
+# GitHub's 8 minutes, the app's 5, and the rest
+TimeoutStartSec=15min
 
 [Install]
 WantedBy=multi-user.target

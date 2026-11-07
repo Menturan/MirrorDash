@@ -76,7 +76,8 @@ def _os_update_html(data: dict | BaseException) -> str:
     if isinstance(data, BaseException):
         return _render("update_os.html", error=getattr(data, "detail", None) or str(data))
     from mirrordash_core.config import load_config
-    skip_build = load_config().get("system", {}).get("auto_update_skip_build")
+    from mirrordash_core.features.updates.service import skipped_os_build
+    skip_build = skipped_os_build(load_config())
     return _render("update_os.html", data=data, format_build=format_build, skip_build=skip_build)
 
 

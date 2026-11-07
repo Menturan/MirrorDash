@@ -49,12 +49,15 @@ def test_polkit_names_the_actions_it_allows():
     assert "NetworkManager.settings.modify.system" in rules
 
 
-def test_failed_os_update_makes_the_nightly_update_skip_that_build(tmp_path, monkeypatch):
+def test_failed_os_update_is_counted_for_the_nightly_update(tmp_path, monkeypatch):
     monkeypatch.setattr(service, "OS_PENDING_FILE", tmp_path / "pending")
     monkeypatch.setattr(service, "TRYBOOT_FLAG", tmp_path / "tryboot")
+    # The tests share one config file: count from what an earlier failure of this build left there
+    before = load_config().get("system", {}).get("auto_update_failed") or {}
+    times = before.get("times", 0) if before.get("build") == "20261101-1200" else 0
     (tmp_path / "pending").write_text("20261101-1200")
     assert service.failed_os_update("20261001-0800") == "20261101-1200"
-    assert load_config()["system"]["auto_update_skip_build"] == "20261101-1200"
+    assert load_config()["system"]["auto_update_failed"] == {"build": "20261101-1200", "times": times + 1}
 
 
 def test_wifi_country_failure_is_not_a_time_zone_failure(monkeypatch):

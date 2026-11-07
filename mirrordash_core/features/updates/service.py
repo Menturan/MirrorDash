@@ -313,6 +313,20 @@ def newest_os_bundle(releases: list[dict], prerelease: bool) -> dict | None:
     return newest
 
 
+# The nightly update tries a build whose trial boot failed again, up to this many trials in all: a
+# passing fault (the Pi 3's Wi-Fi chip not starting after the download) must not keep a set-and-forget
+# mirror off updates for good, and a build that is really broken costs a few nights' restarts, then waits.
+OS_TRIAL_TRIES = 3
+
+
+def skipped_os_build(config: dict) -> str | None:
+    """The build the nightly update no longer tries: its trial boot failed OS_TRIAL_TRIES times."""
+    failed = config.get("system", {}).get("auto_update_failed")
+    if not isinstance(failed, dict) or not isinstance(failed.get("times"), int):
+        return None
+    return failed.get("build") if failed["times"] >= OS_TRIAL_TRIES else None
+
+
 def failed_os_update(installed: str) -> str | None:
     """The build of an OS update that didn't stick (the mirror came back on its old version), once;
     None otherwise. While the new version is still on trial, nothing is decided yet."""
@@ -333,8 +347,11 @@ def failed_os_update(installed: str) -> str | None:
         return None
     OS_PENDING_FILE.unlink(missing_ok=True)
     from mirrordash_core.config import save_config
-    config = load_config()  # the nightly auto-update must skip this build too, whoever saw the failure first
-    config.setdefault("system", {})["auto_update_skip_build"] = target
+    config = load_config()  # counted for the nightly update, whoever saw the failure first
+    system = config.setdefault("system", {})
+    failed = system.get("auto_update_failed")
+    times = failed.get("times", 0) if isinstance(failed, dict) and failed.get("build") == target else 0
+    system["auto_update_failed"] = {"build": target, "times": (times if isinstance(times, int) else 0) + 1}
     save_config(config)
     return target
 
@@ -426,18 +443,19 @@ async def get_disk_usage() -> dict:
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
     as pressing the buttons on the Updates card, the system first. It never guesses for the owner:
-    a system build whose trial boot failed isn't tried again by itself, and a newer Python that some
-    modules don't work with waits for someone to choose Install Anyway. Returns what it started."""
+    a system build whose trial boot failed is tried again only up to OS_TRIAL_TRIES times, and a newer
+    Python that some modules don't work with waits for someone to choose Install Anyway. Returns what it
+    started."""
     from mirrordash_core.admin import job_status, start_job
     if not load_config().get("system", {}).get("auto_update", True):
         return "off"
     if job_status()["state"] == "running":
         return "busy"
     try:
-        os_info = await check_os_update()  # a failed trial boot is saved as auto_update_skip_build here
+        os_info = await check_os_update()  # a failed trial boot is counted here (failed_os_update)
     except HTTPException:
         os_info = {}  # GitHub unreachable tonight: MirrorDash can still be up to date
-    skipped_build = load_config().get("system", {}).get("auto_update_skip_build")
+    skipped_build = skipped_os_build(load_config())
     bundle = os_info.get("bundle")
     if os_info.get("update_available") and bundle["build"] != skipped_build:
         start_job(lambda: update_os(bundle))

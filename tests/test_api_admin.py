@@ -1768,7 +1768,7 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
     from mirrordash_core.features.updates import service
     system = {"auto_update": case != "off"}
     if case == "skipped build":
-        system["auto_update_skip_build"] = "20261020-0300"
+        system["auto_update_failed"] = {"build": "20261020-0300", "times": service.OS_TRIAL_TRIES}
     os_info = {"update_available": case in ("system first", "skipped build"), "failed_build": None,
                "bundle": {"build": "20261020-0300"}}
     app = {"update_available": case in ("skipped build", "mirrordash", "waiting"), "latest_version": "1.0.0",
@@ -1789,9 +1789,9 @@ def test_the_nightly_update_does_what_the_buttons_would(case):
     assert len(started) == (1 if result in ("system", "mirrordash") else 0)
 
 
-def test_a_failed_system_build_is_remembered_for_the_nights_to_come(tmp_path):
-    """The mirror came back on its old build: the update check saves the failed one, and the nightly
-    update doesn't try it again."""
+def test_a_failed_system_build_is_tried_again_a_few_nights_then_left(tmp_path):
+    """The mirror came back on its old build: the update check counts the failed one, and the nightly
+    update tries it again (a passing fault such as the Wi-Fi chip) until it failed OS_TRIAL_TRIES times."""
     from mirrordash_core.features.updates import service
     config = {"system": {}}
     pending = tmp_path / "os-update-pending"
@@ -1801,17 +1801,19 @@ def test_a_failed_system_build_is_remembered_for_the_nights_to_come(tmp_path):
         return {"update_available": True, "failed_build": service.failed_os_update("20261019-0300"),
                 "bundle": {"build": "20261020-0300"}}
 
+    results = []
     with patch.object(service, "OS_PENDING_FILE", pending), \
          patch.object(service, "load_config", return_value=config), \
-         patch("mirrordash_core.config.save_config") as save, \
+         patch("mirrordash_core.config.save_config"), \
          patch.object(service, "check_os_update", check_os_update), \
          patch.object(service, "check_core_update", AsyncMock(return_value={"update_available": False})), \
          patch("mirrordash_core.admin.job_status", return_value={"state": "done"}), \
-         patch("mirrordash_core.admin.start_job") as start:
-        assert asyncio.run(service.auto_update()) == "up to date"
-    assert config["system"]["auto_update_skip_build"] == "20261020-0300"
-    save.assert_called_once()
-    start.assert_not_called()
+         patch("mirrordash_core.admin.start_job"):
+        for _ in range(service.OS_TRIAL_TRIES):
+            pending.write_text("20261020-0300")  # each night's try fails again
+            results.append(asyncio.run(service.auto_update()))
+    assert results == ["system"] * (service.OS_TRIAL_TRIES - 1) + ["up to date"]
+    assert config["system"]["auto_update_failed"] == {"build": "20261020-0300", "times": service.OS_TRIAL_TRIES}
 
 
 def test_only_the_mirror_itself_can_start_the_nightly_update(client):

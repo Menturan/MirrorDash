@@ -2,6 +2,7 @@
 admin page's choice of update bundle. The backend runs here against fake files instead of the Pi's
 autoboot.txt and device tree; what the real firmware does was tested on a Pi 3B (tryboot spike)."""
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -130,6 +131,11 @@ def test_a_failed_trial_boot_restarts_into_the_old_slot():
     # The internet, not nm-online: that counts the setup hotspot as online, and an OS whose Wi-Fi
     # can't join the home network would be kept and could never be updated again
     assert starts[0].endswith(" https://github.com") and "nm-online" not in mark_good
+    # It waits until the Wi-Fi watch's first round, which restarts a Wi-Fi chip that didn't start, has
+    # ended: a Pi 3's chip after the update's download, which would otherwise roll every try back
+    timer, watch = unit("/etc/systemd/system/mirrordash-wifi-watch.timer"), unit("/etc/systemd/system/mirrordash-wifi-watch.service")
+    first_round_ends = int(re.search(r"OnBootSec=(\d+)min", timer)[1]) * 60 + int(re.search(r"TimeoutStartSec=(\d+)", watch)[1])
+    assert int(re.search(r"--retry-max-time (\d+)", starts[0])[1]) > first_round_ends
     # Renewing p1 comes last, after mark-good, and can't fail the unit (the "-")
     assert "/usr/local/lib/mirrordash/update-p1 || /usr/local/lib/mirrordash/save-log p1-update" in starts[-1]
 
