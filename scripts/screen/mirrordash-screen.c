@@ -2,6 +2,7 @@
 // It replaces Cog, which is built on the API WPE 2.54 deprecated and gets no releases past 0.18.
 // A web process that dies, such as one out of GPU memory, ends this process with a failure, and
 // systemd starts a new one: only a new one gets the GPU memory back.
+// New here? README.md next to this file explains the chain, GLib's main loop and signals, and how to test a change.
 #include <stdio.h>
 #include <wpe/webkit.h>
 #include <wpe/wpe-platform.h>

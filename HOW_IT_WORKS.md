@@ -36,7 +36,7 @@ flowchart TB
 
 - **The core** is one Python program (FastAPI). It serves the mirror's screen and the admin page, keeps the settings in `config.json`, runs the hardware (screen power, GPIO, Wi-Fi) and never runs a module's code.
 - **The module host** runs the modules: the clock, the weather, a calendar. Each module comes from its own repository (made with the [SDK](https://github.com/Menturan/mirrordash-sdk)) and is installed as a Python package. On a mirror each instance runs sandboxed, as a user of its own, so a broken or hostile module can't reach the core's files, the passwords or the other modules (#41).
-- **The screen** is a web page (`static/index.html`, `static/js/kiosk/core.js`) in WPE WebKit, shown full screen by our own launcher (`mirrordash-screen`, ARCHITECTURE #56). It draws what the core sends over one WebSocket and does nothing else (#2).
+- **The screen** is a web page (`static/index.html`, `static/js/kiosk/core.js`) in WPE WebKit, shown full screen by our own launcher (`mirrordash-screen`, ARCHITECTURE #56; a walk-through in `scripts/screen/README.md`). It draws what the core sends over one WebSocket and does nothing else (#2).
 - **The admin page** (`templates/admin.html`, `static/admin/`) is where the owner changes things. Each tab is a panel the server renders as HTML; HTMX swaps it in.
 - **The OS image** (`scripts/`) is Raspberry Pi OS with a read-only root (#5), the owner's data on `/storage` (#12), and updates that install to a second copy of the system and switch over only when it boots (#31).
 
