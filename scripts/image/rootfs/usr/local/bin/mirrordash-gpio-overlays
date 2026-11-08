@@ -57,15 +57,36 @@ if grep -qxF "$BEGIN" "$CONFIG" && ! grep -qxF "$END" "$CONFIG"; then
   die "$CONFIG has the line '$BEGIN' but not '$END': put that line back after the MirrorDash lines, then save again"
 fi
 
+# The managed block always takes BLOCK_SIZE bytes, padded with empty lines (the firmware skips them), so
+# config.txt keeps its length and is written over in place: only the block's sectors change, and a power
+# cut mid-write can't touch the lines before it (auto_initramfs, the kernel). Replacing the file instead
+# changes FAT's folder and allocation table, which the card may persist in an order that leaves no
+# config.txt at all (see mirrordash-wifi-country). The image ships an empty block. A block that doesn't
+# fit, or a config.txt without one yet, is replaced the old way: a new file, synced, moved, synced.
+BLOCK_SIZE=2048
+block=$(mktemp)
+new=$(mktemp)
+trap 'rm -f "$block" "$new"' EXIT
 {
-  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
   echo "$BEGIN"
   echo "[all]"  # applies to every Pi model, whatever section the file ended in
   if [ ${#lines[@]} -gt 0 ]; then printf '%s\n' "${lines[@]}"; fi
-  echo "$END"
-} > "$CONFIG.mirrordash-tmp"
-# The new file on the card before its name: FAT has no journal, and a power cut after an unsynced move
-# can leave an empty config.txt on the boot partition of the slot that boots
-sync "$CONFIG.mirrordash-tmp"
-mv "$CONFIG.mirrordash-tmp" "$CONFIG"
-sync "$CONFIG"
+} > "$block"
+pad=$(( BLOCK_SIZE - $(stat -c %s "$block") - ${#END} - 1 ))
+if [ "$pad" -gt 0 ]; then head -c "$pad" /dev/zero | tr '\0' '\n' >> "$block"; fi
+echo "$END" >> "$block"
+{
+  awk -v b="$BEGIN" -v e="$END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$CONFIG"
+  cat "$block"
+} > "$new"
+
+if cmp -s "$new" "$CONFIG"; then
+  :  # unchanged: nothing written
+elif [ "$(stat -c %s "$new")" = "$(stat -c %s "$CONFIG")" ]; then
+  dd if="$new" of="$CONFIG" conv=notrunc,fsync status=none
+else
+  cp "$new" "$CONFIG.mirrordash-tmp"
+  sync "$CONFIG.mirrordash-tmp"
+  mv "$CONFIG.mirrordash-tmp" "$CONFIG"
+  sync "$CONFIG"
+fi

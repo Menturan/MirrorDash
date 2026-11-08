@@ -107,6 +107,13 @@ def test_a_new_boot_partition_gets_this_mirrors_root_and_settings(pi):
     # Run again (an old block in the new partition is replaced, not doubled)
     assert pi("prepare-boot", str(new), "6").returncode == 0
     assert (new / "config.txt").read_text() == "[all]\ndisable_splash=1\ndtoverlay=vc4-kms-v3d\n" + GPIO
+    # A running slot without a block (a card from before) leaves the new one's own: the empty one of fixed
+    # size its image ships, which mirrordash-gpio-overlays then writes over in place
+    shipped = "[all]\ndisable_splash=1\n" + GPIO.replace("\n# --- end", "\n" + "\n" * 50 + "# --- end")
+    (new / "config.txt").write_text(shipped)
+    (pi.tmp / "current-boot" / "config.txt").write_text("[all]\ndisable_splash=1\n")
+    assert pi("prepare-boot", str(new), "6").returncode == 0
+    assert (new / "config.txt").read_text() == shipped
 
 
 def test_gpio_markers_match_the_gpio_helper():

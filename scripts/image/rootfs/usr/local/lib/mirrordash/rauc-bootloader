@@ -88,7 +88,10 @@ prepare_boot() {
     sed -i "s/cfg80211.ieee80211_regdom=[^ ]*/$regdom/" "$dir/cmdline.txt"
   fi
 
-  # The new config.txt without a GPIO block of its own (if it has one), then the running one's block
+  # The new config.txt without a GPIO block of its own (if it has one), then the running one's block. Only
+  # when the running one has a block: otherwise the new one keeps its own, the empty one of fixed size its
+  # image ships, so the devices are written over in place there (mirrordash-gpio-overlays)
+  grep -qxF "$GPIO_BEGIN" "$CURRENT_BOOT/config.txt" || return 0
   {
     awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$dir/config.txt"
     awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy { print } $0 == e { copy = 0 }' "$CURRENT_BOOT/config.txt"

@@ -86,3 +86,17 @@ def test_a_block_without_its_end_line_is_refused_not_cut(tmp_path):
     before = config.read_text()
     code, text = run_helper(tmp_path, "dht11:4")
     assert code != 0 and text == before
+
+
+def test_the_block_keeps_its_size_so_config_txt_is_written_in_place(tmp_path):
+    """Once the block is there (the image ships it empty) config.txt keeps its length whatever is connected,
+    so it is written over in place (the same inode): no new file on the boot partition, which on FAT a power
+    cut can leave as none at all."""
+    config = tmp_path / "config.txt"
+    assert run_helper(tmp_path)[0] == 0  # what the image build does
+    size, inode = config.stat().st_size, config.stat().st_ino
+    for args in (("button:17", "dht11:4", "pir:18", "light:0x23", "fan:14:60"), ("dht11:22",), ()):
+        code, text = run_helper(tmp_path, *args)
+        assert code == 0 and text.startswith(ORIGINAL)
+        assert config.stat().st_size == size and config.stat().st_ino == inode
+    assert len(text) - len(ORIGINAL) == 2048

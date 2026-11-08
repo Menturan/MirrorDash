@@ -501,6 +501,9 @@ boot_delay=0
 dtoverlay=disable-bt
 EOF
   fi
+  # An empty GPIO block, last in the file and always the same size, so the admin page's devices are written
+  # over in place from the first save on: no new file on the boot partition (mirrordash-gpio-overlays, #58)
+  /usr/local/bin/mirrordash-gpio-overlays
 
   # Silence kernel logs in cmdline.txt: replace console=tty1 with console=tty3, remove auto-resize parameters, and append quiet/splash options
   if [ -f /boot/firmware/cmdline.txt ]; then
@@ -561,6 +564,12 @@ EOF
         new_opts+=("$target")
       fi
     done
+
+    # A Wi-Fi country from the start (00: the world's rules, as with none), so setting the real one keeps
+    # the line's length and mirrordash-wifi-country writes it over in place (#58); one already set stays
+    if [[ " ${new_opts[*]} " != *" cfg80211.ieee80211_regdom="* ]]; then
+      new_opts+=("cfg80211.ieee80211_regdom=00")
+    fi
 
     echo "${new_opts[*]}" > /boot/firmware/cmdline.txt
   fi

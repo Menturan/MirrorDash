@@ -21,9 +21,10 @@ def test_sudo_runs_the_wifi_country_wrapper_not_raspi_config(tmp_path):
         assert subprocess.run(["bash", str(script), bad]).returncode == 2
 
 
-def test_wifi_country_rewrites_cmdline_whole(tmp_path):
-    """The boot slot's cmdline.txt gets the country through a new file moved over it (synced), the rest
-    of the line as it was; one without root= is never written (it would leave a mirror that can't boot)."""
+def test_wifi_country_writes_cmdline_in_place(tmp_path):
+    """The boot slot's cmdline.txt keeps its length (the image ships regdom=00), so the country is written
+    over in place: the same file (inode), no new one moved over it, which on FAT can leave none at all
+    after a power cut. One of another length is replaced; one without root= is never written."""
     cmdline = tmp_path / "cmdline.txt"
     script = tmp_path / "wifi-country"
     script.write_text(unit("/usr/local/bin/mirrordash-wifi-country").replace("CMDLINE=/boot/firmware/cmdline.txt",
@@ -32,17 +33,31 @@ def test_wifi_country_rewrites_cmdline_whole(tmp_path):
     def run(country):
         return subprocess.run(["bash", str(script), country], env=env, capture_output=True).returncode
 
-    cmdline.write_text("console=tty1 root=PARTUUID=abcd-05 rootwait\n")
+    cmdline.write_text("console=tty1 root=PARTUUID=abcd-05 cfg80211.ieee80211_regdom=00 rootwait\n")
+    inode = cmdline.stat().st_ino
     assert run("SE") == 0
     assert cmdline.read_text() == "console=tty1 root=PARTUUID=abcd-05 rootwait cfg80211.ieee80211_regdom=SE\n"
     assert run("NO") == 0  # replaced, never a second one
     assert cmdline.read_text() == "console=tty1 root=PARTUUID=abcd-05 rootwait cfg80211.ieee80211_regdom=NO\n"
+    assert cmdline.stat().st_ino == inode  # written over in place, both times
+
+    cmdline.write_text("console=tty1 root=PARTUUID=abcd-05 rootwait\n")  # no country yet: another length
+    assert run("SE") == 0
+    assert cmdline.read_text() == "console=tty1 root=PARTUUID=abcd-05 rootwait cfg80211.ieee80211_regdom=SE\n"
     assert not (tmp_path / "cmdline.txt.mirrordash-tmp").exists()
 
     cmdline.write_text("")  # already broken: left alone
     assert run("SE") == 1
     assert cmdline.read_text() == "" and not (tmp_path / "cmdline.txt.mirrordash-tmp").exists()
-    assert 'sync "$CONFIG.mirrordash-tmp"\nmv' in unit("/usr/local/bin/mirrordash-gpio-overlays")
+
+
+def test_the_image_ships_what_keeps_boot_writes_in_place():
+    """cmdline.txt with a country (00, the world's rules) and config.txt with an empty GPIO block: both
+    keep their length from the first save on (mirrordash-wifi-country, mirrordash-gpio-overlays)."""
+    assert 'new_opts+=("cfg80211.ieee80211_regdom=00")' in SETUP
+    watchdog_step = SETUP.split("step_watchdog_boot_optimization() {", 1)[1].split("\n}\n", 1)[0]
+    hardening = watchdog_step.index("dtoverlay=disable-bt")
+    assert watchdog_step.index("\n  /usr/local/bin/mirrordash-gpio-overlays\n") > hardening  # the block last in the file
 
 
 def test_ip_filters_name_only_what_systemd_knows():
