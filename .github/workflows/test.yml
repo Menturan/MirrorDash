@@ -64,3 +64,17 @@ jobs:
 
       - name: Run the sandbox check
         run: scripts/sandbox-check/run.sh
+
+  # The storage partition's repair, rescue and rebuild with real e2fsprogs on a loop device
+  # (scripts/storage-check, ARCHITECTURE #58): the one path that formats, so never only stubbed
+  storage:
+    name: Storage rescue on a real file system
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Run the storage check
+        run: scripts/storage-check/run.sh
