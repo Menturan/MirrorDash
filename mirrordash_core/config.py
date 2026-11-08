@@ -187,19 +187,23 @@ def write_atomic(path: Path | str, text: str, mode: int | None = None) -> None:
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
         if mode is not None:
             os.chmod(tmp_path, mode)
-        os.replace(tmp_path, path)
+        replace_durably(tmp_path, path)
     except BaseException:
         try:
             os.unlink(tmp_path)
         except OSError:
             pass
         raise
+
+def replace_durably(tmp_path: Path | str, path: Path | str) -> None:
+    """Put a finished file (tmp_path, in path's folder) in place so a power cut leaves the old or the new one."""
+    with open(tmp_path, "rb") as f:
+        os.fsync(f.fileno())
+    os.replace(tmp_path, path)
     # The rename itself is only durable once the directory is written
-    dir_fd = os.open(path.parent, os.O_RDONLY)
+    dir_fd = os.open(Path(path).parent, os.O_RDONLY)
     try:
         os.fsync(dir_fd)
     finally:

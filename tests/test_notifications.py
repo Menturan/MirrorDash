@@ -54,6 +54,18 @@ def test_saved_logs_become_notifications(tmp_path, monkeypatch):
     assert by_log["power-lost-20261107-030000.log"]["text"] == saved.KINDS["power-lost"]
 
 
+def test_a_rebuilt_storage_partition_is_told_on_the_first_look(tmp_path, monkeypatch):
+    """The rebuild took the notifications with it, so the first look must not take its log for old news."""
+    monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path / "logs")
+    (tmp_path / "logs").mkdir()
+    (tmp_path / "logs" / "storage-rebuilt-20261108-010000.log").write_text("Rescued backup put back: x.mirror")
+    (tmp_path / "logs" / "power-lost-20261108-010000.log").write_text("x")
+    watch.sync_saved_logs()
+    watch.sync_saved_logs()
+    assert [(item["level"], item["log"]) for item in notifications.items()] == \
+        [("error", "storage-rebuilt-20261108-010000.log")]
+
+
 def test_only_a_higher_version_is_news():
     versions.note_new_versions({"MirrorDash": "0.15.1", "System": "20261018-2237", "module:Clock": "2.0.0"})
     assert notifications.items() == []  # the first start only remembers

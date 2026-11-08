@@ -2,10 +2,11 @@
 <li class="backup-item">
     <div class="backup-item-info">
         <strong>{{ backup.filename }}</strong>
-        <span>{{ backup.created_at_formatted }} · {{ backup.size_formatted }}{% if backup.encrypted %} · <i class="fas fa-lock" aria-hidden="true"></i> Password protected{% endif %}</span>
+        <span>{{ backup.created_at_formatted }} · {{ backup.size_formatted }}{% if backup.encrypted %} · <i class="fas fa-lock" aria-hidden="true"></i> Password protected{% endif %}{% if backup.automatic %} · <i class="fas fa-clock" aria-hidden="true"></i> Automatic{% endif %}</span>
+        {% if backup.automatic %}<span>Kept on the mirror only: holds the passwords unencrypted</span>{% endif %}
     </div>
     <div class="backup-item-actions">
-        <a class="btn secondary btn-sm" href="/admin/backup/download/{{ backup.filename }}" download aria-label="Download {{ backup.filename }}" title="Download"><i class="fas fa-download"></i></a>
+        {% if not backup.automatic %}<a class="btn secondary btn-sm" href="/admin/backup/download/{{ backup.filename }}" download aria-label="Download {{ backup.filename }}" title="Download"><i class="fas fa-download"></i></a>{% endif %}
         <button class="btn primary btn-sm"
                 hx-post="/admin/panels/backup/validate-local"
                 hx-vals='{{ {"filename": backup.filename}|tojson }}'

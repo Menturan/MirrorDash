@@ -18,6 +18,7 @@ from mirrordash_core.admin import (
     start_job,
     templates,
 )
+from mirrordash_core.features.backup.automatic import automatic_backup
 from mirrordash_core.features.modules.service import module_updates
 from mirrordash_core.features.updates.service import (
     auto_update,
@@ -126,6 +127,13 @@ async def post_auto_update(request: Request) -> dict:
     OS (the local token), so it needs no password; what it may do is what Settings → Updates already allows."""
     if not from_the_mirrors_os(request):
         raise HTTPException(status_code=403, detail="Only from the mirror itself")
+    # This week's automatic backup first (the way back if the storage partition breaks), and before an
+    # update changes anything. One that fails never holds the update back.
+    try:
+        backup = await automatic_backup()
+    except Exception as e:
+        backup = "failed"
+        logger.error(f"Automatic backup failed: {e}", exc_info=True)
     started = await auto_update()
-    logger.info(f"Automatic update: {started}")
-    return {"started": started}
+    logger.info(f"Automatic backup: {backup}; automatic update: {started}")
+    return {"started": started, "backup": backup}

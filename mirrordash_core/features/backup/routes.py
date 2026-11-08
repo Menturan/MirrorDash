@@ -22,6 +22,7 @@ from mirrordash_core.admin import (
 from mirrordash_core.features.auth.routes import MIN_PASSWORD
 from mirrordash_core.features.backup.archive import read_manifest
 from mirrordash_core.features.backup.service import (
+    AUTOMATIC_PREFIX,
     backup_file,
     create_backup,
     delete_backup,
@@ -67,6 +68,8 @@ async def get_panel_backups_list(request: Request):
 
 @router.get("/backup/download/{filename}", dependencies=[Depends(require_api_key)])
 async def download_backup(filename: str):
+    if filename.startswith(AUTOMATIC_PREFIX):  # the passwords, unencrypted: they stay on the mirror (automatic.py)
+        raise HTTPException(status_code=403, detail="An automatic backup can't be downloaded; create a backup to download.")
     return FileResponse(backup_file(filename), filename=filename, media_type="application/octet-stream")
 
 

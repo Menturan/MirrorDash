@@ -17,16 +17,39 @@ owned_folder() {  # owned_folder OWNER:GROUP MODE PATH
 # Defensive mount check: if the partition exists but is not mounted (fstab's nofail lets the boot go
 # on when its fsck wants a person, e.g. after a power cut mid-write), repair it and mount it
 DATA_PART=/dev/disk/by-label/mirrordash-data
-REPAIRED=""
+# With its superblock broken the partition has no label to be found by; on an A/B image it is always p7
+if [ ! -b "$DATA_PART" ] && grep -qw 'rootfstype=squashfs' /proc/cmdline && [ -b /dev/mmcblk0p7 ]; then
+    DATA_PART=/dev/mmcblk0p7
+fi
+REPAIRED="" REBUILT="" rc=0
 if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
     echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
-    rc=0; e2fsck -p "$DATA_PART" || rc=$?
+    e2fsck -p "$DATA_PART" || rc=$?
     # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
     # mirror that has lost all of them.
     if [ "$rc" -ge 4 ]; then rc=0; e2fsck -y "$DATA_PART" || rc=$?; fi
     [ "$rc" -ne 0 ] && REPAIRED=1
     mount /storage || mount "$DATA_PART" /storage || true
 fi
+
+# A partition e2fsck -y couldn't repair (errors left, 4 and up) and that still doesn't mount: the newest
+# backups are copied off it into RAM, it is made anew, and they go back below (ARCHITECTURE #58). The
+# mirror then starts as a new one and the bell says to restore the backup. Never for a partition that
+# e2fsck found fine or fixed, so a mount that fails for another reason never costs the owner anything.
+RESCUE=/run/mirrordash-rescue
+rebuild_storage() {
+    echo "Error: /storage can't be repaired. Rescuing the newest backups, then making the partition anew..." >&2
+    mkdir -p "$RESCUE"
+    mountpoint -q "$RESCUE" || mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE" || return 1
+    /usr/local/lib/mirrordash/storage-rescue "$DATA_PART" "$RESCUE" || echo "Warning: no backup could be rescued" >&2
+    mkfs.ext4 -F -L mirrordash-data "$DATA_PART" || return 1
+    mount "$DATA_PART" /storage
+}
+if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage && [ "$rc" -ge 4 ] && [ -b "$DATA_PART" ]; then
+    udevadm settle || true  # once more first, after the card's pending events: one that was slow to answer
+    mount "$DATA_PART" /storage || { rebuild_storage && REBUILT=1; } || true
+fi
+
 # On an image (#5) / is a RAM overlay: without /storage everything below would land in RAM, the
 # mirror would look new and forget whatever is saved at the next restart. Stop instead: the app
 # (Requires= this unit) doesn't start and the screen's loading page says so after a few minutes.
@@ -147,7 +170,22 @@ mkdir -p /storage/rauc
 # Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
 owned_folder pi:pi 755 /storage/mirrordash/logs
 
+# A rebuilt partition: the rescued backups go where the Backup list shows them, and the log of this start
+# (what was rescued) becomes a red notice on the bell (features/notifications/watch.py)
+if [ -n "$REBUILT" ]; then
+    owned_folder pi:pi 755 /storage/mirrordash/data/backups
+    for backup in "$RESCUE"/*.mirror; do
+        [ -f "$backup" ] || continue
+        install -m 600 "$backup" /storage/mirrordash/data/backups/
+        chown pi:pi "/storage/mirrordash/data/backups/${backup##*/}"
+        echo "Rescued backup put back: ${backup##*/}"
+    done
+    umount "$RESCUE" || true
+    sync
+    if [ -x /usr/local/lib/mirrordash/save-log ]; then
+        /usr/local/lib/mirrordash/save-log storage-rebuilt -b -n 1000 >/dev/null || true
+    fi
 # The repair above happened before /storage was there to save its log in
-if [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
+elif [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
     /usr/local/lib/mirrordash/save-log storage-repair -b -n 1000 >/dev/null || true
 fi

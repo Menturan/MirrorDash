@@ -1,6 +1,27 @@
 #!/bin/bash
 # Usage: mirrordash-wifi-country SE
 #   Sets the Wi-Fi country (applies at the next start). Run by pi through sudo, so the code is checked here.
+#
+# Not raspi-config's do_wifi_country: it edits cmdline.txt in place twice (sed -i, no sync), and this is
+# the boot partition of the slot that boots. A power cut then can leave it empty: no root=, a kernel
+# panic, and a mirror that restarts into the same slot for good. So it is written as rauc-bootloader
+# swaps autoboot.txt: a new file, synced, moved over the old one, synced again.
 set -euo pipefail
 [[ "${1:-}" =~ ^[A-Z]{2}$ ]] || { echo "mirrordash-wifi-country: invalid country code" >&2; exit 2; }
-exec /usr/bin/raspi-config nonint do_wifi_country "$1"
+
+CMDLINE=${MIRRORDASH_CMDLINE:-/boot/firmware/cmdline.txt}  # overridable for tests/test_audit_image.py
+
+# One line: the old country (if any) out, the new one at the end
+sed -e 's/[[:space:]]*cfg80211\.ieee80211_regdom=[^[:space:]]*//g' -e "s/\$/ cfg80211.ieee80211_regdom=$1/" \
+    "$CMDLINE" > "$CMDLINE.mirrordash-tmp"
+if ! grep -q 'root=' "$CMDLINE.mirrordash-tmp"; then
+  rm -f "$CMDLINE.mirrordash-tmp"
+  echo "mirrordash-wifi-country: $CMDLINE has no root=; left as it is" >&2
+  exit 1
+fi
+sync "$CMDLINE.mirrordash-tmp"
+mv "$CMDLINE.mirrordash-tmp" "$CMDLINE"
+sync "$CMDLINE"
+
+# Now as well, not only from the next start (what raspi-config did too)
+iw reg set "$1" 2>/dev/null || true

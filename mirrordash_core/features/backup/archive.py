@@ -3,11 +3,12 @@
 
 is_encrypted tells which kind a file is; plain_zip gives the zip either way (decrypted into a temporary
 file); read_manifest and backup_wifi read what is in it. _openssl runs `openssl enc` with the password in
-its environment, never on its command line.
+its environment, never on its command line. content_hash tells whether two backups hold the same.
 """
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -75,3 +76,16 @@ async def backup_wifi(path: str, password: str | None) -> list[dict]:
             return []
         with zipfile.ZipFile(zip_path) as zf:
             return json.loads(zf.read("wifi.json")) if "wifi.json" in zf.namelist() else []
+
+def content_hash(folder) -> str:
+    """A hash of every file's path and bytes under a backup's content folder: the same settings and data
+    give the same hash, whenever the zip was made (the automatic backup skips a week without changes)."""
+    digest = hashlib.sha256()
+    for root, dirs, files in os.walk(folder):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            digest.update(os.path.relpath(path, folder).encode() + b"\0")
+            with open(path, "rb") as f:
+                digest.update(hashlib.file_digest(f, "sha256").digest())
+    return digest.hexdigest()

@@ -1868,15 +1868,16 @@ def test_a_failed_system_build_is_tried_again_a_few_nights_then_left(tmp_path):
 
 
 def test_only_the_mirror_itself_can_start_the_nightly_update(client):
-    with patch("mirrordash_core.features.updates.routes.auto_update", AsyncMock(return_value="up to date")) as run:
+    with patch("mirrordash_core.features.updates.routes.auto_update", AsyncMock(return_value="up to date")) as run, \
+         patch("mirrordash_core.features.updates.routes.automatic_backup", AsyncMock(side_effect=OSError("disk full"))):
         assert client.post("/admin/auto-update").status_code == 403  # TestClient's address is "testclient"
         with patch("starlette.requests.Request.client", new=type("C", (), {"host": "127.0.0.1"})()), \
              patch("mirrordash_core.admin._local_token", "t0ken"):
             # From loopback isn't enough: a module's card on the screen is loopback too
             assert client.post("/admin/auto-update").status_code == 403
             assert client.post("/admin/auto-update", headers={"X-MirrorDash-Local": "wrong"}).status_code == 403
-            assert client.post("/admin/auto-update", headers={"X-MirrorDash-Local": "t0ken"}).json() == {"started": "up to date"}
-    run.assert_awaited_once()
+            assert client.post("/admin/auto-update", headers={"X-MirrorDash-Local": "t0ken"}).json() == {"started": "up to date", "backup": "failed"}
+    run.assert_awaited_once()  # a backup that fails never holds the update back
 
 
 def test_reset_mirror_needs_reset_typed():

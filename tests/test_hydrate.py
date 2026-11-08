@@ -113,3 +113,102 @@ def test_a_rollback_from_a_new_python_takes_the_old_module_site_back(tmp_path):
     to that one too, or modules with compiled code (built for the new Python) stop."""
     md = run_launch(tmp_path, trial=False, pythons=("3.15", "3.14"))
     assert os.readlink(md / "venv") == "venv_a" and os.readlink(md / "modules" / "site") == "site_a"
+
+
+def run_damaged_storage(tmp_path: Path, e2fsck_rc: int) -> tuple[int, Path, Path]:
+    """mirrordash-hydrate.sh on an image whose /storage doesn't mount; e2fsck answers e2fsck_rc. A fake
+    mount mounts /storage only once mkfs.ext4 made the partition anew. (exit code, /storage/mirrordash, state)"""
+    storage, state, rescue = tmp_path / "storage", tmp_path / "state", tmp_path / "rescue"
+    for folder in (state, rescue, tmp_path / "base_venv"):
+        folder.mkdir()
+    (tmp_path / "cmdline").write_text("root=PARTUUID=abcd-05 rootfstype=squashfs\n")
+    part = tmp_path / "p7"
+    part.write_text("")
+    body = (unit("/usr/local/bin/mirrordash-hydrate.sh")
+            .replace("/storage/mirrordash", f"{storage}/mirrordash").replace("/storage/rauc", f"{storage}/rauc")
+            .replace("/home/pi/mirrordash/base_venv", str(tmp_path / "base_venv"))
+            .replace("/proc/cmdline", str(tmp_path / "cmdline")).replace("/run/mirrordash-rescue", str(rescue))
+            .replace("/dev/disk/by-label/mirrordash-data", str(part)).replace('-b "$DATA_PART"', '-e "$DATA_PART"')
+            .replace("/usr/local/lib/mirrordash/", f"{tmp_path}/lib/"))
+    (tmp_path / "hydrate.sh").write_text(body)
+    stubs = {
+        "chown": "exit 0", "umount": "exit 0", "udevadm": "exit 0",
+        # Only /storage is ever unmounted (so the NetworkManager bind mount and the modules' image are skipped)
+        "mountpoint": f'[ "$2" != /storage ] || [ -e {state}/mounted ]',
+        "mount": f'case "$*" in *" /storage"|/storage) [ -e {state}/made ] && touch {state}/mounted ;; *) exit 0 ;; esac',
+        "e2fsck": f"echo \"$*\" >> {state}/e2fsck; exit {e2fsck_rc}",
+        "mkfs.ext4": f'echo "$*" >> {state}/mkfs; touch {state}/made',
+    }
+    (tmp_path / "bin").mkdir()
+    (tmp_path / "lib").mkdir()
+    for name, text in stubs.items():
+        (tmp_path / "bin" / name).write_text(f"#!/bin/sh\n{text}\n")
+        (tmp_path / "bin" / name).chmod(0o755)
+    for name, text in {"storage-rescue": 'touch "$2/mirrordash_autobackup_20261108_033000.mirror"; echo rescued',
+                       "save-log": f'echo "$1" >> {state}/saved-logs'}.items():
+        (tmp_path / "lib" / name).write_text(f"#!/bin/sh\n{text}\n")
+        (tmp_path / "lib" / name).chmod(0o755)
+    result = subprocess.run(["bash", str(tmp_path / "hydrate.sh")], capture_output=True, text=True,
+                            env={**os.environ, "PATH": f"{tmp_path / 'bin'}:{os.environ['PATH']}"})
+    return result.returncode, storage / "mirrordash", state
+
+
+def test_a_storage_partition_beyond_repair_is_made_anew_with_its_newest_backups(tmp_path):
+    code, md, state = run_damaged_storage(tmp_path, e2fsck_rc=4)
+    assert code == 0
+    assert (state / "mkfs").read_text().split() == ["-F", "-L", "mirrordash-data", str(tmp_path / "p7")]
+    backup = md / "data" / "backups" / "mirrordash_autobackup_20261108_033000.mirror"
+    assert backup.is_file() and backup.stat().st_mode & 0o777 == 0o600
+    assert (state / "saved-logs").read_text().split() == ["storage-rebuilt"]  # the red notice; not storage-repair
+    assert os.readlink(md / "venv") == "venv_a"  # and it starts as a new mirror
+
+
+def test_a_storage_partition_e2fsck_fixed_is_never_made_anew(tmp_path):
+    """A mount that fails for another reason stops the mirror as before; nothing is formatted."""
+    code, _, state = run_damaged_storage(tmp_path, e2fsck_rc=1)
+    assert code == 1
+    assert not (state / "mkfs").exists()
+
+
+def test_storage_rescue_copies_the_newest_backups_off_a_broken_partition(tmp_path):
+    """The first superblock zeroed (no mount, no plain debugfs): the newest automatic and hand-made backups
+    still come out whole, through a copy of the superblock; nothing else does."""
+    import shutil
+
+    import pytest
+    sbin = f"/usr/sbin:/sbin:{os.environ['PATH']}"
+    if not shutil.which("debugfs", path=sbin):
+        pytest.skip("needs e2fsprogs")
+    env = {**os.environ, "PATH": sbin}
+    disk, out = tmp_path / "disk.img", tmp_path / "out"
+    out.mkdir()
+    subprocess.run(["truncate", "-s", "256M", str(disk)], check=True)  # two block groups: a superblock copy
+    subprocess.run(["mkfs.ext4", "-q", "-F", "-b", "4096", str(disk)], check=True, env=env)
+    files = {"mirrordash_autobackup_20261101_033000.mirror": os.urandom(3000),
+             "mirrordash_autobackup_20261108_033000.mirror": os.urandom(70000),
+             "mirrordash_backup_20261102_120000.mirror": os.urandom(5000),
+             "mirrordash_backup_20260901_120000.mirror": os.urandom(5000),
+             "tmp_upload.mirror": os.urandom(100)}
+    steps = ["mkdir mirrordash", "mkdir mirrordash/data", "mkdir mirrordash/data/backups"]
+    for name, data in files.items():
+        (tmp_path / name).write_bytes(data)
+        steps.append(f"write {tmp_path / name} mirrordash/data/backups/{name}")
+    (tmp_path / "steps").write_text("\n".join(steps) + "\n")
+    subprocess.run(["debugfs", "-w", "-f", str(tmp_path / "steps"), str(disk)], check=True, env=env, capture_output=True)
+    with open(disk, "r+b") as f:  # the primary superblock: 1024 bytes at 1024
+        f.seek(1024)
+        f.write(bytes(1024))
+
+    script = tmp_path / "storage-rescue"
+    script.write_text(unit("/usr/local/lib/mirrordash/storage-rescue"))
+    result = subprocess.run(["bash", str(script), str(disk), str(out)], env=env, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    newest = ["mirrordash_autobackup_20261108_033000.mirror", "mirrordash_backup_20261102_120000.mirror"]
+    assert result.stdout.split() == newest
+    assert sorted(p.name for p in out.iterdir()) == sorted(newest)
+    for name in newest:
+        assert (out / name).read_bytes() == files[name]
+
+    empty = tmp_path / "empty.img"  # nothing readable: says so, saves nothing
+    subprocess.run(["truncate", "-s", "8M", str(empty)], check=True)
+    assert subprocess.run(["bash", str(script), str(empty), str(out)], env=env, capture_output=True).returncode == 1

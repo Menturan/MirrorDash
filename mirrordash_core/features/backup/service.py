@@ -7,6 +7,7 @@ This file makes, lists, deletes and restores backups. Beside it:
   archive.py          the .mirror file: zip, encryption, reading its manifest
   secret_settings.py  the secrets a plain backup leaves out, and keeping this mirror's own on a restore
   safe_copy.py        copying the modules' data out of and back into the module host's folder
+  automatic.py        the weekly automatic backup the nightly run makes
   routes.py           the admin page's Backup panel
 """
 
@@ -29,9 +30,15 @@ from mirrordash_core.config import (
     get_core_version,
     get_module_dir,
     load_config,
+    replace_durably,
     save_config,
 )
-from mirrordash_core.features.backup.archive import _openssl, is_encrypted, plain_zip
+from mirrordash_core.features.backup.archive import (
+    _openssl,
+    content_hash,
+    is_encrypted,
+    plain_zip,
+)
 from mirrordash_core.features.backup.safe_copy import (
     _replace_in_module_folder,
     copy_out_of_module_folder,
@@ -55,6 +62,8 @@ ROOT_DIR = Path(__file__).parent.parent.parent.resolve()
 BASE_DIR = get_base_dir()
 DATA_DIR = os.path.join(BASE_DIR, "data")
 BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
+# An automatic backup's file name starts so (automatic.py); a hand-made one's with mirrordash_backup_
+AUTOMATIC_PREFIX = "mirrordash_autobackup_"
 
 # Files in the data dir that never go in a backup nor come back from one: the config goes in on its
 # own (sanitized unless encrypted), its last good copy and a broken one hold the credentials a plain
@@ -141,17 +150,21 @@ async def list_backups() -> dict:
         if entry.is_file() and entry.name.endswith(".mirror"):
             file_info = entry.stat()
             backups.append({"filename": entry.name, "created_at": datetime.fromtimestamp(file_info.st_mtime).isoformat(),
-                            "size_bytes": file_info.st_size, "encrypted": is_encrypted(entry.path)})
+                            "size_bytes": file_info.st_size, "encrypted": is_encrypted(entry.path),
+                            "automatic": entry.name.startswith(AUTOMATIC_PREFIX)})
     backups.sort(key=lambda b: b["created_at"], reverse=True)
     return {"backups": backups}
 
 
-async def create_backup(password: str | None = None) -> dict:
+async def create_backup(password: str | None = None, automatic: bool = False, unless_hash: str | None = None) -> dict:
     """Write a backup .mirror archive (a zip). With a password the whole file is encrypted and also
-    carries what logs in: the admin password, the pi user's password and the saved Wi-Fi networks."""
+    carries what logs in: the admin password, the pi user's password and the saved Wi-Fi networks.
+    An automatic one (automatic.py) carries them too, unencrypted, and is never written when its content
+    hashes to unless_hash (nothing changed since the last one)."""
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_filename = f"mirrordash_backup_{timestamp}.mirror"
+    backup_filename = f"{AUTOMATIC_PREFIX if automatic else 'mirrordash_backup_'}{timestamp}.mirror"
+    with_secrets = bool(password) or automatic
     backup_path = os.path.join(BACKUPS_DIR, backup_filename)
 
     logger.info(f"Creating backup: {backup_filename} (encrypted: {bool(password)})")
@@ -164,10 +177,10 @@ async def create_backup(password: str | None = None) -> dict:
 
         # 1. The config; a plain backup carries no password (without_secrets)
         try:
-            config = load_config() if password else without_secrets(load_config())
+            config = load_config() if with_secrets else without_secrets(load_config())
             with open(content / "config.json", "w", encoding="utf-8") as f:
                 json.dump(config, f, indent=2)
-            if password:
+            if with_secrets:
                 with open(content / "wifi.json", "w", encoding="utf-8") as f:
                     json.dump(await saved_wifi(), f)
         except Exception as e:
@@ -179,7 +192,7 @@ async def create_backup(password: str | None = None) -> dict:
         ignore_temporary_files = shutil.ignore_patterns(*TEMPORARY_FILES)
         if os.path.exists(DATA_DIR):
             try:
-                ignore_at_top = shutil.ignore_patterns(*NEVER_BACKED_UP, *(() if password else SECRET_FILES))
+                ignore_at_top = shutil.ignore_patterns(*NEVER_BACKED_UP, *(() if with_secrets else SECRET_FILES))
                 def ignore(directory, names):
                     ignored = ignore_temporary_files(directory, names)
                     return ignored | ignore_at_top(directory, names) if Path(directory) == Path(DATA_DIR) else ignored
@@ -214,11 +227,16 @@ async def create_backup(password: str | None = None) -> dict:
             logger.error(f"Failed to package modules metadata: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to package modules: {e}")
 
-        # 4. Generate manifest file
+        # 4. Generate manifest file, with what the content hashes to (before the manifest is in it)
+        digest = await asyncio.to_thread(content_hash, content)
+        if unless_hash == digest:
+            return {"status": "unchanged"}
         manifest = {
             "backup_version": "2.0",
             "timestamp": datetime.now().isoformat(),
             "encrypted": bool(password),
+            "automatic": automatic,
+            "content_hash": digest,
             "system": {
                 "core_version": get_core_version()
             },
@@ -227,13 +245,18 @@ async def create_backup(password: str | None = None) -> dict:
         with open(content / "backup_manifest.json", "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2)
 
-        # 5. Zip it, and encrypt the zip with a password
+        # 5. Zip it, and encrypt the zip with a password. Finished beside its name, then put in place
+        # durably: a power cut leaves a whole backup or none, never a torn one under a backup's name
         try:
             zip_path = await asyncio.to_thread(shutil.make_archive, str(temp_dir / "backup"), "zip", content)
-            if not password:
-                os.replace(zip_path, backup_path)
-            elif not await _openssl(password, "-salt", "-in", zip_path, "-out", backup_path):
-                raise RuntimeError("encryption failed")
+            finished = zip_path
+            if password:
+                finished = str(temp_dir / "backup.enc")
+                if not await _openssl(password, "-salt", "-in", zip_path, "-out", finished):
+                    raise RuntimeError("encryption failed")
+            if automatic:
+                os.chmod(finished, 0o600)  # the passwords, unencrypted: pi's alone, like the files they come from
+            await asyncio.to_thread(replace_durably, finished, backup_path)
             logger.info(f"Backup created successfully: {backup_path}")
         except Exception as e:
             logger.error(f"Failed to write backup: {e}", exc_info=True)

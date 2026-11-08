@@ -492,3 +492,67 @@ def test_a_plain_backup_carries_no_secret_and_a_restore_keeps_the_mirrors_own(tm
         assert mirror["modules"]["weather"]["api_key"] == "k3y"  # the mirror's own config is untouched
         service._keep_this_mirrors_secrets(plain, mirror)
     assert plain == mirror
+
+
+def test_the_weekly_automatic_backup(mock_backup_dirs, module_site, client):
+    """Made when a week passed and something changed; it holds the logins and the Wi-Fi unencrypted, pi's
+    alone, can't be downloaded, the newest two are kept, and one restore brings the logins back."""
+    import os
+    from datetime import datetime, timedelta
+
+    from mirrordash_core.features.backup import automatic
+
+    backups_dir, data_dir = mock_backup_dirs
+    config = {"admin_auth": {"hash": "old-hash", "salt": "old-salt"}, "globals": {"language": "sv"}}
+    wifi = [{"ssid": "Home", "psk": "wifi pass"}]
+    (data_dir / "pi_password.hash").write_text("$6$pi")
+
+    class Clock(datetime):  # a day further at each backup: each gets a file name of its own
+        t = datetime(2026, 11, 1, 3, 30)
+        @classmethod
+        def now(cls, tz=None):
+            cls.t += timedelta(days=1)
+            return cls.t
+
+    def run():
+        return asyncio.run(automatic.automatic_backup())
+
+    with patch("mirrordash_core.features.backup.service.load_config", return_value=config), \
+         patch("mirrordash_core.features.backup.service.saved_wifi", new_callable=AsyncMock, return_value=wifi), \
+         patch("mirrordash_core.features.backup.service.installed_modules", return_value=[]), \
+         patch("mirrordash_core.features.backup.service.datetime", Clock):
+        first = run()
+        assert first.startswith("mirrordash_autobackup_")
+        assert run() == "not due"
+        with patch.object(automatic, "INTERVAL", 0):
+            assert run() == "unchanged"  # nothing changed: no new file, checked again in a week
+            assert sorted(os.listdir(backups_dir)) == [".automatic-checked", first]
+            for n in range(3):
+                (data_dir / "notes.txt").write_text(f"change {n}")
+                assert run().startswith("mirrordash_autobackup_")
+        assert run() == "not due"
+
+    kept = [os.path.basename(p) for p in automatic.automatic_backups()]
+    assert len(kept) == automatic.KEEP and first not in kept
+    archive = backups_dir / kept[0]
+    assert archive.stat().st_mode & 0o777 == 0o600
+    with zipfile.ZipFile(archive) as zf:
+        assert json.loads(zf.read("config.json"))["admin_auth"]["hash"] == "old-hash"
+        assert json.loads(zf.read("wifi.json")) == wifi and zf.read("data/pi_password.hash") == b"$6$pi"
+        assert json.loads(zf.read("backup_manifest.json"))["automatic"] is True
+
+    assert all(b["automatic"] for b in call(list_backups).json()["backups"])
+    r = client.get(f"/admin/backup/download/{kept[0]}", headers={"X-API-Key": "secret"})
+    assert r.status_code == 403 and b"wifi pass" not in r.content
+
+    # A rebuilt storage partition: a mirror being set up again, then one restore
+    shutil.copy(archive, backups_dir / "tmp_upload.mirror")
+    with patch("mirrordash_core.features.backup.service.load_config", return_value={}), \
+         patch("mirrordash_core.features.backup.service.add_wifi", new_callable=AsyncMock) as mock_wifi, \
+         patch("mirrordash_core.features.backup.service.sync_gpio_overlays", new_callable=AsyncMock,
+               return_value=(False, None)), \
+         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock), \
+         patch("mirrordash_core.features.backup.service.save_config") as mock_save:
+        assert call(restore_backup, None).status_code == 200
+    assert mock_save.call_args[0][0]["admin_auth"]["hash"] == "old-hash"
+    mock_wifi.assert_awaited_once_with(wifi)

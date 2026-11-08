@@ -737,6 +737,9 @@ step_storage_hydration() {
   # launch.sh (an app update that was rolled back).
   mkdir -p /usr/local/lib/mirrordash
   put 0755 /usr/local/lib/mirrordash/save-log
+  # A storage partition that can't be mounted even after e2fsck -y: hydrate copies the newest backups off it
+  # with this before it rebuilds the partition (ARCHITECTURE #58)
+  put 0755 /usr/local/lib/mirrordash/storage-rescue
 
   put 0644 /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
   mkdir -p /etc/systemd/system/ssh.service.d

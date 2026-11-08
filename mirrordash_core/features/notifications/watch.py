@@ -18,6 +18,8 @@ logger = logging.getLogger("mirrordash.core.notifications")
 
 # ponytail: a look once a minute, not inotify; a notification can be a minute late
 CHECK_EVERY = 60  # seconds
+# Told even on a mirror's first look (mirrordash-hydrate.sh rebuilt the storage partition, notifications included)
+TOLD_ON_FIRST_LOOK = {"storage-rebuilt"}
 
 
 def sync_saved_logs() -> None:
@@ -26,8 +28,11 @@ def sync_saved_logs() -> None:
     except OSError:
         return
     seen = notifications.seen_logs()
-    if seen is not None:
-        for name in sorted(set(paths) - seen):
+    # A storage partition made anew has no notifications yet, so this is a first look; its news is the one
+    # that mustn't be taken for old
+    new = set(paths) - seen if seen is not None else {n for n in paths if saved.kind_of(n) in TOLD_ON_FIRST_LOOK}
+    if new:
+        for name in sorted(new):
             kind = saved.kind_of(name)
             try:
                 time = datetime.fromtimestamp(paths[name].stat().st_mtime, UTC)

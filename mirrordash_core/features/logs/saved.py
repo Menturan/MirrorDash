@@ -29,13 +29,16 @@ KINDS = {
     "wifi-chip": "Wi-Fi: the Wi-Fi chip didn't start; started it again",
     "p1-update": "System update: renewing the Pi 3 firmware failed (the update itself stayed)",
     "storage-repair": "The storage partition had errors and was repaired at start",
+    "storage-rebuilt": "The storage partition was damaged beyond repair and was made anew. Restore the newest "
+                       "backup under Backup (if a password-protected one's password is forgotten, the automatic "
+                       "one). If this happens again, replace the SD card.",
     "app-hung": "MirrorDash stopped answering and was restarted",
     "screen-lost": "The mirror's screen stopped and was restarted",
     "power-lost": "The mirror shut down without warning (power cut or freeze) and started again",
 }
 # How each kind is told on the bell (features/notifications/watch.py): an error needs the owner, a warning
 # fixed itself
-ERRORS = {"app-safe-mode", "os-install", "p1-update"}
+ERRORS = {"app-safe-mode", "os-install", "p1-update", "storage-rebuilt"}
 
 
 def kind_of(filename: str) -> str | None:

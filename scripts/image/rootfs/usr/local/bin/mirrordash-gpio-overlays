@@ -64,5 +64,8 @@ fi
   if [ ${#lines[@]} -gt 0 ]; then printf '%s\n' "${lines[@]}"; fi
   echo "$END"
 } > "$CONFIG.mirrordash-tmp"
+# The new file on the card before its name: FAT has no journal, and a power cut after an unsynced move
+# can leave an empty config.txt on the boot partition of the slot that boots
+sync "$CONFIG.mirrordash-tmp"
 mv "$CONFIG.mirrordash-tmp" "$CONFIG"
-sync
+sync "$CONFIG"

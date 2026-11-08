@@ -3,7 +3,7 @@
 #   Writes the journal (filtered by the options, e.g. -b for this boot or -u rauc) to
 #   /storage/mirrordash/logs/KIND-<date>.log, and keeps only the 5 newest saved logs.
 #   KIND is a short name: os-trial, os-install, app-rollback, app-safe-mode, wifi-lost, wifi-chip, p1-update,
-#   storage-repair, app-hung, screen-lost, power-lost.
+#   storage-repair, storage-rebuilt, app-hung, screen-lost, power-lost.
 set -euo pipefail
 
 LOG_DIR=${MIRRORDASH_LOG_DIR:-/storage/mirrordash/logs}  # overridable for tests/test_ab_updates.py

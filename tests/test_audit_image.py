@@ -21,6 +21,29 @@ def test_sudo_runs_the_wifi_country_wrapper_not_raspi_config(tmp_path):
         assert subprocess.run(["bash", str(script), bad]).returncode == 2
 
 
+def test_wifi_country_rewrites_cmdline_whole(tmp_path):
+    """The boot slot's cmdline.txt gets the country through a new file moved over it (synced), the rest
+    of the line as it was; one without root= is never written (it would leave a mirror that can't boot)."""
+    script = tmp_path / "wifi-country"
+    script.write_text(unit("/usr/local/bin/mirrordash-wifi-country"))
+    cmdline = tmp_path / "cmdline.txt"
+    env = {"PATH": "/usr/bin:/bin", "MIRRORDASH_CMDLINE": str(cmdline)}
+    def run(country):
+        return subprocess.run(["bash", str(script), country], env=env, capture_output=True).returncode
+
+    cmdline.write_text("console=tty1 root=PARTUUID=abcd-05 rootwait\n")
+    assert run("SE") == 0
+    assert cmdline.read_text() == "console=tty1 root=PARTUUID=abcd-05 rootwait cfg80211.ieee80211_regdom=SE\n"
+    assert run("NO") == 0  # replaced, never a second one
+    assert cmdline.read_text() == "console=tty1 root=PARTUUID=abcd-05 rootwait cfg80211.ieee80211_regdom=NO\n"
+    assert not (tmp_path / "cmdline.txt.mirrordash-tmp").exists()
+
+    cmdline.write_text("")  # already broken: left alone
+    assert run("SE") == 1
+    assert cmdline.read_text() == "" and not (tmp_path / "cmdline.txt.mirrordash-tmp").exists()
+    assert 'sync "$CONFIG.mirrordash-tmp"\nmv' in unit("/usr/local/bin/mirrordash-gpio-overlays")
+
+
 def test_ip_filters_name_only_what_systemd_knows():
     """systemd skips a word it doesn't know in IPAddressDeny= with a mere warning ("localnet" left the
     module host on the home network and the core's loopback routes), so every word must be one of its

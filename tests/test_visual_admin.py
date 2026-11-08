@@ -56,6 +56,13 @@ MOCK_BACKUPS = {
             "created_at": "2026-06-29T21:30:00",
             "size_bytes": 102400,
             "encrypted": True
+        },
+        {
+            "filename": "mirrordash_autobackup_20261108_033012.mirror",
+            "created_at": "2026-11-08T03:30:12",
+            "size_bytes": 422195,
+            "encrypted": False,
+            "automatic": True
         }
     ]
 }
@@ -321,10 +328,17 @@ def test_admin_backup_panel(page, server_url):
 
     # Verify mock backup is rendered in list
     assert page.locator("text=backup_2026-06-29.mirror").is_visible()
+    # An automatic backup says so, and can be restored but not downloaded (it holds the passwords unencrypted)
+    automatic = page.locator("#backups-list li", has_text="mirrordash_autobackup_")
+    assert automatic.locator("text=Automatic").is_visible()
+    assert automatic.locator("text=Kept on the mirror only").is_visible()
+    assert automatic.locator("a[download]").count() == 0 and automatic.locator("button:has-text('Restore')").count() == 1
+    if os.environ.get("BACKUP_SHOT"):
+        page.locator("#backups-list").screenshot(path=os.environ["BACKUP_SHOT"])
 
     # On a phone the row's buttons must stay on screen (they used to scroll off to the right)
     page.set_viewport_size({"width": 390, "height": 844})
-    box = page.locator("#backups-list button:has-text('Restore')").bounding_box()
+    box = page.locator("#backups-list button:has-text('Restore')").first.bounding_box()
     assert box["x"] + box["width"] <= 390
     page.set_viewport_size({"width": 1280, "height": 800})
 

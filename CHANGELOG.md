@@ -14,8 +14,13 @@ There are two kinds of releases:
 - **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
 - A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
 - **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
+- **Automatic backups**: every week, when something has changed, the mirror makes a backup by itself at night, passwords and Wi-Fi included. It stays on the mirror (it can be restored, not downloaded), and the newest two are kept, marked *Automatic* in the Backup list.
+- A backup is now written so that a power cut while it is being made never leaves a broken backup file behind.
 
 ### OS image
+
+- **A damaged storage partition no longer stops the mirror for good**: when it can't be repaired at start, the mirror saves the newest backups from it, makes it anew and starts as a new mirror, and the bell says to restore the backup, which brings everything back.
+- A power cut while the Wi-Fi country or the Hardware tab's devices are being saved can no longer leave a mirror that doesn't start; the system's boot partition is also checked and repaired at every start.
 
 - The mirror notices when it went off without shutting down (a power cut, or a freeze you pulled the plug on) and says so on the admin page's bell.
 - A system update no longer goes back to the old system when a Raspberry Pi 3's Wi-Fi doesn't start right after the download: the new system waits for the mirror to restart the Wi-Fi first.
