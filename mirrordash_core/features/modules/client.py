@@ -543,7 +543,13 @@ class ModuleHost:
         if crashes >= CRASH_LIMIT:
             self.paused.add(instance_id)
             from mirrordash_core import notifications
-            notifications.add("error", f"{instance_id} kept crashing and was stopped. Start it again on the Dashboard; "
+            from mirrordash_core.features.modules.service import (
+                instance_title,  # here: service imports this file
+            )
+            instance_config = load_config().get("modules", {}).get(instance_id)
+            # The name the admin page shows (the owner's title, else "Clock-2"), never the bare id
+            name = instance_title(instance_id, instance_config if isinstance(instance_config, dict) else {})
+            notifications.add("error", f"{name} kept crashing and was stopped. Start it again on the Dashboard; "
                               "Logs → Modules tells why.")
             logger.error(f"{instance_id} stopped {crashes} times in a row soon after it started (it used up the modules' "
                          "memory, see 'oom-kill' in Logs → Raspberry Pi, or crashed): it stays off until the modules "
