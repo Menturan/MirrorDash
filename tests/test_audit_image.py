@@ -24,10 +24,11 @@ def test_sudo_runs_the_wifi_country_wrapper_not_raspi_config(tmp_path):
 def test_wifi_country_rewrites_cmdline_whole(tmp_path):
     """The boot slot's cmdline.txt gets the country through a new file moved over it (synced), the rest
     of the line as it was; one without root= is never written (it would leave a mirror that can't boot)."""
-    script = tmp_path / "wifi-country"
-    script.write_text(unit("/usr/local/bin/mirrordash-wifi-country"))
     cmdline = tmp_path / "cmdline.txt"
-    env = {"PATH": "/usr/bin:/bin", "MIRRORDASH_CMDLINE": str(cmdline)}
+    script = tmp_path / "wifi-country"
+    script.write_text(unit("/usr/local/bin/mirrordash-wifi-country").replace("CMDLINE=/boot/firmware/cmdline.txt",
+                                                                           f"CMDLINE={cmdline}"))
+    env = {"PATH": "/usr/bin:/bin"}
     def run(country):
         return subprocess.run(["bash", str(script), country], env=env, capture_output=True).returncode
 

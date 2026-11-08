@@ -64,6 +64,8 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
 # An automatic backup's file name starts so (automatic.py); a hand-made one's with mirrordash_backup_
 AUTOMATIC_PREFIX = "mirrordash_autobackup_"
+# The backup being restored, uploaded or copied from the saved ones: not a saved backup itself
+TEMP_UPLOAD = "tmp_upload.mirror"
 
 # Files in the data dir that never go in a backup nor come back from one: the config goes in on its
 # own (sanitized unless encrypted), its last good copy and a broken one hold the credentials a plain
@@ -130,7 +132,13 @@ def installed_modules() -> list[dict]:
 def temp_upload() -> str:
     """Where the backup being restored waits (uploaded, or copied from the saved ones)."""
     os.makedirs(BACKUPS_DIR, exist_ok=True)  # a new mirror's storage has no backups folder yet
-    return os.path.join(BACKUPS_DIR, "tmp_upload.mirror")
+    return os.path.join(BACKUPS_DIR, TEMP_UPLOAD)
+
+
+def downloadable(filename: str) -> bool:
+    """Whether a backup may leave the mirror: never an automatic one (the passwords, unencrypted), nor the
+    copy waiting to be restored, which can be one."""
+    return not filename.startswith(AUTOMATIC_PREFIX) and filename != TEMP_UPLOAD
 
 
 def backup_file(filename: str) -> str:
@@ -147,7 +155,7 @@ async def list_backups() -> dict:
     """The saved .mirror files, newest first."""
     backups = []
     for entry in os.scandir(BACKUPS_DIR) if os.path.isdir(BACKUPS_DIR) else []:
-        if entry.is_file() and entry.name.endswith(".mirror"):
+        if entry.is_file() and entry.name.endswith(".mirror") and entry.name != TEMP_UPLOAD:
             file_info = entry.stat()
             backups.append({"filename": entry.name, "created_at": datetime.fromtimestamp(file_info.st_mtime).isoformat(),
                             "size_bytes": file_info.st_size, "encrypted": is_encrypted(entry.path),

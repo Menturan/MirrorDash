@@ -9,7 +9,8 @@
 set -euo pipefail
 [[ "${1:-}" =~ ^[A-Z]{2}$ ]] || { echo "mirrordash-wifi-country: invalid country code" >&2; exit 2; }
 
-CMDLINE=${MIRRORDASH_CMDLINE:-/boot/firmware/cmdline.txt}  # overridable for tests/test_audit_image.py
+# Fixed, never from the environment: pi runs this as root (tests/test_audit_image.py swaps the text)
+CMDLINE=/boot/firmware/cmdline.txt
 
 # One line: the old country (if any) out, the new one at the end
 sed -e 's/[[:space:]]*cfg80211\.ieee80211_regdom=[^[:space:]]*//g' -e "s/\$/ cfg80211.ieee80211_regdom=$1/" \

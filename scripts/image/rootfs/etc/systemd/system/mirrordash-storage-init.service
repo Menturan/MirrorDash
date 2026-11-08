@@ -1,6 +1,9 @@
 [Unit]
 Description=Hydrate MirrorDash Storage Partition
 After=local-fs.target
+# fstab's nofail keeps local-fs.target from waiting for /storage: wait for its mount (and fsck) to end,
+# mounted or failed, so the repair and the rebuild here never run beside them (#58)
+After=storage.mount
 Requires=local-fs.target
 Before=NetworkManager.service
 

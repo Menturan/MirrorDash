@@ -556,3 +556,38 @@ def test_the_weekly_automatic_backup(mock_backup_dirs, module_site, client):
         assert call(restore_backup, None).status_code == 200
     assert mock_save.call_args[0][0]["admin_auth"]["hash"] == "old-hash"
     mock_wifi.assert_awaited_once_with(wifi)
+
+
+def test_automatic_backups_survive_a_wrong_clock_and_leave_nothing_behind(mock_backup_dirs, module_site, client):
+    """A backup named in the future (a wrong clock once) never gets the new one pruned; what a killed backup
+    or restore left (a day old) is removed; the copy waiting to be restored is neither listed nor downloadable;
+    nothing is made while a job runs."""
+    import os
+    import time
+
+    from mirrordash_core.features.backup import automatic
+
+    backups_dir, _ = mock_backup_dirs
+    backups_dir.mkdir()
+    month_ago, two_days_ago = time.time() - 30 * 86400, time.time() - 2 * 86400
+    for name in ("mirrordash_autobackup_20300101_033000.mirror", "mirrordash_autobackup_20300102_033000.mirror"):
+        with zipfile.ZipFile(backups_dir / name, "w") as zf:
+            zf.writestr("backup_manifest.json", json.dumps({"content_hash": "old"}))
+        os.utime(backups_dir / name, (month_ago, month_ago))
+    (backups_dir / "tmpkilled").mkdir()
+    (backups_dir / "tmpkilled" / "config.json").write_text("secret")
+    (backups_dir / "tmp_upload.mirror").write_text("a copy of an automatic backup")
+    for path in (backups_dir / "tmpkilled", backups_dir / "tmp_upload.mirror"):
+        os.utime(path, (two_days_ago, two_days_ago))
+    (backups_dir / "tmpnow").mkdir()  # a backup being made right now
+
+    with patch("mirrordash_core.admin.job_status", return_value={"state": "running"}):
+        assert asyncio.run(automatic.automatic_backup()) == "busy"
+    assert call(list_backups).json()["backups"][0]["filename"] != "tmp_upload.mirror"
+    assert client.get("/admin/backup/download/tmp_upload.mirror", headers={"X-API-Key": "secret"}).status_code == 403
+
+    with patch("mirrordash_core.features.backup.service.saved_wifi", new_callable=AsyncMock, return_value=[]), \
+         patch("mirrordash_core.features.backup.service.installed_modules", return_value=[]):
+        new = asyncio.run(automatic.automatic_backup())
+    assert new.startswith("mirrordash_autobackup_2") and not new.startswith("mirrordash_autobackup_2030")
+    assert sorted(os.listdir(backups_dir)) == sorted(["mirrordash_autobackup_20300102_033000.mirror", new, "tmpnow"])

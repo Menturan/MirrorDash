@@ -21,6 +21,9 @@ DATA_PART=/dev/disk/by-label/mirrordash-data
 if [ ! -b "$DATA_PART" ] && grep -qw 'rootfstype=squashfs' /proc/cmdline && [ -b /dev/mmcblk0p7 ]; then
     DATA_PART=/dev/mmcblk0p7
 fi
+# The device itself, not the label's link: mkfs below gives the partition a new UUID, and udev takes the
+# link away and back while it catches up
+DATA_PART=$(readlink -f "$DATA_PART")
 REPAIRED="" REBUILT="" rc=0
 if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
     echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
@@ -33,9 +36,11 @@ if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
 fi
 
 # A partition e2fsck -y couldn't repair (errors left, 4 and up) and that still doesn't mount: the newest
-# backups are copied off it into RAM, it is made anew, and they go back below (ARCHITECTURE #58). The
+# backups are copied off it into RAM, it is made anew, and they go back at once (ARCHITECTURE #58). The
 # mirror then starts as a new one and the bell says to restore the backup. Never for a partition that
-# e2fsck found fine or fixed, so a mount that fails for another reason never costs the owner anything.
+# e2fsck found fine or fixed, so a mount that fails for another reason never costs the owner anything;
+# never while systemd still mounts it either (the unit is ordered after storage.mount), and mkfs.ext4
+# (one -F) refuses a partition that is in use.
 RESCUE=/run/mirrordash-rescue
 rebuild_storage() {
     echo "Error: /storage can't be repaired. Rescuing the newest backups, then making the partition anew..." >&2
@@ -43,7 +48,25 @@ rebuild_storage() {
     mountpoint -q "$RESCUE" || mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE" || return 1
     /usr/local/lib/mirrordash/storage-rescue "$DATA_PART" "$RESCUE" || echo "Warning: no backup could be rescued" >&2
     mkfs.ext4 -F -L mirrordash-data "$DATA_PART" || return 1
-    mount "$DATA_PART" /storage
+    udevadm settle || true  # the new label's link, for fstab's options (noatime, resgid)
+    mount /storage || mount "$DATA_PART" /storage || return 1
+    # Back on the card before anything else can fail: RAM forgets them at the next start
+    owned_folder pi:pi 755 /storage/mirrordash
+    owned_folder pi:pi 700 /storage/mirrordash/data
+    owned_folder pi:pi 755 /storage/mirrordash/data/backups
+    local backup
+    for backup in "$RESCUE"/*.mirror; do
+        [ -f "$backup" ] || continue
+        install -m 600 "$backup" /storage/mirrordash/data/backups/
+        chown pi:pi "/storage/mirrordash/data/backups/${backup##*/}"
+        echo "Rescued backup put back: ${backup##*/}"
+    done
+    umount "$RESCUE" || true
+    sync
+    # This start's log so far (what was rescued) becomes a red notice on the bell (features/notifications/watch.py)
+    if [ -x /usr/local/lib/mirrordash/save-log ]; then
+        /usr/local/lib/mirrordash/save-log storage-rebuilt -b -n 1000 >/dev/null || true
+    fi
 }
 if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage && [ "$rc" -ge 4 ] && [ -b "$DATA_PART" ]; then
     udevadm settle || true  # once more first, after the card's pending events: one that was slow to answer
@@ -170,22 +193,7 @@ mkdir -p /storage/rauc
 # Saved logs from failed updates (mirrordash's save-log); the app lists and deletes them
 owned_folder pi:pi 755 /storage/mirrordash/logs
 
-# A rebuilt partition: the rescued backups go where the Backup list shows them, and the log of this start
-# (what was rescued) becomes a red notice on the bell (features/notifications/watch.py)
-if [ -n "$REBUILT" ]; then
-    owned_folder pi:pi 755 /storage/mirrordash/data/backups
-    for backup in "$RESCUE"/*.mirror; do
-        [ -f "$backup" ] || continue
-        install -m 600 "$backup" /storage/mirrordash/data/backups/
-        chown pi:pi "/storage/mirrordash/data/backups/${backup##*/}"
-        echo "Rescued backup put back: ${backup##*/}"
-    done
-    umount "$RESCUE" || true
-    sync
-    if [ -x /usr/local/lib/mirrordash/save-log ]; then
-        /usr/local/lib/mirrordash/save-log storage-rebuilt -b -n 1000 >/dev/null || true
-    fi
-# The repair above happened before /storage was there to save its log in
-elif [ -n "$REPAIRED" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
+# The repair above happened before /storage was there to save its log in (a rebuild saved its own)
+if [ -n "$REPAIRED" ] && [ -z "$REBUILT" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
     /usr/local/lib/mirrordash/save-log storage-repair -b -n 1000 >/dev/null || true
 fi

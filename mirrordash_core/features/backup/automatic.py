@@ -8,8 +8,10 @@ backup does: the mirror knows no password to encrypt it with, and they lie unenc
 card anyway. So it never leaves the mirror (routes.py refuses to download it). The newest KEEP are kept;
 hand-made backups are never touched.
 """
+import contextlib
 import logging
 import os
+import shutil
 import time
 
 from mirrordash_core.features.backup import service
@@ -34,12 +36,31 @@ def automatic_backups() -> list[str]:
             sorted((n for n in names if n.startswith(service.AUTOMATIC_PREFIX) and n.endswith(".mirror")), reverse=True)]
 
 
+def remove_stale_temporaries() -> None:
+    """What a backup or a restore left in the backups folder when the power went or the app was killed
+    mid-way (its temporary folder, a decrypted zip, the copy waiting to be restored): copies of the
+    settings and passwords that nothing would ever remove. Only those a day old: one may be in use now."""
+    folder = service.BACKUPS_DIR
+    for entry in os.scandir(folder) if os.path.isdir(folder) else []:
+        if entry.name.startswith("tmp") and time.time() - entry.stat(follow_symlinks=False).st_mtime > 24 * 3600:
+            if entry.is_dir(follow_symlinks=False):
+                shutil.rmtree(entry.path, ignore_errors=True)
+            else:
+                with contextlib.suppress(OSError):  # gone in the meantime
+                    os.remove(entry.path)
+
+
 async def automatic_backup() -> str:
     """Make this week's automatic backup when it's due and something changed. Returns what it did."""
+    from mirrordash_core.admin import job_status
+    if job_status()["state"] == "running":  # an update or a restore changing what would be backed up
+        return "busy"
+    remove_stale_temporaries()
     backups = automatic_backups()
     checked = os.path.join(service.BACKUPS_DIR, CHECKED)
     last = max([os.path.getmtime(path) for path in [*backups[:1], checked] if os.path.exists(path)], default=0)
-    if backups and time.time() - last < INTERVAL:
+    # abs: a clock that went back more than a week (no clock battery, a wrong time server) mustn't stop them
+    if backups and abs(time.time() - last) < INTERVAL:
         return "not due"
     last_hash = None
     if backups:
@@ -53,7 +74,8 @@ async def automatic_backup() -> str:
             pass
         os.utime(checked)
         return "unchanged"
-    for old in automatic_backups()[KEEP:]:
+    # Never the one just written, even when a wrong clock gave it an older name than the others
+    for old in [p for p in automatic_backups() if os.path.basename(p) != result["filename"]][KEEP - 1:]:
         os.remove(old)
     logger.info(f"Automatic backup: {result['filename']}")
     return result["filename"]

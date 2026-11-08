@@ -7,9 +7,10 @@ case "$PARTITION" in 2|3) ;; *) exit 0 ;; esac
 cat > "$1/boot-firmware.mount" << UNIT
 [Unit]
 Description=Boot partition the firmware started from (A/B slot)
-# Checked (fsck.vfat -a) before it is mounted, as fstab's pass 2 would: FAT has no journal, and a power
-# cut while cmdline.txt or config.txt was written can leave it marked dirty or with lost clusters
-Requires=systemd-fsck@dev-mmcblk0p$PARTITION.service
+# Checked (fsck.vfat -a) before it is mounted: FAT has no journal, and a power cut while cmdline.txt or
+# config.txt was written can leave it marked dirty or with lost clusters. Wants, not fstab's Requires: a
+# check that fails still mounts it, as before (mark-good, RAUC and the settings need it)
+Wants=systemd-fsck@dev-mmcblk0p$PARTITION.service
 After=systemd-fsck@dev-mmcblk0p$PARTITION.service
 
 [Mount]
