@@ -15,6 +15,9 @@ BACKEND = unit("/usr/local/lib/mirrordash/rauc-bootloader")
 AUTOBOOT = "[all]\ntryboot_a_b=1\nboot_partition=2\n[tryboot]\nboot_partition=3\n"
 GPIO = ("# --- MirrorDash GPIO (managed by the admin page) ---\n[all]\n"
         "dtoverlay=gpio-key,gpio=17\n# --- end MirrorDash GPIO ---\n")
+GPIO_END = "# --- end MirrorDash GPIO ---\n"
+# The same block at its fixed size (empty lines before its end), as a new slot gets it
+GPIO_PADDED = GPIO[:-len(GPIO_END)] + "\n" * (2048 - len(GPIO)) + GPIO_END
 
 
 @pytest.fixture
@@ -103,10 +106,10 @@ def test_a_new_boot_partition_gets_this_mirrors_root_and_settings(pi):
     assert pi("prepare-boot", str(new), "6").returncode == 0
     assert (new / "cmdline.txt").read_text() == ("console=tty3 root=PARTUUID=27b94958-06 rootfstype=squashfs "
                                                  "cfg80211.ieee80211_regdom=SE quiet\n")
-    assert (new / "config.txt").read_text() == "[all]\ndisable_splash=1\ndtoverlay=vc4-kms-v3d\n" + GPIO
+    assert (new / "config.txt").read_text() == "[all]\ndisable_splash=1\ndtoverlay=vc4-kms-v3d\n" + GPIO_PADDED
     # Run again (an old block in the new partition is replaced, not doubled)
     assert pi("prepare-boot", str(new), "6").returncode == 0
-    assert (new / "config.txt").read_text() == "[all]\ndisable_splash=1\ndtoverlay=vc4-kms-v3d\n" + GPIO
+    assert (new / "config.txt").read_text() == "[all]\ndisable_splash=1\ndtoverlay=vc4-kms-v3d\n" + GPIO_PADDED
     # A running slot without a block (a card from before) leaves the new one's own: the empty one of fixed
     # size its image ships, which mirrordash-gpio-overlays then writes over in place
     shipped = "[all]\ndisable_splash=1\n" + GPIO.replace("\n# --- end", "\n" + "\n" * 50 + "# --- end")
@@ -120,6 +123,7 @@ def test_gpio_markers_match_the_gpio_helper():
     helper = unit("/usr/local/bin/mirrordash-gpio-overlays")
     for marker in ("# --- MirrorDash GPIO (managed by the admin page) ---", "# --- end MirrorDash GPIO ---"):
         assert marker in helper and marker in BACKEND
+    assert "\nBLOCK_SIZE=2048\n" in helper and "\nGPIO_BLOCK_SIZE=2048 " in BACKEND  # one fixed size in both
 
 
 def test_a_failed_trial_boot_restarts_into_the_old_slot():

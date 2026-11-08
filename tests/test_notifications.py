@@ -55,11 +55,17 @@ def test_saved_logs_become_notifications(tmp_path, monkeypatch):
 
 
 def test_a_rebuilt_storage_partition_is_told_on_the_first_look(tmp_path, monkeypatch):
-    """The rebuild took the notifications with it, so the first look must not take its log for old news."""
+    """The rebuild took the notifications with it, so the first look of the start that rebuilt it must not
+    take its log for old news; a later first look (notifications.json broke and started over) must."""
     monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path / "logs")
+    monkeypatch.setattr(watch, "REBUILT_THIS_START", tmp_path / "rebuilt")
     (tmp_path / "logs").mkdir()
     (tmp_path / "logs" / "storage-rebuilt-20261108-010000.log").write_text("Rescued backup put back: x.mirror")
     (tmp_path / "logs" / "power-lost-20261108-010000.log").write_text("x")
+    watch.sync_saved_logs()  # a first look at another start: an old rebuild's log, nothing told
+    assert notifications.items() == []
+    notifications._save({})  # the store as this start's rebuild left it: no first look yet
+    (tmp_path / "rebuilt").touch()  # and hydrate's mark that this start rebuilt it
     watch.sync_saved_logs()
     watch.sync_saved_logs()
     assert [(item["level"], item["log"]) for item in notifications.items()] == \

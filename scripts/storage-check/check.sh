@@ -26,7 +26,7 @@ same() { [ "$(sha256sum < "$1" | cut -d' ' -f1)" = "$(cat "$2")" ]; }
 new_disk() {
     unmount_all
     if [ -n "$LOOP" ]; then losetup -d "$LOOP"; fi
-    rm -f /fake/*
+    rm -f /fake/* /run/mirrordash-storage-rebuilt  # a new start
     n=$((n + 1)); truncate -s 300M /disk$n.img
     mkfs.ext4 -q -F -b 4096 -L mirrordash-data /disk$n.img && LOOP=$(losetup -f --show /disk$n.img) &&
         mount "$LOOP" /storage || { echo "setup failed"; exit 2; }
@@ -58,7 +58,7 @@ check "mounted, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storag
 echo "The first superblock gone: e2fsck repairs it from a copy"
 new_disk; zero_superblock; hydrate
 check "repaired, settings kept, not formatted" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/config.json'
-check "no storage-rebuilt log" '! ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1'
+check "no storage-rebuilt log, no mark for the bell" '! ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1 && [ ! -e /run/mirrordash-storage-rebuilt ]'
 
 echo "e2fsck gives up (8), the backups still read: rescued, made anew, put back"
 new_disk; zero_superblock; fake e2fsck 'exit 8'; hydrate
@@ -70,6 +70,7 @@ check "nothing older rescued" '[ "$(ls $backups | wc -l)" = 2 ]'
 check "only pi may read them (0600)" '[ "$(stat -c %U:%a $backups/mirrordash_autobackup_20261108_033000.mirror)" = pi:600 ]'
 check "storage-rebuilt log saved, no storage-repair" 'ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1 && ! ls /storage/mirrordash/logs/storage-repair-* >/dev/null 2>&1'
 check "the rescue's RAM is given back" '! mountpoint -q /run/mirrordash-rescue'
+check "this start's mark for the bell's first look" '[ -e /run/mirrordash-storage-rebuilt ]'
 check "starts as a new mirror (venv seeded)" '[ "$(readlink /storage/mirrordash/venv)" = venv_a ]'
 
 echo "e2fsck fixed it (1) but the mount fails: never formatted"

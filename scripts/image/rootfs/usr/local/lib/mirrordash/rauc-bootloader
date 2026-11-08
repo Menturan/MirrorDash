@@ -43,6 +43,7 @@ RAUC_STATUS=${MIRRORDASH_RAUC_STATUS:-/storage/rauc/central.raucs}
 # The same markers as in /usr/local/bin/mirrordash-gpio-overlays
 GPIO_BEGIN='# --- MirrorDash GPIO (managed by the admin page) ---'
 GPIO_END='# --- end MirrorDash GPIO ---'
+GPIO_BLOCK_SIZE=2048  # the helper's BLOCK_SIZE: the block's fixed size, so it is written over in place
 
 die() { echo "rauc-bootloader: $*" >&2; exit 1; }
 slot_of() { case "$1" in 2) echo A ;; 3) echo B ;; *) die "unknown boot partition: $1" ;; esac; }
@@ -90,12 +91,21 @@ prepare_boot() {
 
   # The new config.txt without a GPIO block of its own (if it has one), then the running one's block. Only
   # when the running one has a block: otherwise the new one keeps its own, the empty one of fixed size its
-  # image ships, so the devices are written over in place there (mirrordash-gpio-overlays)
+  # image ships. Either way the block takes GPIO_BLOCK_SIZE bytes, so mirrordash-gpio-overlays writes it over
+  # in place on the new slot (one from before the fixed size is padded with empty lines here)
   grep -qxF "$GPIO_BEGIN" "$CURRENT_BOOT/config.txt" || return 0
+  local block pad
+  block=$(mktemp)
+  awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy && $0 != e { print } $0 == e { copy = 0 }' \
+    "$CURRENT_BOOT/config.txt" > "$block"
+  pad=$(( GPIO_BLOCK_SIZE - $(stat -c %s "$block") - ${#GPIO_END} - 1 ))
+  if [ "$pad" -gt 0 ]; then head -c "$pad" /dev/zero | tr '\0' '\n' >> "$block"; fi
+  echo "$GPIO_END" >> "$block"
   {
     awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { skip = 1 } !skip { print } $0 == e { skip = 0 }' "$dir/config.txt"
-    awk -v b="$GPIO_BEGIN" -v e="$GPIO_END" '$0 == b { copy = 1 } copy { print } $0 == e { copy = 0 }' "$CURRENT_BOOT/config.txt"
+    cat "$block"
   } > "$dir/config.txt.new"
+  rm -f "$block"
   mv "$dir/config.txt.new" "$dir/config.txt"
 }
 

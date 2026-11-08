@@ -63,6 +63,9 @@ rebuild_storage() {
     done
     umount "$RESCUE" || true
     sync
+    # For the bell's first look: this start rebuilt it (/run is new at every start; the clock can't tell,
+    # as it still shows the image's date this early)
+    touch /run/mirrordash-storage-rebuilt
     # This start's log so far (what was rescued) becomes a red notice on the bell (features/notifications/watch.py)
     if [ -x /usr/local/lib/mirrordash/save-log ]; then
         /usr/local/lib/mirrordash/save-log storage-rebuilt -b -n 1000 >/dev/null || true

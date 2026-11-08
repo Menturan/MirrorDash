@@ -9,6 +9,7 @@ the logs already there, so an update to this version doesn't announce old news."
 import asyncio
 import logging
 from datetime import UTC, datetime
+from pathlib import Path
 
 from mirrordash_core import notifications
 from mirrordash_core.features.logs import saved
@@ -18,8 +19,11 @@ logger = logging.getLogger("mirrordash.core.notifications")
 
 # ponytail: a look once a minute, not inotify; a notification can be a minute late
 CHECK_EVERY = 60  # seconds
-# Told even on a mirror's first look (mirrordash-hydrate.sh rebuilt the storage partition, notifications included)
+# Told even on a mirror's first look, when mirrordash-hydrate.sh rebuilt the storage partition (notifications
+# included) at this start: it leaves this mark in /run, which every start begins without. Only then, so a
+# notifications.json that broke and started over doesn't announce an old rebuild's log again.
 TOLD_ON_FIRST_LOOK = {"storage-rebuilt"}
+REBUILT_THIS_START = Path("/run/mirrordash-storage-rebuilt")
 
 
 def sync_saved_logs() -> None:
@@ -28,9 +32,12 @@ def sync_saved_logs() -> None:
     except OSError:
         return
     seen = notifications.seen_logs()
-    # A storage partition made anew has no notifications yet, so this is a first look; its news is the one
-    # that mustn't be taken for old
-    new = set(paths) - seen if seen is not None else {n for n in paths if saved.kind_of(n) in TOLD_ON_FIRST_LOOK}
+    if seen is not None:
+        new = set(paths) - seen
+    elif REBUILT_THIS_START.exists():  # a partition made anew has no notifications: its news isn't old
+        new = {n for n in paths if saved.kind_of(n) in TOLD_ON_FIRST_LOOK}
+    else:
+        new = set()
     if new:
         for name in sorted(new):
             kind = saved.kind_of(name)
