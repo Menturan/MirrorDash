@@ -113,15 +113,16 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     instance_config = modules_config.get(instance_id) or {}
     form_name_prefix = f"modules[{instance_id}]"
     standard = STANDARD_SCHEMA["properties"]
-    standard_without_position = {key: prop for key, prop in standard.items() if key not in ("position", "schedule")}
+    standard_without_position = {key: prop for key, prop in standard.items() if key not in ("instance_name", "position", "schedule")}
 
     def form(properties: dict, values: dict = instance_config, prefix: str = form_name_prefix) -> str:
         return render_schema_form({"properties": properties}, values, prefix, module_name)
 
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
         "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
-        "instance_title": modules_service.instance_title(instance_id, instance_config),
-        "position_form": form({"position": standard["position"]}),
+        "instance_title": modules_service.instance_title(instance_id, instance_config, schema),
+        # The name first, so the owner sees whose settings these are and can change it
+        "position_form": form({"instance_name": standard["instance_name"], "position": standard["position"]}),
         "standard_form": form(standard_without_position),
         # Its own collapsible section beside the other standard settings
         "schedule": standard["schedule"],

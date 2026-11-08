@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 - **Notifications**: a bell at the top of the admin page tells what happened to your mirror in plain words: updates of MirrorDash, the system and the modules, an update that failed or waits for you, a module that kept crashing, the Wi-Fi or screen that was restarted, a power cut. Mark them read one by one or all at once. While an error is unread, the mirror shows *Error: see the admin page* at the top.
+- **Give a module your own name**, such as *Kitchen Clock*: the new *Name* at the top of its settings. The name shows on the admin page and in its notifications, so with two clocks you can tell which one is meant.
 - **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
 - A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
 - **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.

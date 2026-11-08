@@ -22,6 +22,10 @@ POSITIONS = ["top_left","top_center", "top_right",
              "background", "foreground"]  # the full-screen layers behind and in front of the nine (ARCHITECTURE #1)
 # Settings the core gives every module (module developers must NOT declare these in config_schema)
 STANDARD_SCHEMA = {"properties": {
+    # The owner's own name for this one (features/modules/service.py instance_title); not "title", which a
+    # module may well use for a heading of its own
+    "instance_name": {"type": "string", "default": "", "maxLength": 40, "title": "Name",
+                      "description": "What this one is called on the admin page and in its notifications, e.g. Kitchen Clock. Blank: the module's own name."},
     "enabled": {"type": "boolean", "default": True, "title": "Enabled",
                 "description": "Enable or disable this module on the mirror."},
     "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Screen Position",

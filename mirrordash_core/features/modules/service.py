@@ -115,9 +115,15 @@ def module_icon(name: str, schema: dict | None) -> str:
     return next((icon for key, icon in guesses.items() if key in name), "fa-puzzle-piece")
 
 
-def instance_title(instance_id: str, instance_config: dict) -> str:
-    """An instance's name in the admin page: its title, else its id made readable (mirrordash-clock-2: Clock-2)."""
-    return instance_config.get("title", re.sub(r"^mirrordash[-_]", "", instance_id).replace("_", " ").title())
+def instance_title(instance_id: str, instance_config: dict, schema: dict | None = None) -> str:
+    """An instance's name in the admin page, its notifications and the crash guard's message: the name the owner
+    gave it, else its module's title (the schema's, else the id made readable) and its number: Clock, Clock 2."""
+    if name := str(instance_config.get("instance_name") or "").strip():
+        return name
+    first_instance_id = re.sub(r"-\d+$", "", instance_id)  # "mirrordash-clock-2" -> "mirrordash-clock"
+    name = (schema or {}).get("title") or \
+        re.sub(r"^mirrordash[-_]", "", first_instance_id).replace("_", " ").replace("-", " ").title()
+    return name if first_instance_id == instance_id else f"{name} {instance_id.rsplit('-', 1)[1]}"
 
 
 def screen_layout() -> dict[str, list[dict]]:
@@ -130,11 +136,7 @@ def screen_layout() -> dict[str, list[dict]]:
             continue
         ep = find_entry_point(instance_config.get("module", instance_id), eps)
         schema = get_module_schema(ep) if ep else None
-        first_instance_id = re.sub(r"-\d+$", "", instance_id)  # "mirrordash-clock-2" -> "mirrordash-clock"
-        name = (schema or {}).get("title") or \
-            re.sub(r"^mirrordash[-_]", "", first_instance_id).replace("_", " ").replace("-", " ").title()
-        if first_instance_id != instance_id:
-            name += " " + instance_id.rsplit("-", 1)[1]  # the second clock is "Clock 2"
+        name = instance_title(instance_id, instance_config, schema)
         layout.setdefault(instance_config.get("position", "middle_center"), []).append({
             "id": instance_id,
             "name": name,

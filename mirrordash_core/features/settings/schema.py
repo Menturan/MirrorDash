@@ -10,7 +10,7 @@ import json
 import logging
 import re
 
-from mirrordash_core.forms import CHOICE_FORMATS, DAYS, POSITIONS
+from mirrordash_core.forms import CHOICE_FORMATS, DAYS, POSITIONS, STANDARD_SCHEMA
 
 logger = logging.getLogger("mirrordash.core.settings")
 
@@ -126,6 +126,9 @@ def validate_config(config: dict) -> None:
         pos = cfg.get("position")
         if pos is not None and pos not in VALID_POSITIONS:
             raise ValueError(f"Module '{name}' has invalid position '{pos}'. Valid positions: {sorted(VALID_POSITIONS)}")
+        name_limit = STANDARD_SCHEMA["properties"]["instance_name"]["maxLength"]
+        if not isinstance(cfg.get("instance_name", ""), str) or len(cfg.get("instance_name", "")) > name_limit:
+            raise ValueError(f"Module '{name}' has a name that isn't text or is longer than {name_limit} characters.")
         if "schedule" in cfg and not _is_schedule(cfg["schedule"]):
             raise ValueError(f"Module '{name}' has an invalid schedule: days from {DAYS[0]} to {DAYS[-1]}, times as HH:MM or blank.")
         module = cfg.get("module", name)
