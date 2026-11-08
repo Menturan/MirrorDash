@@ -73,6 +73,29 @@ check "the rescue's RAM is given back" '! mountpoint -q /run/mirrordash-rescue'
 check "this start's mark for the bell's first look" '[ -e /run/mirrordash-storage-rebuilt ]'
 check "starts as a new mirror (venv seeded)" '[ "$(readlink /storage/mirrordash/venv)" = venv_a ]'
 
+# Seen on an emulated mirror: e2fsck -y from a stale superblock copy cleared the inodes and left errors; the
+# partition mounted, but its root folder refused every write ("Bad message"). Here -p gives up, and -y breaks
+# the root folder's checksum and says errors are left (4): the backups must be rescued before -y runs.
+echo "e2fsck -y leaves it mountable but refusing writes: rescued before -y, made anew, put back"
+new_disk
+# Only the storage partition (a device); the modules' own image file later gets the real e2fsck
+fake e2fsck 'case "$2" in /dev/*) ;; *) exec /usr/sbin/e2fsck "$@" ;; esac
+case "$1" in
+  -p) exit 8 ;;
+  -y) ls /run/mirrordash-rescue/*.mirror >/dev/null 2>&1 && touch /tmp/rescued-before-y
+      block=$(debugfs -R "bmap / 0" "$2" 2>/dev/null)
+      printf "\336\255\276\357" | dd of="$2" bs=1 seek=$((block * 4096 + 4092)) conv=notrunc status=none
+      exit 4 ;;
+esac'
+rm -f /tmp/rescued-before-y
+hydrate
+check "hydrate succeeds" '[ "$(cat /tmp/rc)" = 0 ]'
+check "the backups were in RAM before e2fsck -y wrote" '[ -e /tmp/rescued-before-y ]'
+check "made anew, writable" '[ ! -e /storage/mirrordash/data/config.json ] && touch /storage/mirrordash/data/probe'
+check "newest automatic backup back, whole" 'same $backups/mirrordash_autobackup_20261108_033000.mirror /want-auto'
+check "newest hand-made backup back, whole" 'same $backups/mirrordash_backup_20261102_120000.mirror /want-hand'
+check "storage-rebuilt log and the bell's mark" 'ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1 && [ -e /run/mirrordash-storage-rebuilt ]'
+
 echo "e2fsck fixed it (1) but the mount fails: never formatted"
 new_disk; fake e2fsck 'exit 1'; fake mount 'case "$*" in *storage*) exit 32 ;; esac; exec /usr/bin/mount "$@"'; hydrate
 rm -f /fake/mount

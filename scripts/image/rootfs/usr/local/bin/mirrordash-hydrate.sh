@@ -25,43 +25,63 @@ fi
 # link away and back while it catches up
 DATA_PART=$(readlink -f "$DATA_PART")
 REPAIRED="" REBUILT="" rc=0
+IMAGE=""; grep -qw 'rootfstype=squashfs' /proc/cmdline && IMAGE=1
+# The newest automatic and hand-made backup, copied into RAM off a partition e2fsck -p gave up on, before
+# e2fsck -y writes to it: from a superblock copy with stale group descriptors -y can clear a whole
+# file system's inodes, the backups' with them (seen on an emulated mirror, ARCHITECTURE #58)
+RESCUE=/run/mirrordash-rescue
+rescue_backups() {
+    mkdir -p "$RESCUE"
+    mountpoint -q "$RESCUE" || mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE" || return 0
+    /usr/local/lib/mirrordash/storage-rescue "$DATA_PART" "$RESCUE" || echo "Warning: no backup could be rescued" >&2
+}
 if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
     echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
     e2fsck -p "$DATA_PART" || rc=$?
     # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
     # mirror that has lost all of them.
-    if [ "$rc" -ge 4 ]; then rc=0; e2fsck -y "$DATA_PART" || rc=$?; fi
+    if [ "$rc" -ge 4 ]; then
+        if [ -n "$IMAGE" ]; then rescue_backups; fi
+        rc=0; e2fsck -y "$DATA_PART" || rc=$?
+    fi
     [ "$rc" -ne 0 ] && REPAIRED=1
     mount /storage || mount "$DATA_PART" /storage || true
 fi
 
-# A partition e2fsck -y couldn't repair (errors left, 4 and up) and that still doesn't mount: the newest
-# backups are copied off it into RAM, it is made anew, and they go back at once (ARCHITECTURE #58). The
-# mirror then starts as a new one and the bell says to restore the backup. Never for a partition that
-# e2fsck found fine or fixed, so a mount that fails for another reason never costs the owner anything;
-# never while systemd still mounts it either (the unit is ordered after storage.mount), and mkfs.ext4
-# (one -F) refuses a partition that is in use.
-RESCUE=/run/mirrordash-rescue
+# Whether /storage takes a write: a partition e2fsck -y left with errors can mount and still refuse every
+# file in it ("Bad message": its root folder broken), which mountpoint alone can't tell
+storage_works() {
+    { mountpoint -q /storage && mkdir -p /storage/mirrordash && touch /storage/mirrordash/.write-test &&
+        rm -f /storage/mirrordash/.write-test; } 2>/dev/null
+}
+# Rescued backups back on the card (pi's, 0600) where the partition lacks them or e2fsck changed them
+put_back_backups() {
+    owned_folder pi:pi 755 /storage/mirrordash
+    owned_folder pi:pi 700 /storage/mirrordash/data
+    owned_folder pi:pi 755 /storage/mirrordash/data/backups
+    local backup target
+    for backup in "$RESCUE"/*.mirror; do
+        [ -f "$backup" ] || continue
+        target=/storage/mirrordash/data/backups/${backup##*/}
+        cmp -s "$backup" "$target" && continue
+        install -m 600 "$backup" "$target"
+        chown pi:pi "$target"
+        echo "Rescued backup put back: ${backup##*/}"
+    done
+}
+# A partition e2fsck -y couldn't repair (errors left, 4 and up) and that doesn't mount or doesn't work: it is
+# made anew, and the backups rescued above go back at once (ARCHITECTURE #58). The mirror then starts as a
+# new one and the bell says to restore the backup. Never for a partition that e2fsck found fine or fixed, so
+# a mount that fails for another reason never costs the owner anything; never while systemd still mounts
+# it either (the unit is ordered after storage.mount), and mkfs.ext4 (one -F) refuses a partition in use.
 rebuild_storage() {
-    echo "Error: /storage can't be repaired. Rescuing the newest backups, then making the partition anew..." >&2
-    mkdir -p "$RESCUE"
-    mountpoint -q "$RESCUE" || mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE" || return 1
-    /usr/local/lib/mirrordash/storage-rescue "$DATA_PART" "$RESCUE" || echo "Warning: no backup could be rescued" >&2
+    echo "Error: /storage can't be repaired. Making the partition anew..." >&2
+    if mountpoint -q /storage; then umount /storage || return 1; fi
     mkfs.ext4 -F -L mirrordash-data "$DATA_PART" || return 1
     udevadm settle || true  # the new label's link, for fstab's options (noatime, resgid)
     mount /storage || mount "$DATA_PART" /storage || return 1
     # Back on the card before anything else can fail: RAM forgets them at the next start
-    owned_folder pi:pi 755 /storage/mirrordash
-    owned_folder pi:pi 700 /storage/mirrordash/data
-    owned_folder pi:pi 755 /storage/mirrordash/data/backups
-    local backup
-    for backup in "$RESCUE"/*.mirror; do
-        [ -f "$backup" ] || continue
-        install -m 600 "$backup" /storage/mirrordash/data/backups/
-        chown pi:pi "/storage/mirrordash/data/backups/${backup##*/}"
-        echo "Rescued backup put back: ${backup##*/}"
-    done
-    umount "$RESCUE" || true
+    put_back_backups
     sync
     # For the bell's first look: this start rebuilt it (/run is new at every start; the clock can't tell,
     # as it still shows the image's date this early)
@@ -71,10 +91,16 @@ rebuild_storage() {
         /usr/local/lib/mirrordash/save-log storage-rebuilt -b -n 1000 >/dev/null || true
     fi
 }
-if grep -qw 'rootfstype=squashfs' /proc/cmdline && ! mountpoint -q /storage && [ "$rc" -ge 4 ] && [ -b "$DATA_PART" ]; then
-    udevadm settle || true  # once more first, after the card's pending events: one that was slow to answer
-    mount "$DATA_PART" /storage || { rebuild_storage && REBUILT=1; } || true
+if [ -n "$IMAGE" ] && [ "$rc" -ge 4 ] && [ -b "$DATA_PART" ] && ! storage_works; then
+    if ! mountpoint -q /storage; then
+        udevadm settle || true  # once more first, after the card's pending events: one that was slow to answer
+        mount "$DATA_PART" /storage || true
+    fi
+    if ! storage_works; then rebuild_storage && REBUILT=1 || true; fi
 fi
+# Repaired after all (it works): what e2fsck may have cleared of the rescued backups goes back
+if [ -z "$REBUILT" ] && compgen -G "$RESCUE/*.mirror" > /dev/null && storage_works; then put_back_backups; fi
+if mountpoint -q "$RESCUE"; then umount "$RESCUE" || true; fi
 
 # On an image (#5) / is a RAM overlay: without /storage everything below would land in RAM, the
 # mirror would look new and forget whatever is saved at the next restart. Stop instead: the app
