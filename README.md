@@ -25,7 +25,7 @@
 
 No keyboard, no terminal, no config files, now or later.
 
-> **Status: beta.** Developed and tested on a Raspberry Pi 3 B, Matter with Apple Home and Google Home included. The image carries what a Pi 4 and a Pi 5 need, but hasn't been tried on them yet: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
+> **Status: beta.** Developed and tested on a Raspberry Pi 3 B. The image carries what a Pi 4 and a Pi 5 need, but hasn't been tried on them yet: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
 
 ## Why it's different from the smart mirror you built last time
 
@@ -35,7 +35,7 @@ No keyboard, no terminal, no config files, now or later.
 | Changing things | Edit a file over SSH | Your phone, in the admin page |
 | An update goes wrong | A black screen, and an evening of debugging | It goes back to the last version by itself |
 | The SD card | Wears out from constant writing | The system part is read-only |
-| The screen | On all night | On when someone's there, on a schedule, or from Apple Home, Google Home and Home Assistant (Matter) |
+| The screen | On all night | On when someone's there, on a schedule, or from Apple Home, Google Home and Home Assistant (Matter/REST/MQTT) |
 | New widgets | Copy code into the project | Tap *Install* in the admin page |
 
 **Coming from MagicMirror²?** Same idea, a glance at the mirror on your way out. What's different is everything around it: the setup, the phone instead of a config file, the updates that undo themselves. MagicMirror² modules (JavaScript) don't run here; a MirrorDash module is a small Python package, and the [SDK](#make-your-own) makes one with example data in a minute.
@@ -48,15 +48,15 @@ No keyboard, no terminal, no config files, now or later.
 
 | Part | About | Notes |
 |---|---|---|
-| Raspberry Pi 3 B or newer | €35–60 | Developed on a Pi 3 B; a Pi 4 or 5 should work too. |
-| SD card, 8 GB or more | €8 | |
-| The official power supply | €10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
+| Raspberry Pi 3 B or newer | €45–60 | Developed on a Pi 3B+; a Pi 4 or 5 should work too. |
+| SD card, 8 GB or more. You probably have an old phone storage card otherwise a new with class A1 (rpi 3 & 4) or A2 (rpi 5) | €0-10 | |
+| The official power supply | €0-10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
 | A screen with HDMI | €0–100 | An old computer monitor is ideal: most of them let the mirror set their brightness (DDC/CI), most TVs don't. Take it out of its case for a slim build. |
 | A two-way mirror | €30–150 | Glass is the clearest; acrylic is cheaper and lighter but can warp; mirror film on plain glass is the cheapest. A bit larger than the screen. |
 | A frame | €0–30 | Wood from the hardware store, or an old picture frame. |
 | *Optional:* a motion sensor | €3–6 | A PIR sensor (HC-SR501) or an mmWave sensor (LD2410, which also notices someone standing still), so the screen is on only when someone's there. Buttons, a light sensor and a fan can be added too. |
 
-All in, about €90–350, depending mostly on the screen and the mirror.
+All in, about €75–215, depending on what you already have otherwise mostly on the screen and the mirror.
 
 **Then**
 
@@ -71,16 +71,16 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 | Module | Shows |
 |---|---|
 | [Clock](https://github.com/Menturan/mirrordash-clock) | The time and date |
-| [Weather](https://github.com/Menturan/mirrordash-weather) | The weather now and the forecast |
-| [Calendar](https://github.com/Menturan/mirrordash-calendar) | Your upcoming events |
+| [Weather](https://github.com/Menturan/mirrordash-weather) | The weather now, the forecast and weather warnings were available |
+| [Calendar](https://github.com/Menturan/mirrordash-calendar) | Your upcoming events, list, week or month view |
 | [News](https://github.com/Menturan/mirrordash-news) | The latest headlines from built-in or your own sources |
+| [Photos](https://github.com/Menturan/mirrordash-photos) | A photo slideshow: your own photos, Immich, Unsplash, Pexels or a picture of the day, whole mirror or part of mirror |
+| [Now Playing on Spotify](https://github.com/Menturan/mirrordash-now-playing-spotify) | What's playing on your Spotify right now |
+| [Foreground Theme](https://github.com/Menturan/mirrordash-foreground-theme) | Seasonal decoration over the mirror: snow, Easter, Midsummer, Halloween, autumn leaves, birthdays and more, each theme with its own settings |
 | [Home Assistant](https://github.com/Menturan/mirrordash-homeassistant) | Sensors from Home Assistant |
+| [Radio](https://github.com/Menturan/mirrordash-radio) | Internet radio through the mirror's speakers: Stations worldwide |
 | [Krisinformation](https://github.com/Menturan/mirrordash-krisinformation) | Swedish crisis information from Krisinformation.se |
 | [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
-| [Photos](https://github.com/Menturan/mirrordash-photos) | A photo slideshow: your own photos, Immich, Unsplash, Pexels or a picture of the day |
-| [Now Playing on Spotify](https://github.com/Menturan/mirrordash-now-playing-spotify) | What's playing on your Spotify right now |
-| [Radio](https://github.com/Menturan/mirrordash-radio) | Internet radio through the mirror's speakers: Sveriges Radio and stations worldwide, with what's on now |
-| [Foreground Theme](https://github.com/Menturan/mirrordash-foreground-theme) | Seasonal decoration over the mirror: snow, Easter, Midsummer, Halloween, autumn leaves, birthdays and more, each theme with its own settings |
 
 ### Make your own
 
@@ -98,9 +98,9 @@ This creates a module with example data and starts a mirror on your computer tha
 ## Under the hood
 
 * **Server:** FastAPI (Python 3.14). Modules push their content to the screen over a WebSocket, and a page that reconnects gets everything again right away.
-* **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by WPE WebKit (our own launcher, `mirrordash-screen`) on labwc. Every mirror has its component library at `/design`.
+* **Screen:** plain HTML, CSS and JavaScript without a build step, shown full screen by WPE WebKit (our own launcher, `mirrordash-screen`) on labwc.
 * **Modules:** each is its own Python package, found through entry points, and runs in a sandboxed process as a user of its own. A module that crashes is restarted on its own.
-* **System:** Raspberry Pi OS (Debian 13) with a read-only root (overlayroot). Settings, modules and Wi-Fi live on a separate partition. Updates go into a second environment, and the mirror switches back if the new one doesn't start.
+* **System:** Raspberry Pi OS (Debian 13 "Trixie") with a read-only root (overlayroot). Settings, modules and Wi-Fi live on a separate partition. Updates go into a second environment, and the mirror switches back if the new one doesn't start.
 
 ## Documentation
 
