@@ -1545,9 +1545,9 @@ def test_the_usb_switch(client):
     with patch("mirrordash_core.features.power.routes.usb_status", AsyncMock(return_value="on")):
         assert 'id="sys-usb" name="on" value="true" checked' in client.get("/admin/panels/power", headers=key).text
     with patch.object(usb, "_run", AsyncMock(return_value="")) as run, \
-         patch("mirrordash_core.features.power.routes.usb_status", AsyncMock(return_value="off")):
+             patch("mirrordash_core.features.power.routes.usb_status", AsyncMock(return_value="off")):
         page = client.post("/admin/panels/power/usb", data={"on": "false"}, headers=key)
-        assert run.call_args.args == ("sudo", "-n", usb.HELPER, "off") and 'id="usb"' in page.text and "checked" not in page.text
+        assert run.call_args.args == ("sudo", "-n", usb.HELPER, "off") and 'id="usb"' in page.text and ' checked' not in page.text
     with patch.object(usb, "_run", AsyncMock(side_effect=HTTPException(400, "The mirror is connected by Ethernet"))):
         page = client.post("/admin/panels/power/usb", data={"on": "false"}, headers=key)
         assert page.status_code == 400 and "Ethernet" in page.json()["detail"]

@@ -41,6 +41,8 @@
                                                    aria-label="{{ m.name }} on the mirror"
                                                    hx-post="/admin/panels/modules/config/{{ m.module }}/toggle?instance_id={{ m.id }}"
                                                    hx-trigger="change" hx-swap="none"
+                                                   hx-on::before-request="const tile = this.closest('.mirror-tile'); tile.classList.toggle('off'); this.checked = !this.checked;"
+                                                   hx-on::response-error="const tile = this.closest('.mirror-tile'); tile.classList.toggle('off'); this.checked = !this.checked;"
                                                    hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'refreshModules')">
                                             <span class="slider round"></span>
                                         </label>

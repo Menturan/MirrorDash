@@ -13,7 +13,9 @@
         <label class="switch">
             <input type="checkbox" id="matter-enabled" {% if enabled %}checked{% endif %}
                    hx-post="/admin/panels/system/matter/{{ 'off' if enabled else 'on' }}" hx-trigger="change"
-                   hx-target="#matter-card" hx-swap="outerHTML" hx-disabled-elt="this">
+                   hx-target="#matter-card" hx-swap="outerHTML" hx-disabled-elt="this"
+                   hx-on::before-request="this.checked = !this.checked;"
+                   hx-on::response-error="this.checked = !this.checked;">
             <span class="slider round"></span>
         </label>
     </div>

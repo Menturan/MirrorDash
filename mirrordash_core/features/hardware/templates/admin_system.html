@@ -6,7 +6,10 @@
 
         <!-- Saves on every change -->
         <form id="system-settings-form" hx-post="/admin/panels/system/save" hx-target="#global-status" hx-swap="innerHTML"
-              hx-trigger="change">
+              hx-trigger="change"
+              hx-on::before-request="let indicator = this.querySelector('.saving-indicator'); if (!indicator) { indicator = document.createElement('span'); indicator.className = 'saving-indicator'; indicator.style.cssText = 'font-size:0.7rem;color:var(--text-muted);margin-left:auto;'; indicator.textContent = 'Saving…'; this.querySelector('h2').appendChild(indicator); }"
+              hx-on::after-request="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Saved'; setTimeout(() => indicator.remove(), 1500); }"
+              hx-on::response-error="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Failed'; indicator.style.color = 'var(--danger)'; }">
             <!-- Screen Brightness -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
