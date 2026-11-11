@@ -139,6 +139,8 @@ def test_a_failed_trial_boot_restarts_into_the_old_slot():
     starts = [line for line in mark_good.splitlines() if line.startswith("ExecStart=")]
     assert [s.split()[0] for s in starts] == ["ExecStart=/usr/bin/curl", "ExecStart=/usr/bin/curl",
                                               "ExecStart=/usr/bin/rauc", "ExecStart=-/bin/sh"]
+    # The app as itself and the screen's page, not just any answer (test_the_trial_start_asks_for_more_than_an_answer)
+    assert starts[1].endswith(" http://localhost:8000/health?trial=1") and " -f" in starts[1]
     # The internet, not nm-online: that counts the setup hotspot as online, and an OS whose Wi-Fi
     # can't join the home network would be kept and could never be updated again
     assert starts[0].endswith(" https://github.com") and "nm-online" not in mark_good

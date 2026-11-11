@@ -31,6 +31,9 @@ class ConnectionManager:
         # When the mirror's own screen last showed it's alive (mirrordash-app-watch restarts the kiosk
         # when it stops). A start counts, so the screen has time to load.
         self.screen_seen = time.monotonic()
+        # Whether the screen's page has been heard from since this start: the proof a new system's trial
+        # start asks for (/health?trial=1), which the start's own grace above can't give
+        self.screen_loaded = False
         # While a module plays a video (its video_is_playing()), the other modules' updates wait for the
         # next whole minute, so the page redraws once a minute instead of under the video (ARCHITECTURE #33)
         self.video_players: set[str] = set()
@@ -49,6 +52,7 @@ class ConnectionManager:
         minute (js/kiosk/core.js) or polls /admin/auth/status (the setup prompts)."""
         if on_screen(client):
             self.screen_seen = time.monotonic()
+            self.screen_loaded = True
 
     async def connect(self, websocket: WebSocket) -> None:
         await websocket.accept()

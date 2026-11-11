@@ -35,6 +35,8 @@ from mirrordash_core.features.settings import routes as settings
 from mirrordash_core.features.updates import routes as updates
 from mirrordash_core.features.updates import service as updates_service
 from mirrordash_core.features.wifi import routes as wifi
+from mirrordash_core.host import run_in_background
+from mirrordash_core.venv import confirm_venv
 
 logger = logging.getLogger("mirrordash.core.app")
 
@@ -43,6 +45,7 @@ logger = logging.getLogger("mirrordash.core.app")
 async def lifespan(app: FastAPI):
     write_local_token()
     system_settings.apply_saved_system_settings_at_startup()
+    updates_service.turn_modules_back_on_after_rollback()
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
                  mqtt_bridge.start, notification_watch.start):
@@ -50,6 +53,7 @@ async def lifespan(app: FastAPI):
             await step()
         except Exception as e:
             logger.error(f"Error during startup ({step.__qualname__}): {e}", exc_info=True)
+    run_in_background(confirm_venv())  # an update is kept once this start has run for a minute
     yield
     for step in (notification_watch.stop, mqtt_bridge.stop, internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
         try:

@@ -849,8 +849,11 @@ step_ab_updates() {
   #              counts the setup hotspot as online, so an OS whose Wi-Fi can't join the home network
   #              (the hotspot comes up instead) was kept, and the mirror could never fetch the update
   #              that fixes it. github.com is where the next update comes from (no API rate limit).
-  #   curl:      the app answers /health (curl retries itself every 5 s, up to 5 minutes)
-  #   rauc:      mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
+  #   curl:      the app answers /health?trial=1 with 200: as itself, not in Safe mode (whose answer would
+  #              get a system kept that the app's own environment doesn't start on), and with the screen's
+  #              page loaded unless the screen is off: a system with a black screen is no mirror. curl
+  #              retries itself every 5 s, up to 5 minutes.
+  #   rauc:     mark this slot good, which makes it the one that boots (rauc-bootloader set-state)
   #   update-p1: renew p1's firmware if it changed (never undoes the update when it fails)
   # If one fails, OnFailure starts mirrordash-save-trial-log: it saves this boot's log (the RAM log
   # is gone after a restart) and restarts the mirror. The tryboot flag is gone by then, so it boots

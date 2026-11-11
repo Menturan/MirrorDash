@@ -18,8 +18,11 @@ def test_venv_swap_keeps_a_working_change_and_undoes_a_failed_one(tmp_path, monk
     async def works():
         async with venv.venv_swap() as python:
             assert python == str(tmp_path / "venv_b" / "bin" / "python")
+            # Not switched while it installs: a restart or a power cut now starts the mirror as it was
+            assert os.readlink(tmp_path / "venv") == "venv_a"
     asyncio.run(works())
     assert os.readlink(tmp_path / "venv") == "venv_b"
+    assert (tmp_path / "venv-trial").exists()  # launch.sh goes back on a crash until the app confirms
     assert (tmp_path / "venv_old" / "marker").exists()  # the launcher's fallback
 
     async def fails():

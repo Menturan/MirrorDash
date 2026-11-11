@@ -60,16 +60,24 @@ primary_partition() {
 }
 
 # Swap the partitions in autoboot.txt ([all] 2 <-> [tryboot] 3): the slot that was tried becomes
-# the normal one, and the old one becomes the one to try next. Written to a new file that then
-# replaces the old one, with sync before and after: a power cut leaves either the old or the new
-# file, never half of one (the card holds a single autoboot.txt; without it nothing boots).
+# the normal one, and the old one becomes the one to try next. Written over the file where it lies:
+# the new text is as long as the old (two digits change places) and far shorter than a sector, so it
+# is one write of one sector, and a power cut leaves the old or the new text. Not a new file renamed
+# over the old one: FAT has no journal, and that is several writes (the new file's entry, the table,
+# the old entry) with a moment in which neither name is whole. The card holds a single autoboot.txt;
+# without it nothing boots.
 swap_primary() {
+  local new
+  new=$(mktemp)
   sed -e 's/^boot_partition=2$/boot_partition=X/' \
       -e 's/^boot_partition=3$/boot_partition=2/' \
-      -e 's/^boot_partition=X$/boot_partition=3/' "$AUTOBOOT" > "$AUTOBOOT.tmp"
-  sync "$AUTOBOOT.tmp"
-  mv "$AUTOBOOT.tmp" "$AUTOBOOT"
-  sync "$AUTOBOOT"
+      -e 's/^boot_partition=X$/boot_partition=3/' "$AUTOBOOT" > "$new"
+  if [ "$(stat -c %s "$new")" != "$(stat -c %s "$AUTOBOOT")" ]; then
+    rm -f "$new"
+    die "the new autoboot.txt isn't the size of the old one; leaving it alone"
+  fi
+  dd if="$new" of="$AUTOBOOT" conv=notrunc,fsync status=none
+  rm -f "$new"
 }
 
 # prepare_boot DIR ROOT_NUMBER: the new boot partition (mounted at DIR) is a copy of the one in the

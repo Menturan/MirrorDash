@@ -1676,9 +1676,9 @@ def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_ta
         monkeypatch.delenv("UV_PYTHON_INSTALL_DIR", raising=False)
     with patch.object(service, "check_core_update", AsyncMock(return_value={"update_available": True})), \
          patch.object(service, "run", side_effect=fake_run), patch.object(service, "uv_pip", side_effect=fake_uv_pip), \
-         patch.object(service, "venv_swap", fake_swap):
+         patch("mirrordash_core.venv.run", side_effect=fake_run), patch.object(service, "venv_swap", fake_swap):
         asyncio.run(service.update_core())
-    upgrade = ("uv", "python", "upgrade", service.running_python())
+    upgrade =("uv", "python", "upgrade", service.running_python())
     if on_mirror:
         assert calls.index(upgrade) < calls.index(("uv", "pip", "install"))
     else:

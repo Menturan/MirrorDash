@@ -9,7 +9,18 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A MirrorDash update that is interrupted no longer costs you the version you had**: a restart or a power cut while the new version was being installed could send the mirror back to the version before the current one, or into Safe mode. The mirror now switches to the new version only once it is fully installed.
+- A system update that fails to download goes on from where it stopped the next time, instead of starting the whole download over, and a download that came out incomplete is no longer handed to the install.
+- A system update that can't be installed at night (no room, a download that fails) now says so on the bell, and no longer keeps MirrorDash and the modules from being updated: they go first the night after.
+- The Updates card no longer says a system update "didn't start properly" when you look at it in the seconds before the mirror restarts into the new system.
+- Modules that *Install Anyway* turned off for a newer Python are turned on again if the mirror goes back to the version before.
+- Checking for updates again and again no longer runs into GitHub's hourly limit, and a system update is still found when many app versions came out after it.
+
 ### OS image
+
+- A new MirrorDash version that crashes later than ten seconds into its start (a Raspberry Pi 3 can take that long) is now rolled back too, instead of being started again and again.
+- A new system is kept only when the mirror really works with it: the screen must show the mirror's page (unless the screen is off), and MirrorDash must run as itself, not in Safe mode. Before, a system with a black screen was kept.
+- Making a new system the one that starts is now a single small write to the card, so a power cut at that moment can't leave a card that doesn't start.
 
 - A damaged storage partition is handled in more cases: a newest backup that can't be read no longer comes back empty (the one before it is rescued instead), a partition that is there but can't be written to is repaired instead of stopping the mirror, and a repair that lost your settings, or errors that can't be repaired, now show on the bell. An old mirror's SD card in a USB reader is never mistaken for this mirror's storage.
 - **A damaged storage partition no longer stops the mirror for good**: when it can't be repaired at start, the mirror saves the newest backups from it, makes it anew and starts as a new mirror, and the bell says to restore the backup, which brings everything back.

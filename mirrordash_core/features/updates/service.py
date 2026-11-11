@@ -19,13 +19,22 @@ from mirrordash_core import notifications
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
+from mirrordash_core.features.updates.download import download, partial_file
+from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.host import (
     reboot_system,
     run_command,
     run_in_background,
     run_restart,
 )
-from mirrordash_core.venv import get_venv_paths, run, running_python, uv_pip, venv_swap
+from mirrordash_core.venv import (
+    get_venv_paths,
+    run,
+    running_python,
+    upgrade_python_patch,
+    uv_pip,
+    venv_swap,
+)
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
@@ -179,6 +188,24 @@ def turn_off_modules(names: tuple[str, ...], reason: str) -> None:
     save_config(config)
 
 
+def turn_modules_back_on_after_rollback() -> None:
+    """At the app's start: when launch.sh went back to the version before (and its Python), the modules
+    Install Anyway turned off for the newer Python run again, as they did before the update."""
+    if os.environ.get("MIRRORDASH_BOOT_STATUS") != "rollback":
+        return
+    from mirrordash_core.config import save_config
+    config = load_config()
+    reason = "doesn't work with Python "
+    back = [instance for instance in config.get("modules", {}).values() if isinstance(instance, dict)
+            and str(instance.get("disabled_reason", "")).startswith(reason)
+            and instance["disabled_reason"] != reason + running_python()]
+    for instance in back:
+        instance["enabled"] = True
+        del instance["disabled_reason"]
+    if back:
+        save_config(config)
+
+
 async def update_core(skip: tuple[str, ...] = ()) -> dict:
     """Install the latest MirrorDash into the next A/B venv, then restart into it. skip: modules to
     turn off when the new version needs a newer Python they don't work with."""
@@ -186,13 +213,7 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
     if info.get("needs_python") and info["update_available"]:
         return await _update_to_new_python(info["needs_python"], info["latest_version"], skip)
     current_version = get_core_version()
-    if os.environ.get("UV_PYTHON_INSTALL_DIR"):  # only on a mirror, never a developer's own uv Pythons
-        # The newest patch of this Python (3.14.x): the venvs use uv's minor link, so all of them follow.
-        # ponytail: patches come with an app update (the nightly one too); give it its own step in
-        # auto_update() if they are ever needed without one.
-        code, _, err = await run("uv", "python", "upgrade", running_python(), timeout=900)
-        if code != 0:
-            logger.warning(f"Python {running_python()} patch upgrade failed, keeping {sys.version.split()[0]}: {err.strip()}")
+    await upgrade_python_patch()
     logger.info(f"Upgrading mirrordash (current version: {current_version})")
     try:
         async with venv_swap() as python:
@@ -271,7 +292,9 @@ OS_PENDING_FILE = Path("/storage/mirrordash/os-update-pending")
 # 1 while the firmware runs a new OS version on trial (see rauc-bootloader in configure_image.sh)
 TRYBOOT_FLAG = Path("/proc/device-tree/chosen/bootloader/tryboot")
 TRYBOOT_ON = b"\x00\x00\x00\x01"  # a device tree value: a 32-bit big-endian 1
-RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=30"
+# ponytail: the newest 100 releases (the most GitHub gives at once), app and test versions among them: a
+# system bundle further back than that isn't found; follow the Link header's next page if that ever comes
+RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=100"
 BUNDLE_NAME = re.compile(r"^mirrordash-os-v.+-(\d{8}-\d{4})\.raucb$")
 
 
@@ -337,8 +360,10 @@ def failed_os_update(installed: str) -> str | None:
         target = OS_PENDING_FILE.read_text().strip()
     except OSError:
         return None
-    if job_status()["state"] == "running":
-        return None  # the update is still downloading or installing
+    if job_status()["state"] in ("running", "restarting"):
+        # The update is still downloading or installing, or it is installed and the mirror is about to
+        # restart into it: the old system still runs for some seconds, which is no failed trial
+        return None
     if target == installed:
         try:
             on_trial = TRYBOOT_FLAG.read_bytes() == TRYBOOT_ON
@@ -364,19 +389,12 @@ async def check_os_update() -> dict:
     if installed is None:
         return {"supported": False}
 
-    def _fetch_releases() -> list[dict]:
-        request = urllib.request.Request(RELEASES_URL, headers={"Accept": "application/vnd.github+json",
-                                                                "User-Agent": "MirrorDash"})
-        try:
-            with urllib.request.urlopen(request, timeout=8) as response:
-                return json.loads(response.read())
-        except Exception as exc:
-            raise RuntimeError(f"GitHub request failed: {exc}") from exc
-
-    try:
-        releases = await asyncio.to_thread(_fetch_releases)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    # ponytail: an answer may be a minute old (as the modules' on the Updates card), so checking again
+    # and again, and Install right after a check, can't use up GitHub's 60 requests an hour
+    releases = await fetch_json_cached(RELEASES_URL, headers={"Accept": "application/vnd.github+json"}, max_age=60)
+    if not isinstance(releases, list):
+        raise HTTPException(status_code=502, detail="GitHub didn't answer. Check the mirror's internet connection, "
+                                                    "or try again in a while.")
     bundle = newest_os_bundle(releases, prerelease_enabled())
     return {
         "supported": True,
@@ -390,24 +408,19 @@ async def check_os_update() -> dict:
 async def update_os(bundle: dict) -> None:
     """Download the bundle to /storage, install it into the other slot, and restart into it on trial.
     Runs as a background job (admin.start_job); the admin page follows it across the restart."""
-    free = shutil.disk_usage(OS_BUNDLE_FILE.parent).free
+    partial = partial_file(OS_BUNDLE_FILE, bundle["build"])
+    # What a try that broke already fetched counts as room: the download goes on from there
+    free = shutil.disk_usage(OS_BUNDLE_FILE.parent).free + (partial.stat().st_size if partial.exists() else 0)
     if free < bundle["size"] + 200 * 1024 * 1024:  # room for the logs and settings while it installs
         raise HTTPException(status_code=507, detail=f"Not enough free space for the OS update "
                                                     f"({bundle['size'] // 1048576} MB plus some room).")
 
-    def _download() -> None:
-        # GitHub sends the file from another address (a redirect); urllib follows it
-        partial = OS_BUNDLE_FILE.with_suffix(".part")
-        with urllib.request.urlopen(bundle["url"], timeout=60) as response, open(partial, "wb") as out:
-            shutil.copyfileobj(response, out, length=1024 * 1024)
-        partial.replace(OS_BUNDLE_FILE)
-
     logger.info(f"OS update: downloading {bundle['tag']} (build {bundle['build']})")
     try:
-        await asyncio.to_thread(_download)
+        await asyncio.to_thread(download, bundle["url"], bundle["size"], partial, OS_BUNDLE_FILE)
     except Exception as exc:
-        OS_BUNDLE_FILE.with_suffix(".part").unlink(missing_ok=True)
-        raise HTTPException(status_code=502, detail=f"Downloading the OS update failed: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Downloading the OS update failed: {exc}. Trying again "
+                                                    "goes on from where it stopped.") from exc
 
     # RAUC checks the signature, writes the other slot and arms the trial boot (rauc-bootloader)
     OS_PENDING_FILE.write_text(bundle["build"])
@@ -475,6 +488,21 @@ def _tell_waits(what: str) -> None:
                       "still install this one.", once=True)
 
 
+# The build whose install failed in the last nightly update (the download, the room for it, RAUC): the
+# system goes first and only one thing is done a night, so a build that fails every night would keep
+# MirrorDash and the modules from ever being updated. The night after, they go first. In memory: a
+# restart forgets it, and the system is tried again.
+os_install_failed: set[str] = set()
+
+
+async def _nightly_os_update(bundle: dict) -> None:
+    try:
+        await update_os(bundle)
+    except Exception:
+        os_install_failed.add(bundle["build"])
+        raise
+
+
 async def auto_update() -> str:
     """The nightly automatic update (mirrordash-auto-update.timer asks for it, see routes): the same
     as pressing the buttons on the Updates card, one a night: the system, else MirrorDash, else the modules
@@ -502,8 +530,11 @@ async def auto_update() -> str:
     if os_info.get("update_available") and bundle["build"] == skipped_build:
         _tell_waits(f"The system update {bundle.get('tag') or format_build(skipped_build)} didn't start properly three times")
     if os_info.get("update_available") and bundle["build"] != skipped_build:
-        start_job(lambda: update_os(bundle))
-        return "system"
+        if bundle["build"] in os_install_failed:
+            os_install_failed.clear()  # MirrorDash and the modules tonight, the system again tomorrow
+        else:
+            start_job(lambda: _nightly_os_update(bundle), failure="The system couldn't be updated")
+            return "system"
     core_update = await check_core_update()
     # some modules don't work with the newer Python: MirrorDash waits, the modules needn't
     waiting = bool(core_update.get("needs_python")) and incompatible.get("version") == core_update["latest_version"]

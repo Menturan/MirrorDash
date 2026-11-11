@@ -30,10 +30,14 @@ DURATION=$((END_TIME - START_TIME))
 
 # A start that fails within this long is a broken install, not a crash later on: roll back
 CRASH_WITHIN_SECONDS=10
+# So is a crash at any time while an update is on trial: the app leaves this file when it switches to a
+# new environment and removes it once that one has run for a minute (venv.py: commit_venv_next,
+# confirm_venv). A Pi 3 can take longer than the seconds above just to reach the line that fails.
+VENV_TRIAL="/storage/mirrordash/venv-trial"
 EXIT_STOPPED_BY_SIGTERM=143  # systemd stopping it, or the app restarting itself
 EXIT_STOPPED_BY_SIGINT=130
 if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne "$EXIT_STOPPED_BY_SIGTERM" ] && [ "$EXIT_CODE" -ne "$EXIT_STOPPED_BY_SIGINT" ] \
-        && [ "$DURATION" -lt "$CRASH_WITHIN_SECONDS" ]; then
+        && { [ "$DURATION" -lt "$CRASH_WITHIN_SECONDS" ] || [ -e "$VENV_TRIAL" ]; }; then
     echo "Boot crash detected (Exit Code: $EXIT_CODE, Duration: ${DURATION}s)."
 
     # On the trial boot of a new OS version the crash is the new OS's doing, not the app's: leave the
@@ -45,6 +49,7 @@ if [ "$EXIT_CODE" -ne 0 ] && [ "$EXIT_CODE" -ne "$EXIT_STOPPED_BY_SIGTERM" ] && 
         echo "This is a trial boot of a new system version: not rolling MirrorDash back."
         exit $EXIT_CODE
     fi
+    rm -f "$VENV_TRIAL"  # what starts below is the version before, or the image's: neither is on trial
 
     # 1. Try A/B Rollback
     if [ -d "/storage/mirrordash/venv_old" ]; then

@@ -85,16 +85,24 @@ async def get_design() -> HTMLResponse:
 
 
 @router.get("/health")
-async def health(response: Response) -> dict:
+async def health(response: Response, trial: bool = False) -> dict:
+    """trial: asked on the trial start of a new system (mirrordash-mark-good.service), which keeps that
+    system only on a 200. Then 503 in Safe mode (the app's own environment didn't start on the new system,
+    and the image's copy answering must not get it kept) and until the screen's page has been heard from
+    since this start, unless the screen is off: a system with a black screen is no mirror."""
     from mirrordash_core.admin import BOOT_ID
     from mirrordash_core.features.power.display_power import display_power_manager
     # None while the screen is off: there is nothing to watch then
     screen_seen = round(time.monotonic() - manager.screen_seen) if display_power_manager.is_on else None
+    safe_mode = os.environ.get("MIRRORDASH_BOOT_STATUS") == "safe_mode"
+    # is_on is None until the display's first pass after a start: not known to be off, so the page is asked for
+    if trial and (safe_mode or (display_power_manager.is_on is not False and not manager.screen_loaded)):
+        response.status_code = 503
     # The kiosk's start page (file://, origin "null") reads this; without it WebKit blocks the answer and
     # the screen stays on "MirrorDash didn't start". Nothing here is secret and no credentials ride along.
     response.headers["Access-Control-Allow-Origin"] = "*"
     return {"status": "ok", "modules": list(module_host.running), "boot_status": os.environ.get("MIRRORDASH_BOOT_STATUS", "normal"),
-            "boot_id": BOOT_ID, "screen_seen_seconds_ago": screen_seen}
+            "boot_id": BOOT_ID, "screen_seen_seconds_ago": screen_seen, "screen_loaded": manager.screen_loaded}
 
 
 DEFAULT_SAFE_MARGIN_PX = 60  # the empty border round the screen, where a frame or bezel covers it

@@ -2,7 +2,8 @@
 """The A/B virtual environments on /storage, and running uv in them.
 
 Every change of the core's packages (a MirrorDash update, a rebuild) goes into the *next* environment while the active one keeps running; `venv_swap` switches the link,
-and keeps the previous environment as venv_old, only when the change worked."""
+and keeps the previous environment as venv_old, only when the change worked. Until then the link stays on
+the active one: a restart or a power cut mid-install starts the mirror as it was."""
 
 import asyncio
 import logging
@@ -22,6 +23,10 @@ STORAGE_DIR = Path("/storage/mirrordash")
 MIN_FREE_BYTES = 300 * 1024 * 1024
 # Strip the environment so no server secret reaches a subprocess
 SAFE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV", "UV_PYTHON_INSTALL_DIR")
+# There from a swap until the new environment has run for a while (confirm_venv): a crash while it is
+# there is the new version's, however late it comes, and launch.sh goes back to venv_old
+TRIAL_FILE = "venv-trial"
+CONFIRM_AFTER_SECONDS = 60
 
 
 def get_venv_paths():
@@ -53,11 +58,12 @@ def running_python() -> str:
 
 async def prepare_venv_next(force_clean: bool = False, python: str | None = None):
     """Copy the active venv to the next one (or create it empty, with `python`, default the running
-    one) and point the link at it. Returns (active_path, next_path), or None when not on a mirror."""
+    one). The link stays on the active one (commit_venv_next switches it). Returns (active_path,
+    next_path), or None when not on a mirror."""
     paths = get_venv_paths()
     if not paths:
         return None
-    venv_link, active_path, next_path = paths
+    _, active_path, next_path = paths
     # A full card mid-install leaves a half-built venv and can stop settings from being saved
     # Copying and deleting a venv takes tens of seconds on a Pi's card: in a thread, so the screen
     # and the admin page keep their connection meanwhile
@@ -80,12 +86,6 @@ async def prepare_venv_next(force_clean: bool = False, python: str | None = None
     except Exception as e:
         logger.error(f"Failed to clone/create virtual environment: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to clone/create virtual environment: {e}")
-    try:
-        point_link(venv_link, next_path)
-    except Exception as e:
-        logger.error(f"Failed to swap symlink: {e}")
-        await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
-        raise HTTPException(status_code=500, detail=f"Failed to update symlink: {e}")
     return active_path, next_path
 
 
@@ -95,8 +95,16 @@ def _size(path: Path) -> int:
 
 
 async def commit_venv_next(active_path: Path, next_path: Path) -> None:
-    """Keep the swap: the old active venv becomes venv_old (the launcher's fallback)."""
+    """Switch to the next venv: the link points at it, and the old active venv becomes venv_old (the
+    launcher's fallback). A link that can't be switched raises, with nothing changed."""
     venv_old = active_path.parent / "venv_old"
+    trial = active_path.parent / TRIAL_FILE
+    trial.touch()  # before the link: a crash of the new one is always on trial
+    try:
+        point_link(active_path.parent / "venv", next_path)
+    except OSError:
+        trial.unlink(missing_ok=True)  # the old one runs on, and it isn't on trial
+        raise
     logger.info(f"Committing A/B swap: {next_path.name} is now active.")
     try:
         if venv_old.exists():
@@ -106,6 +114,43 @@ async def commit_venv_next(active_path: Path, next_path: Path) -> None:
     except Exception as e:
         logger.warning(f"Failed to move active venv to venv_old: {e}")
     await asyncio.to_thread(remove_unused_pythons)
+
+
+def python_link(venv_dir: Path, py_dir: Path) -> Path | None:
+    """The Python in py_dir that a venv runs: uv's minor link (py_dir/cpython-3.14-...), which its
+    pyvenv.cfg names as home (.../bin). None for no venv, or one with a Python from elsewhere."""
+    try:
+        cfg = (venv_dir / "pyvenv.cfg").read_text()
+    except OSError:
+        return None
+    home = next((line.split("=", 1)[1].strip() for line in cfg.splitlines() if line.startswith("home")), "")
+    return Path(home).parent if home.startswith(f"{py_dir}/") else None
+
+
+async def upgrade_python_patch() -> None:
+    """The newest patch of the running Python (3.14.x), before an app update: the venvs use uv's minor
+    link, so all of them follow, the running one and the fallback too. That is outside the A/B swap, so
+    the new patch is started once here, and the link goes back to the old one if it doesn't run. Only on
+    a mirror, where UV_PYTHON_INSTALL_DIR is set: never a developer's own uv Pythons.
+    ponytail: patches come with an app update (the nightly one too); give it its own step in
+    auto_update() if they are ever needed without one."""
+    py_dir, paths = os.environ.get("UV_PYTHON_INSTALL_DIR"), get_venv_paths()
+    if not py_dir:
+        return
+    link = python_link(paths[1], Path(py_dir)) if paths else None
+    before = os.readlink(link) if link and link.is_symlink() else None
+    code, _, err = await run("uv", "python", "upgrade", running_python(), timeout=900)
+    if code != 0:
+        logger.warning(f"Python {running_python()} patch upgrade failed, keeping {sys.version.split()[0]}: {err.strip()}")
+    elif before and os.readlink(link) != before:
+        # ssl and sqlite3: the parts that need the system's libraries, which a build for another one lacks
+        code, _, err = await run(str(link / "bin" / "python3"), "-c", "import ssl, sqlite3")
+        if code != 0:
+            logger.warning(f"The new Python patch doesn't run, going back to {before}: {err.strip()}")
+            tmp = link.with_name(f".{link.name}.tmp")
+            tmp.unlink(missing_ok=True)
+            os.symlink(before, tmp)
+            os.replace(tmp, link)
 
 
 def remove_unused_pythons() -> None:
@@ -119,15 +164,8 @@ def remove_unused_pythons() -> None:
     py_dir = Path(py_dir)
     keep = set()
     for name in ("venv_a", "venv_b", "venv_old"):
-        try:
-            cfg = (STORAGE_DIR / name / "pyvenv.cfg").read_text()
-        except OSError:
-            continue
-        home = next((line.split("=", 1)[1].strip() for line in cfg.splitlines() if line.startswith("home")), "")
-        # home is uv's minor link (cpython-3.14-...) /bin: keep the link and the folder it points to
-        if home.startswith(f"{py_dir}/"):
-            link = Path(home).parent
-            keep |= {link.name, link.resolve().name}
+        if link := python_link(STORAGE_DIR / name, py_dir):
+            keep |= {link.name, link.resolve().name}  # the link and the folder it points to
     if not keep:
         return  # nothing reads as a venv of ours: never empty the folder on a guess
     for entry in py_dir.iterdir():
@@ -141,29 +179,33 @@ def remove_unused_pythons() -> None:
 
 
 async def revert_venv_next(active_path: Path, next_path: Path) -> None:
-    """Undo the swap: point the link back at the active venv and delete the next one."""
-    logger.warning(f"Reverting A/B swap to: {active_path.name}")
-    try:
-        point_link(active_path.parent / "venv", active_path)
-        await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
-    except Exception as e:
-        logger.error(f"Failed to revert symlink: {e}")
+    """Drop the change: delete the next venv (the link never left the active one)."""
+    logger.warning(f"Dropping the next venv ({next_path.name}); {active_path.name} stays active")
+    await asyncio.to_thread(shutil.rmtree, next_path, ignore_errors=True)
+
+
+async def confirm_venv() -> None:
+    """The app's start calls this: once it has run for CONFIRM_AFTER_SECONDS, the environment is kept
+    (launch.sh no longer takes a crash for a broken update)."""
+    if (STORAGE_DIR / TRIAL_FILE).exists():
+        await asyncio.sleep(CONFIRM_AFTER_SECONDS)
+        (STORAGE_DIR / TRIAL_FILE).unlink(missing_ok=True)
 
 
 @asynccontextmanager
 async def venv_swap(force_clean: bool = False, python: str | None = None):
     """Yield the Python to install into: the next A/B venv on a mirror, this process's elsewhere.
-    The swap is kept when the block finishes and undone when it raises. python: the version of an
+    Switched to when the block finishes, dropped when it raises. python: the version of an
     empty venv (force_clean), e.g. a newer one a MirrorDash update needs."""
     swap = await prepare_venv_next(force_clean=force_clean, python=python)
     try:
         yield str(swap[1] / "bin" / "python") if swap else sys.executable
+        if swap:
+            await commit_venv_next(*swap)
     except BaseException:
         if swap:
             await revert_venv_next(*swap)
         raise
-    if swap:
-        await commit_venv_next(*swap)
 
 
 async def run(*cmd: str, timeout: float | None = None) -> tuple[int, str, str]:
