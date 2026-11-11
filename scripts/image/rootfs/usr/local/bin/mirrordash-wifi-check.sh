@@ -89,7 +89,7 @@ check_traffic() {
     fi
     fails=$(( $(cat "$FAILS_FILE" 2>/dev/null || echo 0) + 1 ))
     echo "$fails" > "$FAILS_FILE"
-    logger -t mirrordash-wifi "Joined to the Wi-Fi, but no traffic gets through (round $fails)."
+    logger -t mirrordash-wifi "No traffic gets through (round $fails)."
     [ "$fails" -ge 2 ] || return 0
     if [ "$fails" -eq 2 ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
         /usr/local/lib/mirrordash/save-log wifi-lost -b -n 3000 >/dev/null || true
@@ -259,6 +259,14 @@ if $WATCHING && hotspot_active; then
     logger -t mirrordash-wifi "The saved Wi-Fi isn't there. Back to the hotspot."
     nmcli connection up "$SSID" || logger -t mirrordash-wifi "Failed to start hotspot."
     tell_mirrordash
+    exit 0
+fi
+
+# A hung Wi-Fi chip often takes the connection down with it: NetworkManager then sees no network and
+# the hotspot below can't start on a hung chip either. Measured on a Pi 3 (2026-11-11): the watch
+# tried the hotspot every round for an hour and never started the chip again, until it woke by itself.
+if $WATCHING && wifi_chip_hung; then
+    check_traffic
     exit 0
 fi
 

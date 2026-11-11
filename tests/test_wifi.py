@@ -537,6 +537,18 @@ def test_a_hung_wifi_chip_is_started_again_one_step_a_round(tmp_path):
     assert not (tmp_path / "recovery").exists() and not (tmp_path / "fails").exists()
 
 
+def test_a_hung_wifi_chip_that_dropped_the_connection_is_started_again_not_the_hotspot(tmp_path):
+    """The chip hangs and NetworkManager loses the Wi-Fi too (nm-online fails): the same steps as above,
+    never the hotspot, which can't start on a hung chip (a Pi 3 stayed offline an hour like that)."""
+    run = lambda: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", saved_wifi=True, traffic=False, hung=True)[1]
+    run()
+    calls = run()
+    assert calls[-2].startswith("modprobe -r") and calls[-1] == "modprobe brcmfmac"
+    assert not any("MirrorDash-Setup" in c for c in calls if c.startswith("connection"))
+    run()
+    assert run()[-1] == "systemctl reboot"
+
+
 def test_a_wifi_chip_that_didnt_start_is_started_again(tmp_path):
     """brcmfmac loaded but no wlan0 (its firmware didn't load): the log is kept once and the driver loaded
     again; that's enough when wlan0 comes back, and nothing else happens."""

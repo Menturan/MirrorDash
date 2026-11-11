@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A Pi 3 whose Wi-Fi chip hangs (on a long, heavy download or stream) now starts the chip again, and restarts the mirror if that doesn't help, also when the Wi-Fi connection dropped with it. Before, the mirror tried to start its setup hotspot instead and could stay offline for an hour or until it was unplugged.
 - **Notifications**: a bell at the top of the admin page tells what happened to your mirror in plain words: updates of MirrorDash, the system and the modules, an update that failed or waits for you, a module that kept crashing, the Wi-Fi or screen that was restarted, a power cut. Mark them read one by one or all at once. While an error is unread, the mirror shows *Error: see the admin page* at the top.
 - **Give a module your own name**, such as *Kitchen Clock*: the new *Name* at the top of its settings. The name shows on the admin page and in its notifications, so with two clocks you can tell which one is meant.
 - **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
