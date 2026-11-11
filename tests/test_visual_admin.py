@@ -106,7 +106,7 @@ def patch_all_system():
         "mirrordash_core.admin",
         "mirrordash_core.config",
         "mirrordash_core.host",
-        "mirrordash_core.system_settings",
+        "mirrordash_core.features.settings.system_settings",
         "mirrordash_core.features.auth.routes",
         "mirrordash_core.features.hardware.routes",
         "mirrordash_core.features.modules.instances",

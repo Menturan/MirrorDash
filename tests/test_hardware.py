@@ -236,11 +236,11 @@ def test_button_actions(mock_load, mock_save, client):
 
 def test_device_problem_does_not_block_other_settings():
     """An old OS image (no helper) must never stop the display settings from saving."""
-    from mirrordash_core.system_settings import update_system_settings
+    from mirrordash_core.features.settings.system_settings import update_system_settings
     cfg = {"system": {"devices": [{"type": "button", "pin": 23}], "display_control": {"mode": "wake"}}}
     with patch("mirrordash_core.features.updates.service.load_config", return_value=cfg), \
-         patch("mirrordash_core.system_settings.save_config") as save, \
-         patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock), \
+         patch("mirrordash_core.features.settings.system_settings.save_config") as save, \
+         patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock), \
          patch("mirrordash_core.features.hardware.inputs.os.path.exists", return_value=False):
         asyncio.run(update_system_settings(settings={"brightness": 40}))
         asyncio.run(update_system_settings(settings={"display_control": {"mode": "wake"}}))

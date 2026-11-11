@@ -43,7 +43,7 @@ def test_token_runs_the_screen_and_brightness(client):
     with patch.object(display_power_manager, "turn_off") as off:
         assert client.post("/api/v1/screen", json={"state": "off"}, headers=AUTH).status_code == 200
     off.assert_called_once()
-    with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as save:
+    with patch("mirrordash_core.features.settings.system_settings.update_system_settings", new_callable=AsyncMock) as save:
         assert client.post("/api/v1/brightness", json={"value": 40}, headers=AUTH).json()["brightness"] == 40
         assert client.post("/api/v1/brightness", json={"value": True}, headers=AUTH).status_code == 422
         assert client.post("/api/v1/brightness", json={"value": 5}, headers=AUTH).status_code == 422

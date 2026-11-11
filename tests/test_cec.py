@@ -69,7 +69,7 @@ def test_the_setting_is_on_unless_turned_off_and_skips_cec_then():
     from mirrordash_core.features.power.display_power import DisplayPowerManager
     app.dependency_overrides[require_api_key] = lambda: None
     try:
-        with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as update:
+        with patch("mirrordash_core.features.settings.system_settings.update_system_settings", new_callable=AsyncMock) as update:
             TestClient(app).post("/admin/panels/power/save", data={"display_control[cec]": ["false"]})
         assert update.call_args.kwargs["settings"]["display_control"]["cec"] is False
     finally:

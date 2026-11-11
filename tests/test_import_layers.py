@@ -16,10 +16,7 @@ MUTUAL = {
     ("modules", "mqtt"), ("modules", "power"), ("modules", "updates"),
 }
 # Shared code that still imports a feature. app.py puts the app together and main.py starts it: they may.
-ROOT_TO_FEATURE = {
-    ("system_settings", "hardware"), ("system_settings", "matter"), ("system_settings", "power"),
-    ("system_settings", "settings"),
-}
+ROOT_TO_FEATURE: set[tuple[str, str]] = set()
 PUTS_THE_APP_TOGETHER = {"app", "main"}
 
 

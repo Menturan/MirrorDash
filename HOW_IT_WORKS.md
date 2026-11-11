@@ -95,7 +95,7 @@ flowchart TB
 
 1. **systemd** starts `mirrordash.service`, which runs `scripts/launch.sh`. It picks the active venv (the link `/storage/mirrordash/venv`), falls back to the image's own copy if that is broken (safe mode, #16) and starts `python -m mirrordash_core.main`.
 2. **`main.py`** sets up logging (`~/.mirrordash/logs/`) and starts uvicorn with the app from **`app.py`**.
-3. **`app.py`'s `lifespan`** applies the saved system settings (`system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
+3. **`app.py`'s `lifespan`** applies the saved system settings (`features/settings/system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
    - `module_host.start_modules()` (`features/modules/client.py`) connects to the module host and asks it to start every enabled instance,
    - `display_power_manager` (`features/power/`) turns the screen on and off on schedule, and a TV with it over HDMI-CEC (`features/hardware/cec.py`),
    - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
@@ -177,7 +177,7 @@ sequenceDiagram
 3. **`module_host.reload_modules()`** tells the screen to reload and runs `_sync`: an instance whose settings changed is stopped and started again with the new ones; the others keep running and send their cards again.
 4. **The answer** is a small event for the page (`notify` in `admin.py`): "Settings saved." The settings drawer stays open.
 
-The system settings (Hardware, Power, Developer) take the same road through `system_settings.py`, and are applied straight away instead of restarting modules.
+The system settings (Hardware, Power, Developer) take the same road through `features/settings/system_settings.py`, and are applied straight away instead of restarting modules.
 
 ## The module system's files
 
@@ -208,7 +208,7 @@ The biggest part of the core, in `features/modules/`:
 
 ## Where to start for common changes
 
-- **A new setting in the admin page (system):** its default and type in `system_settings.py` (`SystemSettings`), its check in `_check_system_settings`, the form field in the panel's template (`features/<tab>/templates/`), and where it takes effect.
+- **A new setting in the admin page (system):** its default and type in `features/settings/system_settings.py` (`SystemSettings`), its check in `_check_system_settings`, the form field in the panel's template (`features/<tab>/templates/`), and where it takes effect.
 - **A new admin panel:** a folder `features/<name>/` with `routes.py` (an `APIRouter`, `require_api_key` on every route) and `templates/`, one line in `app.py`'s list, and a tab in `templates/admin.html`.
 - **Something on the screen itself:** `static/js/kiosk/core.js` and `static/style.css`; what modules may use is `static/modules.css`, shown at `/design`. Follow [DESIGN.md](DESIGN.md).
 - **A new command that needs root:** a script in `scripts/image/rootfs/usr/local/bin/` that checks its own arguments (the app's user calls it), a line in `scripts/image/rootfs/etc/sudoers.d/mirrordash`, and `put 0755 /usr/local/bin/<name>` in `scripts/configure_image.sh` (#36).

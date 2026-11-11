@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from fastapi import HTTPException
 
-from mirrordash_core import admin, system_settings
+from mirrordash_core import admin
+from mirrordash_core.features.settings import system_settings
 from mirrordash_core.forms import cast_values_by_schema, parse_flat_form_data
 
 

@@ -248,14 +248,14 @@ def test_auth_headers_required(mock_sys_load, mock_load, client):
     assert response.status_code == 401
     
     # Correct password -> 200
-    with patch("mirrordash_core.system_settings.get_available_resolutions", new_callable=AsyncMock) as mock_res:
+    with patch("mirrordash_core.features.settings.system_settings.get_available_resolutions", new_callable=AsyncMock) as mock_res:
         mock_res.return_value = ["1920x1080"]
         response = client.get("/admin/system", headers={"X-API-Key": "secret"})
         assert response.status_code == 200
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, mock_load, client):
     mock_load.return_value = MOCK_CONFIG.copy()
@@ -413,8 +413,8 @@ SYSTEM_PAYLOAD_BASE = {
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_without_password_rejected(
@@ -432,8 +432,8 @@ def test_enable_ssh_without_password_rejected(
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_with_short_password_rejected(
@@ -451,8 +451,8 @@ def test_enable_ssh_with_short_password_rejected(
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
@@ -499,8 +499,8 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
@@ -524,8 +524,8 @@ def test_disable_ssh_does_not_call_chpasswd(
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
@@ -817,7 +817,7 @@ def test_rebuild_venv_installs_the_core_only(mock_paths, mock_commit, mock_prepa
 
 
 @patch("mirrordash_core.features.hardware.routes.load_config")
-@patch("mirrordash_core.system_settings.get_available_resolutions", new_callable=AsyncMock)
+@patch("mirrordash_core.features.hardware.routes.get_available_resolutions", new_callable=AsyncMock)
 def test_get_panel_system(mock_res, mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     mock_res.return_value = ["1920x1080"]
@@ -830,8 +830,8 @@ def test_get_panel_system(mock_res, mock_load, client):
 
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mock_save, mock_load, client):
     mock_load.return_value = MOCK_CONFIG.copy()

@@ -101,6 +101,6 @@ async def set_screen(body: Screen) -> dict:
 @api.post("/brightness", response_model=Done, response_model_exclude_none=True, dependencies=[Depends(require_api_token)])
 async def set_brightness(body: Brightness) -> dict:
     """Saved like the admin page's slider, and applied right away."""
-    from mirrordash_core.system_settings import update_system_settings
+    from mirrordash_core.features.settings.system_settings import update_system_settings
     await update_system_settings(settings={"brightness": body.value})
     return {"status": "success", "brightness": body.value}

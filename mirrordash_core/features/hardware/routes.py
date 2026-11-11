@@ -8,7 +8,8 @@ from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.admin import events_header, notify, require_api_key, templates
-from mirrordash_core.config import get_core_version, load_config, save_config
+from mirrordash_core.config import load_config, save_config
+from mirrordash_core.features.hardware import display
 from mirrordash_core.features.hardware.devices import (
     BUTTON_ACTIONS,
     BUTTON_TYPES,
@@ -25,13 +26,13 @@ from mirrordash_core.features.hardware.devices import (
     kernel_boot_id,
     sync_gpio_overlays,
 )
+from mirrordash_core.features.hardware.display import get_available_resolutions
 from mirrordash_core.features.hardware.inputs import gpio_inputs
 from mirrordash_core.features.hardware.sensors import (
     IIO_SENSORS,
     read_fan_state,
     read_sensor,
 )
-from mirrordash_core.system_settings import get_system_settings
 
 logger = logging.getLogger("mirrordash.core.hardware")
 router = APIRouter(prefix="/admin")
@@ -39,14 +40,19 @@ router = APIRouter(prefix="/admin")
 
 @router.get("/panels/system", dependencies=[Depends(require_api_key)])
 async def get_panel_system(request: Request):
-    settings_data = await get_system_settings()
+    system_cfg = load_config().get("system", {})
     return templates.TemplateResponse(
         request=request,
         name="admin_system.html",
         context={
-            "settings": settings_data.get("settings", {}),
-            "resolutions": settings_data.get("resolutions", []),
-            "current_version": get_core_version(),
+            "settings": {
+                "rotation": system_cfg.get("rotation", "normal"),
+                "resolution": system_cfg.get("resolution", "auto"),
+                "brightness": system_cfg.get("brightness", 100),
+                "brightness_supported": display.brightness_supported is not False,
+                "volume": system_cfg.get("volume", 80),
+            },
+            "resolutions": await get_available_resolutions(),
         }
     )
 

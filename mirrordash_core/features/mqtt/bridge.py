@@ -514,7 +514,9 @@ class MqttBridge:
         every MODULE_CHANGE_INTERVAL), so a flood can't wear the card or keep the modules restarting."""
         if self._brightness is not None and now - self._brightness_at >= 1:
             value, self._brightness, self._brightness_at = self._brightness, None, now
-            from mirrordash_core.system_settings import update_system_settings
+            from mirrordash_core.features.settings.system_settings import (
+                update_system_settings,
+            )
             await update_system_settings(settings={"brightness": value})
         if self._enable and now - self._enable_at >= MODULE_CHANGE_INTERVAL:
             changes, self._enable, self._enable_at = self._enable, {}, now

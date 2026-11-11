@@ -36,7 +36,7 @@ def start():
     for target, value in [
         ("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", is_hotspot),
         ("mirrordash_core.features.kiosk.routes.get_hotspot_password", AsyncMock(return_value="mirror-4821")),
-        ("mirrordash_core.system_settings.apply_saved_system_settings_at_startup", lambda: None),
+        ("mirrordash_core.features.settings.system_settings.apply_saved_system_settings_at_startup", lambda: None),
     ]:
         patch(target, value).start()
     from mirrordash_core import app as app_module

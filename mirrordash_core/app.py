@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from mirrordash_core import admin, system_settings
+from mirrordash_core import admin
 from mirrordash_core.admin import PACKAGE_DIR, write_local_token
 from mirrordash_core.features.api import api as api_v1
 from mirrordash_core.features.api import routes as api
@@ -32,6 +32,7 @@ from mirrordash_core.features.notifications import watch as notification_watch
 from mirrordash_core.features.power import routes as power
 from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
+from mirrordash_core.features.settings import system_settings
 from mirrordash_core.features.updates import routes as updates
 from mirrordash_core.features.updates import service as updates_service
 from mirrordash_core.features.updates.catch_up import catch_up

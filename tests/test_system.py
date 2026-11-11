@@ -134,7 +134,7 @@ async def test_set_ssh_status_only_starts_ssh_with_the_owners_password(mock_subp
 def test_saving_another_setting_doesnt_turn_ssh_on():
     """Home Assistant's brightness or the Power tab sends only its own setting; the rest are filled in
     from the defaults, and SSH's must be off."""
-    from mirrordash_core import system_settings
+    from mirrordash_core.features.settings import system_settings
     saved = {}
     with patch.object(system_settings, "load_config", return_value={"system": {}}), \
          patch.object(system_settings, "save_config", side_effect=saved.update), \

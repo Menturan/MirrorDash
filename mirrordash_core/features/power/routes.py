@@ -20,7 +20,6 @@ from mirrordash_core.features.power.display_power import update_screen_state
 from mirrordash_core.features.power.usb import set_usb, usb_status
 from mirrordash_core.forms import read_form
 from mirrordash_core.host import poweroff_system, reboot_system, sudo_allowed
-from mirrordash_core.system_settings import get_system_settings
 
 logger = logging.getLogger("mirrordash.core.power")
 router = APIRouter(prefix="/admin")
@@ -49,8 +48,8 @@ async def get_panel_power(request: Request):
     globals_cfg = config.get("globals", {})
     time_format = globals_cfg.get("time_format", "24h")
 
-    settings_data = await get_system_settings()
-    settings = settings_data.get("settings", {})
+    settings = {"display_control": config.get("system", {}).get(
+        "display_control", {"mode": "manual", "interval": {"start": "07:00", "end": "22:00"}})}
 
     # When the screen is on in the scheduled mode, shown as the owner's clock (24h or 12h) has it
     interval = settings.get("display_control", {}).get("interval", {"start": "07:00", "end": "22:00"})

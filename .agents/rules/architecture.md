@@ -18,7 +18,7 @@ The design rules and tokens are in `DESIGN.md`, implemented in `mirrordash_core/
 The core is split by feature (vertical slices, ARCHITECTURE #27):
 
 - **A feature is a folder:** `mirrordash_core/features/<feature>/` holds its routes (`routes.py`), its logic and its `templates/`. A new feature is a new folder plus one line in `app.py`; changing a feature should touch one folder.
-- **Shared code sits at the package root** (`admin.py`, `config.py`, `forms.py`, `venv.py`, `host.py`, `fetch.py`, `system_settings.py`, `notifications.py`, `event_bus.py`). Only what two or more features use goes there.
+- **Shared code sits at the package root** (`admin.py`, `config.py`, `forms.py`, `venv.py`, `host.py`, `fetch.py`, `notifications.py`, `event_bus.py`). Only what two or more features use goes there.
 - **No route without a caller.** The admin panels call feature functions directly; add an HTTP route only for something that requests it (a template, the kiosk, Home Assistant). Every admin route has the `require_api_key` dependency, except the ones that must work before or without a login: the page shell (`GET /admin`), `/admin/auth/status|setup|login|logout|recover`, `POST /admin/auto-update` (loopback only: the nightly timer), and the old open `POST /admin/screen` (kept for existing Home Assistant automations; new ones use the token-protected `/api/v1/screen`, ARCHITECTURE #24).
 - **`features/modules/loader.py`:** Any new function defined inside the `start_modules()` loop — check for closure bugs. Use factories.
 - **`screen.py`:** Frame cache (`latest_messages`) only stores messages with both `"module"` and `"html"` keys. `clear_cache()` is called by `reload_modules()` (`features/modules/client.py`), before the screen reloads.

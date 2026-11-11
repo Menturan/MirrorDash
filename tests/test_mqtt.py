@@ -112,7 +112,7 @@ async def test_nothing_runs_that_the_owner_didnt_turn_on():
             b._recent_command_times.clear()  # the ones above count against COMMAND_RATE (tested on its own below)
             for payload in (b"5", b"\xc2\xb2", b"40", b"55"):  # below the screen's 10, a superscript 2, then a slider
                 await b._on_message("mirrordash/m1/brightness/set", payload, False)
-            with patch("mirrordash_core.system_settings.update_system_settings", AsyncMock()) as brightness:
+            with patch("mirrordash_core.features.settings.system_settings.update_system_settings", AsyncMock()) as brightness:
                 await b._apply_pending(1e9)
                 await b._apply_pending(1e9 + 0.5)
                 brightness.assert_awaited_once_with(settings={"brightness": 55})

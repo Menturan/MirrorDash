@@ -46,8 +46,8 @@ def test_time_in_range_invalid():
     assert manager._is_time_in_range("invalid", "22:00", time(8, 0)) is True
 
 @patch("mirrordash_core.features.updates.service.load_config")
-@patch("mirrordash_core.system_settings.save_config")
-@patch("mirrordash_core.system_settings.apply_system_settings", new_callable=AsyncMock)
+@patch("mirrordash_core.features.settings.system_settings.save_config")
+@patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_system_settings_display_control_validation(
@@ -227,7 +227,7 @@ def test_power_form_saves_wake_settings():
     from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None
     try:
-        with patch("mirrordash_core.system_settings.update_system_settings", new_callable=AsyncMock) as update:
+        with patch("mirrordash_core.features.settings.system_settings.update_system_settings", new_callable=AsyncMock) as update:
             TestClient(app).post("/admin/panels/power/save", data={
                 "display_control[mode]": "wake",
                 "display_control[wake][timeout_minutes]": "3",
