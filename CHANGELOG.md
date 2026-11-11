@@ -340,7 +340,7 @@ OS image with MirrorDash 0.7.0.
 ### Changed
 - The Modules tab starts with a map of the mirror: its top, middle and bottom, with every module where it sits. Tap one to change it, or switch it on and off right there. Below it, the installed modules are a short list that says where each one is and whether an update is waiting, and *Add modules* shows each community module's screenshot, author, stars and last update before you install it.
 - The admin page has one quiet look: white is the only accent, colour only means a status, and the MirrorDash monogram is at the top (also on a phone).
-- SSH (now under *Developer*) and the Home Assistant token (*Home Assistant & API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
+- SSH (now under *Developer*) and the Home Assistant token (*API*) moved from Hardware to Settings. Hardware is the screen and what's connected to the Pi.
 
 ### Fixed
 - *Add New* under a module's instances gives the new one its own name (Clock 2) and says it is new, with *Add to Mirror* instead of Save. Before, it could reuse the first instance's name and looked like nothing happened.
