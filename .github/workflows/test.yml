@@ -42,13 +42,15 @@ jobs:
 
       # configure_image.sh builds the OS image; a typo there would otherwise show up an hour into a build.
       # The build scripts, and every shell script the image installs (scripts/image/rootfs/, by shebang).
-      # The installed ones are checked for warnings too: each runs on its own on every mirror.
       - name: Check shell scripts
         run: |
-          installed=$(grep -rlE '^#!/bin/(ba)?sh' scripts/image/rootfs)
-          for f in scripts/*.sh $installed; do bash -n "$f"; done
-          shellcheck -S error scripts/*.sh
-          shellcheck -S warning $installed
+          mapfile -t installed < <(grep -rlE '^#!/bin/(ba)?sh' scripts/image/rootfs)
+          for f in scripts/*.sh "${installed[@]}"; do bash -n "$f"; done
+          shellcheck -S warning scripts/*.sh "${installed[@]}"
+
+      # The workflows, and their run: blocks through shellcheck. A fixed version, as ruff above.
+      - name: Check workflows
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -color
 
   # The module host's real unit under Debian's systemd in a container (scripts/sandbox-check): what each
   # module's user can and can't reach, its self-check, an OOM and an install. On arm64, as the Pi; the

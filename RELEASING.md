@@ -210,7 +210,7 @@ flowchart LR
 
 | Workflow (`.github/workflows/`) | Started by | What it does | Result |
 | :--- | :--- | :--- | :--- |
-| `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, `ruff check`, and a syntax and `shellcheck` check of `scripts/*.sh`. | Green or red in the Actions tab. |
+| `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, `ruff check`, a syntax and `shellcheck` check of `scripts/*.sh` and of the scripts the image installs, and `actionlint` on the workflows. | Green or red in the Actions tab. |
 | `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
 | `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min), and with a tag (option 3 gives one) the result becomes that test version, a pre-release. One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
 
