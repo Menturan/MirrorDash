@@ -923,9 +923,13 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
     monkeypatch.setattr(client_module, "manager", manager)
     monkeypatch.setattr(client_module, "module_host", client_module.ModuleHost())
     core = client_module.module_host
-    from mirrordash_core.features.mqtt.bridge import mqtt_bridge
     states = []
-    monkeypatch.setattr(mqtt_bridge, "module_state", lambda *args: states.append(args))
+    core.on_state = lambda *args: states.append(args)
+    # ... and the app hands them to MQTT: without this line Home Assistant hears nothing, and no other test notices
+    import inspect
+
+    from mirrordash_core.app import lifespan
+    assert "module_host.on_state = mqtt_bridge.module_state" in inspect.getsource(lifespan.__wrapped__)
 
     server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())

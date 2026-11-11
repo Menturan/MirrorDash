@@ -55,7 +55,7 @@ def test_a_module_that_doesnt_load_doesnt_hold_back_the_others(module_site, clie
     and a and c are kept, checked together once more; only when none loads is nothing changed."""
     module_site.answer = lambda op, args: (1, "ImportError: b") if op == "check" and args[0] == "b" else (0, "")
     running = [{"name": "b", "package_name": "b", "version": "1.0", "type": "pypi"}]
-    with patch("mirrordash_core.features.backup.service.installed_modules", return_value=running):
+    with patch("mirrordash_core.features.modules.installed.installed_modules", return_value=running):
         response = call(update_modules, "a", "b", "c")
     assert response.status_code == 200 and response.json()["updated"] == ["a", "c"]
     assert "b didn't work" in response.json()["message"]

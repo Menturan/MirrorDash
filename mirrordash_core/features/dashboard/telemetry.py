@@ -7,10 +7,6 @@ import logging
 import os
 
 from mirrordash_core.config import get_core_version
-from mirrordash_core.features.wifi.network import (
-    is_wifi_hotspot_active,
-    split_nmcli_terse_line,
-)
 from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.dashboard")
@@ -99,27 +95,6 @@ async def get_ntp_status() -> bool:
     so no false alarm."""
     exit_code, output, _ = await run_command("timedatectl", "show", "--property=NTPSynchronized", timeout=3)
     return exit_code != 0 or "NTPSynchronized=yes" in output
-
-
-async def get_wifi_info() -> dict:
-    """The connection the mirror is on: its Wi-Fi (with signal), its Ethernet, or the setup hotspot."""
-    exit_code, output, _ = await run_command("nmcli", "-t", "-f", "active,ssid,signal", "dev", "wifi", timeout=3)
-    for line in output.splitlines() if exit_code == 0 else []:
-        fields = split_nmcli_terse_line(line)
-        if len(fields) >= 3 and fields[0] == "yes" and fields[1]:
-            signal = int(fields[2]) if fields[2].isdigit() else 100
-            return {"ssid": fields[1], "signal": signal, "type": "wifi"}
-
-    exit_code, output, _ = await run_command("nmcli", "-t", "-f", "NAME,TYPE,DEVICE,STATE", "connection", "show", "--active", timeout=3)
-    for line in output.splitlines() if exit_code == 0 else []:
-        fields = split_nmcli_terse_line(line)
-        if len(fields) >= 2 and "ethernet" in fields[1].lower():
-            return {"ssid": fields[0], "signal": 100, "type": "ethernet"}
-
-    if await is_wifi_hotspot_active():
-        return {"ssid": "MirrorDash-Setup (Hotspot)", "signal": 100, "type": "hotspot"}
-
-    return {"ssid": "N/A (Dev Mode)", "signal": 0, "type": "none"}
 
 
 # The bits of `vcgencmd get_throttled` that are about the power supply: bit 0 "under-voltage now" and bit 16

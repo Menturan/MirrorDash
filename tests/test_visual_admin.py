@@ -144,7 +144,7 @@ def patch_all_system():
         # where find_entry_point looks (the settings drawer); the others imported the name before the patch.
         for m in ("module_files", "loader", "service"):
             stack.enter_context(patch(f"mirrordash_core.features.modules.{m}.module_entry_points", lambda: list(FAKE_MODULES)))
-        stack.enter_context(patch("mirrordash_core.features.backup.service.module_entry_points", lambda: list(FAKE_MODULES)))
+        stack.enter_context(patch("mirrordash_core.features.modules.installed.module_entry_points", lambda: list(FAKE_MODULES)))
 
         # Intercept subprocesses in admin_system.py
         stack.enter_context(patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", return_value=mock_proc))

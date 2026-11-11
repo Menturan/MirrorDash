@@ -170,6 +170,10 @@ class ModuleHost:
     """The connections to the module host. The rest of the core asks this what runs (`running`) and has
     it reload the modules after a settings change."""
 
+    # Who hears what an instance says about something it exposes: (instance, name, value). app.py sets it to
+    # the MQTT bridge, so the modules needn't know who listens.
+    on_state = staticmethod(lambda instance, name, value: None)
+
     def __init__(self):
         self.lan: list[str] | None = None  # what the instances may reach on the home network, once applied
         # ponytail: in memory, so a restart of the core tries them again (CRASH_LIMIT more crashes)
@@ -605,8 +609,7 @@ class ModuleHost:
                 conn.running = instance_id in message["running"]
         elif kind == "state":
             # Something it exposes (ARCHITECTURE #42): published only if the owner shares it and it is declared
-            from mirrordash_core.features.mqtt.bridge import mqtt_bridge
-            mqtt_bridge.module_state(instance_id, message.get("name"), message.get("value"))
+            self.on_state(instance_id, message.get("name"), message.get("value"))
         elif kind == "video_playing":
             await manager.set_video_playing(instance_id, bool(message.get("on")))
         elif kind == "video_window":

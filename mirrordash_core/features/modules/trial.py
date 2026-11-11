@@ -18,6 +18,12 @@ KEY = "module_trial"
 # From the update, the restart that follows included: the crash guard's own window (two crashes in it)
 # and a few minutes to get there
 WINDOW = 15 * 60
+# The nightly update (features/updates) tries a new version of MirrorDash or of a module up to this many
+# nights, as a system build (its OS_TRIAL_TRIES). Counted when it starts: still offered the next night, the
+# try failed, whether the install did or the new version crashed and launch.sh rolled it back. Only that
+# version waits: a newer one gets its own count, and the buttons install it any time. Here because a module
+# put back (put_back) is written down as tried that many times.
+UPDATE_TRIES = 3
 
 
 def start(site_names: list[str], now: float | None = None) -> None:
@@ -56,11 +62,10 @@ async def put_back(only: str | None = None) -> list[str]:
     the modules put back; the caller restarts the app, as after any change of the modules. The version
     that failed isn't tried by the nightly update again (the buttons still install it)."""
     from mirrordash_core import notifications
-    from mirrordash_core.features.backup.service import installed_modules
     from mirrordash_core.features.modules.client import module_host
+    from mirrordash_core.features.modules.installed import installed_modules
     from mirrordash_core.features.modules.package_names import package_key
     from mirrordash_core.features.modules.service import module_title
-    from mirrordash_core.features.updates.service import UPDATE_TRIES
     names = on_trial(load_config())
     if only is not None:
         names &= {only}

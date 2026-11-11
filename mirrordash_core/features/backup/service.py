@@ -26,6 +26,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from mirrordash_core.config import (
+    ROOT_DIR,
     get_base_dir,
     get_core_version,
     get_module_dir,
@@ -49,7 +50,11 @@ from mirrordash_core.features.backup.secret_settings import (
 )
 from mirrordash_core.features.hardware.devices import sync_gpio_overlays
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.modules.module_files import SAFE_NAME, module_entry_points
+from mirrordash_core.features.modules.installed import (
+    find_local_module_dir,
+    installed_modules,
+)
+from mirrordash_core.features.modules.module_files import SAFE_NAME
 from mirrordash_core.features.mqtt.bridge import new_client_id, new_id
 from mirrordash_core.features.wifi.network import add_wifi, saved_wifi
 from mirrordash_core.host import reboot_system, run_in_background, run_restart
@@ -57,8 +62,6 @@ from mirrordash_core.host import reboot_system, run_in_background, run_restart
 logger = logging.getLogger("mirrordash.core.backup")
 
 
-# The source checkout's root, where a developer's local modules sit in modules/
-ROOT_DIR = Path(__file__).parent.parent.parent.resolve()
 BASE_DIR = get_base_dir()
 DATA_DIR = os.path.join(BASE_DIR, "data")
 BACKUPS_DIR = os.path.join(DATA_DIR, "backups")
@@ -89,44 +92,12 @@ def get_modules_dir() -> Path:
     return get_module_dir() / "local"
 
 
-def find_local_module_dir(package_name: str) -> Path | None:
-    """The folder of a module installed from a local folder (not from GitHub or PyPI), or None."""
-    def same_name(name: str) -> bool:
-        return name.lower().replace("_", "-") == package_name.lower().replace("_", "-")
-    for base_dir in [ROOT_DIR / "modules", get_module_dir() / "local"]:
-        if base_dir.exists():
-            for child in base_dir.iterdir():
-                if child.is_dir() and same_name(child.name):
-                    return child
-    return None
-
-
 def venv_distributions(venv_dir: Path | None = None, **kwargs):
     """The installed packages of this process, or of another venv read from its files: one whose
     Python doesn't run here (the venv Safe mode couldn't start, another Python version)."""
     if venv_dir is not None:
         kwargs["path"] = [str(p) for p in Path(venv_dir).glob("lib/python3.*/site-packages")]
     return importlib.metadata.distributions(**kwargs)
-
-
-def installed_modules() -> list[dict]:
-    """Every installed module and where it reinstalls from: its local folder, its GitHub commit
-    (PEP 610 records it) or its PyPI version. The backup manifest and a new Python's module site use it."""
-    modules = []
-    for ep in module_entry_points():
-        package_name = ep.dist.name if ep.dist else ep.name
-        entry = {"name": ep.name, "package_name": package_name,
-                 "version": ep.dist.version if ep.dist else "0.0.0", "type": "pypi"}
-        local_dir = find_local_module_dir(package_name)
-        if local_dir:
-            entry.update(type="local", folder_name=local_dir.name)
-        else:
-            direct_url = json.loads((ep.dist.read_text("direct_url.json") if ep.dist else None) or "{}")
-            vcs = direct_url.get("vcs_info")
-            if vcs and direct_url.get("url"):
-                entry["source"] = f"git+{direct_url['url']}@{vcs['commit_id']}"
-        modules.append(entry)
-    return modules
 
 
 def temp_upload() -> str:

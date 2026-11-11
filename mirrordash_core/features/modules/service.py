@@ -267,8 +267,10 @@ def _name_spellings(package_name: str) -> list[str]:
 
 async def _put_back(site, package_names) -> None:
     """Reinstall these modules in the changed site as they are in the running one (where they came from)."""
-    from mirrordash_core.features.backup.service import installed_modules
-    from mirrordash_core.features.updates.service import module_target
+    from mirrordash_core.features.modules.installed import (
+        installed_modules,
+        module_target,
+    )
     running = {package_key(module["package_name"]): module for module in installed_modules()}
     for package_name in package_names:
         module = running.get(package_key(_local_target(package_name)))

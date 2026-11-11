@@ -28,9 +28,9 @@ async def get_panel_dashboard(request: Request):
         get_ram_usage,
         get_undervoltage_detected,
         get_uptime_string,
-        get_wifi_info,
     )
-    from mirrordash_core.features.updates.service import get_disk_usage
+    from mirrordash_core.features.wifi.network import get_wifi_info
+    from mirrordash_core.host import get_disk_usage
 
     # Each of these spawns a system command (df, timedatectl, nmcli, vcgencmd); run them
     # concurrently instead of one after another, which added up on a Pi 3.

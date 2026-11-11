@@ -58,10 +58,8 @@ def fake_venv(root: Path, py: str = "3.15") -> Path:
 def test_installed_modules_are_read_from_the_module_site(tmp_path, monkeypatch):
     """The modules live in the module host's site, never on the core's sys.path: the core reads their
     files (ARCHITECTURE #41). A venv that doesn't run (Safe mode's) is read from its files too."""
-    from mirrordash_core.features.backup.service import (
-        installed_modules,
-        venv_distributions,
-    )
+    from mirrordash_core.features.backup.service import venv_distributions
+    from mirrordash_core.features.modules.installed import installed_modules
     venv = fake_venv(tmp_path / "venv_b")
     monkeypatch.setenv("MIRRORDASH_MODULE_DIR", str(tmp_path / "modules"))
     (tmp_path / "modules" / "site").mkdir(parents=True)  # a module's folder: here both in one

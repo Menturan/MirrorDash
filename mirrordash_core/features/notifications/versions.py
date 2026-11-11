@@ -11,9 +11,9 @@ from mirrordash_core.config import get_core_version, version_key
 
 def running_versions() -> dict[str, str]:
     """What runs now: {"MirrorDash": "0.16.0", "System": "20261018-2237", "module:Weather": "1.4.2", ...}."""
-    from mirrordash_core.features.backup.service import installed_modules
+    from mirrordash_core.features.modules.installed import installed_modules
     from mirrordash_core.features.modules.service import module_title
-    from mirrordash_core.features.updates.service import installed_os_build
+    from mirrordash_core.host import installed_os_build
     versions = {"MirrorDash": get_core_version()}
     if build := installed_os_build():
         versions["System"] = build
@@ -31,10 +31,8 @@ def newer(name: str, version: str, before: str) -> bool:
 def note_new_versions(now: dict[str, str] | None = None) -> None:
     """A notification for each version that went up since the last start. The first start of this
     version of MirrorDash only remembers them."""
-    from mirrordash_core.features.updates.service import (
-        format_build,
-        installed_os_version,
-    )
+    from mirrordash_core.features.updates.service import format_build
+    from mirrordash_core.host import installed_os_version
     now = running_versions() if now is None else now
     before = notifications.last_versions()
     if before is not None:

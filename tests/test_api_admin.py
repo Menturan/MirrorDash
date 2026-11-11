@@ -14,10 +14,10 @@ from mirrordash_core.features.modules.service import install_module, uninstall_m
 from mirrordash_core.features.settings.globals_schema import get_globals_schema
 from mirrordash_core.features.updates.service import (
     check_core_update,
-    get_disk_usage,
     rebuild_venv,
     update_core,
 )
+from mirrordash_core.host import get_disk_usage
 
 # Setup config fixtures for test cases
 mock_salt = "0123456789abcdef"
@@ -1319,11 +1319,11 @@ def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client
 
 
 @patch("mirrordash_core.features.dashboard.telemetry.get_undervoltage_detected", new_callable=AsyncMock)
-@patch("mirrordash_core.features.dashboard.telemetry.get_wifi_info", new_callable=AsyncMock)
+@patch("mirrordash_core.features.wifi.network.get_wifi_info", new_callable=AsyncMock)
 @patch("mirrordash_core.features.dashboard.telemetry.get_ntp_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.dashboard.telemetry.get_ram_usage")
 @patch("mirrordash_core.features.dashboard.telemetry.get_uptime_string")
-@patch("mirrordash_core.features.updates.service.get_disk_usage")
+@patch("mirrordash_core.host.get_disk_usage")
 @patch("mirrordash_core.features.dashboard.routes.module_host")
 def test_get_panel_dashboard(
     mock_loader, mock_disk_usage, mock_uptime, mock_ram, mock_ntp, mock_wifi, mock_under, client
@@ -1692,7 +1692,7 @@ def test_an_app_update_brings_the_newest_python_patch_on_a_mirror(mock_create_ta
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.features.backup.service.installed_modules", return_value=REBUILD_MODULES)
+@patch("mirrordash_core.features.modules.installed.installed_modules", return_value=REBUILD_MODULES)
 def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock_revert, mock_commit, mock_prepare,
                                                               mock_create_task, mock_restart, case, module_site):
     """A MirrorDash that needs Python 3.15: installed next to 3.14, a new venv gets it, an empty module site

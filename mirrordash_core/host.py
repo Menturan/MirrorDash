@@ -7,9 +7,13 @@ import asyncio
 import logging
 import os
 import re
+import shutil
 import signal
 import zoneinfo
 from collections.abc import Coroutine
+from pathlib import Path
+
+from fastapi import HTTPException
 
 logger = logging.getLogger("mirrordash.core.host")
 
@@ -177,3 +181,45 @@ async def apply_system_password_hash(password_hash: str) -> bool:
         return False
     logger.info("System password hash applied successfully.")
     return True
+
+
+# Which build is which: build_image.sh writes its build stamp (UTC, YYYYMMDD-HHMM) to
+# /etc/mirrordash-os-build in the image, and ends the bundle's file name with the same stamp,
+# e.g. mirrordash-os-v0.7.0-20261018-1915.raucb. A higher stamp is a newer OS.
+OS_BUILD_FILE = Path("/etc/mirrordash-os-build")
+# The release tag (v0.8.1-os1) of a build CI made for a release, only to show; the stamp decides.
+OS_VERSION_FILE = Path("/etc/mirrordash-os-version")
+
+
+def installed_os_build() -> str | None:
+    """The build stamp of the running OS, or None where there are no OS updates (an image from before
+    A/B, a Pi set up by hand, a development machine)."""
+    try:
+        return OS_BUILD_FILE.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def installed_os_version() -> str | None:
+    """The release tag of the running OS, or None (an image built without one, or before it was written)."""
+    try:
+        return OS_VERSION_FILE.read_text().strip() or None
+    except OSError:
+        return None
+
+
+async def get_disk_usage() -> dict:
+    """Get persistent storage partition disk space usage."""
+    try:
+        check_path = "/storage" if os.path.ismount("/storage") or os.path.exists("/storage") else "/"
+        total, used, free = shutil.disk_usage(check_path)
+        percent = round((used / total) * 100, 1) if total > 0 else 0.0
+        return {
+            "total_bytes": total,
+            "used_bytes": used,
+            "free_bytes": free,
+            "percent_used": percent
+        }
+    except Exception as e:
+        logger.error(f"Failed to retrieve disk usage: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {e}")

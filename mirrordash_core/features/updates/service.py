@@ -18,9 +18,11 @@ from packaging.specifiers import InvalidSpecifier, SpecifierSet
 from mirrordash_core import notifications
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
+from mirrordash_core.features.modules.trial import UPDATE_TRIES
 from mirrordash_core.features.updates.download import download, partial_file
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.host import (
+    installed_os_build,
     reboot_system,
     run_command,
     run_in_background,
@@ -110,21 +112,17 @@ def needed_python(requires_python: str | None) -> str | None:
 incompatible: dict = {}
 
 
-def module_target(module: dict) -> list[str]:
-    """What `uv pip install` takes to reinstall a module from where it came (installed_modules)."""
-    from mirrordash_core.features.backup.service import find_local_module_dir
-    local_dir = find_local_module_dir(module["package_name"]) if module["type"] == "local" else None
-    return ["-e", str(local_dir)] if local_dir else [module.get("source") or f"{module['package_name']}=={module['version']}"]
-
-
 async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]) -> dict:
     """A MirrorDash that needs a newer Python (ARCHITECTURE #16). The Python goes next to the running
     one on /storage, an empty venv gets the new MirrorDash, an empty module site every module built for
     it, and each module is loaded once from it (by the module host, in its sandbox: ARCHITECTURE #41).
     Only when all of them work, or the admin chose to turn the ones that don't off (skip), are both
     switched in; otherwise nothing has changed."""
-    from mirrordash_core.features.backup.service import installed_modules
     from mirrordash_core.features.modules.client import module_host
+    from mirrordash_core.features.modules.installed import (
+        installed_modules,
+        module_target,
+    )
     code, _, err = await run("uv", "python", "install", python, timeout=900)
     if code != 0:
         raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
@@ -268,12 +266,6 @@ async def rebuild_venv() -> dict:
 # trial. It keeps the new version only if the network and the app work; otherwise it comes back on
 # the old one by itself. How that works on the mirror: step_ab_updates in scripts/configure_image.sh.
 #
-# Which build is which: build_image.sh writes its build stamp (UTC, YYYYMMDD-HHMM) to
-# /etc/mirrordash-os-build in the image, and ends the bundle's file name with the same stamp,
-# e.g. mirrordash-os-v0.7.0-20261018-1915.raucb. A higher stamp is a newer OS.
-OS_BUILD_FILE = Path("/etc/mirrordash-os-build")
-# The release tag (v0.8.1-os1) of a build CI made for a release, only to show; the stamp decides.
-OS_VERSION_FILE = Path("/etc/mirrordash-os-version")
 # The download, and the build an update was started for (to tell afterwards whether it stuck).
 # /storage/mirrordash belongs to the app's user; the sudoers rule allows installing exactly this file.
 OS_BUNDLE_FILE = Path("/storage/mirrordash/os-update.raucb")
@@ -292,23 +284,6 @@ def format_build(build: str) -> str:
     if re.fullmatch(r"\d{8}-\d{4}", build):
         return f"{build[:4]}-{build[4:6]}-{build[6:8]} {build[9:11]}:{build[11:13]} UTC"
     return build
-
-
-def installed_os_build() -> str | None:
-    """The build stamp of the running OS, or None where there are no OS updates (an image from before
-    A/B, a Pi set up by hand, a development machine)."""
-    try:
-        return OS_BUILD_FILE.read_text().strip() or None
-    except OSError:
-        return None
-
-
-def installed_os_version() -> str | None:
-    """The release tag of the running OS, or None (an image built without one, or before it was written)."""
-    try:
-        return OS_VERSION_FILE.read_text().strip() or None
-    except OSError:
-        return None
 
 
 def newest_os_bundle(releases: list[dict], prerelease: bool) -> dict | None:
@@ -427,28 +402,6 @@ async def update_os(bundle: dict) -> None:
     run_in_background(reboot_system())
 
 
-async def get_disk_usage() -> dict:
-    """Get persistent storage partition disk space usage."""
-    try:
-        check_path = "/storage" if os.path.ismount("/storage") or os.path.exists("/storage") else "/"
-        total, used, free = shutil.disk_usage(check_path)
-        percent = round((used / total) * 100, 1) if total > 0 else 0.0
-        return {
-            "total_bytes": total,
-            "used_bytes": used,
-            "free_bytes": free,
-            "percent_used": percent
-        }
-    except Exception as e:
-        logger.error(f"Failed to retrieve disk usage: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to retrieve disk usage: {e}")
-
-
-# The nightly update tries a new version of MirrorDash or of a module up to this many nights, as a system
-# build (OS_TRIAL_TRIES). Counted when it starts: still offered the next night, the try failed, whether the
-# install did or the new version crashed and launch.sh rolled it back. Only that version waits: a newer one
-# gets its own count, and the buttons install it any time.
-UPDATE_TRIES = OS_TRIAL_TRIES
 
 
 def update_tries(config: dict, name: str, version: str) -> int:

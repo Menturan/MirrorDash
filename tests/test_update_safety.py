@@ -205,8 +205,7 @@ def test_a_module_update_that_fails_on_trial_is_put_back(monkeypatch):
     """Its version before goes back (one link in the site), the others stay, and the nightly update leaves
     that version alone; once the trial is over a module is paused as before."""
     from mirrordash_core import notifications
-    from mirrordash_core.features.backup import service as backup
-    from mirrordash_core.features.modules import trial
+    from mirrordash_core.features.modules import installed, trial
     from mirrordash_core.features.modules.client import module_host
     config, asked = {"modules": {}, "system": {}}, []
 
@@ -216,7 +215,7 @@ def test_a_module_update_that_fails_on_trial_is_put_back(monkeypatch):
     monkeypatch.setattr(trial, "load_config", lambda: config)
     monkeypatch.setattr(trial, "save_config", lambda saved: None)
     monkeypatch.setattr(module_host, "_site", site)
-    monkeypatch.setattr(backup, "installed_modules", lambda: [
+    monkeypatch.setattr(installed, "installed_modules", lambda: [
         {"name": "mirrordash_news", "package_name": "mirrordash-news", "version": "2.0.1", "type": "pypi"}])
     trial.start(["mirrordash-news", "mirrordash-new"], now=1000.0)
     assert trial.on_trial(config, now=1000.0 + trial.WINDOW - 1) == {"mirrordash-news", "mirrordash-new"}

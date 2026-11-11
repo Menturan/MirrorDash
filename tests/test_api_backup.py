@@ -221,7 +221,7 @@ def test_get_modules_dir(tmp_path):
         assert get_modules_dir() == tmp_path / "modules" / "local"
 
 def test_find_local_module_dir(tmp_path):
-    from mirrordash_core.features.backup.service import find_local_module_dir
+    from mirrordash_core.features.modules.installed import find_local_module_dir
     
     fake_root = tmp_path / "root"
     fake_dev_modules = fake_root / "modules"
@@ -238,7 +238,7 @@ def test_find_local_module_dir(tmp_path):
     home_module = fake_home_modules / "mirrordash_calendar"
     home_module.mkdir()
     
-    with patch("mirrordash_core.features.backup.service.ROOT_DIR", fake_root), \
+    with patch("mirrordash_core.features.modules.installed.ROOT_DIR", fake_root), \
          patch.dict("os.environ", {"MIRRORDASH_MODULE_DIR": str(tmp_path / "modules")}):
 
         # Should find dev module
@@ -309,7 +309,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, module_site, client
     source = f"git+https://github.com/someone/mirrordash-weather.git@{commit}"
 
     with patch("mirrordash_core.features.backup.service.find_local_module_dir", return_value=None), \
-         patch("mirrordash_core.features.backup.service.module_entry_points", return_value=[ep]):
+         patch("mirrordash_core.features.modules.installed.module_entry_points", return_value=[ep]):
         with patch("mirrordash_core.features.backup.service.load_config", return_value=old_config):
             r = call(create_backup)
         assert r.status_code == 200, r.json()

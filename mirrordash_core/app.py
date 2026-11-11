@@ -14,6 +14,7 @@ from mirrordash_core.features.api import api as api_v1
 from mirrordash_core.features.api import routes as api
 from mirrordash_core.features.auth import routes as auth
 from mirrordash_core.features.backup import routes as backup
+from mirrordash_core.features.backup import setup_restore
 from mirrordash_core.features.dashboard import routes as dashboard
 from mirrordash_core.features.hardware import routes as hardware
 from mirrordash_core.features.hardware.inputs import gpio_inputs
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI):
     system_settings.apply_saved_system_settings_at_startup()
     updates_service.turn_modules_back_on_after_rollback()
     event_bus.subscribe("hardware.button", buttons.on_button)
+    module_host.on_state = mqtt_bridge.module_state
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
                  mqtt_bridge.start, notification_watch.start):
@@ -76,7 +78,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 # While the setup hotspot is up, everything but the setup page redirects to it
 app.middleware("http")(wifi.captive_portal_redirect)
 
-for feature in (admin, system_settings, auth, backup, dashboard, hardware, api,
+for feature in (admin, system_settings, auth, backup, setup_restore, dashboard, hardware, api,
                 kiosk, logs, matter, modules, module_files, modules_service, mqtt, notifications, power, settings, updates, wifi):
     app.include_router(feature.router)
 app.mount("/api/v1", api_v1.api)

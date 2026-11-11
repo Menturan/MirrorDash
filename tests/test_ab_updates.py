@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from test_configure_image import SETUP, unit
 
+from mirrordash_core import host
 from mirrordash_core.features.updates import service
 
 BACKEND = unit("/usr/local/lib/mirrordash/rauc-bootloader")
@@ -191,7 +192,7 @@ def test_failed_os_update_is_reported_once(tmp_path, monkeypatch):
 
 def test_no_os_updates_without_an_ab_image(tmp_path, monkeypatch):
     import asyncio
-    monkeypatch.setattr(service, "OS_BUILD_FILE", tmp_path / "missing")
+    monkeypatch.setattr(host, "OS_BUILD_FILE", tmp_path / "missing")
     assert asyncio.run(service.check_os_update()) == {"supported": False}
 
 
@@ -375,7 +376,7 @@ def test_the_os_update_interface_stays_the_same():
     # The release tag goes from CI's input through sudo into the image, for the admin page
     workflow = (root / ".github" / "workflows" / "build-os-image.yml").read_text()
     assert "OS_TAG: ${{ inputs.tag }}" in workflow and "--preserve-env=RAUC_KEY,OS_TAG" in workflow
-    assert f'"$MOUNT_DIR{service.OS_VERSION_FILE}"' in build
+    assert f'"$MOUNT_DIR{host.OS_VERSION_FILE}"' in build
     assert service.BUNDLE_NAME.match("mirrordash-os-v0.7.0-os2-20261019-1024.raucb").group(1) == "20261019-1024"
     assert service.RELEASES_URL.startswith("https://api.github.com/repos/Menturan/MirrorDash/releases")
 

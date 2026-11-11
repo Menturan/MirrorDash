@@ -33,7 +33,7 @@ def setup_client(tmp_path):
     """The setup page's API on a mirror without an admin password; backups land in tmp_path."""
     with patch("mirrordash_core.features.wifi.routes.load_config", return_value={}) as load, \
          patch("mirrordash_core.features.backup.service.BACKUPS_DIR", str(tmp_path / "backups")), \
-         patch("mirrordash_core.features.wifi.routes.connect_wifi", new_callable=AsyncMock,
+         patch("mirrordash_core.features.backup.setup_restore.connect_wifi", new_callable=AsyncMock,
                return_value=(True, "ok")):
         yield TestClient(app), load
 
@@ -56,7 +56,7 @@ def test_setup_restore_answers_before_it_leaves_the_hotspot(setup_client, tmp_pa
     assert r.status_code == 400 and "Wrong password" in r.json()["detail"]
     r = client.post("/api/wifi/restore", files={"file": ("b.mirror", make_backup(tmp_path, None, None))})
     assert r.status_code == 400 and "no Wi-Fi" in r.json()["detail"]
-    with patch("mirrordash_core.features.wifi.routes.start_job"):
+    with patch("mirrordash_core.features.backup.setup_restore.start_job"):
         r = client.post("/api/wifi/restore", files={"file": ("b.mirror", locked)}, data={"password": "pw"})
     assert r.status_code == 200 and r.json()["networks"] == ["Home"]
 

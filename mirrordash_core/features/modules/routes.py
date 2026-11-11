@@ -49,7 +49,6 @@ from mirrordash_core.features.modules.service import (
     update_modules,
 )
 from mirrordash_core.features.modules.setting_rules import check_setting_rules
-from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
     STANDARD_FIELDS,
@@ -59,6 +58,7 @@ from mirrordash_core.forms import (
     read_form,
     render_schema_form,
 )
+from mirrordash_core.host import get_disk_usage
 from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.modules")

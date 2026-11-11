@@ -35,13 +35,15 @@ from mirrordash_core.features.settings.dev_logging import (
 )
 from mirrordash_core.features.settings.globals_schema import get_globals_schema
 from mirrordash_core.features.settings.ssh import get_ssh_status
-from mirrordash_core.features.updates.service import (
-    format_build,
+from mirrordash_core.features.updates.service import format_build
+from mirrordash_core.forms import cast_values_by_schema, read_form
+from mirrordash_core.host import (
+    apply_system_timezone,
     installed_os_build,
     installed_os_version,
+    run_command,
+    run_in_background,
 )
-from mirrordash_core.forms import cast_values_by_schema, read_form
-from mirrordash_core.host import apply_system_timezone, run_command, run_in_background
 from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.settings")

@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 
 from mirrordash_core.config import get_core_version
 from mirrordash_core.features.modules.client import module_host
-from mirrordash_core.features.updates.service import OS_BUILD_FILE, OS_VERSION_FILE
+from mirrordash_core.host import OS_BUILD_FILE, OS_VERSION_FILE
 
 HOST_UNIT = "mirrordash-modules.service"
 SHOW = ("ActiveEnterTimestamp", "NRestarts", "MemoryCurrent", "MemoryPeak", "MemoryMax", "IPAddressAllow")
