@@ -231,8 +231,7 @@ def test_a_module_update_that_fails_on_trial_is_put_back(monkeypatch):
 
 
 def test_a_screen_that_crashes_after_a_module_update_gets_the_version_before_not_a_pause(monkeypatch):
-    from mirrordash_core.features.kiosk import guard
-    from mirrordash_core.features.modules import trial
+    from mirrordash_core.features.modules import guard, trial
     config = {"modules": {"mirrordash-news": {"enabled": True, "position": "top_left"}},
               guard.KEY: {"crashes": [guard.time.time() - 60], "changed": {"mirrordash-news": 5.0}}}
     put_back, saved, restarts = AsyncMock(return_value=["mirrordash-news"]), [], []

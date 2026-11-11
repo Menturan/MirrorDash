@@ -14,9 +14,9 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from mirrordash_core import notifications
 from mirrordash_core.admin import BOOT_ID, PACKAGE_DIR, auth_state, templates
 from mirrordash_core.config import get_core_version, load_config
-from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.kiosk.design_forms import design_cards
 from mirrordash_core.features.kiosk.internet import internet_monitor
+from mirrordash_core.features.modules import guard
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,

@@ -1,11 +1,11 @@
-"""The screen's crash guard (kiosk/guard.py, ARCHITECTURE #47): crashes counted from the page's loads, the steps
+"""The screen's crash guard (modules/guard.py, ARCHITECTURE #47): crashes counted from the page's loads, the steps
 it pauses modules in, and the ways back."""
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from mirrordash_core.features.kiosk import guard
+from mirrordash_core.features.modules import guard
 from mirrordash_core.screen import ConnectionManager
 
 MODULES = {

@@ -23,7 +23,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
-from mirrordash_core.features.kiosk import guard
+from mirrordash_core.features.modules import guard
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request
 from mirrordash_core.features.modules.client import module_host

@@ -3,7 +3,7 @@
 when it fails in that time, the version before is put back instead of the module being paused.
 
 Failing is what already had a rule: its process dying CRASH_LIMIT times in a row (client.py), or the screen
-crashing twice soon after (the crash guard, kiosk/guard.py). The version before is still there: an update
+crashing twice soon after (the crash guard, modules/guard.py). The version before is still there: an update
 goes into a new folder, and the site that isn't active keeps its link to the old one until the next change
 (site_folders.py), so the host only points one link back (host.py Control._site "back")."""
 

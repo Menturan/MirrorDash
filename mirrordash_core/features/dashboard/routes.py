@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Request
 
 from mirrordash_core.admin import notify, require_api_key, templates
 from mirrordash_core.config import load_config
-from mirrordash_core.features.kiosk import guard
+from mirrordash_core.features.modules import guard
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.service import screen_layout
 

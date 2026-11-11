@@ -26,7 +26,7 @@ def screen_message(config: dict | None = None) -> dict:
     """The screen-wide settings js/kiosk/core.js puts on <html>: privacy mode and what it shows, and how
     the modules look over a background photo (an unknown value: the default); and the module instances
     their schedules hide now, which it marks on their cards."""
-    from mirrordash_core.features.kiosk import guard
+    from mirrordash_core.features.modules import guard
     config = config if config is not None else load_config()
     globals_config = config.get("globals") or {}
     shows, cards = globals_config.get("privacy_shows"), globals_config.get("cards_over_photo")

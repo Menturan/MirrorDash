@@ -19,8 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from mirrordash_core import notifications
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
-from mirrordash_core.features.kiosk import guard
-from mirrordash_core.features.modules import trial
+from mirrordash_core.features.modules import guard, trial
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,

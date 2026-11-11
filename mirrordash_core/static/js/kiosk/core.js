@@ -16,7 +16,7 @@ let lostAt = null;
 // The MirrorDash version this page was loaded with (the server says it on every connect)
 let pageVersion = null;
 let pageBootId = null;
-// This load of the page: a new one the core didn't ask for is a crash, for its guard (kiosk/guard.py)
+// This load of the page: a new one the core didn't ask for is a crash, for its guard (modules/guard.py)
 const PAGE_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
 let hideStatusTimer = null;
 // The module instances their schedules hide now (the screen message, features/power/display_power.py)

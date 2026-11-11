@@ -460,7 +460,7 @@ class ModuleHost:
                                    find_entry_point(cfg.get("module", instance_id), eps), config)}
                                for order, (instance_id, cfg) in enumerate(modules.items())}
             # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
-            from mirrordash_core.features.kiosk import guard
+            from mirrordash_core.features.modules import guard
             held = self.paused | guard.paused(config)
             from mirrordash_core.features.modules.schema import (
                 _installed_module_schemas,  # as lan.py: no import cycle

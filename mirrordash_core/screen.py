@@ -41,7 +41,7 @@ class ConnectionManager:
         self.video_players: set[str] = set()
         self.pending: set[str] = set()  # the instances whose update waits for the next whole minute
         self._minute_task: asyncio.Task | None = None
-        # The crash guard (features/kiosk/guard.py): the page's id (a new one is a new load), whether that page was loaded
+        # The crash guard (features/modules/guard.py): the page's id (a new one is a new load), whether that page was loaded
         # before this start of the core (it reloads itself, no crash), when the core asked the screen to
         # reload, and the instances that played a video since the start
         self.page_id: str | None = None
