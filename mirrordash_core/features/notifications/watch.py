@@ -19,10 +19,11 @@ logger = logging.getLogger("mirrordash.core.notifications")
 
 # ponytail: a look once a minute, not inotify; a notification can be a minute late
 CHECK_EVERY = 60  # seconds
-# Told even on a mirror's first look, when mirrordash-hydrate.sh rebuilt the storage partition (notifications
-# included) at this start: it leaves this mark in /run, which every start begins without. Only then, so a
-# notifications.json that broke and started over doesn't announce an old rebuild's log again.
-TOLD_ON_FIRST_LOOK = {"storage-rebuilt"}
+# Told even on a mirror's first look, when mirrordash-hydrate.sh rebuilt the storage partition or its repair
+# lost the settings (notifications included) at this start: it leaves this mark in /run, which every start
+# begins without. Only then, so a notifications.json that broke and started over doesn't announce an old
+# log again.
+TOLD_ON_FIRST_LOOK = {"storage-rebuilt", "storage-lost"}
 REBUILT_THIS_START = Path("/run/mirrordash-storage-rebuilt")
 
 

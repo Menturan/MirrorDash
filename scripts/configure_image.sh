@@ -874,6 +874,10 @@ step_ab_updates() {
   # overlayroot mounts it (an fstab line for p2 would name the boot partition of slot A).
   mkdir -p /boot/autoboot
   sed -i -e 's|\s/boot/firmware\s| /boot/autoboot |' -e '/\s\/\s/d' /etc/fstab
+  # /storage is always the SD card's p7 here, named so rather than by its label: an old mirror's card in a
+  # USB reader carries the same label, and its partition must never be mounted, repaired or formatted as
+  # this mirror's (mirrordash-hydrate.sh does the same)
+  sed -i 's|^LABEL=mirrordash-data\s|/dev/mmcblk0p7  |' /etc/fstab
 
   # The admin page installs OS updates (features/updates/service.py: update_os): it downloads the
   # bundle to this one file and has RAUC install it. RAUC installs only bundles signed with our key.

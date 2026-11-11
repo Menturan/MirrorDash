@@ -16,58 +16,78 @@ owned_folder() {  # owned_folder OWNER:GROUP MODE PATH
 
 # Defensive mount check: if the partition exists but is not mounted (fstab's nofail lets the boot go
 # on when its fsck wants a person, e.g. after a power cut mid-write), repair it and mount it
-DATA_PART=/dev/disk/by-label/mirrordash-data
-# With its superblock broken the partition has no label to be found by; on an A/B image it is always p7
-if [ ! -b "$DATA_PART" ] && grep -qw 'rootfstype=squashfs' /proc/cmdline && [ -b /dev/mmcblk0p7 ]; then
-    DATA_PART=/dev/mmcblk0p7
-fi
-# The device itself, not the label's link: mkfs below gives the partition a new UUID, and udev takes the
-# link away and back while it catches up
-DATA_PART=$(readlink -f "$DATA_PART")
-REPAIRED="" REBUILT="" rc=0
 IMAGE=""; grep -qw 'rootfstype=squashfs' /proc/cmdline && IMAGE=1
+# On an A/B image the partition is always the SD card's p7, found by its place and never by its label: with
+# its superblock broken it has no label, and an old mirror's card in a USB reader carries the same one,
+# which e2fsck -y and mkfs below must never touch (fstab names p7 too, configure_image.sh). A hand-made
+# setup has it wherever repart put it, so by its label.
+if [ -n "$IMAGE" ]; then DATA_PART=/dev/mmcblk0p7; else DATA_PART=/dev/disk/by-label/mirrordash-data; fi
+# The device itself, not a link: mkfs below gives the partition a new UUID, and udev takes links away
+# and back while it catches up
+DATA_PART=$(readlink -f "$DATA_PART")
+REPAIRED="" REBUILT="" FORCED_YES="" LOST="" ERRORS_LEFT="" rc=0 force=""
 # The newest automatic and hand-made backup, copied into RAM off a partition e2fsck -p gave up on, before
 # e2fsck -y writes to it: from a superblock copy with stale group descriptors -y can clear a whole
 # file system's inodes, the backups' with them (seen on an emulated mirror, ARCHITECTURE #58)
 RESCUE=/run/mirrordash-rescue
 rescue_backups() {
     mkdir -p "$RESCUE"
-    mountpoint -q "$RESCUE" || mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE" || return 0
+    if ! mountpoint -q "$RESCUE" && ! mount -t tmpfs -o mode=700,size=50% tmpfs "$RESCUE"; then
+        echo "Warning: no RAM for the rescue; e2fsck -y runs without the backups copied first" >&2
+        return 0
+    fi
     /usr/local/lib/mirrordash/storage-rescue "$DATA_PART" "$RESCUE" || echo "Warning: no backup could be rescued" >&2
 }
-if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
-    echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
-    e2fsck -p "$DATA_PART" || rc=$?
-    # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
-    # mirror that has lost all of them.
-    if [ "$rc" -ge 4 ]; then
-        if [ -n "$IMAGE" ]; then rescue_backups; fi
-        rc=0; e2fsck -y "$DATA_PART" || rc=$?
-    fi
-    [ "$rc" -ne 0 ] && REPAIRED=1
-    mount /storage || mount "$DATA_PART" /storage || true
-fi
-
 # Whether /storage takes a write: a partition e2fsck -y left with errors can mount and still refuse every
-# file in it ("Bad message": its root folder broken), which mountpoint alone can't tell
+# file in it ("Bad message": its root folder broken), and the kernel turns one read-only on an error it
+# meets while mounted; mountpoint alone can't tell either
 storage_works() {
     { mountpoint -q /storage && mkdir -p /storage/mirrordash && touch /storage/mirrordash/.write-test &&
         rm -f /storage/mirrordash/.write-test; } 2>/dev/null
 }
-# Rescued backups back on the card (pi's, 0600) where the partition lacks them or e2fsck changed them
+# Mounted (by systemd, from fstab) but refusing writes: unmounted, so the check below can run. -f, since
+# a file system the kernel didn't get to mark as having errors looks clean, and -p skips a clean one.
+if [ -b "$DATA_PART" ] && mountpoint -q /storage && ! storage_works; then
+    echo "Warning: /storage is mounted but takes no write. Checking it..."
+    if umount /storage; then force=-f; fi
+fi
+if [ -b "$DATA_PART" ] && ! mountpoint -q /storage; then
+    echo "Warning: /storage is not mounted but the partition exists. Checking and mounting it..."
+    e2fsck ${force:+"$force"} -p "$DATA_PART" || rc=$?
+    # 4 and up: -p wouldn't fix it alone. -y answers yes to everything: a few lost files beat a
+    # mirror that has lost all of them.
+    if [ "$rc" -ge 4 ]; then
+        if [ -n "$IMAGE" ]; then rescue_backups; fi
+        FORCED_YES=1
+        rc=0; e2fsck -y "$DATA_PART" || rc=$?
+    fi
+    # 1-3: errors found and fixed. 4 and up (after -y): errors left, handled below
+    if [ "$rc" -ge 1 ] && [ "$rc" -lt 4 ]; then REPAIRED=1; fi
+    mount /storage || mount "$DATA_PART" /storage || true
+fi
+
+# Rescued backups back on the card (pi's, 0600) where the partition lacks them or e2fsck changed them.
+# A backup that can't go back (a full card) is only warned about: the mirror still starts.
 put_back_backups() {
     owned_folder pi:pi 755 /storage/mirrordash
     owned_folder pi:pi 700 /storage/mirrordash/data
     owned_folder pi:pi 755 /storage/mirrordash/data/backups
-    local backup target
+    local backup target part
     for backup in "$RESCUE"/*.mirror; do
         [ -f "$backup" ] || continue
         target=/storage/mirrordash/data/backups/${backup##*/}
         cmp -s "$backup" "$target" && continue
-        install -m 600 "$backup" "$target"
-        chown pi:pi "$target"
-        echo "Rescued backup put back: ${backup##*/}"
+        # Under a new name first (install creates it, never writing through a link pi put there), on the
+        # card, then renamed over: a power cut never leaves half a backup under a backup's name
+        part=$(mktemp -u "$target.XXXXXX")
+        if install -m 600 "$backup" "$part" && chown -h pi:pi "$part" && sync "$part" && mv -f "$part" "$target"; then
+            echo "Rescued backup put back: ${backup##*/}"
+        else
+            rm -f "$part"
+            echo "Warning: a rescued backup couldn't be put back: ${backup##*/}" >&2
+        fi
     done
+    sync /storage/mirrordash/data/backups || true
 }
 # A partition e2fsck -y couldn't repair (errors left, 4 and up) and that doesn't mount or doesn't work: it is
 # made anew, and the backups rescued above go back at once (ARCHITECTURE #58). The mirror then starts as a
@@ -78,10 +98,12 @@ rebuild_storage() {
     echo "Error: /storage can't be repaired. Making the partition anew..." >&2
     if mountpoint -q /storage; then umount /storage || return 1; fi
     mkfs.ext4 -F -L mirrordash-data "$DATA_PART" || return 1
-    udevadm settle || true  # the new label's link, for fstab's options (noatime, resgid)
-    mount /storage || mount "$DATA_PART" /storage || return 1
+    udevadm settle || true
+    # From here the partition is empty and the backups are only in RAM: one more try after udev caught up
+    mount /storage || mount "$DATA_PART" /storage || { udevadm settle; mount -t ext4 "$DATA_PART" /storage; } ||
+        return 1
     # Back on the card before anything else can fail: RAM forgets them at the next start
-    put_back_backups
+    put_back_backups || true
     sync
     # For the bell's first look: this start rebuilt it (/run is new at every start; the clock can't tell,
     # as it still shows the image's date this early)
@@ -98,9 +120,23 @@ if [ -n "$IMAGE" ] && [ "$rc" -ge 4 ] && [ -b "$DATA_PART" ] && ! storage_works;
     fi
     if ! storage_works; then rebuild_storage && REBUILT=1 || true; fi
 fi
-# Repaired after all (it works): what e2fsck may have cleared of the rescued backups goes back
-if [ -z "$REBUILT" ] && compgen -G "$RESCUE/*.mirror" > /dev/null && storage_works; then put_back_backups; fi
-if mountpoint -q "$RESCUE"; then umount "$RESCUE" || true; fi
+if [ -z "$REBUILT" ] && storage_works; then
+    # Repaired after all (it works): what e2fsck may have cleared of the rescued backups goes back
+    if compgen -G "$RESCUE/*.mirror" > /dev/null; then put_back_backups || true; fi
+    # e2fsck -y "repaired" it by clearing what it couldn't read, the settings with it: the mirror starts as
+    # a new one, and the bell (whose own file went too) must say so on its first look
+    if [ -n "$FORCED_YES" ] && [ ! -e /storage/mirrordash/data/config.json ] && [ ! -e /storage/mirrordash/data/config.json.bak ]; then
+        LOST=1
+        touch /run/mirrordash-storage-rebuilt
+    fi
+    # Errors -y couldn't fix, but it works: kept (the owner's settings are in it), and the card is suspect
+    if [ "$rc" -ge 4 ]; then ERRORS_LEFT=1; fi
+fi
+# Given back once the backups are on a card that works; otherwise kept until the next start, for a person
+# to copy them off by hand (the app doesn't start)
+if mountpoint -q "$RESCUE"; then
+    if storage_works; then umount "$RESCUE" || true; else echo "Rescued backups kept in RAM at $RESCUE" >&2; fi
+fi
 
 # On an image (#5) / is a RAM overlay: without /storage everything below would land in RAM, the
 # mirror would look new and forget whatever is saved at the next restart. Stop instead: the app
@@ -223,6 +259,14 @@ mkdir -p /storage/rauc
 owned_folder pi:pi 755 /storage/mirrordash/logs
 
 # The repair above happened before /storage was there to save its log in (a rebuild saved its own)
-if [ -n "$REPAIRED" ] && [ -z "$REBUILT" ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-    /usr/local/lib/mirrordash/save-log storage-repair -b -n 1000 >/dev/null || true
+save_log() { [ ! -x /usr/local/lib/mirrordash/save-log ] || /usr/local/lib/mirrordash/save-log "$1" -b -n 1000 >/dev/null || true; }
+if [ -n "$LOST" ]; then
+    save_log storage-lost
+elif [ -n "$REPAIRED" ] && [ -z "$REBUILT" ]; then
+    save_log storage-repair
+fi
+# Once, not at every start (-y meets the same errors each time): the log stays among the newest five until
+# five others push it out. ponytail: then it is told again, which for a failing card is no harm.
+if [ -n "$ERRORS_LEFT" ] && ! compgen -G "/storage/mirrordash/logs/storage-errors-*" > /dev/null; then
+    save_log storage-errors
 fi

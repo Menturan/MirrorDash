@@ -1,6 +1,6 @@
 #!/bin/bash
 # Inside the container of run.sh: the real mirrordash-hydrate.sh and storage-rescue against a real ext4 on a
-# loop device. Only the label's link (no udev here) and /proc/cmdline point at the test's own; e2fsck and
+# loop device. Only the SD card's p7 and /proc/cmdline point at the test's own; e2fsck and
 # mount are swapped for ones that fail where a case needs it. Exit 1 when a check fails.
 set -uo pipefail
 ROOTFS=/repo/scripts/image/rootfs
@@ -33,9 +33,11 @@ new_disk() {
     local b=/storage/mirrordash/data/backups
     mkdir -p $b
     echo '{"settings": "mine"}' > /storage/mirrordash/data/config.json
-    head -c 200000 /dev/urandom > $b/mirrordash_autobackup_20261101_033000.mirror
-    head -c 300000 /dev/urandom > $b/mirrordash_autobackup_20261108_033000.mirror
-    head -c 100000 /dev/urandom > $b/mirrordash_backup_20261102_120000.mirror
+    # Encrypted backups (openssl's "Salted__" header): storage-rescue keeps only what looks like a backup
+    { printf Salted__; head -c 200000 /dev/urandom; } > $b/mirrordash_autobackup_20261101_033000.mirror
+    { printf Salted__; head -c 300000 /dev/urandom; } > $b/mirrordash_autobackup_20261108_033000.mirror
+    { printf Salted__; head -c 100000 /dev/urandom; } > $b/mirrordash_backup_20261102_120000.mirror
+    sha256sum < $b/mirrordash_autobackup_20261101_033000.mirror | cut -d' ' -f1 > /want-older
     sha256sum < $b/mirrordash_autobackup_20261108_033000.mirror | cut -d' ' -f1 > /want-auto
     sha256sum < $b/mirrordash_backup_20261102_120000.mirror | cut -d' ' -f1 > /want-hand
     umount /storage
@@ -43,7 +45,7 @@ new_disk() {
 zero_superblock() { dd if=/dev/zero of="$LOOP" bs=1024 seek=1 count=1 conv=notrunc status=none; }
 fake() { printf '#!/bin/sh\n%s\n' "$2" > "/fake/$1"; chmod 755 "/fake/$1"; }
 hydrate() {
-    sed -e "s|/dev/disk/by-label/mirrordash-data|$LOOP|" -e "s|/proc/cmdline|/tmp/cmdline|g" \
+    sed -e "s|/dev/mmcblk0p7|$LOOP|" -e "s|/proc/cmdline|/tmp/cmdline|g" \
         "$ROOTFS/usr/local/bin/mirrordash-hydrate.sh" > /tmp/hydrate.sh
     echo "LABEL=mirrordash-data /storage ext4 defaults,noatime,nofail 0 2" > /etc/fstab
     PATH="/fake:$PATH" bash /tmp/hydrate.sh > /tmp/hydrate.log 2>&1; echo $? > /tmp/rc
@@ -54,6 +56,11 @@ backups=/storage/mirrordash/data/backups
 echo "A healthy partition that just wasn't mounted"
 new_disk; hydrate
 check "mounted, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/config.json'
+
+echo "Mounted, but turned read-only (as the kernel does on an error): checked in full and mounted again"
+new_disk; mount "$LOOP" /storage && mount -o remount,ro /storage; hydrate
+check "writable again, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && touch /storage/mirrordash/probe && grep -q mine /storage/mirrordash/data/config.json'
+check "checked with -f" 'grep -q "takes no write" /tmp/hydrate.log'
 
 echo "The first superblock gone: e2fsck repairs it from a copy"
 new_disk; zero_superblock; hydrate
@@ -72,6 +79,16 @@ check "storage-rebuilt log saved, no storage-repair" 'ls /storage/mirrordash/log
 check "the rescue's RAM is given back" '! mountpoint -q /run/mirrordash-rescue'
 check "this start's mark for the bell's first look" '[ -e /run/mirrordash-storage-rebuilt ]'
 check "starts as a new mirror (venv seeded)" '[ "$(readlink /storage/mirrordash/venv)" = venv_a ]'
+
+# A block that reads back as zeros where the newest automatic backup's inode was: it lists with mode 0 and
+# size 0, which must not come back as an empty "newest backup" in place of the whole one before it
+echo "The newest automatic backup's inode cleared: the one before it is rescued instead"
+new_disk; debugfs -w -R "clri /mirrordash/data/backups/mirrordash_autobackup_20261108_033000.mirror" "$LOOP" >/dev/null 2>&1
+zero_superblock; fake e2fsck 'exit 8'; hydrate
+check "made anew" '[ "$(cat /tmp/rc)" = 0 ] && [ ! -e /storage/mirrordash/data/config.json ]'
+check "the automatic backup before it back, whole" 'same $backups/mirrordash_autobackup_20261101_033000.mirror /want-older'
+check "no empty newest one" '[ ! -e $backups/mirrordash_autobackup_20261108_033000.mirror ]'
+check "the hand-made one back, whole" 'same $backups/mirrordash_backup_20261102_120000.mirror /want-hand'
 
 # Seen on an emulated mirror: e2fsck -y from a stale superblock copy cleared the inodes and left errors; the
 # partition mounted, but its root folder refused every write ("Bad message"). Here -p gives up, and -y breaks

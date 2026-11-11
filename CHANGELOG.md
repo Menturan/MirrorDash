@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### OS image
 
+- A damaged storage partition is handled in more cases: a newest backup that can't be read no longer comes back empty (the one before it is rescued instead), a partition that is there but can't be written to is repaired instead of stopping the mirror, and a repair that lost your settings, or errors that can't be repaired, now show on the bell. An old mirror's SD card in a USB reader is never mistaken for this mirror's storage.
 - **A damaged storage partition no longer stops the mirror for good**: when it can't be repaired at start, the mirror saves the newest backups from it, makes it anew and starts as a new mirror, and the bell says to restore the backup, which brings everything back.
 - A power cut while the Wi-Fi country or the Hardware tab's devices are being saved can no longer leave a mirror that doesn't start; the system's boot partition is also checked and repaired at every start.
 

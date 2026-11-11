@@ -1,8 +1,8 @@
 #!/bin/bash
 # Usage: storage-rescue DEVICE OUTDIR
-#   Copies the newest automatic backup and the newest hand-made one off a storage partition (ext4) that
-#   can't be mounted, into OUTDIR. Run by mirrordash-hydrate.sh before it rebuilds the partition; prints
-#   the names it saved. Exit 0 when at least one came out.
+#   Copies the newest automatic backup and the newest hand-made one that come out whole off a storage
+#   partition (ext4) that can't be mounted, into OUTDIR. Run by mirrordash-hydrate.sh before e2fsck -y;
+#   prints the names it saved. Exit 0 when at least one came out.
 #
 # debugfs -c (catastrophic mode) reads the file system without mounting it and without its block and inode
 # bitmaps, the parts a broken one most often has wrong. With the first superblock gone it tries the
@@ -21,23 +21,40 @@ for superblock in "" 32768 98304 163840 229376 294912; do
 done
 [ -n "${listing:-}" ] || { echo "storage-rescue: no backups folder could be read" >&2; exit 1; }
 
-# The names hold the time (YYYYmmdd_HHMMSS), so the last one sorted is the newest of each kind
-newest() { awk -F/ -v prefix="$1" 'index($6, prefix) == 1 && $6 ~ /\.mirror$/ { print $6 "/" $7 }' <<< "$listing" | sort | tail -n 1; }
+# One kind's backups, newest first (the names hold the time, YYYYmmdd_HHMMSS): only plain files with
+# something in them, so a cleared inode (mode 0, size 0, as a block that reads back as zeros leaves it)
+# is passed over for the older one beside it
+newest_first() {
+  awk -F/ -v prefix="$1" 'index($6, prefix) == 1 && $6 ~ /\.mirror$/ && $3 ~ /^100/ && $7 > 0 { print $6 "/" $7 }' \
+    <<< "$listing" | sort -r
+}
+
+# Whether a copied file looks like a whole backup: a zip (its start and, within its last 64 KiB, the end
+# of its central directory) or openssl's header. ponytail: catches blocks lost at the start or end, not
+# in the middle; a broken middle shows only when the backup is restored, so the other rescued one is the
+# way back then (ARCHITECTURE #58, Limits).
+looks_whole() {
+  local start
+  start=$(head -c 8 "$1" | od -An -tx1 | tr -d ' \n')
+  [ "$start" = 53616c7465645f5f ] && return 0  # "Salted__"
+  [ "${start:0:8}" = 504b0304 ] && tail -c 65558 "$1" | LC_ALL=C grep -qaF $'PK\x05\x06'
+}
+
 saved=0
 for prefix in mirrordash_autobackup_ mirrordash_backup_; do
-  entry=$(newest "$prefix")
-  [ -n "$entry" ] || continue
-  name=${entry%/*} size=${entry#*/}
-  # A name in the listing comes from the broken disk: only a plain backup file name is used as a path
-  [[ "$name" =~ ^[A-Za-z0-9_.-]+\.mirror$ ]] || continue
-  debugfs "${opts[@]}" -R "dump $dir/$name $out/$name" "$dev" >/dev/null 2>&1
-  # A file that didn't come out whole is worse than none: it would be offered for a restore
-  if [ "$(stat -c %s "$out/$name" 2>/dev/null)" = "$size" ]; then
-    echo "$name"
-    saved=$((saved + 1))
-  else
+  while IFS= read -r entry; do
+    name=${entry%/*} size=${entry#*/}
+    # A name in the listing comes from the broken disk: only a plain backup file name is used as a path
+    [[ "$name" =~ ^[A-Za-z0-9_.-]+\.mirror$ ]] || continue
+    debugfs "${opts[@]}" -R "dump $dir/$name $out/$name" "$dev" >/dev/null 2>&1
+    # A file that didn't come out whole is worse than none: it would be offered for a restore
+    if [ "$(stat -c %s "$out/$name" 2>/dev/null)" = "$size" ] && looks_whole "$out/$name"; then
+      echo "$name"
+      saved=$((saved + 1))
+      break
+    fi
     rm -f "$out/$name"
-    echo "storage-rescue: $name didn't come out whole" >&2
-  fi
+    echo "storage-rescue: $name didn't come out whole; trying the one before it" >&2
+  done < <(newest_first "$prefix")
 done
 [ "$saved" -gt 0 ]

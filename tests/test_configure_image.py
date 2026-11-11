@@ -57,11 +57,12 @@ def test_hydrate_never_fills_a_ram_storage():
     hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
     stop = hydrate.index("! mountpoint -q /storage; then\n    echo \"Error: /storage could not be mounted")
     first_write = hydrate.index("\nowned_folder pi:pi 755 /storage/mirrordash\n")  # the first at the top level
-    assert hydrate.index('e2fsck -p "$DATA_PART"') < stop < first_write
+    assert hydrate.index('-p "$DATA_PART"') < stop < first_write
     # Before it, only the repair writes there: its write test only on a mounted /storage, and putting the
     # rescued backups back only after that test (or a rebuild's mount)
     assert "{ mountpoint -q /storage && mkdir -p /storage/mirrordash" in hydrate
-    assert 'compgen -G "$RESCUE/*.mirror" > /dev/null && storage_works; then put_back_backups' in hydrate
+    assert ('if [ -z "$REBUILT" ] && storage_works; then\n    # Repaired after all (it works): what e2fsck may have '
+            'cleared of the rescued backups goes back\n    if compgen -G "$RESCUE/*.mirror"') in hydrate
 
 
 def test_swap_is_zram_only():
