@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from mirrordash_core.admin import BOOT_ID, hash_password
 from mirrordash_core.app import app
 from mirrordash_core.features.modules.service import install_module, uninstall_module
-from mirrordash_core.features.settings.schema import get_globals_schema
+from mirrordash_core.features.settings.globals_schema import get_globals_schema
 from mirrordash_core.features.updates.service import (
     check_core_update,
     get_disk_usage,
@@ -361,7 +361,7 @@ def test_public_active_modules_endpoint(mock_host, mock_config, mock_ep, mock_tr
     assert data["modules"][0]["title"] == "Clock Module Title"
 
 def test_config_positions_validation():
-    from mirrordash_core.features.settings.schema import validate_config
+    from mirrordash_core.features.modules.schema import validate_config
     for pos in ["top_center", "middle_left", "middle_right", "bottom_center"]:
         validate_config({"modules": {"mirrordash-clock": {"enabled": True, "position": pos}}})
     with pytest.raises(ValueError, match="invalid position"):
@@ -1219,7 +1219,7 @@ def test_config_migration():
     assert migrate_config(cfg) is False
 
 
-@patch("mirrordash_core.features.settings.schema._installed_module_schemas", return_value={})  # not a clock in the venv
+@patch("mirrordash_core.features.modules.schema._installed_module_schemas", return_value={})  # not a clock in the venv
 @patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=None)  # a module without a schema
 @patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=MagicMock())
 @patch("mirrordash_core.features.modules.routes.load_config")
@@ -1430,7 +1430,7 @@ def test_logs_viewer_escapes_html(client):
 
 
 def test_module_settings_are_checked_against_the_module_schema():
-    from mirrordash_core.features.settings import schema
+    from mirrordash_core.features.modules import schema
     props = {"properties": {"count": {"type": "integer", "title": "Count"}, "on": {"type": "boolean"},
                             "unit": {"type": "string", "enum": ["C", "F"]}}}
     with patch.object(schema, "_installed_module_schemas", return_value={"mirrordash_x": props}):

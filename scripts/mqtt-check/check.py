@@ -59,11 +59,11 @@ async def run(name: str, port: int) -> list[str]:
         await asyncio.sleep(0.4)
 
     with patch.object(mqtt, "load_config", return_value=config(port)), \
-         patch("mirrordash_core.features.power.routes.update_screen_state", screen), \
-         patch("mirrordash_core.features.modules.routes.set_instances_enabled", enabled), \
+         patch("mirrordash_core.features.power.display_power.update_screen_state", screen), \
+         patch("mirrordash_core.features.modules.instances.set_instances_enabled", enabled), \
          patch("mirrordash_core.features.modules.client.module_host.control", control), \
          patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=SimpleNamespace()), \
-         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=TV):
+         patch("mirrordash_core.features.modules.schema.get_module_schema", return_value=TV):
         watcher = asyncio.create_task(watch())
         await asyncio.sleep(0.3)
         await b.start()

@@ -28,7 +28,7 @@ from mirrordash_core.features.modules.module_files import (
     site_name,
 )
 from mirrordash_core.features.modules.package_names import package_key
-from mirrordash_core.features.settings.schema import get_module_schema
+from mirrordash_core.features.modules.schema import get_module_schema
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_in_background, run_restart
 

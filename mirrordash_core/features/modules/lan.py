@@ -24,7 +24,7 @@ LAN_ADDRESS_LIMIT = 64  # the helper's
 def lan_hosts(modules: dict) -> dict[str, set[str]]:
     """Each enabled instance's host names in its settings marked "format": "lan-url": what the owner typed
     (or kept) in the admin page, never a schema's default alone."""
-    from mirrordash_core.features.settings.schema import _installed_module_schemas
+    from mirrordash_core.features.modules.schema import _installed_module_schemas
     schemas = _installed_module_schemas()
     hosts = {}
     for instance_id, cfg in modules.items():

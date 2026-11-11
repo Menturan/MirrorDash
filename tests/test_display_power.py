@@ -144,7 +144,7 @@ def test_a_module_schedule_hides_it_outside_its_days_and_times():
 
 
 def test_validate_config_checks_a_module_schedule():
-    from mirrordash_core.features.settings.schema import validate_config
+    from mirrordash_core.features.modules.schema import validate_config
     validate_config({"modules": {"clock": {"schedule": {"days": ["mon"], "from": "06:00", "to": ""}}}})
     for bad in ({"days": ["monday"]}, {"from": "6:00"}, {"to": 900}, {"days": [{}]}, "always"):
         with pytest.raises(ValueError, match="schedule"):

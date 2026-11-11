@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
-from mirrordash_core.features.settings.setting_rules import check_setting_rules
+from mirrordash_core.features.modules.setting_rules import check_setting_rules
 from mirrordash_core.forms import render_array_item, render_schema_form
 
 SCHEMA = {

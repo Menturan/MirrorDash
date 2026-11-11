@@ -99,7 +99,7 @@ def test_only_a_known_time_zone_is_saved_or_set():
     timedatectl's command line only when the system knows it."""
     from unittest.mock import AsyncMock, patch
 
-    from mirrordash_core.features.settings.schema import validate_config
+    from mirrordash_core.features.modules.schema import validate_config
     from mirrordash_core.host import apply_system_timezone, is_known_timezone
     assert is_known_timezone("Europe/Stockholm")
     assert not is_known_timezone("--help") and not is_known_timezone("../../etc/passwd") and not is_known_timezone(3)

@@ -10,8 +10,9 @@ modules' schedules hide others (display_power.py)."""
 
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.features.power.display_power import local_now, scheduled_out
-from mirrordash_core.features.settings.schema import CARDS_OVER_PHOTO
 
+# How the anchors' cards look while a module is in the background layer (style.css); the first is the default
+CARDS_OVER_PHOTO = ("see_through", "halo", "half", "solid")
 PRIVACY_SHOWS = ("monogram", "nothing")  # with no module marked; the first is the default
 
 

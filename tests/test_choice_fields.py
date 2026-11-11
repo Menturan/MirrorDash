@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
 from mirrordash_core.features.modules.choice_field import MAX_QUERY, choice_request
-from mirrordash_core.features.settings.schema import _check_module_settings
+from mirrordash_core.features.modules.schema import _check_module_settings
 from mirrordash_core.forms import (
     cast_values_by_schema,
     render_array_item,

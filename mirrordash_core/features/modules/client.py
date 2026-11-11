@@ -462,7 +462,7 @@ class ModuleHost:
             # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
             from mirrordash_core.features.kiosk import guard
             held = self.paused | guard.paused(config)
-            from mirrordash_core.features.settings.schema import (
+            from mirrordash_core.features.modules.schema import (
                 _installed_module_schemas,  # as lan.py: no import cycle
             )
             schemas = _installed_module_schemas()

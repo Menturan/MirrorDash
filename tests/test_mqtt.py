@@ -203,7 +203,7 @@ async def test_what_a_module_no_longer_shares_leaves_nothing_on_the_broker():
     b = MqttBridge()
     with patch.object(mqtt, "load_config", return_value=config), \
          patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=SimpleNamespace()), \
-         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=TV):
+         patch("mirrordash_core.features.modules.schema.get_module_schema", return_value=TV):
         await b._discover(Broker(), config, 1000.0)
         b.module_state("tv", "now_playing", "Secret meeting")
         await b._publish(Broker(), *next(iter((t, v[0]) for t, v in b._pending.items())))

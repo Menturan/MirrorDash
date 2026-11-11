@@ -342,7 +342,7 @@ class MqttBridge:
         """(a discovery device per module instance the owner shares, what each shares): the entities its
         config_schema.json "exposes", with the controls the owner allowed."""
         from mirrordash_core.features.modules.module_files import find_entry_point
-        from mirrordash_core.features.settings.schema import get_module_schema
+        from mirrordash_core.features.modules.schema import get_module_schema
         base, mirror_id = self._base(), mqtt_config["id"]
         devices, shared = {}, {}
         for instance, choice in (mqtt_config.get("modules") or {}).items():
@@ -382,7 +382,7 @@ class MqttBridge:
         """What a module no longer shared said stays on the broker (retained) for any client to read: cleared,
         once a connection for each entity it declares (an empty retained message deletes one)."""
         from mirrordash_core.features.modules.module_files import find_entry_point
-        from mirrordash_core.features.settings.schema import get_module_schema
+        from mirrordash_core.features.modules.schema import get_module_schema
         base = self._base()
         for instance, instance_config in modules.items():
             if instance in self._modules or not (isinstance(instance_config, dict) and SAFE_NAME.match(instance)):

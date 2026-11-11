@@ -10,8 +10,8 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
+from mirrordash_core.features.modules.schema import validate_config
 from mirrordash_core.features.modules.service import instance_title
-from mirrordash_core.features.settings.schema import validate_config
 
 
 def test_the_owners_name_else_the_modules_title_and_number():

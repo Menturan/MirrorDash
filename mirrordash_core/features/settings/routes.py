@@ -20,6 +20,7 @@ from mirrordash_core.admin import (
 from mirrordash_core.config import get_core_version, load_config, save_config
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import find_entry_point
+from mirrordash_core.features.modules.schema import get_module_schema, validate_config
 from mirrordash_core.features.power.privacy import (
     privacy_on,
     screen_message,
@@ -32,11 +33,7 @@ from mirrordash_core.features.settings.dev_logging import (
     saved_journal_mb,
     set_dev_logging,
 )
-from mirrordash_core.features.settings.schema import (
-    get_globals_schema,
-    get_module_schema,
-    validate_config,
-)
+from mirrordash_core.features.settings.globals_schema import get_globals_schema
 from mirrordash_core.features.settings.ssh import get_ssh_status
 from mirrordash_core.features.updates.service import (
     format_build,

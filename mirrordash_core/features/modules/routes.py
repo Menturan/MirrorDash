@@ -34,6 +34,7 @@ from mirrordash_core.features.modules.module_files import (
     scripts_allowed,
     site_name,
 )
+from mirrordash_core.features.modules.schema import get_module_schema
 from mirrordash_core.features.modules.service import (
     allow_auto_update,
     allow_scripts,
@@ -47,8 +48,7 @@ from mirrordash_core.features.modules.service import (
     uninstall_module,
     update_modules,
 )
-from mirrordash_core.features.settings.schema import get_module_schema
-from mirrordash_core.features.settings.setting_rules import check_setting_rules
+from mirrordash_core.features.modules.setting_rules import check_setting_rules
 from mirrordash_core.features.updates.service import get_disk_usage
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
@@ -193,7 +193,7 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
 
     config = load_config()
     config.setdefault("modules", {})[instance_id] = instance_config
-    from mirrordash_core.features.settings.schema import validate_config
+    from mirrordash_core.features.modules.schema import validate_config
     try:
         validate_config(config)
         if check_rules and schema:

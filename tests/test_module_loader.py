@@ -78,7 +78,7 @@ def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monke
         load_translations,
         package_dir,
     )
-    from mirrordash_core.features.settings.schema import get_module_schema
+    from mirrordash_core.features.modules.schema import get_module_schema
 
     pkg = tmp_path / "md_untouched"
     (pkg / "translations").mkdir(parents=True)
@@ -495,7 +495,7 @@ async def test_lan_access_is_what_the_owner_typed_on_the_home_network(tmp_path, 
     modules = {"ha": {"module": "md_ha", "url": "http://192.168.1.20:8123", "other": "http://10.0.0.1"},
                "ha-2": {"module": "md_ha", "url": "homeassistant.local", "enabled": False},
                "ha-3": {"module": "md_ha"}, "cam": {"module": "md_ha", "url": "192.168.1.30"}}
-    with patch("mirrordash_core.features.settings.schema._installed_module_schemas", return_value=schemas):
+    with patch("mirrordash_core.features.modules.schema._installed_module_schemas", return_value=schemas):
         assert lan_hosts(modules) == {"ha": {"192.168.1.20"}, "cam": {"192.168.1.30"}}
         assert await lan_addresses({"192.168.1.20", "8.8.8.8", "127.0.0.1", "fd00::5"}) == {
             "127.0.0.1": [], "192.168.1.20": ["192.168.1.20"], "8.8.8.8": [], "fd00::5": ["fd00::5"]}

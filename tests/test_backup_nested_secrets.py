@@ -19,7 +19,7 @@ def test_secrets_in_rows_and_nested_objects_stay_out_and_come_back_to_their_own_
                                 "accounts": [{"name": "Anna", "password": "a1"}, {"name": "Bo", "password": "b2"}],
                                 "service": {"key": "k3y", "url": "https://x"}}}}
     with patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=MagicMock()), \
-         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=SCHEMA):
+         patch("mirrordash_core.features.modules.schema.get_module_schema", return_value=SCHEMA):
         plain = secret_settings.without_secrets(mirror)
         assert plain["modules"]["m"] == {"module": "m", "accounts": [{"name": "Anna"}, {"name": "Bo"}],
                                          "service": {"url": "https://x"}}

@@ -114,7 +114,7 @@ def patch_all_system():
         "mirrordash_core.features.modules.service",
         "mirrordash_core.features.power.routes",
         "mirrordash_core.features.settings.routes",
-        "mirrordash_core.features.settings.schema",
+        "mirrordash_core.features.modules.schema",
         "mirrordash_core.features.settings.ssh",
         "mirrordash_core.features.updates.routes",
         "mirrordash_core.features.updates.service",

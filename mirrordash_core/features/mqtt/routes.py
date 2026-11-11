@@ -31,7 +31,7 @@ def _shareable(config: dict) -> list[dict]:
         SAFE_NAME,
         find_entry_point,
     )
-    from mirrordash_core.features.settings.schema import get_module_schema
+    from mirrordash_core.features.modules.schema import get_module_schema
     found = []
     for instance, cfg in config.get("modules", {}).items():
         if isinstance(cfg, dict) and SAFE_NAME.match(instance):

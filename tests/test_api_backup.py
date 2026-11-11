@@ -485,7 +485,7 @@ def test_a_plain_backup_carries_no_secret_and_a_restore_keeps_the_mirrors_own(tm
               "matter": {"enabled": True, "passcode": 20202021, "discriminator": 3840},
               "modules": {"weather": {"module": "weather", "api_key": "k3y", "pin": "1234", "city": "Lund"}}}
     with patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=MagicMock()), \
-         patch("mirrordash_core.features.settings.schema.get_module_schema", return_value=schema):
+         patch("mirrordash_core.features.modules.schema.get_module_schema", return_value=schema):
         plain = service.without_secrets(mirror)
         assert plain == {"mqtt": {"host": "broker.lan"}, "matter": {"enabled": True},
                          "modules": {"weather": {"module": "weather", "city": "Lund"}}}

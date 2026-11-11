@@ -21,7 +21,7 @@ def module_secrets(instance_config: dict) -> dict:
     "format": "password", and those with a name like api_key or token, also inside a nested object or a
     list's rows (_secrets_in)."""
     from mirrordash_core.features.modules.module_files import find_entry_point
-    from mirrordash_core.features.settings.schema import get_module_schema
+    from mirrordash_core.features.modules.schema import get_module_schema
     ep = find_entry_point(str(instance_config.get("module", "")))
     return _secrets_in(((get_module_schema(ep) if ep else None) or {}).get("properties", {}))
 
