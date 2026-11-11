@@ -78,7 +78,7 @@ FAN_TEMPERATURE_RANGE = (40, 80)  # °C; the Pi throttles at 80
 
 BUTTON_TYPES = ("button", "button_2", "button_3", "button_4")
 
-# KEY_PROG1..3 and KEY_MACRO1..3: keys the kiosk ignores
+# KEY_PROG1, KEY_PROG2, KEY_WWW (148-150) and KEY_MACRO1..3 (656-658): keys the kiosk ignores
 KEYCODES = {"button": 148, "pir": 149, "mmwave": 150, "button_2": 656, "button_3": 657, "button_4": 658}
 
 PRESENCE_TYPES = ("pir", "mmwave")

@@ -28,7 +28,7 @@ for arg in "$@"; do
       die "unknown device type: $arg" ;;
   esac
   case "$type" in
-    # Buttons/sensors become input devices (keycodes KEY_PROG1-3, KEY_MACRO1-3): kernel debounce, no polling
+    # Buttons/sensors become input devices (keycodes 148-150: KEY_PROG1, KEY_PROG2, KEY_WWW; KEY_MACRO1-3): kernel debounce, no polling
     button) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=148,label=mirrordash-button") ;;
     button_2) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=656,label=mirrordash-button-2") ;;
     button_3) lines+=("dtoverlay=gpio-key,gpio=$value,active_low=1,gpio_pull=up,keycode=657,label=mirrordash-button-3") ;;
