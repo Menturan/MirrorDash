@@ -44,7 +44,7 @@ from mirrordash_core.features.modules.module_files import (
     scripts_allowed,
 )
 from mirrordash_core.features.modules.settings_process import SettingsProcesses
-from mirrordash_core.host import run_in_background
+from mirrordash_core.host import run_in_background, run_restart
 from mirrordash_core.venv import get_venv_paths
 
 logger = logging.getLogger("mirrordash.core.modules.client")
@@ -541,6 +541,11 @@ class ModuleHost:
         crashes = self._crashes.get(instance_id, 0) + 1 if time.monotonic() - conn.started < CRASH_WINDOW else 1
         self._crashes[instance_id] = crashes
         if crashes >= CRASH_LIMIT:
+            from mirrordash_core.features.modules import trial
+            # Just updated: the version before goes back instead (trial.py), and the app starts over with it
+            if (name := trial.site_name_of(instance_id, load_config())) and await trial.put_back(name):
+                run_in_background(run_restart())
+                return
             self.paused.add(instance_id)
             from mirrordash_core import notifications
             from mirrordash_core.features.modules.service import (

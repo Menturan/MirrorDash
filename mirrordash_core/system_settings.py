@@ -91,6 +91,7 @@ async def get_system_settings() -> dict:
             "prerelease": system_cfg.get("prerelease", False),
             "auto_update": system_cfg.get("auto_update", True),
             "auto_update_modules": system_cfg.get("auto_update_modules", False),
+            "auto_update_catch_up": system_cfg.get("auto_update_catch_up", False),
             "display_control": system_cfg.get("display_control", {
                 "mode": "manual",
                 "interval": {"start": "07:00", "end": "22:00"},
@@ -139,6 +140,7 @@ class SystemSettings(BaseModel, strict=True):
     prerelease: bool = False
     auto_update: bool = True
     auto_update_modules: bool = False
+    auto_update_catch_up: bool = False  # the nightly update after a start, for a mirror that is off at night
     display_control: DisplayControl = DisplayControl()
 
 
@@ -150,6 +152,7 @@ REFUSED = {
     "brightness": "Brightness must be between 10 and 100", "volume": "Volume must be between 0 and 100",
     "prerelease": "Test versions must be on or off", "auto_update": "Automatic updates must be on or off",
     "auto_update_modules": "Automatic module updates must be on or off",
+    "auto_update_catch_up": "Catching up must be on or off",
     "mode": "Invalid display power mode", "timeout_minutes": "The screen timeout must be 1 to 1440 minutes",
     "extend": "Invalid wake settings", "presence": "Invalid wake settings",
     "start": "Invalid interval time format (HH:MM)", "end": "Invalid interval time format (HH:MM)",
@@ -238,7 +241,7 @@ async def save_system_settings_route(request: Request):
         display_control["interval"] = times
     if "cec" in display_control:  # the checkbox: "true", or the hidden "false" under it
         display_control["cec"] = display_control["cec"] in (True, "true")
-    for key in ("prerelease", "auto_update", "auto_update_modules", "ssh"):  # a lone "false" (an unchecked box) stays text in read_form
+    for key in ("prerelease", "auto_update", "auto_update_modules", "auto_update_catch_up", "ssh"):  # a lone "false" (an unchecked box) stays text in read_form
         if key in parsed:
             parsed[key] = parsed[key] in (True, "true")
     _as_int(parsed, "brightness", "Brightness must be an integer")

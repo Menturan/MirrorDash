@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A module update that doesn't work is undone by itself**: when a module keeps crashing, or the screen crashes, in the first minutes after the module was updated, the mirror puts back the version it had instead of leaving an empty place, and says so on the bell. The other modules are untouched, and the nightly update waits for a newer version.
+- **Catch up after a night off** (Settings → Updates, off by default): a mirror that is switched off at night misses the nightly update; with this on, it updates about ten minutes after it starts instead.
 - **A MirrorDash update that is interrupted no longer costs you the version you had**: a restart or a power cut while the new version was being installed could send the mirror back to the version before the current one, or into Safe mode. The mirror now switches to the new version only once it is fully installed.
 - A system update that fails to download goes on from where it stopped the next time, instead of starting the whole download over, and a download that came out incomplete is no longer handed to the install.
 - A system update that can't be installed at night (no room, a download that fails) now says so on the bell, and no longer keeps MirrorDash and the modules from being updated: they go first the night after.

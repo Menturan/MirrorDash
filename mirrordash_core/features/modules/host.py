@@ -327,6 +327,16 @@ class Control:
             elif step == "commit":
                 point_link(link, next_site)
                 code, err = 0, ""
+            elif step == "back":
+                # A module's update failed on trial (trial.py): its link in the running site goes back to the
+                # folder the site before still links to. Only that link: the other modules stay as they are.
+                name = str(message.get("name") or "")
+                before, now = site_links(next_site).get(name), site_links(active).get(name)
+                if not SAFE_NAME.match(name) or not before or before == now:
+                    code, err = 1, f"{name} has no version before"
+                else:
+                    link_module(active, name, before)
+                    code, err = 0, ""
             else:
                 code, err = 1, f"unknown site step {step!r}"
         except (OSError, ValueError, TimeoutError) as e:

@@ -34,6 +34,7 @@ from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
 from mirrordash_core.features.updates import routes as updates
 from mirrordash_core.features.updates import service as updates_service
+from mirrordash_core.features.updates.catch_up import catch_up
 from mirrordash_core.features.wifi import routes as wifi
 from mirrordash_core.host import run_in_background
 from mirrordash_core.venv import confirm_venv
@@ -54,6 +55,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"Error during startup ({step.__qualname__}): {e}", exc_info=True)
     run_in_background(confirm_venv())  # an update is kept once this start has run for a minute
+    run_in_background(catch_up())  # the nightly update, for a mirror that was off at night and asked for it
     yield
     for step in (notification_watch.stop, mqtt_bridge.stop, internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
         try:

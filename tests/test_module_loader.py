@@ -850,6 +850,17 @@ async def test_modules_are_installed_by_the_module_host_each_into_a_folder_of_it
             assert code != 0 and "md_clock" in err
             assert (await site.pip("install", "md_clock"))[0] == 0  # the venv's own module, newer
         assert builds["md-widget_1"] == builds["md-widget_2"] != builds["md-widget_3"]
+
+        # An update that fails on trial (trial.py): only that module's link goes back to the folder the site
+        # before still links to; one that has no other version there stays
+        active = modules / os.readlink(site_link)
+        others = {e.name: os.readlink(e) for e in active.iterdir() if e.name != "md-widget"}
+        assert os.readlink(active / "md-widget") == "../pkgs/md-widget_3"
+        assert await core._site("back", 30, name="md-widget") == (0, "")
+        assert os.readlink(active / "md-widget") == "../pkgs/md-widget_2"
+        assert {e.name: os.readlink(e) for e in active.iterdir() if e.name != "md-widget"} == others
+        code, err = await core._site("back", 30, name="md-widget")
+        assert code != 0 and "no version before" in err
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

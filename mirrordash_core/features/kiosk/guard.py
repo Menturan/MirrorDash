@@ -174,7 +174,19 @@ async def page_crashed(played_video: set[str]) -> None:
     from mirrordash_core.features.power.privacy import broadcast_screen
     config = load_config()
     before = (level(config), paused(config))
-    config[KEY] = after_crash(config, time.time(), played_video)
+    after = after_crash(config, time.time(), played_video)
+    if not before[0] and after.get("level"):
+        # The guard's first step is due, and modules were updated minutes ago: their versions before go back
+        # instead of anything being paused (modules/trial.py), and the guard starts over with them
+        from mirrordash_core.features.modules import trial
+        from mirrordash_core.host import run_in_background, run_restart
+        if await trial.put_back():
+            config = load_config()  # put_back saved its own part
+            config[KEY] = {**state(config), "crashes": []}
+            save_config(config)
+            run_in_background(run_restart())
+            return
+    config[KEY] = after
     save_config(config)
     if (level(config), paused(config)) != before:
         await broadcast_screen(config)

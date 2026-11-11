@@ -20,6 +20,7 @@ from mirrordash_core import notifications
 from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import load_config, save_config, version_key
 from mirrordash_core.features.kiosk import guard
+from mirrordash_core.features.modules import trial
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,
@@ -311,8 +312,10 @@ async def update_modules(*package_names: str) -> dict:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Upgrade failed: {e}")
+    # On trial from here: one that fails soon after the restart gets its version before back (trial.py)
+    trial.start([name for package_name in updated if (name := package_key(_local_target(package_name)))])
     run_in_background(run_restart())
-    kept = f" {', '.join(failed)} didn't work and stayed as it was." if failed else ""
+    kept =f" {', '.join(failed)} didn't work and stayed as it was." if failed else ""
     return {"status": "success", "message": f"Upgraded {', '.join(updated)}.{kept} Restarting...", "updated": updated}
 
 

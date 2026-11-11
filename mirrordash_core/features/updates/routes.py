@@ -20,6 +20,7 @@ from mirrordash_core.admin import (
 )
 from mirrordash_core.features.backup.automatic import automatic_backup
 from mirrordash_core.features.modules.service import module_updates
+from mirrordash_core.features.updates.catch_up import note_round
 from mirrordash_core.features.updates.service import (
     auto_update,
     check_core_update,
@@ -127,6 +128,12 @@ async def post_auto_update(request: Request) -> dict:
     OS (the local token), so it needs no password; what it may do is what Settings → Updates already allows."""
     if not from_the_mirrors_os(request):
         raise HTTPException(status_code=403, detail="Only from the mirror itself")
+    return await nightly_round()
+
+
+async def nightly_round() -> dict:
+    """What a night does: the backup, then the update. Also after a start, for a mirror that was off at
+    night (catch_up.py)."""
     # This week's automatic backup first (the way back if the storage partition breaks), and before an
     # update changes anything. One that fails never holds the update back.
     try:
@@ -135,5 +142,7 @@ async def post_auto_update(request: Request) -> dict:
         backup = "failed"
         logger.error(f"Automatic backup failed: {e}", exc_info=True)
     started = await auto_update()
+    if started not in ("off", "busy"):
+        note_round()
     logger.info(f"Automatic backup: {backup}; automatic update: {started}")
     return {"started": started, "backup": backup}

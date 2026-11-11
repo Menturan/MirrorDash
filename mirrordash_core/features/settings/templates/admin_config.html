@@ -124,6 +124,21 @@
                 <span class="slider round"></span>
             </label>
         </form>
+
+        <!-- For a mirror that is off at night (updates/catch_up.py); saves on change -->
+        <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
+              hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+              hx-on::response-error="this.reset()">
+            <div class="form-label-desc" style="margin-bottom: 8px;">
+                <label for="core-auto-update-catch-up" style="font-weight: 500; font-size: 0.9rem; color: white;">Catch up after a night off</label>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">A mirror that is switched off at night misses the nightly update. With this on, it updates about ten minutes after it starts instead, so it may restart while you look at it. Only while the mirror installs updates automatically.</p>
+            </div>
+            <label class="switch">
+                <input type="hidden" name="auto_update_catch_up" value="false">
+                <input type="checkbox" id="core-auto-update-catch-up" name="auto_update_catch_up" value="true" {% if auto_update_catch_up %}checked{% endif %}>
+                <span class="slider round"></span>
+            </label>
+        </form>
     </section>
 
     <!-- Matter: loaded on its own, re-rendered after every change -->
