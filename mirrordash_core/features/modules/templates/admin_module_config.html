@@ -1,7 +1,5 @@
 {# A module instance's settings in the Configure drawer: the core's standard settings, then the module's own #}
-<form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML" class="module-config-form"
-          hx-on::before-request="const btn = this.querySelector('button[type=submit]'); if (btn) { btn.dataset.originalHtml = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class=\"fas fa-spinner fa-spin\"></i> Saving…'; }"
-          hx-on::response-error="const btn = this.querySelector('button[type=submit]'); if (btn && btn.dataset.originalHtml) { btn.innerHTML = btn.dataset.originalHtml; btn.disabled = false; }">
+<form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML" class="module-config-form">
     {# Whose settings these are: choosing another instance changes this first, which shows on a phone too #}
     <h3 class="module-config-instance">{{ instance_title }}</h3>
     {% if is_new %}
@@ -54,7 +52,7 @@
 {% if site_name %}
 {# For every card of this module; a module in the core's venv (the image's clock) always runs its scripts #}
 <form hx-post="/admin/panels/modules/scripts/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-          hx-on::before-request="this.querySelector('input[type=checkbox]').checked = !this.querySelector('input[type=checkbox]').checked;">
+      hx-on::response-error="this.reset()">
     <div class="form-group">
         <div class="form-label-desc">
             <label for="module-scripts">Run its scripts on the mirror</label>
@@ -70,7 +68,8 @@
     </div>
 </form>
 {# Also for every card of this module: kept out of the nightly update (Settings → Updates) when off #}
-<form hx-post="/admin/panels/modules/auto-update/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+<form hx-post="/admin/panels/modules/auto-update/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+      hx-on::response-error="this.reset()">
     <div class="form-group">
         <div class="form-label-desc">
             <label for="module-auto-update">Update automatically</label>

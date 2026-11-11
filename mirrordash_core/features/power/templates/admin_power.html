@@ -5,10 +5,7 @@
         <p class="panel-subtitle">Turning the screen off when nobody looks saves energy and screen life. Changes are saved right away.</p>
         
         <!-- Saves on every change; no Apply button -->
-        <form id="power-settings-form" hx-post="/admin/panels/power/save" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-              hx-on::before-request="let indicator = this.querySelector('.saving-indicator'); if (!indicator) { indicator = document.createElement('span'); indicator.className = 'saving-indicator'; indicator.style.cssText = 'font-size:0.7rem;color:var(--text-muted);margin-left:auto;'; indicator.textContent = 'Saving…'; this.querySelector('h2').appendChild(indicator); }"
-              hx-on::after-request="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Saved'; setTimeout(() => indicator.remove(), 1500); }"
-              hx-on::response-error="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Failed'; indicator.style.color = 'var(--danger)'; }">
+        <form id="power-settings-form" hx-post="/admin/panels/power/save" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
             <!-- Display Power Management Mode -->
             <div class="form-group" style="margin-bottom: 20px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">

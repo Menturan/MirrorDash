@@ -5,10 +5,7 @@
         
         <p class="panel-subtitle">Language, units and location shared by all modules. Changes are saved right away.</p>
         <form hx-post="/admin/panels/config/save-visual" hx-target="#global-status" hx-swap="innerHTML"
-              hx-trigger="change delay:400ms, submit"
-              hx-on::before-request="let indicator = this.querySelector('.saving-indicator'); if (!indicator) { indicator = document.createElement('span'); indicator.className = 'saving-indicator'; indicator.style.cssText = 'font-size:0.7rem;color:var(--text-muted);margin-left:auto;'; indicator.textContent = 'Saving…'; this.querySelector('h2').appendChild(indicator); }"
-              hx-on::after-request="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Saved'; setTimeout(() => indicator.remove(), 1500); }"
-              hx-on::response-error="const indicator = this.querySelector('.saving-indicator'); if (indicator) { indicator.textContent = 'Failed'; indicator.style.color = 'var(--danger)'; }">
+              hx-trigger="change delay:400ms, submit">
             <div id="visual-form-container" class="visual-form-container">
                 {{ visual_form_html | safe }}
             </div>
@@ -19,7 +16,6 @@
     <section id="privacy" class="card" style="margin-top: 24px;">
         <h2><i class="fas fa-user-secret" aria-hidden="true"></i> Privacy Mode</h2>
         <form hx-post="/admin/panels/config/privacy" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-              hx-on::before-request="this.querySelector('input[type=checkbox]').checked = !this.querySelector('input[type=checkbox]').checked;"
               hx-on::response-error="this.reset()">
             <div class="form-group" style="margin-top: 15px;">
                 <div class="form-label-desc" style="margin-bottom: 8px;">
@@ -87,7 +83,7 @@
         <!-- Opt in to pre-releases; saves on change -->
         <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
               hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-              hx-on::before-request="this.querySelector('input[type=checkbox]').checked = !this.querySelector('input[type=checkbox]').checked;">
+              hx-on::response-error="this.reset()">
             <div class="form-label-desc" style="margin-bottom: 8px;">
                 <label for="core-prerelease" style="font-weight: 500; font-size: 0.9rem; color: white;">Test versions</label>
                 <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">Get new versions of MirrorDash{% if os_build %} and of the system{% endif %} before everyone else, to try them out. They can have bugs; turn this off to wait for the regular release.</p>
@@ -102,7 +98,7 @@
         <!-- Nightly updates (mirrordash-auto-update.timer); saves on change -->
         <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
               hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-              hx-on::before-request="this.querySelector('input[type=checkbox]').checked = !this.querySelector('input[type=checkbox]').checked;">
+              hx-on::response-error="this.reset()">
             <div class="form-label-desc" style="margin-bottom: 8px;">
                 <label for="core-auto-update" style="font-weight: 500; font-size: 0.9rem; color: white;">Install updates automatically</label>
                 <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">At night, the mirror installs new versions of MirrorDash{% if os_build %} and of the system{% endif %} by itself, the same way the buttons above do. A version that doesn't work is undone by itself and isn't tried again.</p>
@@ -116,7 +112,8 @@
 
         <!-- Modules too, last in the nightly chain (updates/service.py auto_update); saves on change -->
         <form class="form-group" style="margin: 20px 0 0 0;" hx-post="/admin/panels/system/save"
-              hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change">
+              hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+              hx-on::response-error="this.reset()">
             <div class="form-label-desc" style="margin-bottom: 8px;">
                 <label for="core-auto-update-modules" style="font-weight: 500; font-size: 0.9rem; color: white;">Update modules automatically</label>
                 <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">At night, once MirrorDash{% if os_build %} and the system are{% else %} is{% endif %} up to date, every module with a newer version is updated, except the ones you turned off in their own settings. Only while the mirror installs updates automatically.</p>

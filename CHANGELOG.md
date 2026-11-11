@@ -16,6 +16,7 @@ There are two kinds of releases:
 - **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
 - **Automatic backups**: every week, when something has changed, the mirror makes a backup by itself at night, passwords and Wi-Fi included. It stays on the mirror (it can be restored, not downloaded), and the newest two are kept, marked *Automatic* in the Backup list.
 - A backup is now written so that a power cut while it is being made never leaves a broken backup file behind.
+- A module switched off on the admin page greys out at once, and a switch whose change could not be saved goes back to how it was, instead of showing a setting the mirror doesn't have.
 
 ### OS image
 
