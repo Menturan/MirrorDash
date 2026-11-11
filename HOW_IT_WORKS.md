@@ -175,7 +175,7 @@ sequenceDiagram
      pattern, minimum/maximum, length; the browser checks the same ones first),
    - saves it (`config.py` `save_config`: written whole, the last good copy kept).
 3. **`module_host.reload_modules()`** tells the screen to reload and runs `_sync`: an instance whose settings changed is stopped and started again with the new ones; the others keep running and send their cards again.
-4. **The answer** is a small event for the page (`admin.notify`): "Settings saved." The settings drawer stays open.
+4. **The answer** is a small event for the page (`notify` in `admin.py`): "Settings saved." The settings drawer stays open.
 
 The system settings (Hardware, Power, Developer) take the same road through `system_settings.py`, and are applied straight away instead of restarting modules.
 
