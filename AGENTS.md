@@ -87,6 +87,7 @@ Use `python3 scripts/release.py`, option 3: GitHub Actions builds the image and 
 |------|---------------|
 | `HOW_IT_WORKS.md` | How the parts fit together, the main flows and the words used: start here in an unknown part |
 | `ARCHITECTURE.md` | Why things are built the way they are: read before changing a pattern |
+| `MEASUREMENTS.md` | The measurements and checks behind those decisions |
 | `DESIGN.md` | The look and its rules (mirror and admin page) |
 | `CONTRIBUTING.md` | The same start for people |
 | `RELEASING.md` | The OS image and how releases are made |

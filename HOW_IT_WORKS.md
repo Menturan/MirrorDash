@@ -93,7 +93,7 @@ flowchart TB
     style screen fill:none,stroke:#57606a
 ```
 
-1. **systemd** starts `mirrordash.service`, which runs `scripts/launch.sh`. It picks the active venv (the link `/storage/mirrordash/venv`), falls back to the image's own copy if that is broken (safe mode, #17) and starts `python -m mirrordash_core.main`.
+1. **systemd** starts `mirrordash.service`, which runs `scripts/launch.sh`. It picks the active venv (the link `/storage/mirrordash/venv`), falls back to the image's own copy if that is broken (safe mode, #16) and starts `python -m mirrordash_core.main`.
 2. **`main.py`** sets up logging (`~/.mirrordash/logs/`) and starts uvicorn with the app from **`app.py`**.
 3. **`app.py`'s `lifespan`** applies the saved system settings (`system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
    - `module_host.start_modules()` (`features/modules/client.py`) connects to the module host and asks it to start every enabled instance,
