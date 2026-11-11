@@ -54,7 +54,9 @@ if [ ! -f "${IMAGE_NAME%.xz}" ]; then
         fail "The base image doesn't match its checksum; it was deleted. Run the build again."
     fi
     info "Decompressing base image..."
-    xz -d -c "$DOWNLOAD_DIR/$IMAGE_NAME" > "${IMAGE_NAME%.xz}"
+    # Under another name until it is whole: an interrupted run must not leave half an image for the next
+    xz -d -c "$DOWNLOAD_DIR/$IMAGE_NAME" > "${IMAGE_NAME%.xz}.part"
+    mv "${IMAGE_NAME%.xz}.part" "${IMAGE_NAME%.xz}"
 fi
 cp "${IMAGE_NAME%.xz}" "$FINAL_IMAGE"
 
@@ -82,7 +84,8 @@ mkdir -p "$MOUNT_DIR/opt/MirrorDash"
 find "$REPOS_DIR" -mindepth 1 -maxdepth 1 -not -name ".*" -not -name "$(basename "$BUILD_DIR")" -exec cp -a -t "$MOUNT_DIR/opt/MirrorDash/" {} +
 
 info "Executing configure_image.sh via systemd-nspawn..."
-systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./configure_image.sh"
+# --hostname: the container is otherwise named after the folder (mnt), a name sudo can't look up
+systemd-nspawn --setenv=BUILDING_IMAGE=1 --resolv-conf=copy-host --hostname=mirrordash -D "$MOUNT_DIR" /bin/bash -c "cd /opt/MirrorDash/scripts && bash ./configure_image.sh"
 
 # The repo copy is only build input — never ship source or the dev config.json
 rm -rf "$MOUNT_DIR/opt/MirrorDash"

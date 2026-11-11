@@ -18,7 +18,8 @@ on:
 permissions:
   contents: read
 
-# One image build at a time; a second request waits instead of cancelling the first
+# One image build at a time: a second request waits instead of cancelling the first. GitHub keeps one
+# waiting run per group, so a third request replaces the second.
 concurrency:
   group: os-image
   cancel-in-progress: false
@@ -102,9 +103,10 @@ jobs:
           NOTES: ${{ inputs.notes }}
         # The tag is pushed first and the release made on it: GitHub answered "creating a release" with
         # 404 when given the commit (--target) of a commit that already had a release tag (the app's).
+        # A release that fails takes its tag with it: a tag without a release would only use up the number.
         run: |
           git tag "$TAG" "$GITHUB_SHA"
           git push origin "refs/tags/$TAG"
           gh release create "$TAG" build_workspace/mirrordash-os-*.img.xz build_workspace/mirrordash-os-*.img.xz.sha256 \
             build_workspace/mirrordash-os-*.raucb build_workspace/mirrordash-os-*.packages.txt --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
-            --title "$TAG" --notes "$NOTES"
+            --title "$TAG" --notes "$NOTES" || { git push origin ":refs/tags/$TAG"; exit 1; }

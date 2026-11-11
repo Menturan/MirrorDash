@@ -1,0 +1,35 @@
+name: Check WPE
+
+# Every Tuesday: red when Menturan/mirrordash-wpe has a WPE WebKit release that no OS build carries yet.
+# An image takes the newest release when it is built and nothing else starts a build, so red is the
+# signal to build a test version (scripts/release.py, option 3). mirrordash-wpe looks for a new Debian
+# version on Mondays. See RELEASING.md.
+on:
+  schedule:
+    - cron: "23 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: The newest WPE release is in the newest OS build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    steps:
+      # The newest OS build, test versions too (vX.Y.Z-osN), and the WPE in its package list
+      - name: Compare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          wpe=$(gh release view --repo Menturan/mirrordash-wpe --json tagName -q .tagName)
+          os=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName -q '[.[].tagName | select(test("-os[0-9]+$"))][0]')
+          in_os=$(gh release download "$os" --repo "$GITHUB_REPOSITORY" -p '*.packages.txt' -O - | awk '$1 == "libwpewebkit-2.0-1" {print $2}')
+          echo "Newest WPE release: $wpe; $os has: $in_os"
+          # The release's tag is v<Debian version>-mirrordashN, the package's version <Debian version>~mirrordashN
+          if [ "v${in_os/\~/-}" != "$wpe" ]; then
+            echo "::error::WPE WebKit $wpe is in no OS build yet ($os has '$in_os'): build a test version (scripts/release.py, option 3)"
+            exit 1
+          fi

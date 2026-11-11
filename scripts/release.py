@@ -410,7 +410,7 @@ def build_test_image():
     check_ready(tag, tests=False)
     sha = run("git", "rev-parse", "HEAD")
     confirm(f"This builds the OS image and update bundle from master ({sha[:7]}, MirrorDash {core}) on GitHub "
-            f"(about 30 minutes) and publishes them as the test version {tag}: only mirrors with Test versions "
+            f"(about 8 minutes) and publishes them as the test version {tag}: only mirrors with Test versions "
             "on are offered it.")
     started = now()
     notes = (f"Test version of the MirrorDash OS {version}, for mirrors with Test versions turned on.\n\n"

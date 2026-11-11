@@ -81,7 +81,7 @@ Every mirror is now offered the update.
 The image contains the app version on master, so release the app first if it changed.
 
 **1. Publish a test version.** Run the script and choose **3**. GitHub Actions runs the tests, builds the
-image and the signed update bundle (about 30 minutes) and publishes both as the test version
+image and the signed update bundle (about 8 minutes) and publishes both as the test version
 `vX.Y.Z-osN`: a pre-release on GitHub. Mirrors with *Test versions* on are offered it under
 **Settings → Check for Updates**, in the *System* part, just like a test version of the app; nothing has
 to be copied to a mirror by hand. At the end the script asks whether to download the image as well, to
@@ -182,7 +182,7 @@ flowchart LR
         direction TB
         tests["<b>Tests</b>"]
         publish["tag vX.Y.Z / vX.Y.ZrcN + release<br/>→ <b>Publish to PyPI</b><br/>Tests → build → publish"]
-        build["<b>Build OS Image</b><br/>Tests → build, about 30 min<br/>→ pre-release vX.Y.Z-osN"]
+        build["<b>Build OS Image</b><br/>Tests → build, about 8 min<br/>→ pre-release vX.Y.Z-osN"]
         promote["the same pre-release becomes<br/>the vX.Y.Z-osN release<br/><i>nothing is rebuilt</i>"]
     end
     subgraph mirrors["The mirrors"]
@@ -212,7 +212,8 @@ flowchart LR
 | :--- | :--- | :--- | :--- |
 | `test.yml` (*Tests*) | Every push to `master`; also called by the two below. | `uv sync --frozen`, `pytest`, `ruff check`, a syntax and `shellcheck` check of `scripts/*.sh` and of the scripts the image installs, and `actionlint` on the workflows. | Green or red in the Actions tab. |
 | `publish.yml` (*Publish to PyPI*) | A published GitHub release whose tag starts with `v` and has no `-os`. | Tests, checks the tag is `v` + the `pyproject.toml` version, builds, then publishes from a separate job. | `mirrordash` on PyPI. |
-| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 30 min), and with a tag (option 3 gives one) the result becomes that test version, a pre-release. One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
+| `build-os-image.yml` (*Build OS Image*) | `release.py` option 3 (or *Run workflow* in the Actions tab). | Tests, then `scripts/build_image.sh` on an ARM runner (about 8 min), and with a tag (option 3 gives one) the result becomes that test version, a pre-release. One build at a time. | Artifact `mirrordash-os-image`: `.img.xz` + `.sha256` + the signed `.raucb` update bundle. |
+| `check-wpe.yml` (*Check WPE*) | Every Tuesday (or *Run workflow*). | Compares the newest release of `Menturan/mirrordash-wpe` with the WPE WebKit in the newest OS build's package list (test versions too). | Red when a WPE release is in no OS build yet: build a test version (option 3). |
 
 The only secret in GitHub is `RAUC_KEY`, which signs the OS update bundle. PyPI trusts the `publish` job in the `pypi` environment (trusted
 publishing, OIDC); renaming `publish.yml` or the environment breaks that until it is changed on pypi.org
