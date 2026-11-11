@@ -112,7 +112,7 @@ def test_the_preview_shows_the_samples_then_the_saved_card_then_why_not(client):
     assert "<img" not in r.text and "\\u003cimg src=x" in r.text  # the card only as JSON, for the shadow root
     assert "Content-Security-Policy" in r.text and "script-src 'nonce-" in r.text
 
-    from mirrordash_core.features.kiosk.ws import manager
+    from mirrordash_core.screen import manager
     with patch("mirrordash_core.features.modules.routes.module_host.preview", new_callable=AsyncMock, side_effect=ConnectionError), \
          patch.dict(manager.latest_messages, {"ha-one": {"module": "ha-one", "html": "<p>On the mirror</p>"}}):
         r = client.post(URL, data=FORM, headers=HEADERS)

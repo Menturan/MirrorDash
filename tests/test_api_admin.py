@@ -324,9 +324,9 @@ def test_update_screen_state(client):
 
 def test_mirror_page_hears_the_version_first(client):
     """The kiosk reloads itself when the version it hears differs from the one it was loaded with."""
-    from mirrordash_core.features.kiosk.ws import manager
+    from mirrordash_core.screen import manager
     manager.latest_messages = {"clock": {"module": "clock", "position": "top_left", "html": "<p>12:00</p>"}}
-    with patch("mirrordash_core.features.kiosk.ws.get_core_version", return_value="1.2.3"), \
+    with patch("mirrordash_core.features.kiosk.routes.get_core_version", return_value="1.2.3"), \
          TestClient(app, client=("127.0.0.1", 50000)).websocket_connect("/ws") as ws:
         assert ws.receive_json() == {"type": "hello", "version": "1.2.3", "boot_id": BOOT_ID, "online": True,
                                     "video_is_playing": False, "error": False}
@@ -336,7 +336,7 @@ def test_mirror_page_hears_the_version_first(client):
 
 
 def test_reload_screen_button(client):
-    with patch("mirrordash_core.features.kiosk.ws.manager.broadcast", new_callable=AsyncMock) as broadcast:
+    with patch("mirrordash_core.screen.manager.broadcast", new_callable=AsyncMock) as broadcast:
         r = client.post("/admin/panels/system/reload-screen", headers={"X-API-Key": "secret"})
     assert r.status_code == 200
     broadcast.assert_awaited_once_with({"action": "reload"})

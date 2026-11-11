@@ -102,7 +102,7 @@ flowchart TB
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
    - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42),
    - `notification_watch` (`features/notifications/`) tells the bell of versions that went up since the last start and, once a minute, of new saved logs (#57).
-4. **mirrordash-screen** (`screen-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`features/kiosk/ws.py` keeps the last one of each, #9).
+4. **mirrordash-screen** (`screen-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`screen.py` keeps the last one of each, #9).
 
 ## Flow 2: a module's card reaches the screen
 
@@ -116,7 +116,7 @@ sequenceDiagram
     end
     box rgb(221,244,255) The core
         participant H as ModuleHost<br/>client.py
-        participant W as manager<br/>kiosk/ws.py
+        participant W as manager<br/>screen.py
     end
     box rgb(246,248,250) The screen
         participant S as core.js
@@ -133,7 +133,7 @@ sequenceDiagram
 1. **In the module's own process** (`features/modules/instance.py`), the module returns HTML from `render()` (or calls its `broadcast_func`). `loader.py` started it and gave it its helpers: `self.fetch` (`module_fetch.py`), `self.render_template`, `self.translate` and more.
 2. **`HostLink.html`** sends `{"t": "html", "html": ...}` over the instance's connection. The protocol is listed at the top of `host.py`.
 3. **`client.py` `ModuleHost._handle`** gets it in the core. Everything an instance sends is checked like input from outside: its connection is who it is, so it can only fill its own card; a card over 512 kB isn't shown; at most two sends a second reach the screen (#30).
-4. **`ws.py` `manager.broadcast`** adds the placement and sends it to every open screen, and keeps it for a screen that connects later.
+4. **`screen.py` `manager.broadcast`** adds the placement and sends it to every open screen, and keeps it for a screen that connects later.
 5. **`core.js` `showModuleHtml`** puts the card in its area, inside a shadow root so the module's CSS can't touch the rest of the page, and runs its scripts only if the module is trusted (#21, #41).
 
 The other way, the core sends an instance: the screen going on or off (its fetches sleep meanwhile, #29), hardware events (`event_bus.py`), calls to its own routes (`api_proxy.py`, #40) and Home Assistant commands (`on_control`).

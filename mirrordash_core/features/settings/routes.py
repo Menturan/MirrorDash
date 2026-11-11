@@ -18,7 +18,6 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.config import get_core_version, load_config, save_config
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import find_entry_point
 from mirrordash_core.features.power.privacy import (
@@ -46,6 +45,7 @@ from mirrordash_core.features.updates.service import (
 )
 from mirrordash_core.forms import cast_values_by_schema, read_form
 from mirrordash_core.host import apply_system_timezone, run_command, run_in_background
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.settings")
 router = APIRouter(prefix="/admin")

@@ -24,7 +24,6 @@ from mirrordash_core.config import (
     save_config,
 )
 from mirrordash_core.features.kiosk import guard
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request
 from mirrordash_core.features.modules.client import module_host
@@ -60,6 +59,7 @@ from mirrordash_core.forms import (
     read_form,
     render_schema_form,
 )
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.modules")
 router = APIRouter(prefix="/admin")

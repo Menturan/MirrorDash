@@ -12,12 +12,11 @@ CORE = Path(__file__).parent.parent / "mirrordash_core"
 # Features that still import each other (alphabetical in each pair)
 MUTUAL = {
     ("backup", "modules"), ("backup", "wifi"), ("dashboard", "wifi"), ("hardware", "power"),
-    ("kiosk", "modules"), ("kiosk", "power"), ("kiosk", "video"), ("kiosk", "wifi"), ("logs", "updates"),
+    ("kiosk", "modules"), ("kiosk", "power"), ("logs", "updates"),
     ("modules", "mqtt"), ("modules", "power"), ("modules", "settings"), ("modules", "updates"), ("power", "settings"),
 }
 # Shared code that still imports a feature. app.py puts the app together and main.py starts it: they may.
 ROOT_TO_FEATURE = {
-    ("notifications", "kiosk"),
     ("system_settings", "hardware"), ("system_settings", "matter"), ("system_settings", "power"),
     ("system_settings", "settings"),
 }

@@ -110,7 +110,7 @@ async def post_panel_screen(request: Request):
 
 @router.post("/panels/system/reload-screen", dependencies=[Depends(require_api_key)])
 async def post_reload_screen():
-    from mirrordash_core.features.kiosk.ws import manager
+    from mirrordash_core.screen import manager
     await manager.broadcast({"action": "reload"})
     return notify("The mirror's screen is reloading.")
 

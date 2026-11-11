@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from mirrordash_core.config import write_atomic
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.host import run_command
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.video")
 

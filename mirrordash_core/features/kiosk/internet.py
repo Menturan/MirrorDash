@@ -6,7 +6,7 @@ was online, and online while the Wi-Fi was joined but nothing got through. So th
 once a minute: a TCP connection to 1.1.1.1:443, or 8.8.8.8:443 when that fails (only the connection,
 no data), or a DNS lookup when both fail. Offline after 2 failed checks in a row, so a router restarting or a short dropout doesn't
 make the badge blink; online again at the first check that works. Every change goes to the screens
-over the websocket, and a screen that connects hears the state in its "hello" (ws.py).
+over the websocket, and a screen that connects hears the state in its "hello" (routes.py).
 """
 
 import asyncio
@@ -56,8 +56,8 @@ class InternetMonitor:
         if online != self.online:
             self.online = online
             logger.info("The mirror is online again." if online else "The mirror can't reach the internet.")
-            from mirrordash_core.features.kiosk.ws import (
-                manager,  # ws.py reads self.online for its hello
+            from mirrordash_core.screen import (
+                manager,  # the hello reads self.online (routes.py)
             )
             await manager.broadcast({"type": "internet", "online": online})
 

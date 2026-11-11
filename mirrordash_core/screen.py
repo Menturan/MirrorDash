@@ -1,14 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """The mirror's screen's WebSocket: every module's HTML goes out through here, the latest kept for a
-screen that connects (or reloads) later."""
+screen that connects (or reloads) later. Shared by the features, so it imports none of them: what a
+new screen is greeted with comes from the route (features/kiosk/routes.py)."""
 
 import asyncio
 import logging
 import time
+from collections.abc import Callable
 
 from fastapi import WebSocket
 
-from mirrordash_core.config import get_core_version
+from mirrordash_core.admin import BOOT_ID
 
 logger = logging.getLogger("mirrordash.core.kiosk")
 
@@ -39,7 +41,7 @@ class ConnectionManager:
         self.video_players: set[str] = set()
         self.pending: set[str] = set()  # the instances whose update waits for the next whole minute
         self._minute_task: asyncio.Task | None = None
-        # The crash guard (guard.py): the page's id (a new one is a new load), whether that page was loaded
+        # The crash guard (features/kiosk/guard.py): the page's id (a new one is a new load), whether that page was loaded
         # before this start of the core (it reloads itself, no crash), when the core asked the screen to
         # reload, and the instances that played a video since the start
         self.page_id: str | None = None
@@ -54,26 +56,16 @@ class ConnectionManager:
             self.screen_seen = time.monotonic()
             self.screen_loaded = True
 
-    async def connect(self, websocket: WebSocket) -> None:
+    async def connect(self, websocket: WebSocket, greeting: Callable[[], list[dict]] = list) -> None:
+        """Take a screen in: the greeting's messages first, then every module's latest card."""
         await websocket.accept()
         self.saw(websocket.client)
         self.active_connections.append(websocket)
         logger.info(f"New client connected. Total clients: {len(self.active_connections)}")
 
-        # The mirror page's code comes with MirrorDash: on another version than the page was loaded
-        # with (an update or a rollback), the page reloads itself (js/kiosk/core.js). "online" sets
-        # its Offline badge (internet.py; changes come later as {"type": "internet"}), "error" its badge of an
-        # unread error notification (notifications.py; later as {"type": "notices"}), and
-        # "video_is_playing" whether the modules update once a minute (later as {"type": "video_is_playing"}).
-        from mirrordash_core import notifications
-        from mirrordash_core.admin import BOOT_ID
-        from mirrordash_core.features.kiosk.internet import internet_monitor
-        from mirrordash_core.features.power.privacy import screen_message
         try:
-            await websocket.send_json({"type": "hello", "version": get_core_version(), "boot_id": BOOT_ID, "online": internet_monitor.online,
-                                      "video_is_playing": bool(self.video_players), "error": notifications.has_unread_error()})
-            # Privacy mode and the other screen-wide settings, before any module's card (privacy.py)
-            await websocket.send_json(screen_message())
+            for message in greeting():
+                await websocket.send_json(message)
         except Exception as e:
             logger.error(f"Error greeting new client: {e}")
 
@@ -106,20 +98,19 @@ class ConnectionManager:
             self.reload_asked_at = time.monotonic()  # the page that comes back is no crash
         await self._send(message)
 
-    async def page_loaded(self, page_id, page_boot) -> None:
+    def page_loaded(self, page_id, page_boot) -> bool:
         """The page says which load it is (js/kiosk/core.js): its id, and the core start it last heard of (null
         when it just loaded). Another id than the last one's, when that page was of this start and the core
-        didn't ask for a reload, means the page was loaded anew: a crash, for the guard."""
-        from mirrordash_core.admin import BOOT_ID
-        from mirrordash_core.features.kiosk import guard
+        didn't ask for a reload, means the page was loaded anew: a crash, and the answer is True (the route
+        tells the guard)."""
         if not isinstance(page_id, str) or not 0 < len(page_id) <= 64:
-            return
+            return False
         previous, previous_stale = self.page_id, self.page_stale
         self.page_id, self.page_stale = page_id, page_boot not in (None, BOOT_ID)
         if previous in (None, page_id) or previous_stale or time.monotonic() - self.reload_asked_at < 120:
-            return
+            return False
         logger.warning("The screen's page was loaded anew without the core asking: counted as a crash")
-        await guard.page_crashed(set(self.played_video))
+        return True
 
     async def _send(self, message: dict) -> None:
         # Iterate over a snapshot to avoid mutation during iteration; one stalled client must not delay the rest

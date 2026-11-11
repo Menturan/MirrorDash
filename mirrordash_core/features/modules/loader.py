@@ -73,7 +73,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
 
     if not hasattr(plugin_instance, "video_is_playing"):
         # `async with self.video_is_playing():` around playback: meanwhile the other modules update once a
-        # minute (ws.py, ARCHITECTURE #33). ponytail: async only; a sync run_loop can't hold it.
+        # minute (screen.py, ARCHITECTURE #33). ponytail: async only; a sync run_loop can't hold it.
         @contextlib.asynccontextmanager
         async def video_is_playing():
             await link.video_playing(module_name, True)

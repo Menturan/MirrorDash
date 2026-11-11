@@ -11,7 +11,7 @@ def run_checks(results):
     monitor = internet.InternetMonitor()
     answers = iter(results)
     with patch.object(internet, "reachable", AsyncMock(side_effect=lambda: next(answers))), \
-         patch("mirrordash_core.features.kiosk.ws.manager.broadcast", new_callable=AsyncMock) as broadcast:
+         patch("mirrordash_core.screen.manager.broadcast", new_callable=AsyncMock) as broadcast:
         for _ in results:
             asyncio.run(monitor.check())
     return monitor, [c.args[0] for c in broadcast.call_args_list]

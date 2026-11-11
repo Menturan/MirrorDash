@@ -65,7 +65,7 @@ def test_a_text_value_true_stays_text_and_booleans_follow_the_schema():
 
 
 def test_a_stalled_screen_does_not_delay_the_others():
-    from mirrordash_core.features.kiosk import ws
+    from mirrordash_core import screen as ws
     good, stalled = AsyncMock(), AsyncMock()
 
     async def hang(message):

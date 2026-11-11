@@ -5,7 +5,7 @@ Turned on and off from the Power tab, the mirror's button and Home Assistant (MQ
 was already there and is the most neutral a mirror can be; this keeps what's harmless.
 
 What the screen shows of it comes in one message with the other screen-wide settings, {"type": "screen"}:
-when the page connects (kiosk/ws.py), when the settings are saved, when the mode changes and when the
+when the page connects (kiosk/routes.py), when the settings are saved, when the mode changes and when the
 modules' schedules hide others (display_power.py)."""
 
 from mirrordash_core.config import load_config, save_config
@@ -48,8 +48,8 @@ def hidden_instances(config: dict) -> set[str]:
 
 async def broadcast_screen(config: dict) -> None:
     """The screen message to every page, and to the module instances whether their cards are hidden."""
-    from mirrordash_core.features.kiosk.ws import manager
     from mirrordash_core.features.modules.client import module_host
+    from mirrordash_core.screen import manager
     await manager.broadcast(screen_message(config))
     await module_host.set_hidden(hidden_instances(config))
 

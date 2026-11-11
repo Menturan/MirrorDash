@@ -193,7 +193,7 @@ class DisplayPowerManager:
 
     async def _send_schedules(self, config: dict, now: datetime) -> None:
         """The screen message again when the modules' schedules hide others than last time: a schedule
-        starting or ending, or a saved one (the page connecting gets it anyway, kiosk/ws.py)."""
+        starting or ending, or a saved one (the page connecting gets it anyway, kiosk/routes.py)."""
         hidden = scheduled_out(config, now)
         if hidden != self.scheduled_out:
             self.scheduled_out = hidden

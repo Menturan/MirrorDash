@@ -4,8 +4,8 @@ from unittest.mock import patch
 
 import pytest
 
-from mirrordash_core.features.kiosk.ws import ConnectionManager
 from mirrordash_core.features.video import window
+from mirrordash_core.screen import ConnectionManager
 
 BASE_RC = ('<?xml version="1.0"?><labwc_config><mouse><context name="Root"><mousebind button="Right" '
            'action="Press"><action name="None" /></mousebind></context></mouse></labwc_config>')
@@ -77,7 +77,7 @@ def test_only_the_mirrors_own_screen_says_where_the_window_is():
     """A phone showing the mirror page must not move the video (kiosk/routes.py checks on_screen)."""
     from types import SimpleNamespace
 
-    from mirrordash_core.features.kiosk.ws import on_screen
+    from mirrordash_core.screen import on_screen
     assert on_screen(SimpleNamespace(host="127.0.0.1")) and not on_screen(SimpleNamespace(host="192.168.1.20"))
     loop = asyncio.new_event_loop()
     future = window._asked["tv"] = loop.create_future()

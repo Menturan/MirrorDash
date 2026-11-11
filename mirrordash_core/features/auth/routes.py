@@ -27,8 +27,8 @@ from mirrordash_core.admin import (
     set_session_cookie,
 )
 from mirrordash_core.config import load_config, save_config
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.auth")
 router = APIRouter(prefix="/admin")

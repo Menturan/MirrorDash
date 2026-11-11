@@ -1,7 +1,7 @@
 
 import pytest
 
-from mirrordash_core.features.kiosk.ws import ConnectionManager
+from mirrordash_core.screen import ConnectionManager
 
 
 class MockWebSocket:
@@ -75,9 +75,10 @@ async def test_ws_manager_replay_cache_on_connect():
     await manager.broadcast(msg1)
     await manager.broadcast(msg2)
     
-    # Connect new client
+    # Connect new client, greeted as the route does
+    from mirrordash_core.features.kiosk.routes import greeting
     ws = MockWebSocket()
-    await manager.connect(ws)
+    await manager.connect(ws, greeting)
     
     # The version first (the page reloads on a new one), the screen-wide settings (privacy mode) before any
     # card, so a reloaded page never shows what privacy mode hides, then both cached messages
@@ -102,8 +103,8 @@ async def test_ws_manager_broadcast_dead_connection_cleanup():
     msg = {"module": "test", "html": "<div>test</div>"}
     await manager.broadcast(msg)
     
-    # Verify good socket received the message (after its hello and the screen-wide settings)
-    assert ws_good.sent_messages[2:] == [msg]
+    # Verify good socket received the message 
+    assert ws_good.sent_messages == [msg]
     
     # Verify bad socket was automatically cleaned up and disconnected
     assert ws_good in manager.active_connections
@@ -165,8 +166,7 @@ async def test_while_a_video_plays_the_other_modules_update_once_a_minute():
         await manager.broadcast({**clock, "html": "<p>12:01</p>"})
         assert sent[-1]["module"] == "tv"
         late = MockWebSocket()
-        await manager.connect(late)                    # a page that comes now gets the state and the latest
-        assert late.sent_messages[0]["video_is_playing"] is True
+        await manager.connect(late)                    # a page that comes now gets the latest
         assert {**clock, "html": "<p>12:01</p>"} in late.sent_messages
         await manager.send_pending()                   # on the minute
         assert sent[-1] == {**clock, "html": "<p>12:01</p>"}

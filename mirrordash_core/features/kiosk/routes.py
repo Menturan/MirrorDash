@@ -11,22 +11,26 @@ import time
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from mirrordash_core.admin import PACKAGE_DIR, auth_state, templates
-from mirrordash_core.config import load_config
+from mirrordash_core import notifications
+from mirrordash_core.admin import BOOT_ID, PACKAGE_DIR, auth_state, templates
+from mirrordash_core.config import get_core_version, load_config
+from mirrordash_core.features.kiosk import guard
 from mirrordash_core.features.kiosk.design_forms import design_cards
-from mirrordash_core.features.kiosk.ws import manager, on_screen
+from mirrordash_core.features.kiosk.internet import internet_monitor
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
     find_entry_point,
     load_translations,
     package_dir,
 )
+from mirrordash_core.features.power.privacy import screen_message
 from mirrordash_core.features.wifi.network import (
     HOTSPOT_SSID,
     SETUP_HOSTS,
     get_hotspot_password,
     is_wifi_hotspot_active,
 )
+from mirrordash_core.screen import manager, on_screen
 
 logger = logging.getLogger("mirrordash.core.kiosk")
 router = APIRouter()
@@ -141,13 +145,27 @@ async def get_active_modules() -> dict:
     }
 
 
+def greeting() -> list[dict]:
+    """What a screen that connects is told before any module's card.
+
+    "hello": the mirror page's code comes with MirrorDash, so on another version than the page was loaded
+    with (an update or a rollback) the page reloads itself (js/kiosk/core.js). "online" sets its Offline
+    badge (internet.py; changes come later as {"type": "internet"}), "error" its badge of an unread error
+    notification (notifications.py; later as {"type": "notices"}), and "video_is_playing" whether the
+    modules update once a minute (later as {"type": "video_is_playing"}).
+    Then privacy mode and the other screen-wide settings (power/privacy.py)."""
+    return [{"type": "hello", "version": get_core_version(), "boot_id": BOOT_ID, "online": internet_monitor.online,
+             "video_is_playing": bool(manager.video_players), "error": notifications.has_unread_error()},
+            screen_message()]
+
+
 # WebSocket communication endpoint
 @router.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     if not on_screen(websocket.client):  # the cards go to the mirror's own screen only, like the page
         await websocket.close()
         return
-    await manager.connect(websocket)
+    await manager.connect(websocket, greeting)
     try:
         while True:
             text = await websocket.receive_text()
@@ -161,8 +179,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if isinstance(message, dict) and message.get("type") == "video_window":
                     from mirrordash_core.features.video.window import window_reported
                     window_reported(message.get("module"), message.get("rect"))
-                elif isinstance(message, dict) and message.get("type") == "page":  # which load (the crash guard)
-                    await manager.page_loaded(message.get("id"), message.get("boot"))
+                elif (isinstance(message, dict) and message.get("type") == "page"  # which load (the crash guard)
+                      and manager.page_loaded(message.get("id"), message.get("boot"))):
+                    await guard.page_crashed(set(manager.played_video))
     except WebSocketDisconnect:
         manager.disconnect(websocket)
     except Exception as e:

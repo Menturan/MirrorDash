@@ -21,7 +21,7 @@ def saved():
     config = {"globals": {"privacy_shows": "nothing"}}
     with patch.object(privacy, "load_config", return_value=config), \
          patch.object(privacy, "save_config") as save, \
-         patch("mirrordash_core.features.kiosk.ws.manager.broadcast", AsyncMock()) as broadcast:
+         patch("mirrordash_core.screen.manager.broadcast", AsyncMock()) as broadcast:
         yield config, save, broadcast
 
 

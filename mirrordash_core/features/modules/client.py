@@ -33,7 +33,6 @@ from types import SimpleNamespace
 from mirrordash_core.config import load_config
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.hardware.gpio import free_pins, header_chip, request_lines
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import lan
 from mirrordash_core.features.modules.defaults import with_defaults
 from mirrordash_core.features.modules.forkserver import MODULE_UIDS
@@ -45,6 +44,7 @@ from mirrordash_core.features.modules.module_files import (
 )
 from mirrordash_core.features.modules.settings_process import SettingsProcesses
 from mirrordash_core.host import run_in_background, run_restart
+from mirrordash_core.screen import manager
 from mirrordash_core.venv import get_venv_paths
 
 logger = logging.getLogger("mirrordash.core.modules.client")

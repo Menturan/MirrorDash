@@ -116,8 +116,8 @@ def _tell_screen(error_before: bool, data: dict) -> None:
     error = has_unread_error(data)
     if error == error_before:
         return
-    from mirrordash_core.features.kiosk.ws import manager
     from mirrordash_core.host import run_in_background
+    from mirrordash_core.screen import manager
     message = manager.broadcast({"type": "notices", "error": error})
     try:
         run_in_background(message, name="notices")

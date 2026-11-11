@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from mirrordash_core.features.kiosk import guard
-from mirrordash_core.features.kiosk.ws import ConnectionManager
+from mirrordash_core.screen import ConnectionManager
 
 MODULES = {
     "mirrordash-clock": {"module": "mirrordash-clock", "position": "top_right"},
@@ -90,22 +90,16 @@ def test_the_dashboards_banner_says_what_each_step_paused_and_when():
 async def test_a_new_page_the_core_didnt_ask_for_is_a_crash():
     from mirrordash_core.admin import BOOT_ID
     manager = ConnectionManager()
-    with patch.object(guard, "page_crashed", new_callable=AsyncMock) as crashed:
-        await manager.page_loaded("first", None)  # the screen's first load since the core started
-        await manager.page_loaded("first", BOOT_ID)  # the same page reconnecting
-        assert crashed.await_count == 0
-        await manager.page_loaded("second", None)  # loaded anew: Cog restarted after the renderer crashed
-        assert crashed.await_count == 1
-        restarted = ConnectionManager()  # the core started again: the old page reconnects ...
-        await restarted.page_loaded("old", "an-older-start")
-        await restarted.page_loaded("fresh", None)  # ... and reloads itself on the new boot id: no crash
-        assert crashed.await_count == 1
-        await manager.broadcast({"action": "reload"})  # the core asked for it (a settings save)
-        await manager.page_loaded("fifth", None)
-        assert crashed.await_count == 1
-        await manager.page_loaded(None, None)
-        await manager.page_loaded("x" * 65, None)  # not an id
-        assert crashed.await_count == 1
+    assert not manager.page_loaded("first", None)  # the screen's first load since the core started
+    assert not manager.page_loaded("first", BOOT_ID)  # the same page reconnecting
+    assert manager.page_loaded("second", None)  # loaded anew: the screen restarted after the renderer crashed
+    restarted = ConnectionManager()  # the core started again: the old page reconnects ...
+    assert not restarted.page_loaded("old", "an-older-start")
+    assert not restarted.page_loaded("fresh", None)  # ... and reloads itself on the new boot id: no crash
+    await manager.broadcast({"action": "reload"})  # the core asked for it (a settings save)
+    assert not manager.page_loaded("fifth", None)
+    assert not manager.page_loaded(None, None)
+    assert not manager.page_loaded("x" * 65, None)  # not an id
 
 
 @pytest.mark.asyncio

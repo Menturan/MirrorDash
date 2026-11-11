@@ -454,7 +454,7 @@ async def test_a_module_with_only_render_is_shown_every_interval_and_when_change
 
 @pytest.mark.asyncio
 async def test_the_same_module_message_is_sent_once():
-    from mirrordash_core.features.kiosk.ws import ConnectionManager
+    from mirrordash_core.screen import ConnectionManager
 
     manager = ConnectionManager()
     client = AsyncMock()
@@ -1102,8 +1102,8 @@ async def test_each_instance_runs_in_a_process_of_its_own(tmp_path, monkeypatch)
 
 @pytest.mark.asyncio
 async def test_an_instance_that_ends_mid_video_lets_the_others_update_again(monkeypatch):
-    from mirrordash_core.features.kiosk.ws import ConnectionManager
     from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.screen import ConnectionManager
     manager = ConnectionManager()
     monkeypatch.setattr(client_module, "manager", manager)
     await manager.set_video_playing("tv", True)  # its process dies inside video_is_playing()

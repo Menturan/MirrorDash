@@ -28,7 +28,6 @@ from mirrordash_core.admin import (
 )
 from mirrordash_core.config import load_config, save_config
 from mirrordash_core.features.dashboard.telemetry import get_wifi_info
-from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.wifi.network import (
     connect_wifi,
@@ -45,6 +44,7 @@ from mirrordash_core.host import (
     reboot_system,
     run_in_background,
 )
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.wifi")
 router = APIRouter()
