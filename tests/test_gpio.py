@@ -52,6 +52,7 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
     and hands over the lines' file descriptor (a pipe here, there is no GPIO chip in a test)."""
     import mirrordash_core.features.modules.loader
     from mirrordash_core.features.modules import client as client_module
+    from mirrordash_core.features.modules import from_instances
     from mirrordash_core.features.modules import host as host_module
 
     results = {}
@@ -93,11 +94,12 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
     monkeypatch.setattr(mirrordash_core.features.modules.loader, "module_entry_points", lambda: [EntryPoint()])
     monkeypatch.setattr(host_module.LogForward, "emit", lambda self, record: None)
     monkeypatch.setattr(client_module.lan, "LAN_HELPER", str(tmp_path / "no-helper"))
-    monkeypatch.setattr(client_module, "load_config", lambda: {
-        "modules": {"relay": {"module": "md_relay"}}, "globals": {}, **CONFIG})
+    config = {"modules": {"relay": {"module": "md_relay"}}, "globals": {}, **CONFIG}
+    monkeypatch.setattr(client_module, "load_config", lambda: config)
+    monkeypatch.setattr(from_instances, "load_config", lambda: config)
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock()))
-    monkeypatch.setattr(client_module, "header_chip", lambda: "/dev/gpiochip0")
-    monkeypatch.setattr(client_module, "request_lines", fake_request)
+    monkeypatch.setattr(from_instances, "header_chip", lambda: "/dev/gpiochip0")
+    monkeypatch.setattr(from_instances, "request_lines", fake_request)
     core = client_module.ModuleHost()
     server = host_here(socket_path)
     await _until(lambda: (tmp_path / "host.sock").exists())
@@ -112,7 +114,8 @@ async def test_a_module_gets_free_pins_from_the_core_and_nothing_else(tmp_path, 
         assert results["lines"].fd == -1 and results["again"].fd >= 0
         # A connection speaks for its own instance only, whatever its message names; one of no instance gets none
         stranger = client_module.Connection(MagicMock(), MagicMock(), None, "elsewhere")
-        assert core._hand_over_gpio_lines({"id": 99, "instance": "relay", "pins": [27]}, stranger) == "not an instance of this mirror"
+        await core._handle({"t": "gpio", "id": 99, "instance": "relay", "pins": [27]}, stranger)
+        assert len(requested) == 2
     finally:
         await core.stop_modules()
         await asyncio.wait_for(server, 5)

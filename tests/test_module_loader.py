@@ -682,6 +682,8 @@ async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, ca
     core._placement = {"w": {"module": "w"}}
     conn = core._instances["w"] = client_module.Connection(MagicMock(), MagicMock(), None, "w")
     monkeypatch.setattr(client_module, "manager", MagicMock(broadcast=AsyncMock(), set_video_playing=AsyncMock()))
+    from mirrordash_core.features.modules.connection import LOG_BURST
+    from mirrordash_core.features.modules.from_instances import LOG_WINDOW
     monkeypatch.setattr(client_module, "HTML_INTERVAL", 0.2)
     with caplog.at_level(logging.INFO):
         for i in range(50):
@@ -697,13 +699,13 @@ async def test_what_a_module_sends_the_core_is_bounded(tmp_path, monkeypatch, ca
         for _ in range(3):
             await core._handle({"t": "html", "html": "x" * (client_module.HTML_LIMIT + 1)}, conn)
         assert conn.html == "" and sum("not shown" in r.message for r in caplog.records) == 1
-        for i in range(client_module.LOG_BURST + 30):
+        for i in range(LOG_BURST + 30):
             await core._handle({"t": "log", "level": 20, "text": f"line {i}"}, conn)
         conn.logged.clear()
         await core._handle({"t": "log", "level": 20, "text": "after"}, conn)
     lines = [r.message for r in caplog.records if r.name == "mirrordash.modules.w"]
-    assert len(lines) == client_module.LOG_BURST + 2 and lines[-2:] == [
-        f"30 log lines left out: more than {client_module.LOG_BURST} in {client_module.LOG_WINDOW} s", "after"]
+    assert len(lines) == LOG_BURST + 2 and lines[-2:] == [
+        f"30 log lines left out: more than {LOG_BURST} in {LOG_WINDOW} s", "after"]
 
     (tmp_path / "pkg").mkdir()
     (tmp_path / "pkg" / "schema.json").write_text(" " * (module_files.MODULE_FILE_LIMIT + 1))
