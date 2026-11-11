@@ -74,15 +74,22 @@ traffic_flows() {
     { [ -n "$gateway" ] && ping -c 3 -W 2 -q "$gateway" >/dev/null 2>&1; } || ping -c 3 -W 2 -q 1.1.1.1 >/dev/null 2>&1
 }
 
-# Joined but no traffic for 2 rounds in a row (about 6 minutes; one round can be a router restarting):
-# keep the log of what happened (Logs → Saved Logs, once per outage; the system log is in RAM) and
-# join the Wi-Fi again, or, when the Wi-Fi chip hangs, start it again. If that doesn't help, the next
-# rounds try again.
+# Keep the log of what happened under Logs → Saved Logs (the system log is in RAM: a restart loses it)
+save_log() {
+    [ ! -x /usr/local/lib/mirrordash/save-log ] || /usr/local/lib/mirrordash/save-log "$1" -b -n 3000 >/dev/null || true
+}
+
+# No traffic: when the Wi-Fi chip hangs, start it again, one step a round from the first round on (the
+# kernel log already says what is wrong). Otherwise wait for 2 rounds in a row (about 6 minutes; one
+# round can be a router restarting), then join the Wi-Fi again. The log is saved once per outage when
+# the first step is taken, and once more when a hung chip passes traffic again, so the saved log tells
+# which step was enough. If a step doesn't help, the next rounds try again.
 check_traffic() {
     local fails
     if traffic_flows; then
         if [ -f "$RECOVERY_FILE" ]; then
             logger -t mirrordash-wifi "Traffic gets through again after: $(cat "$RECOVERY_FILE")."
+            save_log wifi-back
         fi
         rm -f "$FAILS_FILE" "$RECOVERY_FILE"
         return 0
@@ -90,14 +97,13 @@ check_traffic() {
     fails=$(( $(cat "$FAILS_FILE" 2>/dev/null || echo 0) + 1 ))
     echo "$fails" > "$FAILS_FILE"
     logger -t mirrordash-wifi "No traffic gets through (round $fails)."
-    [ "$fails" -ge 2 ] || return 0
-    if [ "$fails" -eq 2 ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-        /usr/local/lib/mirrordash/save-log wifi-lost -b -n 3000 >/dev/null || true
-    fi
     if wifi_chip_hung; then
+        [ -f "$RECOVERY_FILE" ] || save_log wifi-lost
         recover_hung_chip "$fails"
         return 0
     fi
+    [ "$fails" -ge 2 ] || return 0
+    [ "$fails" -ne 2 ] || save_log wifi-lost
     logger -t mirrordash-wifi "Joining the Wi-Fi again..."
     nmcli device disconnect "$INTERFACE" || true
     join_saved_wifi || logger -t mirrordash-wifi "Joining the Wi-Fi again failed."
@@ -123,28 +129,37 @@ wifi_chip_hung() {
         grep -qE 'brcmf_sdio_isr: failed backplane access|brcmf_proto_bcdc_msg failed w/status -110'
 }
 
-# One step a round (round 2 is the first that acts), each stronger than the last: load the driver
-# again; restart the bus controller, which also powers the chip off and on; restart the mirror. Each
-# step is logged, and the round that finds traffic again logs which step was enough.
+# One step a round, each stronger than the last: load the driver again; restart the bus controller
+# with the chip's power off and on; restart the mirror. Then from the top again: the restart is
+# limited to once an hour, and a chip that hangs again within that hour still gets the lighter steps.
+# Each step is logged, and the round that finds traffic again logs which step was enough.
 recover_hung_chip() {
     local controller driver
-    case "$1" in
-        2)
+    case $(( ($1 - 1) % 3 )) in
+        0)
             echo "loading the Wi-Fi driver again" > "$RECOVERY_FILE"
             logger -t mirrordash-wifi "The Wi-Fi chip hangs; loading its driver again..."
             reload_wifi_driver
             ;;
-        3)
-            echo "restarting the Wi-Fi chip's bus" > "$RECOVERY_FILE"
-            # wlan0 -> mmc1:0001:1 (the chip) -> mmc1:0001 -> mmc1 -> mmc_host -> the controller
-            controller=$(realpath "$SYS/class/net/$INTERFACE/device/../../../..")
+        1)
+            echo "restarting the Wi-Fi chip's bus and power" > "$RECOVERY_FILE"
+            # The bus is mmc1 on every Pi with this chip (an alias in their device trees). Not found
+            # through wlan0: a hung chip's driver often doesn't start again, and then there is no wlan0.
+            controller=$(realpath "$SYS/class/mmc_host/mmc1/device" 2>/dev/null)
+            if [ ! -e "$controller/driver" ]; then
+                logger -t mirrordash-wifi "The Wi-Fi chip still hangs, and its bus (mmc1) is gone."
+                return 0
+            fi
             driver=$(realpath "$controller/driver")
-            logger -t mirrordash-wifi "The Wi-Fi chip still hangs; restarting its bus (${controller##*/})..."
-            # unbind returns once the controller is shut down, so bind can follow at once
+            logger -t mirrordash-wifi "The Wi-Fi chip still hangs; restarting its bus (${controller##*/}) and its power..."
+            # unbind returns once the controller is shut down, so the rest can follow at once
             echo "${controller##*/}" > "$driver/unbind"
+            # Restarting the bus leaves the chip powered (the device tree gives the bus no power switch
+            # for it): its power line, WL_ON, is taken low for a second by hand, then left high.
+            timeout 10 gpioset -t 1s,0 WL_ON=0 || logger -t mirrordash-wifi "Could not switch the Wi-Fi chip's power (WL_ON)."
             echo "${controller##*/}" > "$driver/bind"
             ;;
-        *)
+        2)
             restart_for_wifi_chip "The Wi-Fi chip still hangs"
             ;;
     esac
@@ -170,6 +185,7 @@ restart_for_wifi_chip() {
         return 0
     fi
     logger -t mirrordash-wifi "$1: restarting the mirror."
+    save_log wifi-restart
     # Under a new name, then renamed over it: a link pi put at the name is replaced, never written through
     part=$(mktemp -u "$CHIP_REBOOT_FILE.XXXXXX")
     date +%s | install -m 0644 /dev/stdin "$part" && mv -f "$part" "$CHIP_REBOOT_FILE"
@@ -180,8 +196,8 @@ restart_for_wifi_chip() {
 # Keep the log (once per start), then load the driver again: harmless on every model. If wlan0 still
 # doesn't come and the mirror has no network at all (not even a cable), restart it.
 recover_wifi_chip() {
-    if [ ! -e /run/mirrordash-wifi-chip-logged ] && [ -x /usr/local/lib/mirrordash/save-log ]; then
-        /usr/local/lib/mirrordash/save-log wifi-chip -b -n 3000 >/dev/null || true
+    if [ ! -e /run/mirrordash-wifi-chip-logged ]; then
+        save_log wifi-chip
         touch /run/mirrordash-wifi-chip-logged
     fi
     logger -t mirrordash-wifi "The Wi-Fi chip didn't start (no $INTERFACE); loading its driver again..."
@@ -238,12 +254,6 @@ start_hotspot() {
 WATCHING=false
 if [ "${1:-}" = "--watch" ]; then WATCHING=true; fi
 
-# First: a Wi-Fi chip that didn't start leaves nothing for the rest to work with
-if $WATCHING && wifi_chip_failed; then
-    recover_wifi_chip
-    exit 0
-fi
-
 if $WATCHING && hotspot_active; then
     if ! has_saved_wifi || phone_on_hotspot; then
         exit 0
@@ -265,8 +275,16 @@ fi
 # A hung Wi-Fi chip often takes the connection down with it: NetworkManager then sees no network and
 # the hotspot below can't start on a hung chip either. Measured on a Pi 3 (2026-11-11): the watch
 # tried the hotspot every round for an hour and never started the chip again, until it woke by itself.
+# Before the check for a chip that didn't start: a hung chip whose driver was loaded again often has
+# no wlan0, and its next step is the bus and power, not the driver once more.
 if $WATCHING && wifi_chip_hung; then
     check_traffic
+    exit 0
+fi
+
+# A Wi-Fi chip that didn't start leaves nothing for the rest to work with
+if $WATCHING && wifi_chip_failed; then
+    recover_wifi_chip
     exit 0
 fi
 

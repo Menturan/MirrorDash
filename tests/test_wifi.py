@@ -318,7 +318,8 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
     saved Wi-Fi, once the hotspot lets go of the radio) answers. traffic: ping gets an answer (online but
     no traffic is the Pi 3's stuck Wi-Fi). chip=False: brcmfmac is loaded but there's no wlan0 (its firmware
     didn't load); chip_comes_back: reloading the driver brings wlan0. hung: the kernel log shows the Wi-Fi
-    chip's bus locked up. Returns (password, and the nmcli, curl, save-log, modprobe and systemctl calls)."""
+    chip's bus locked up. Returns (password, and the nmcli, curl, save-log, modprobe, gpioset and systemctl
+    calls)."""
     import os
     import subprocess
 
@@ -339,13 +340,16 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
     (sys_dir / "class" / "net").mkdir(parents=True, exist_ok=True)
     if chip:
         (sys_dir / "class" / "net" / "wlan0").mkdir(exist_ok=True)
-        controller = sys_dir / "devices" / "platform" / "soc" / "3f300000.mmcnr"
-        (controller / "mmc_host" / "mmc1" / "mmc1:0001" / "mmc1:0001:1").mkdir(parents=True, exist_ok=True)
-        (sys_dir / "bus" / "platform" / "drivers" / "mmc-bcm2835").mkdir(parents=True, exist_ok=True)
-        for link, target in ((sys_dir / "class" / "net" / "wlan0" / "device", controller / "mmc_host/mmc1/mmc1:0001/mmc1:0001:1"),
-                             (controller / "driver", sys_dir / "bus" / "platform" / "drivers" / "mmc-bcm2835")):
-            if not link.is_symlink():
-                link.symlink_to(target)
+    # The chip's bus (mmc1) and its controller, as sysfs links them; there with or without wlan0
+    controller = sys_dir / "devices" / "platform" / "soc" / "3f300000.mmcnr"
+    (controller / "mmc_host" / "mmc1").mkdir(parents=True, exist_ok=True)
+    (sys_dir / "bus" / "platform" / "drivers" / "mmc-bcm2835").mkdir(parents=True, exist_ok=True)
+    (sys_dir / "class" / "mmc_host").mkdir(parents=True, exist_ok=True)
+    for link, target in ((sys_dir / "class" / "mmc_host" / "mmc1", controller / "mmc_host" / "mmc1"),
+                         (controller / "mmc_host" / "mmc1" / "device", controller),
+                         (controller / "driver", sys_dir / "bus" / "platform" / "drivers" / "mmc-bcm2835")):
+        if not link.is_symlink():
+            link.symlink_to(target)
     if saved_password:
         psk.write_text(saved_password)
     bin_dir.mkdir(exist_ok=True)
@@ -358,6 +362,7 @@ def run_wifi_check(tmp_path, saved_password=None, *args, online=False, hotspot=F
         "save-log": f'echo "save-log $*" >> {log}',
         "modprobe": f'echo "modprobe $*" >> {log}' + (f'; [ "$1" = -r ] || mkdir -p {sys_dir}/class/net/wlan0' if chip_comes_back else ""),
         "udevadm": "exit 0",
+        "gpioset": f'echo "gpioset $*" >> {log}',
         "journalctl": "echo 'brcmfmac: brcmf_sdio_isr: failed backplane access'" if hung else "exit 0",        "systemctl": f'echo "systemctl $*" >> {log}',
         "curl": f'echo "curl $*" >> {log}',
         "nmcli": f"""echo "$*" >> {log}
@@ -519,29 +524,45 @@ def test_a_wifi_without_traffic_is_joined_again(tmp_path):
 
 def test_a_hung_wifi_chip_is_started_again_one_step_a_round(tmp_path):
     """No traffic and the kernel log shows the chip's bus locked up (raspberrypi/linux#5770): instead of
-    joining again, round 2 loads the driver again, round 3 restarts the bus controller, round 4 restarts
-    the mirror; the round that finds traffic again logs the step that was enough."""
+    joining again, round 1 loads the driver again, round 2 restarts the bus controller with the chip's
+    power off and on, round 3 restarts the mirror, and round 4 starts over (the restart is limited to
+    once an hour). The log is saved at the first step, before the restart, and when traffic is back,
+    which also logs the step that was enough."""
     run = lambda **kw: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", online=True, saved_wifi=True, hung=True, **kw)[1]
     log, drivers = tmp_path / "nmcli.log", tmp_path / "sys" / "bus" / "platform" / "drivers" / "mmc-bcm2835"
-    run(traffic=False)
     calls = run(traffic=False)
+    assert calls[-3] == "save-log wifi-lost -b -n 3000"
     assert calls[-2].startswith("modprobe -r") and calls[-1] == "modprobe brcmfmac"
     assert not any("connection up" in c for c in calls)
     assert (tmp_path / "recovery").read_text() == "loading the Wi-Fi driver again\n"
     log.unlink()
     calls = run(traffic=False)
     assert (drivers / "unbind").read_text() == (drivers / "bind").read_text() == "3f300000.mmcnr\n"
-    assert not any(c.startswith(("modprobe", "systemctl")) for c in calls)
-    assert run(traffic=False)[-1] == "systemctl reboot"
-    run(traffic=True)
+    assert calls[-1] == "gpioset -t 1s,0 WL_ON=0"
+    assert not any(c.startswith(("modprobe", "systemctl", "save-log")) for c in calls)
+    assert run(traffic=False)[-2:] == ["save-log wifi-restart -b -n 3000", "systemctl reboot"]
+    log.unlink()
+    calls = run(traffic=False)  # the chip hangs again within the hour: the lighter steps once more
+    assert calls[-1] == "modprobe brcmfmac" and not any(c.startswith("save-log") for c in calls)
+    assert run(traffic=True)[-1] == "save-log wifi-back -b -n 3000"
     assert not (tmp_path / "recovery").exists() and not (tmp_path / "fails").exists()
+
+
+def test_a_hung_wifi_chip_without_wlan0_still_gets_its_bus_restarted(tmp_path):
+    """Loading the driver again on a hung chip often leaves no wlan0: the next round still restarts the
+    bus and the chip's power, not the driver once more as for a chip that didn't start."""
+    (tmp_path / "fails").parent.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "fails").write_text("1\n")
+    (tmp_path / "recovery").write_text("loading the Wi-Fi driver again\n")
+    _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", saved_wifi=True, traffic=False, hung=True, chip=False)
+    assert calls[-1] == "gpioset -t 1s,0 WL_ON=0" and not any(c.startswith(("modprobe", "save-log")) for c in calls)
+    assert (tmp_path / "sys/bus/platform/drivers/mmc-bcm2835/bind").read_text() == "3f300000.mmcnr\n"
 
 
 def test_a_hung_wifi_chip_that_dropped_the_connection_is_started_again_not_the_hotspot(tmp_path):
     """The chip hangs and NetworkManager loses the Wi-Fi too (nm-online fails): the same steps as above,
     never the hotspot, which can't start on a hung chip (a Pi 3 stayed offline an hour like that)."""
     run = lambda: run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", saved_wifi=True, traffic=False, hung=True)[1]
-    run()
     calls = run()
     assert calls[-2].startswith("modprobe -r") and calls[-1] == "modprobe brcmfmac"
     assert not any("MirrorDash-Setup" in c for c in calls if c.startswith("connection"))
@@ -553,6 +574,7 @@ def test_a_wifi_chip_that_didnt_start_is_started_again(tmp_path):
     """brcmfmac loaded but no wlan0 (its firmware didn't load): the log is kept once and the driver loaded
     again; that's enough when wlan0 comes back, and nothing else happens."""
     _, calls = run_wifi_check(tmp_path, "k7mxp2qrtw", "--watch", chip=False, chip_comes_back=True)
+    calls = calls[1:]  # first the check for the hotspot
     assert calls[0] == "save-log wifi-chip -b -n 3000"
     assert calls[1].startswith("modprobe -r") and calls[1].endswith("brcmfmac") and calls[2] == "modprobe brcmfmac"
     assert not any(c.startswith("systemctl") for c in calls)
