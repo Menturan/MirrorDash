@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from mirrordash_core import admin
 from mirrordash_core.admin import PACKAGE_DIR, write_local_token
+from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.api import api as api_v1
 from mirrordash_core.features.api import routes as api
 from mirrordash_core.features.auth import routes as auth
@@ -29,6 +30,7 @@ from mirrordash_core.features.mqtt import routes as mqtt
 from mirrordash_core.features.mqtt.bridge import mqtt_bridge
 from mirrordash_core.features.notifications import routes as notifications
 from mirrordash_core.features.notifications import watch as notification_watch
+from mirrordash_core.features.power import buttons
 from mirrordash_core.features.power import routes as power
 from mirrordash_core.features.power.display_power import display_power_manager
 from mirrordash_core.features.settings import routes as settings
@@ -48,6 +50,7 @@ async def lifespan(app: FastAPI):
     write_local_token()
     system_settings.apply_saved_system_settings_at_startup()
     updates_service.turn_modules_back_on_after_rollback()
+    event_bus.subscribe("hardware.button", buttons.on_button)
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
                  mqtt_bridge.start, notification_watch.start):

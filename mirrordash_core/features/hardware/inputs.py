@@ -3,7 +3,7 @@
 
 The kernel's gpio-keys driver debounces each pin and shows it as an input device; GpioInputs reads those
 devices, turns a button's down/up times into single, double, triple and long presses (PressClassifier),
-and publishes them on the event bus with the action the owner chose (run_button_action carries it out). It
+and publishes them on the event bus with the action the owner chose (features/power/buttons.py carries it out). It
 also polls the sensors (sensors.py) and publishes their readings. gpio_inputs is the one running copy.
 """
 
@@ -25,7 +25,6 @@ from mirrordash_core.features.hardware.devices import (
     find_device,
 )
 from mirrordash_core.features.hardware.sensors import read_fan_state, read_sensor
-from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.hardware")
 
@@ -247,25 +246,5 @@ class GpioInputs:
         action = device.get("actions", {}).get(press, "none")
         logger.info(f"{button} {press} press -> {action}")
         event_bus.publish("hardware.button", {"press": press, "action": action, "button": button})
-        run_in_background(run_button_action(action))
-
-async def run_button_action(action: str) -> None:
-    """Do what the owner chose for a press (BUTTON_ACTIONS)."""
-    from mirrordash_core.features.power.display_power import display_power_manager
-    from mirrordash_core.host import poweroff_system, reboot_system, run_restart
-
-    if action == "wake":
-        display_power_manager.wake()
-    elif action == "toggle_display":
-        display_power_manager.toggle()
-    elif action == "privacy":
-        from mirrordash_core.features.power.privacy import toggle_privacy
-        await toggle_privacy()
-    elif action == "restart":
-        await run_restart()
-    elif action == "reboot":
-        await reboot_system(delay_sec=1.0)
-    elif action == "shutdown":
-        await poweroff_system(delay_sec=1.0)
 
 gpio_inputs = GpioInputs()

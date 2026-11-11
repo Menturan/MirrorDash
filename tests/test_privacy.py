@@ -51,10 +51,15 @@ async def test_switching_it_saves_it_apart_from_the_settings_form_and_tells_the_
 @pytest.mark.asyncio
 async def test_the_buttons_privacy_action_switches_it(saved):
     from mirrordash_core.features.hardware.devices import BUTTON_ACTIONS
-    from mirrordash_core.features.hardware.inputs import run_button_action
+    from mirrordash_core.features.power.buttons import on_button
     assert "privacy" in BUTTON_ACTIONS
-    await run_button_action("privacy")
+    await on_button({"press": "single", "action": "privacy", "button": "button"})
     assert saved[0]["privacy"] == {"on": True}
+    # ... and the app listens for the press: without this line a button does nothing, and no other test notices
+    import inspect
+
+    from mirrordash_core.app import lifespan
+    assert 'event_bus.subscribe("hardware.button", buttons.on_button)' in inspect.getsource(lifespan.__wrapped__)
 
 
 def test_the_settings_tabs_switch(saved):

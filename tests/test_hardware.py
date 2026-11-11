@@ -260,8 +260,7 @@ def test_each_button_has_its_own_presses_and_actions():
         event_bus.subscribe("hardware.button", handler)
         inputs, r, w = _pipe_inputs()
         try:
-            with patch("mirrordash_core.features.hardware.inputs.load_config", return_value=cfg), \
-                 patch("mirrordash_core.features.hardware.inputs.run_button_action", new_callable=AsyncMock):
+            with patch("mirrordash_core.features.hardware.inputs.load_config", return_value=cfg):
                 os.write(w, key("button", 1) + key("button_2", 1))  # both held at once
                 inputs._on_readable("dev")
                 await asyncio.sleep(0.05)
