@@ -9,16 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- A Pi 3 whose Wi-Fi chip hangs (on a long, heavy download or stream) now starts the chip again, and restarts the mirror if that doesn't help, also when the Wi-Fi connection dropped with it. Before, the mirror tried to start its setup hotspot instead and could stay offline for an hour or until it was unplugged. It now starts within 3 minutes instead of 6, also switches the chip's power off and on before it restarts the mirror, and saves the log when the Wi-Fi works again (*Logs → Saved Logs*), which tells what it took.
-- **Notifications**: a bell at the top of the admin page tells what happened to your mirror in plain words: updates of MirrorDash, the system and the modules, an update that failed or waits for you, a module that kept crashing, the Wi-Fi or screen that was restarted, a power cut. Mark them read one by one or all at once. While an error is unread, the mirror shows *Error: see the admin page* at the top.
-- **Give a module your own name**, such as *Kitchen Clock*: the new *Name* at the top of its settings. The name shows on the admin page and in its notifications, so with two clocks you can tell which one is meant.
-- **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
-- A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
-- **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
-- **Automatic backups**: every week, when something has changed, the mirror makes a backup by itself at night, passwords and Wi-Fi included. It stays on the mirror (it can be restored, not downloaded), and the newest two are kept, marked *Automatic* in the Backup list.
-- A backup is now written so that a power cut while it is being made never leaves a broken backup file behind.
-- A module switched off on the admin page greys out at once, and a switch whose change could not be saved goes back to how it was, instead of showing a setting the mirror doesn't have.
-
 ### OS image
 
 - **A damaged storage partition no longer stops the mirror for good**: when it can't be repaired at start, the mirror saves the newest backups from it, makes it anew and starts as a new mirror, and the bell says to restore the backup, which brings everything back.
@@ -34,6 +24,18 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.16.0] - 2026-11-11
+
+- A Pi 3 whose Wi-Fi chip hangs (on a long, heavy download or stream) now starts the chip again, and restarts the mirror if that doesn't help, also when the Wi-Fi connection dropped with it. Before, the mirror tried to start its setup hotspot instead and could stay offline for an hour or until it was unplugged. It now starts within 3 minutes instead of 6, also switches the chip's power off and on before it restarts the mirror, and saves the log when the Wi-Fi works again (*Logs → Saved Logs*), which tells what it took.
+- **Notifications**: a bell at the top of the admin page tells what happened to your mirror in plain words: updates of MirrorDash, the system and the modules, an update that failed or waits for you, a module that kept crashing, the Wi-Fi or screen that was restarted, a power cut. Mark them read one by one or all at once. While an error is unread, the mirror shows *Error: see the admin page* at the top.
+- **Give a module your own name**, such as *Kitchen Clock*: the new *Name* at the top of its settings. The name shows on the admin page and in its notifications, so with two clocks you can tell which one is meant.
+- **Modules can update themselves at night too**: turn on *Update modules automatically* under *Updates*. A module you'd rather update yourself has *Update automatically* in its own settings to keep it out. One update a night: the system first, then MirrorDash, then the modules.
+- A new version of MirrorDash or of a module that doesn't install or start is tried on three nights at most, as a system version already was, then waits until you install it yourself or a newer one comes.
+- **Update All Modules** (and the nightly update) no longer gives up on every module when one of them doesn't work: that one stays as it was, the others are updated.
+- **Automatic backups**: every week, when something has changed, the mirror makes a backup by itself at night, passwords and Wi-Fi included. It stays on the mirror (it can be restored, not downloaded), and the newest two are kept, marked *Automatic* in the Backup list.
+- A backup is now written so that a power cut while it is being made never leaves a broken backup file behind.
+- A module switched off on the admin page greys out at once, and a switch whose change could not be saved goes back to how it was, instead of showing a setting the mirror doesn't have.
 
 ## [0.15.1] - 2026-11-07
 
