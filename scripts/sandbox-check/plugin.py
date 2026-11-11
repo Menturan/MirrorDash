@@ -58,7 +58,7 @@ class Module:
 
         @self.router.get("/plant")
         async def plant():  # a link where the core will write next, to the core's data
-            return attempt(lambda: (os.symlink("/storage/mirrordash/data/config.json", photos + "/evil.jpg"), "PLANTED")[1])
+            return attempt(lambda: (os.symlink("/storage/mirrordash/data/data/config.json", photos + "/evil.jpg"), "PLANTED")[1])
 
         @self.router.get("/who")
         async def who():

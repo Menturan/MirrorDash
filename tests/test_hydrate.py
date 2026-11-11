@@ -127,8 +127,8 @@ def run_damaged_storage(tmp_path: Path, e2fsck_rc: int, yes_rc: int | None = Non
         folder.mkdir(exist_ok=True)
     (state / "mounted").unlink(missing_ok=True)
     if settings:
-        (storage / "mirrordash" / "data").mkdir(parents=True, exist_ok=True)
-        (storage / "mirrordash" / "data" / "config.json").write_text("{}")
+        (storage / "mirrordash" / "data" / "data").mkdir(parents=True, exist_ok=True)
+        (storage / "mirrordash" / "data" / "data" / "config.json").write_text("{}")
     (tmp_path / "cmdline").write_text("root=PARTUUID=abcd-05 rootfstype=squashfs\n")
     part = tmp_path / "p7"
     part.write_text("")
@@ -173,7 +173,7 @@ def test_a_storage_partition_beyond_repair_is_made_anew_with_its_newest_backups(
     code, md, state = run_damaged_storage(tmp_path, e2fsck_rc=4)
     assert code == 0
     assert (state / "mkfs").read_text().split() == ["-F", "-L", "mirrordash-data", str(tmp_path / "p7")]
-    backup = md / "data" / "backups" / "mirrordash_autobackup_20261108_033000.mirror"
+    backup = md / "data" / "data" / "backups" / "mirrordash_autobackup_20261108_033000.mirror"
     assert backup.is_file() and backup.stat().st_mode & 0o777 == 0o600
     assert (state / "saved-logs").read_text().split() == ["storage-rebuilt"]  # the red notice; not storage-repair
     assert (state / "bell-mark").exists()
@@ -185,7 +185,7 @@ def test_a_repair_that_lost_the_settings_is_told_on_the_bells_first_look(tmp_pat
     rescued backup goes back, and the bell says so although its own file went too."""
     code, md, state = run_damaged_storage(tmp_path, e2fsck_rc=4, yes_rc=1, mounts=True)
     assert code == 0 and not (state / "mkfs").exists()
-    assert (md / "data" / "backups" / "mirrordash_autobackup_20261108_033000.mirror").is_file()
+    assert (md / "data" / "data" / "backups" / "mirrordash_autobackup_20261108_033000.mirror").is_file()
     assert (state / "saved-logs").read_text().split() == ["storage-lost"] and (state / "bell-mark").exists()
 
 
@@ -236,15 +236,16 @@ def test_storage_rescue_copies_the_newest_backups_off_a_broken_partition(tmp_pat
              "mirrordash_backup_20261102_120000.mirror": encrypted(5000),
              "mirrordash_backup_20260901_120000.mirror": encrypted(5000),
              "tmp_upload.mirror": encrypted(100)}
-    steps = ["mkdir mirrordash", "mkdir mirrordash/data", "mkdir mirrordash/data/backups"]
+    steps = ["mkdir mirrordash", "mkdir mirrordash/data", "mkdir mirrordash/data/data",
+             "mkdir mirrordash/data/data/backups"]
     for name, data in files.items():
         (tmp_path / name).write_bytes(data)
-        steps.append(f"write {tmp_path / name} mirrordash/data/backups/{name}")
+        steps.append(f"write {tmp_path / name} mirrordash/data/data/backups/{name}")
     (tmp_path / "steps").write_text("\n".join(steps) + "\n")
     subprocess.run(["debugfs", "-w", "-f", str(tmp_path / "steps"), str(disk)], check=True, env=env, capture_output=True)
     cleared = tmp_path / "cleared.img"  # the same, with the newest automatic backup's inode cleared (below)
     shutil.copyfile(disk, cleared)
-    subprocess.run(["debugfs", "-w", "-R", "clri mirrordash/data/backups/mirrordash_autobackup_20261108_033000.mirror",
+    subprocess.run(["debugfs", "-w", "-R", "clri mirrordash/data/data/backups/mirrordash_autobackup_20261108_033000.mirror",
                     str(cleared)], check=True, env=env, capture_output=True)
     with open(disk, "r+b") as f:  # the primary superblock: 1024 bytes at 1024
         f.seek(1024)
@@ -271,3 +272,16 @@ def test_storage_rescue_copies_the_newest_backups_off_a_broken_partition(tmp_pat
     empty = tmp_path / "empty.img"  # nothing readable: says so, saves nothing
     subprocess.run(["truncate", "-s", "8M", str(empty)], check=True)
     assert subprocess.run(["bash", str(script), str(empty), str(out)], env=env, capture_output=True).returncode == 1
+
+
+def test_the_scripts_look_where_the_app_keeps_its_config_and_backups():
+    """~/.mirrordash is /storage/mirrordash/data on a mirror (configure_image.sh), and the app keeps its config
+    and backups under ~/.mirrordash/data: hydrate and storage-rescue must look there, or a repair is told as
+    lost settings and the rescue finds no backup."""
+    from mirrordash_core.features.backup import service
+    base = Path(service.BASE_DIR)
+    backups, config = Path(service.BACKUPS_DIR).relative_to(base), Path(service.DATA_DIR, "config.json").relative_to(base)
+    assert "ln -sfT /storage/mirrordash/data \"$PI_HOME/.mirrordash\"" in Path("scripts/configure_image.sh").read_text()
+    hydrate = unit("/usr/local/bin/mirrordash-hydrate.sh")
+    assert f"/storage/mirrordash/data/{backups}/" in hydrate and f"/storage/mirrordash/data/{config}" in hydrate
+    assert f"dir=/mirrordash/data/{backups} " in unit("/usr/local/lib/mirrordash/storage-rescue")

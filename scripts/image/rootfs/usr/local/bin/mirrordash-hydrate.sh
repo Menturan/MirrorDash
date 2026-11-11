@@ -71,11 +71,14 @@ fi
 put_back_backups() {
     owned_folder pi:pi 755 /storage/mirrordash
     owned_folder pi:pi 700 /storage/mirrordash/data
-    owned_folder pi:pi 755 /storage/mirrordash/data/backups
+    # The app's data dir: ~/.mirrordash is /storage/mirrordash/data, and the app keeps its config and
+    # backups in ~/.mirrordash/data (config.py get_config_path, backup/service.py BACKUPS_DIR)
+    owned_folder pi:pi 700 /storage/mirrordash/data/data
+    owned_folder pi:pi 755 /storage/mirrordash/data/data/backups
     local backup target part
     for backup in "$RESCUE"/*.mirror; do
         [ -f "$backup" ] || continue
-        target=/storage/mirrordash/data/backups/${backup##*/}
+        target=/storage/mirrordash/data/data/backups/${backup##*/}
         cmp -s "$backup" "$target" && continue
         # Under a new name first (install creates it, never writing through a link pi put there), on the
         # card, then renamed over: a power cut never leaves half a backup under a backup's name
@@ -87,7 +90,7 @@ put_back_backups() {
             echo "Warning: a rescued backup couldn't be put back: ${backup##*/}" >&2
         fi
     done
-    sync /storage/mirrordash/data/backups || true
+    sync /storage/mirrordash/data/data/backups || true
 }
 # A partition e2fsck -y couldn't repair (errors left, 4 and up) and that doesn't mount or doesn't work: it is
 # made anew, and the backups rescued above go back at once (ARCHITECTURE #58). The mirror then starts as a
@@ -125,7 +128,7 @@ if [ -z "$REBUILT" ] && storage_works; then
     if compgen -G "$RESCUE/*.mirror" > /dev/null; then put_back_backups || true; fi
     # e2fsck -y "repaired" it by clearing what it couldn't read, the settings with it: the mirror starts as
     # a new one, and the bell (whose own file went too) must say so on its first look
-    if [ -n "$FORCED_YES" ] && [ ! -e /storage/mirrordash/data/config.json ] && [ ! -e /storage/mirrordash/data/config.json.bak ]; then
+    if [ -n "$FORCED_YES" ] && [ ! -e /storage/mirrordash/data/data/config.json ] && [ ! -e /storage/mirrordash/data/data/config.json.bak ]; then
         LOST=1
         touch /run/mirrordash-storage-rebuilt
     fi

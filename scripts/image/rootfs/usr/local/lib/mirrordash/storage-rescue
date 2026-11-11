@@ -11,7 +11,7 @@
 # Only the backups: with them the owner gets everything else back in one restore (ARCHITECTURE #58).
 set -uo pipefail
 dev=$1 out=$2
-dir=/mirrordash/data/backups
+dir=/mirrordash/data/data/backups  # the app's ~/.mirrordash/data/backups (~/.mirrordash is /storage/mirrordash/data)
 
 for superblock in "" 32768 98304 163840 229376 294912; do
   opts=(-c)

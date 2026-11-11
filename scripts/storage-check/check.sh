@@ -30,9 +30,9 @@ new_disk() {
     n=$((n + 1)); truncate -s 300M /disk$n.img
     mkfs.ext4 -q -F -b 4096 -L mirrordash-data /disk$n.img && LOOP=$(losetup -f --show /disk$n.img) &&
         mount "$LOOP" /storage || { echo "setup failed"; exit 2; }
-    local b=/storage/mirrordash/data/backups
+    local b=/storage/mirrordash/data/data/backups
     mkdir -p $b
-    echo '{"settings": "mine"}' > /storage/mirrordash/data/config.json
+    echo '{"settings": "mine"}' > /storage/mirrordash/data/data/config.json
     # Encrypted backups (openssl's "Salted__" header): storage-rescue keeps only what looks like a backup
     { printf Salted__; head -c 200000 /dev/urandom; } > $b/mirrordash_autobackup_20261101_033000.mirror
     { printf Salted__; head -c 300000 /dev/urandom; } > $b/mirrordash_autobackup_20261108_033000.mirror
@@ -51,26 +51,26 @@ hydrate() {
     PATH="/fake:$PATH" bash /tmp/hydrate.sh > /tmp/hydrate.log 2>&1; echo $? > /tmp/rc
 }
 # shellcheck disable=SC2034  # used inside the eval strings of check
-backups=/storage/mirrordash/data/backups
+backups=/storage/mirrordash/data/data/backups
 
 echo "A healthy partition that just wasn't mounted"
 new_disk; hydrate
-check "mounted, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/config.json'
+check "mounted, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/data/config.json'
 
 echo "Mounted, but turned read-only (as the kernel does on an error): checked in full and mounted again"
 new_disk; mount "$LOOP" /storage && mount -o remount,ro /storage; hydrate
-check "writable again, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && touch /storage/mirrordash/probe && grep -q mine /storage/mirrordash/data/config.json'
+check "writable again, settings kept" '[ "$(cat /tmp/rc)" = 0 ] && touch /storage/mirrordash/probe && grep -q mine /storage/mirrordash/data/data/config.json'
 check "checked with -f" 'grep -q "takes no write" /tmp/hydrate.log'
 
 echo "The first superblock gone: e2fsck repairs it from a copy"
 new_disk; zero_superblock; hydrate
-check "repaired, settings kept, not formatted" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/config.json'
+check "repaired, settings kept, not formatted" '[ "$(cat /tmp/rc)" = 0 ] && grep -q mine /storage/mirrordash/data/data/config.json'
 check "no storage-rebuilt log, no mark for the bell" '! ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1 && [ ! -e /run/mirrordash-storage-rebuilt ]'
 
 echo "e2fsck gives up (8), the backups still read: rescued, made anew, put back"
 new_disk; zero_superblock; fake e2fsck 'exit 8'; hydrate
 check "hydrate succeeds" '[ "$(cat /tmp/rc)" = 0 ]'
-check "made anew (old settings gone), labelled" '[ ! -e /storage/mirrordash/data/config.json ] && [ "$(e2label "$LOOP")" = mirrordash-data ]'
+check "made anew (old settings gone), labelled" '[ ! -e /storage/mirrordash/data/data/config.json ] && [ "$(e2label "$LOOP")" = mirrordash-data ]'
 check "newest automatic backup back, whole" 'same $backups/mirrordash_autobackup_20261108_033000.mirror /want-auto'
 check "newest hand-made backup back, whole" 'same $backups/mirrordash_backup_20261102_120000.mirror /want-hand'
 check "nothing older rescued" '[ "$(ls $backups | wc -l)" = 2 ]'
@@ -83,9 +83,9 @@ check "starts as a new mirror (venv seeded)" '[ "$(readlink /storage/mirrordash/
 # A block that reads back as zeros where the newest automatic backup's inode was: it lists with mode 0 and
 # size 0, which must not come back as an empty "newest backup" in place of the whole one before it
 echo "The newest automatic backup's inode cleared: the one before it is rescued instead"
-new_disk; debugfs -w -R "clri /mirrordash/data/backups/mirrordash_autobackup_20261108_033000.mirror" "$LOOP" >/dev/null 2>&1
+new_disk; debugfs -w -R "clri /mirrordash/data/data/backups/mirrordash_autobackup_20261108_033000.mirror" "$LOOP" >/dev/null 2>&1
 zero_superblock; fake e2fsck 'exit 8'; hydrate
-check "made anew" '[ "$(cat /tmp/rc)" = 0 ] && [ ! -e /storage/mirrordash/data/config.json ]'
+check "made anew" '[ "$(cat /tmp/rc)" = 0 ] && [ ! -e /storage/mirrordash/data/data/config.json ]'
 check "the automatic backup before it back, whole" 'same $backups/mirrordash_autobackup_20261101_033000.mirror /want-older'
 check "no empty newest one" '[ ! -e $backups/mirrordash_autobackup_20261108_033000.mirror ]'
 check "the hand-made one back, whole" 'same $backups/mirrordash_backup_20261102_120000.mirror /want-hand'
@@ -108,7 +108,7 @@ rm -f /tmp/rescued-before-y
 hydrate
 check "hydrate succeeds" '[ "$(cat /tmp/rc)" = 0 ]'
 check "the backups were in RAM before e2fsck -y wrote" '[ -e /tmp/rescued-before-y ]'
-check "made anew, writable" '[ ! -e /storage/mirrordash/data/config.json ] && touch /storage/mirrordash/data/probe'
+check "made anew, writable" '[ ! -e /storage/mirrordash/data/data/config.json ] && touch /storage/mirrordash/data/probe'
 check "newest automatic backup back, whole" 'same $backups/mirrordash_autobackup_20261108_033000.mirror /want-auto'
 check "newest hand-made backup back, whole" 'same $backups/mirrordash_backup_20261102_120000.mirror /want-hand'
 check "storage-rebuilt log and the bell's mark" 'ls /storage/mirrordash/logs/storage-rebuilt-* >/dev/null 2>&1 && [ -e /run/mirrordash-storage-rebuilt ]'
@@ -117,9 +117,9 @@ echo "e2fsck fixed it (1) but the mount fails: never formatted"
 new_disk; fake e2fsck 'exit 1'; fake mount 'case "$*" in *storage*) exit 32 ;; esac; exec /usr/bin/mount "$@"'; hydrate
 rm -f /fake/mount
 check "hydrate stops" '[ "$(cat /tmp/rc)" = 1 ]'
-check "settings kept" 'mount "$LOOP" /mnt && grep -q mine /mnt/mirrordash/data/config.json'
+check "settings kept" 'mount "$LOOP" /mnt && grep -q mine /mnt/mirrordash/data/data/config.json'
 
 echo "mkfs.ext4 with one -F refuses a partition in use"
-check "refused, data kept" '! mkfs.ext4 -q -F -L x "$LOOP" </dev/null >/dev/null 2>&1 && grep -q mine /mnt/mirrordash/data/config.json'
+check "refused, data kept" '! mkfs.ext4 -q -F -L x "$LOOP" </dev/null >/dev/null 2>&1 && grep -q mine /mnt/mirrordash/data/data/config.json'
 
 if [ "$fail" = 0 ]; then echo "All storage checks passed"; else echo "--- the last hydrate's output"; cat /tmp/hydrate.log; exit 1; fi

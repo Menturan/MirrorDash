@@ -20,6 +20,7 @@ There are two kinds of releases:
 
 ### OS image
 
+- **A damaged SD card's backups are really rescued now**: when the storage partition was past repair, the mirror looked for your backups in the wrong folder, found none and started as a new mirror without them. It now finds the newest automatic and hand-made backup and puts them back in the Backup list. A partition that a check repaired is also no longer reported as having lost your settings when it didn't.
 - A new MirrorDash version that crashes later than ten seconds into its start (a Raspberry Pi 3 can take that long) is now rolled back too, instead of being started again and again.
 - A new system is kept only when the mirror really works with it: the screen must show the mirror's page (unless the screen is off), and MirrorDash must run as itself, not in Safe mode. Before, a system with a black screen was kept.
 - Making a new system the one that starts is now a single small write to the card, so a power cut at that moment can't leave a card that doesn't start.
