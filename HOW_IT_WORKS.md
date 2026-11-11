@@ -187,6 +187,8 @@ The biggest part of the core, in `features/modules/`:
 |---|---|---|
 | `client.py` | core | `ModuleHost`: the core's side; starts and stops instances, checks what they send |
 | `api_proxy.py` | core | `/api/modules/<instance>/...` forwarded to a module's own routes |
+| `defaults.py` | core | an instance's settings with its schema's defaults filled in (#52) |
+| `trial.py` | core | a module update on trial: put back when it fails soon after |
 | `lan.py` | core | which home-network addresses each instance may reach |
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |
 | `choice_field.py` | core | which list or search setting the settings drawer asks the choices of (#48) |

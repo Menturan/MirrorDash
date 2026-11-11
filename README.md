@@ -49,14 +49,14 @@ No keyboard, no terminal, no config files, now or later.
 | Part | About | Notes |
 |---|---|---|
 | Raspberry Pi 3 B or newer | €45–60 | Developed on a Pi 3B+; a Pi 4 or 5 should work too. |
-| SD card, 8 GB or more. You probably have an old phone storage card otherwise a new with class A1 (rpi 3 & 4) or A2 (rpi 5) | €0-10 | |
-| The official power supply | €0-10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
+| SD card, 8 GB or more | €0–10 | An old phone's card will do; a new one should be class A1 (Pi 3 and 4) or A2 (Pi 5). |
+| The official power supply | €0–10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
 | A screen with HDMI | €0–100 | An old computer monitor is ideal: most of them let the mirror set their brightness (DDC/CI), most TVs don't. Take it out of its case for a slim build. |
 | A two-way mirror | €30–150 | Glass is the clearest; acrylic is cheaper and lighter but can warp; mirror film on plain glass is the cheapest. A bit larger than the screen. |
 | A frame | €0–30 | Wood from the hardware store, or an old picture frame. |
 | *Optional:* a motion sensor | €3–6 | A PIR sensor (HC-SR501) or an mmWave sensor (LD2410, which also notices someone standing still), so the screen is on only when someone's there. Buttons, a light sensor and a fan can be added too. |
 
-All in, about €75–215, depending on what you already have otherwise mostly on the screen and the mirror.
+All in, about €75–215, depending on what you already have; most of it is the screen and the mirror.
 
 **Then**
 
@@ -71,14 +71,14 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 | Module | Shows |
 |---|---|
 | [Clock](https://github.com/Menturan/mirrordash-clock) | The time and date |
-| [Weather](https://github.com/Menturan/mirrordash-weather) | The weather now, the forecast and weather warnings were available |
+| [Weather](https://github.com/Menturan/mirrordash-weather) | The weather now, the forecast and weather warnings where available |
 | [Calendar](https://github.com/Menturan/mirrordash-calendar) | Your upcoming events, list, week or month view |
 | [News](https://github.com/Menturan/mirrordash-news) | The latest headlines from built-in or your own sources |
 | [Photos](https://github.com/Menturan/mirrordash-photos) | A photo slideshow: your own photos, Immich, Unsplash, Pexels or a picture of the day, whole mirror or part of mirror |
 | [Now Playing on Spotify](https://github.com/Menturan/mirrordash-now-playing-spotify) | What's playing on your Spotify right now |
 | [Foreground Theme](https://github.com/Menturan/mirrordash-foreground-theme) | Seasonal decoration over the mirror: snow, Easter, Midsummer, Halloween, autumn leaves, birthdays and more, each theme with its own settings |
 | [Home Assistant](https://github.com/Menturan/mirrordash-homeassistant) | Sensors from Home Assistant |
-| [Radio](https://github.com/Menturan/mirrordash-radio) | Internet radio through the mirror's speakers: Stations worldwide |
+| [Radio](https://github.com/Menturan/mirrordash-radio) | Internet radio through the mirror's speakers: stations worldwide |
 | [Krisinformation](https://github.com/Menturan/mirrordash-krisinformation) | Swedish crisis information from Krisinformation.se |
 | [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
 

@@ -46,7 +46,7 @@ printf '1\n2\ny\n' | python3 scripts/release.py --dry-run   # check the printed 
 printf '1\n2\ny\n' | python3 scripts/release.py             # after the user's yes
 ```
 
-The real run waits for GitHub Actions: PyPI for 1 and 2 (a few minutes), the image build for 3 (about 30
+The real run waits for GitHub Actions: PyPI for 1 and 2 (a few minutes), the image build for 3 (about 8
 minutes). Run it in the background and report when it ends. It ends with `vX.Y.Z is on PyPI.` (1, 2),
 `... is published as a test version` (3) or `... is released` (4); anything else ends in `Stopped: <reason>`,
 which says what to fix (see "When something fails" in `RELEASING.md`).

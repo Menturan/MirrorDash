@@ -39,7 +39,7 @@
 
 7. **Conservative framework adoption.** The mirror frontend uses vanilla HTML, CSS, and JavaScript by default. Introducing frameworks (React, Vue, Alpine, HTMX, etc.) should be avoided unless there is a compelling justification that vanilla JS cannot solve. If a framework is deemed necessary, consult with the maintainers first and document the rationale in `ARCHITECTURE.md`.
 
-8. **No browser alert popups.** Never use native browser dialogs like `alert()`, `confirm()`, or `prompt()` in the admin dashboard user interface. Use custom, sleek inline styling or custom overlays consistent with the Global Ethereal Design System instead. `hx-confirm` is fine: a global `htmx:confirm` handler routes it to `showConfirm()`.
+8. **No browser alert popups.** Never use native browser dialogs like `alert()`, `confirm()`, or `prompt()` in the admin dashboard user interface. Use custom, sleek inline styling or custom overlays consistent with DESIGN.md instead. `hx-confirm` is fine: a global `htmx:confirm` handler routes it to `showConfirm()`.
 
 8b. **Loading states come from HTMX, never from `onclick`.** Show spinners with `.htmx-indicator` / `.htmx-normal` spans and `hx-disabled-elt="this"`, so they end when the request ends (and never start if a confirm is cancelled). Anything that takes longer than a few seconds or restarts the app (package installs, updates, restores) must run via `start_job()` and answer with `job_response()`.
 
@@ -64,7 +64,7 @@
 15. **Conventional commits:** `<type>(<scope>): <what changes for the mirror or the reader>`.
     - **Types:** `feat`, `fix`, `refactor`, `perf`, `style`, `test`, `docs`, `build`, `ci`, `chore`.
     - **Scopes** say where the change is, so `git log` can be read by area:
-      - a feature folder: `api`, `auth`, `backup`, `dashboard`, `hardware`, `kiosk`, `logs`, `matter`, `modules`, `power`, `settings`, `updates`, `video`, `wifi` (e.g., `fix(wifi): …`);
+      - a feature folder: `api`, `auth`, `backup`, `dashboard`, `hardware`, `kiosk`, `logs`, `matter`, `modules`, `mqtt`, `notifications`, `power`, `settings`, `updates`, `video`, `wifi` (e.g., `fix(wifi): …`);
       - the shared core and the pages: `core`, `config`, `admin` (the admin page), `mirror` (the mirror's own page), `design`;
       - the OS image and releasing: `image` (anything that ends up in the OS image), `release`, `ci`;
       - documentation: `docs(<file or area>)`, e.g. `docs(agents)`, `docs(changelog)`.

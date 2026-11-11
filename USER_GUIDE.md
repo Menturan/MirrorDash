@@ -107,7 +107,7 @@ Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it 
 *   A **push button on GPIO 3** (pin 5) also starts the mirror again after it has been shut down. With *Shut down the mirror* on its long press, the button works as an on/off switch. GPIO 3 is also used by the light sensor, so the two can't be combined.
 *   An **on/off fan** (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone. A 4-wire PWM fan is connected directly.
 *   **Brightness on an HDMI screen** is sent over the cable (DDC/CI). Most computer monitors understand it, most TVs don't. Some monitors have it turned off in their own menu: turn it on there and move the slider again.
-*   **Sound** (for a module that plays, like a radio) comes out of the **3.5 mm jack**, for powered speakers or headphones, or over **HDMI** if the screen has speakers; the module chooses which (the radio has a setting for it). A screen without speakers stays silent without saying so. *System Volume* in the Hardware tab is the whole mirror's. Needs the OS image that comes after 0.11.0.
+*   **Sound** (for a module that plays, like a radio) comes out of the **3.5 mm jack**, for powered speakers or headphones, or over **HDMI** if the screen has speakers; the module chooses which (the radio has a setting for it). A screen without speakers stays silent without saying so. *System Volume* in the Hardware tab is the whole mirror's. Needs an OS image newer than 0.9.5-os2.
 
 ---
 

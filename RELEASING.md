@@ -138,8 +138,8 @@ last release: `git log --oneline vX.Y.Z..HEAD`.
 ## Updating mirrors
 
 **App** (keeps everything): **Settings → Check for Updates** in the admin page. The new version is
-installed next to the old one and the mirror restarts. If the new version crashes within its first 10
-seconds, the mirror goes back to the old one by itself. Over SSH, as a fallback:
+installed next to the old one and the mirror restarts. If the new version crashes before it has run for a
+minute, the mirror goes back to the old one by itself. Over SSH, as a fallback:
 
 ```bash
 sudo -u pi HOME=/home/pi /home/pi/.local/bin/uv pip install --python /storage/mirrordash/venv --upgrade mirrordash
@@ -153,12 +153,12 @@ says so.
 
 **OS image** (erases the card; for mirrors from before A/B OS updates):
 
-1. **Backup → Create backup** in the admin page and download the `.mirror` file. It doesn't contain the
-   admin password or Wi-Fi passwords.
+1. **Backup → Create Backup** in the admin page with *Protect with a password* on, and download the
+   `.mirror` file. With the password it also holds the admin password and the Wi-Fi networks.
 2. Flash the new image.
-3. Connect the mirror to Wi-Fi through the `MirrorDash-Setup` hotspot: scan the QR code on the mirror,
-   as in the checklist above.
-4. Set an admin password, then **Backup → Restore** with the `.mirror` file.
+3. In the `MirrorDash-Setup` Wi-Fi setup (scan the QR code on the mirror, as in the checklist above), tap
+   **Set up from a backup instead**, choose the file and type its password. The mirror joins a Wi-Fi
+   network saved in it and restores everything else by itself.
 
 ---
 
