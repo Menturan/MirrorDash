@@ -58,6 +58,7 @@ def ensure_nm_wifi_persistence() -> None:
 
 
 HOTSPOT_SSID = "MirrorDash-Setup"
+SETUP_HOSTS = ("mirrordash.setup", "10.42.0.1")  # the mirror's name and address on the setup hotspot
 # The networks seen just before the hotspot started (mirrordash-wifi-check.sh writes it): while the
 # hotspot is up the Pi's single radio can't scan
 SCAN_BEFORE_HOTSPOT_FILE = "/var/lib/mirrordash-wifi-scan.cache"

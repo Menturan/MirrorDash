@@ -475,7 +475,9 @@ class MqttBridge:
         match parts:
             case ["screen", "set"] if cfg.get("control_screen") is True:
                 on = on_off(payload)
-                from mirrordash_core.features.power.routes import update_screen_state
+                from mirrordash_core.features.power.display_power import (
+                    update_screen_state,
+                )
                 await update_screen_state({"state": "on" if on else "off"})
                 return f"screen {payload}"
             case ["privacy", "set"] if cfg.get("control_screen") is True:
@@ -516,7 +518,7 @@ class MqttBridge:
             await update_system_settings(settings={"brightness": value})
         if self._enable and now - self._enable_at >= MODULE_CHANGE_INTERVAL:
             changes, self._enable, self._enable_at = self._enable, {}, now
-            from mirrordash_core.features.modules.routes import set_instances_enabled
+            from mirrordash_core.features.modules.instances import set_instances_enabled
             await set_instances_enabled(changes)
 
 

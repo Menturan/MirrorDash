@@ -64,7 +64,6 @@ async def check_wifi_auth(request: Request, x_api_key: Annotated[str | None, Hea
 
 # On the setup hotspot every DNS name answers with the mirror (dnsmasq-shared.d in the OS image),
 # so this name works without typing an IP address.
-SETUP_HOSTS = ("mirrordash.setup", "10.42.0.1")
 SETUP_URL = "http://mirrordash.setup/wifi-setup"
 # What the setup page itself needs; everything else is redirected to it
 SETUP_PATHS = ("/wifi-setup", "/static", "/api/wifi", "/health", "/admin/auth/status")

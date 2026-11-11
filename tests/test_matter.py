@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password, require_api_key, token_hash
 from mirrordash_core.app import app
-from mirrordash_core.features.matter import routes as matter
+from mirrordash_core.features.matter import node as matter
 
 ROOTFS = Path(__file__).parent.parent / "scripts/image/rootfs"
 
@@ -18,7 +18,7 @@ def test_turning_matter_on_and_off(tmp_path):
     try:
         with patch.object(matter, "MATTER_DIR", tmp_path / "matter"), patch.object(matter, "ENV_FILE", tmp_path / "env"), \
              patch.object(matter, "load_config", return_value=config), patch.object(matter, "save_config"), \
-             patch.object(matter, "_systemctl", systemctl), \
+             patch.object(matter, "systemctl", systemctl), \
              patch("mirrordash_core.admin.load_config", return_value=config), \
              patch("mirrordash_core.features.api.api.load_config", return_value=config):
             client = TestClient(app)

@@ -38,6 +38,15 @@ logger = logging.getLogger("mirrordash.core.admin")
 router = APIRouter(prefix="/admin")
 
 
+MIN_PASSWORD = 8  # also the backup password and SSH's; the admin page checks the same (admin.js)
+
+
+def auth_state(config: dict) -> tuple[bool, bool]:
+    """(setup_required, auth_corrupt): no admin_auth at all, or one without a usable password."""
+    auth = config.get("admin_auth")
+    return auth is None, auth is not None and not (auth.get("hash") and auth.get("salt"))
+
+
 def hash_password(password: str, salt: str) -> str:
     """Hash a password using pbkdf2_hmac and sha256."""
     hash_bytes = hashlib.pbkdf2_hmac(

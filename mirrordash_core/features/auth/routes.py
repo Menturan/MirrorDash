@@ -12,7 +12,9 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 from mirrordash_core.admin import (
+    MIN_PASSWORD,
     SESSION_COOKIE,
+    auth_state,
     check_password,
     check_throttle,
     end_all_sessions,
@@ -31,7 +33,6 @@ from mirrordash_core.features.wifi.network import is_wifi_hotspot_active
 logger = logging.getLogger("mirrordash.core.auth")
 router = APIRouter(prefix="/admin")
 
-MIN_PASSWORD = 8  # also the backup password and SSH's; the admin page checks the same (admin.js)
 # No 0/O, 1/I/L: the code is read off a screen and typed back
 CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"
 
@@ -58,12 +59,6 @@ def _check_new_password(password) -> str:
     if not isinstance(password, str) or len(password) < MIN_PASSWORD:
         raise HTTPException(status_code=400, detail=f"Password must be at least {MIN_PASSWORD} characters")
     return password
-
-
-def auth_state(config: dict) -> tuple[bool, bool]:
-    """(setup_required, auth_corrupt): no admin_auth at all, or one without a usable password."""
-    auth = config.get("admin_auth")
-    return auth is None, auth is not None and not (auth.get("hash") and auth.get("salt"))
 
 
 @router.get("/auth/status")

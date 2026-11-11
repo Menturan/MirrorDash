@@ -11,7 +11,7 @@ CORE = Path(__file__).parent.parent / "mirrordash_core"
 
 # Features that still import each other (alphabetical in each pair)
 MUTUAL = {
-    ("auth", "kiosk"), ("backup", "modules"), ("backup", "wifi"), ("dashboard", "wifi"), ("hardware", "power"),
+    ("backup", "modules"), ("backup", "wifi"), ("dashboard", "wifi"), ("hardware", "power"),
     ("kiosk", "modules"), ("kiosk", "power"), ("kiosk", "video"), ("kiosk", "wifi"), ("logs", "updates"),
     ("modules", "mqtt"), ("modules", "power"), ("modules", "settings"), ("modules", "updates"), ("power", "settings"),
 }

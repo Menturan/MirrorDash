@@ -94,7 +94,7 @@ async def get_status() -> dict:
 @api.post("/screen", response_model=Done, response_model_exclude_none=True, dependencies=[Depends(require_api_token)])
 async def set_screen(body: Screen) -> dict:
     """Wake the screen, or turn it off."""
-    from mirrordash_core.features.power.routes import update_screen_state
+    from mirrordash_core.features.power.display_power import update_screen_state
     return await update_screen_state(body.model_dump(exclude_none=True))
 
 

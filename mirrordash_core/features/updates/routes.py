@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from mirrordash_core.admin import (
+    BOOT_ID,
     from_the_mirrors_os,
     job_response,
     notify,
@@ -31,9 +32,18 @@ from mirrordash_core.features.updates.service import (
     update_core,
     update_os,
 )
+from mirrordash_core.host import run_in_background, run_restart
 
 logger = logging.getLogger("mirrordash.core.updates")
 router = APIRouter(prefix="/admin")
+
+
+@router.post("/restart", dependencies=[Depends(require_api_key)])
+async def restart_system() -> dict:
+    """Restart the app; the answer's boot_id lets the page tell when the new one is up."""
+    logger.info("System restart requested by admin client.")
+    run_in_background(run_restart())
+    return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
 
 
 @router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])

@@ -80,8 +80,8 @@ def _bridge(cfg, modules=None):
 @pytest.mark.asyncio
 async def test_nothing_runs_that_the_owner_didnt_turn_on():
     screen, enabled, control = AsyncMock(), AsyncMock(), AsyncMock(return_value=True)
-    with patch("mirrordash_core.features.power.routes.update_screen_state", screen), \
-         patch("mirrordash_core.features.modules.routes.set_instances_enabled", enabled), \
+    with patch("mirrordash_core.features.power.display_power.update_screen_state", screen), \
+         patch("mirrordash_core.features.modules.instances.set_instances_enabled", enabled), \
          patch("mirrordash_core.features.modules.client.module_host.control", control):
         b, cfg = _bridge({"modules": {"tv": {"share": True, "control": ["channel"]}}})
         with cfg:
@@ -127,7 +127,7 @@ async def test_nothing_runs_that_the_owner_didnt_turn_on():
 @pytest.mark.asyncio
 async def test_a_flood_of_commands_is_cut_to_the_rate_and_logs_one_line(caplog):
     screen = AsyncMock()
-    with patch("mirrordash_core.features.power.routes.update_screen_state", screen):
+    with patch("mirrordash_core.features.power.display_power.update_screen_state", screen):
         b, cfg = _bridge({"control_screen": True})
         with cfg, caplog.at_level("WARNING", logger="mirrordash.core.mqtt"):
             await asyncio.gather(*(b._on_message("mirrordash/m1/screen/set", b"ON", False) for _ in range(50)))

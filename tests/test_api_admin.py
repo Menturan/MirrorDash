@@ -1284,9 +1284,10 @@ def test_remove_module_instance_config(mock_reload, mock_save, mock_load, client
 
 
 @patch("mirrordash_core.features.modules.routes.load_config")
-@patch("mirrordash_core.features.modules.routes.save_config")
+@patch("mirrordash_core.features.modules.instances.save_config")
 @patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
-def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client):
+def test_toggle_module_instance_config(mock_reload, mock_save, mock_load, client, monkeypatch):
+    monkeypatch.setattr("mirrordash_core.features.modules.instances.load_config", mock_load)
     headers = {"X-API-Key": "secret"}
     mock_load.return_value = {
         "globals": {},

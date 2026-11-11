@@ -27,6 +27,8 @@ from datetime import datetime, timedelta
 from datetime import time as time_of_day
 from zoneinfo import ZoneInfo
 
+from fastapi import HTTPException
+
 from mirrordash_core.config import load_config
 from mirrordash_core.features.hardware.cec import set_tv_power
 from mirrordash_core.features.hardware.display import set_screen_power
@@ -229,3 +231,22 @@ class DisplayPowerManager:
 
 
 display_power_manager = DisplayPowerManager()
+
+
+async def update_screen_state(body: dict) -> dict:
+    """What a remote control asks of the screen (the open POST /admin/screen, /api/v1/screen, MQTT):
+    {"state": "on"} wakes it for the configured screen timeout, or for "timeout_minutes" if given;
+    {"state": "off"} turns it off. A request that is neither is an HTTP 400."""
+    state = body.get("state")
+    if state not in ("on", "off"):
+        raise HTTPException(status_code=400, detail="Invalid state value. Must be 'on' or 'off'")
+    timeout = body.get("timeout_minutes")
+    if timeout is not None and (not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 1440):
+        raise HTTPException(status_code=400, detail="timeout_minutes must be a number from 1 to 1440")
+
+    if state == "on":
+        display_power_manager.wake(timeout)
+    else:
+        display_power_manager.turn_off()
+
+    return {"status": "success", "message": f"Screen turned {state}"}

@@ -109,12 +109,14 @@ def patch_all_system():
         "mirrordash_core.system_settings",
         "mirrordash_core.features.auth.routes",
         "mirrordash_core.features.hardware.routes",
+        "mirrordash_core.features.modules.instances",
         "mirrordash_core.features.modules.routes",
         "mirrordash_core.features.modules.service",
         "mirrordash_core.features.power.routes",
         "mirrordash_core.features.settings.routes",
         "mirrordash_core.features.settings.schema",
         "mirrordash_core.features.settings.ssh",
+        "mirrordash_core.features.updates.routes",
         "mirrordash_core.features.updates.service",
         "mirrordash_core.features.wifi.network",
     ]
@@ -1151,7 +1153,7 @@ def test_logging_in_with_the_form_keeps_the_page_logged_in(page, server_url):
 
 
 def test_turning_matter_on_shows_the_pairing_code(page, server_url, tmp_path):
-    from mirrordash_core.features.matter import routes as matter
+    from mirrordash_core.features.matter import node as matter
 
     async def node_starts(action):  # the node writes its codes once it is up
         (tmp_path / "pairing.json").write_text('{"qr": "MT:Y.K90Q12122UVH7SR00", "manual": "11403521097", "commissioned": false}')
@@ -1159,7 +1161,7 @@ def test_turning_matter_on_shows_the_pairing_code(page, server_url, tmp_path):
     config = {"system": {}}
     with patch.object(matter, "MATTER_DIR", tmp_path), patch.object(matter, "ENV_FILE", tmp_path / "env"), \
          patch.object(matter, "load_config", return_value=config), patch.object(matter, "save_config"), \
-         patch.object(matter, "_systemctl", node_starts):
+         patch.object(matter, "systemctl", node_starts):
         navigate_authenticated(page, server_url)
         page.click("#page-tab-config")
         page.wait_for_selector("#matter-card")

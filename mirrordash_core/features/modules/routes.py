@@ -28,6 +28,7 @@ from mirrordash_core.features.kiosk.ws import manager
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request
 from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.instances import set_instances_enabled
 from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
     find_entry_point,
@@ -282,20 +283,6 @@ async def remove_module_config_route(module_name: str, instance_id: str | None =
     await module_host.reload_modules()
 
     return notify("Module removed from mirror display.", refreshModules=True, closeConfig=True)
-
-
-async def set_instances_enabled(changes: dict[str, bool]) -> None:
-    """Turn module instances on or off (the admin page's toggle, MQTT's switches): one save and one reload
-    for all of them; one that isn't there is left out."""
-    config = load_config()
-    instances = config.get("modules", {})
-    changed = [instance_id for instance_id, enabled in changes.items()
-               if isinstance(instances.get(instance_id), dict) and instances[instance_id].get("enabled", True) != enabled]
-    for instance_id in changed:
-        instances[instance_id]["enabled"] = changes[instance_id]
-    if changed:
-        save_config(config)
-        await module_host.reload_modules()
 
 
 @router.post("/panels/modules/config/{module_name}/toggle", dependencies=[Depends(require_api_key)])

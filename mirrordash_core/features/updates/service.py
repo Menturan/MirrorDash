@@ -12,11 +12,10 @@ import sys
 import urllib.request
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import HTTPException
 from packaging.specifiers import InvalidSpecifier, SpecifierSet
 
 from mirrordash_core import notifications
-from mirrordash_core.admin import require_api_key
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
 from mirrordash_core.features.updates.download import download, partial_file
@@ -37,16 +36,6 @@ from mirrordash_core.venv import (
 )
 
 logger = logging.getLogger("mirrordash.core.updates")
-router = APIRouter(prefix="/admin")
-
-
-@router.post("/restart", dependencies=[Depends(require_api_key)])
-async def restart_system() -> dict:
-    """Restart the app; the answer's boot_id lets the page tell when the new one is up."""
-    logger.info("System restart requested by admin client.")
-    from mirrordash_core.admin import BOOT_ID
-    run_in_background(run_restart())
-    return {"status": "success", "message": "Restarting...", "boot_id": BOOT_ID}
 
 
 PYPI_URL = "https://pypi.org/pypi/mirrordash/json"

@@ -16,6 +16,7 @@ from mirrordash_core.admin import (
     ui_events,
 )
 from mirrordash_core.config import load_config
+from mirrordash_core.features.power.display_power import update_screen_state
 from mirrordash_core.features.power.usb import set_usb, usb_status
 from mirrordash_core.forms import read_form
 from mirrordash_core.host import poweroff_system, reboot_system, sudo_allowed
@@ -26,23 +27,9 @@ router = APIRouter(prefix="/admin")
 
 
 @router.post("/screen")
-async def update_screen_state(body: dict = Body(...)) -> dict:
-    """Open endpoint (e.g. for Home Assistant). {"state": "on"} wakes the screen for the
-    configured screen timeout, or for "timeout_minutes" if given; {"state": "off"} turns it off."""
-    state = body.get("state")
-    if state not in ("on", "off"):
-        raise HTTPException(status_code=400, detail="Invalid state value. Must be 'on' or 'off'")
-    timeout = body.get("timeout_minutes")
-    if timeout is not None and (not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 < timeout <= 1440):
-        raise HTTPException(status_code=400, detail="timeout_minutes must be a number from 1 to 1440")
-
-    from mirrordash_core.features.power.display_power import display_power_manager
-    if state == "on":
-        display_power_manager.wake(timeout)
-    else:
-        display_power_manager.turn_off()
-
-    return {"status": "success", "message": f"Screen turned {state}"}
+async def post_screen(body: dict = Body(...)) -> dict:
+    """Open endpoint (e.g. for Home Assistant): kept for existing automations, new ones use /api/v1/screen."""
+    return await update_screen_state(body)
 
 
 def _clock_parts(time_text: str, time_format: str) -> tuple[int, int, str | None]:

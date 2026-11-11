@@ -11,9 +11,8 @@ import time
 from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from mirrordash_core.admin import PACKAGE_DIR, templates
+from mirrordash_core.admin import PACKAGE_DIR, auth_state, templates
 from mirrordash_core.config import load_config
-from mirrordash_core.features.auth.routes import auth_state
 from mirrordash_core.features.kiosk.design_forms import design_cards
 from mirrordash_core.features.kiosk.ws import manager, on_screen
 from mirrordash_core.features.modules.client import module_host
@@ -24,10 +23,10 @@ from mirrordash_core.features.modules.module_files import (
 )
 from mirrordash_core.features.wifi.network import (
     HOTSPOT_SSID,
+    SETUP_HOSTS,
     get_hotspot_password,
     is_wifi_hotspot_active,
 )
-from mirrordash_core.features.wifi.routes import SETUP_HOSTS
 
 logger = logging.getLogger("mirrordash.core.kiosk")
 router = APIRouter()

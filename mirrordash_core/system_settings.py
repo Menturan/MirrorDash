@@ -36,7 +36,7 @@ def apply_saved_system_settings_at_startup() -> None:
     """Apply the saved system settings once, at startup (app.py lifespan). A module reload doesn't: each
     setting's own save applies it, and doing all of them again flickered the screen and restarted Matter.
     Each step on its own: one that fails mustn't keep the others from being applied."""
-    from mirrordash_core.features.matter.routes import start_matter
+    from mirrordash_core.features.matter.node import start_matter
     from mirrordash_core.features.settings.ssh import PASSWORD_HASH_FILE, set_ssh_status
     from mirrordash_core.host import apply_system_password_hash, apply_system_timezone
 
