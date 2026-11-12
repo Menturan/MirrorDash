@@ -331,6 +331,15 @@ def test_newer_firmware_builds_a_new_p1_in_the_other_half_and_switches(p1):
     assert rc == 0 and p1.state.read_text().strip() == "8192"
 
 
+def test_the_root_key_file_survives_a_p1_renewal_and_none_is_no_error(p1):
+    (p1.firmware / "start.elf").write_bytes(b"newer start.elf")
+    rc, _ = p1()
+    assert rc == 0 and not (p1.new / "mirrordash-root-key.pub").exists()  # none before, none after
+    (p1.autoboot / "mirrordash-root-key.pub").write_text("ssh-ed25519 AAAA debug\n")
+    rc, _ = p1("--force")
+    assert rc == 0 and (p1.new / "mirrordash-root-key.pub").read_text() == "ssh-ed25519 AAAA debug\n"
+
+
 def test_p1_outside_its_reserved_place_is_never_touched(p1):
     p1.state.write_text("10000")
     rc, calls = p1("--force")

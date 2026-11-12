@@ -751,6 +751,8 @@ step_storage_hydration() {
   put 0755 /usr/local/lib/mirrordash/storage-rescue
 
   put 0644 /etc/ssh/sshd_config.d/mirrordash-hostkeys.conf
+  # root only by a key file on p1 (ARCHITECTURE #60)
+  put 0644 /etc/ssh/sshd_config.d/mirrordash-root.conf
   mkdir -p /etc/systemd/system/ssh.service.d
   put 0644 /etc/systemd/system/ssh.service.d/mirrordash.conf
 

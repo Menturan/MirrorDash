@@ -395,3 +395,20 @@ def test_hydrate_never_follows_a_link_pi_planted(tmp_path):
     subprocess.run(["bash", "-c", f'{function}\nowned_folder {me} 700 "$1"', "_", str(link)], check=True)
     assert not link.is_symlink() and link.is_dir()
     assert oct(target.stat().st_mode & 0o777) == "0o750"
+
+
+def test_root_logs_in_only_by_the_key_file_on_p1(tmp_path):
+    """No file on p1, no root login; pi is untouched (ARCHITECTURE #60). With sshd on this machine, ask it too."""
+    conf = unit("/etc/ssh/sshd_config.d/mirrordash-root.conf")
+    assert conf.index("PermitRootLogin prohibit-password") < conf.index("Match User root")  # global before the Match
+    match = conf[conf.index("Match User root"):]
+    assert "AuthorizedKeysFile /boot/autoboot/mirrordash-root-key.pub" in match
+    assert "PasswordAuthentication no" in match and "AuthenticationMethods publickey" in match
+    sshd = shutil.which("sshd") or next((p for p in ("/usr/sbin/sshd", "/usr/local/sbin/sshd") if os.path.exists(p)), None)
+    if sshd:
+        cfg = tmp_path / "sshd_config"
+        cfg.write_text(f"Include {ROOTFS}/etc/ssh/sshd_config.d/mirrordash-root.conf\n")
+        for user, found in (("root", True), ("pi", False)):
+            out = subprocess.run([sshd, "-T", "-C", f"user={user},host=x,addr=127.0.0.1", "-f", str(cfg)],
+                                 capture_output=True, text=True).stdout
+            assert ("authorizedkeysfile /boot/autoboot/mirrordash-root-key.pub" in out) is found

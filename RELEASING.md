@@ -160,6 +160,16 @@ says so.
    **Set up from a backup instead**, choose the file and type its password. The mirror joins a Wi-Fi
    network saved in it and restores everything else by itself.
 
+## Root on your own mirror
+
+For debugging (an environment variable on the screen service, `debugfs`, stopping a service). A developer feature, off until the file exists; why it is built this way: ARCHITECTURE #60.
+
+1. `ssh-keygen -t ed25519 -f ~/.ssh/mirrordash_debug`
+2. Power the mirror off, put the card in a computer and copy `~/.ssh/mirrordash_debug.pub` to the first partition (AUTOBOOT) as `mirrordash-root-key.pub`. Several people: one public key per line.
+3. Boot, turn SSH on in the admin page, then `ssh -i ~/.ssh/mirrordash_debug root@mirrordash.local`.
+
+What root changes in system files is gone at the next reboot (the root is read-only). A factory reset does **not** remove the file: delete it from the card, or flash a fresh image, before giving a mirror away. A card from someone you don't trust should be flashed anew anyway.
+
 ---
 
 ## Reference

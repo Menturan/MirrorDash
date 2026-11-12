@@ -1,6 +1,6 @@
 #!/bin/bash
 # Usage: update-p1 [--force]
-#   Renew p1 (Pi 3 firmware + autoboot.txt) from the running boot slot when its firmware differs;
+#   Renew p1 (Pi 3 firmware + autoboot.txt + the owner's root key file, if there is one) from the running boot slot when its firmware differs;
 #   --force does it anyway (to test it). Exit 0 when p1 is up to date or was renewed.
 #
 # The 64 MiB from 4 MiB on are two halves of 32 MiB; p1 is one of them, the other is empty:
@@ -17,6 +17,7 @@ FIRMWARE=${MIRRORDASH_FIRMWARE_DIR:-/boot/firmware}   # the running boot slot, j
 AUTOBOOT=${MIRRORDASH_AUTOBOOT_DIR:-/boot/autoboot}   # p1 now
 NEW=${MIRRORDASH_P1_NEW_DIR:-/run/mirrordash-p1-new}  # where the new p1 is mounted while it's built
 FILES=(bootcode.bin start.elf fixup.dat)
+ROOT_KEY=mirrordash-root-key.pub  # optional: root's SSH key file (ARCHITECTURE #60), carried over when there
 HALF_1=8192 HALF_2=73728 SIZE=65536  # in 512-byte sectors
 
 die() { echo "update-p1: $*" >&2; exit 1; }
@@ -48,10 +49,12 @@ mkdir -p "$NEW"
 mount "$loop" "$NEW"
 cp "${FILES[@]/#/$FIRMWARE/}" "$NEW/"
 cp "$AUTOBOOT/autoboot.txt" "$NEW/"  # as it is now: which slot is primary stays as it is
+[ ! -f "$AUTOBOOT/$ROOT_KEY" ] || cp "$AUTOBOOT/$ROOT_KEY" "$NEW/"
 sync
 # 2. Check it before anything points at it
 for f in "${FILES[@]}"; do cmp -s "$FIRMWARE/$f" "$NEW/$f" || die "$f didn't copy correctly; p1 unchanged"; done
 cmp -s "$AUTOBOOT/autoboot.txt" "$NEW/autoboot.txt" || die "autoboot.txt didn't copy correctly; p1 unchanged"
+[ ! -f "$AUTOBOOT/$ROOT_KEY" ] || cmp -s "$AUTOBOOT/$ROOT_KEY" "$NEW/$ROOT_KEY" || die "$ROOT_KEY didn't copy correctly; p1 unchanged"
 cleanup
 trap - EXIT
 
