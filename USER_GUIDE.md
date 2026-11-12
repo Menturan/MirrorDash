@@ -306,7 +306,7 @@ Then you need the mirror itself. Your settings stay; only the admin password is 
 
 ### Starting over
 
-To give the mirror away or start over, use **Reset Mirror** at the bottom of the Settings tab (type RESET): your settings, the admin password, modules and their data, backups, the Wi-Fi networks and the API token are deleted, and the mirror restarts as when its card was flashed: it asks for Wi-Fi and a password on its own screen. Download a backup first if you want to keep anything.
+To give the mirror away or start over, use **Reset Mirror** at the bottom of the Settings tab (type RESET): your settings, the admin password, modules and their data, backups, the Wi-Fi networks and the API token are deleted, and the mirror restarts as when its card was flashed: it asks for Wi-Fi and a password on its own screen. Download a backup first if you want to keep anything. A reset does not remove a root key file that someone put on the card (see [Root on your own mirror](RELEASING.md#root-on-your-own-mirror)); flash the card anew to be sure.
 
 ---
 

@@ -109,6 +109,10 @@ changed between two releases: `gh release download <tag> -p '*.packages.txt'` fo
    **Settings → Developer → Developer logging** (a failure then leaves its whole log behind) and *Test
    versions*, then **Check for Updates → Install System Update**. The mirror comes back with everything
    kept, and `rauc status` shows the other slot booted and good.
+7. **Root key** (when `sshd` or `update-p1` changed): with `mirrordash-root-key.pub` on p1 (see
+   [Root on your own mirror](#root-on-your-own-mirror)) and SSH on, `ssh -i <key> root@mirrordash.local`
+   logs in; without the file it is refused; and `pi`'s password login still works. After a system
+   update the file is still on p1.
 
 Steps 1–5 need a freshly flashed card (the download at the end of step 3); for a change that only
 reaches mirrors as a system update, step 6 is the test.
