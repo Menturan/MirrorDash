@@ -21,3 +21,6 @@ pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-usb on
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-usb off
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes
 pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-module-network
+# Read-only: how much graphics memory the GPU driver holds (measurements; CmaFree in /proc/meminfo can't
+# tell, the pool is shared with ordinary memory). Card 0 is the Pi 3's only one.
+pi ALL=(ALL) NOPASSWD: /usr/bin/cat /sys/kernel/debug/dri/0/bo_stats
