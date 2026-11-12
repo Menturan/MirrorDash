@@ -36,6 +36,13 @@ def _fresh_logins(monkeypatch):
     monkeypatch.setattr(admin, "_failures", {})
 
 
+@pytest.fixture(autouse=True)
+def _own_pi_password_file(monkeypatch, tmp_path):
+    """Saving `ssh: false` removes the pi password hash: the test's own file, never /home/pi's."""
+    from mirrordash_core.features.settings import ssh
+    monkeypatch.setattr(ssh, "PASSWORD_HASH_FILE", str(tmp_path / "pi_password.hash"))
+
+
 @pytest.fixture
 def host_here():
     """host_here(path): the module host's control process as a task, serving path, with the processes the

@@ -2,10 +2,8 @@ from unittest.mock import patch
 
 import pytest
 from conftest import call
-from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
-from mirrordash_core.app import app
 from mirrordash_core.features.modules.service import update_modules
 
 mock_salt = "0123456789abcdef"
@@ -18,17 +16,13 @@ MOCK_CONFIG = {
     }
 }
 
-@pytest.fixture
-def client():
-    return TestClient(app)
-
 @pytest.fixture(autouse=True)
 def mock_admin_shared_load_config():
     with patch("mirrordash_core.admin.load_config", return_value=MOCK_CONFIG):
         yield
 
 
-def test_failsafe_update_success(module_site, client):
+def test_failsafe_update_success(module_site):
     response = call(update_modules, "mirrordash-news")
 
     assert response.status_code == 200
@@ -40,7 +34,7 @@ def test_failsafe_update_success(module_site, client):
     assert module_site.kept
 
 
-def test_failsafe_update_rollback(module_site, client):
+def test_failsafe_update_rollback(module_site):
     module_site.answer = lambda op, args: (1, "ImportError: Broken module") if op == "check" else (0, "")
 
     response = call(update_modules, "mirrordash-news")
@@ -50,7 +44,7 @@ def test_failsafe_update_rollback(module_site, client):
     assert module_site.kept is False
 
 
-def test_a_module_that_doesnt_load_doesnt_hold_back_the_others(module_site, client):
+def test_a_module_that_doesnt_load_doesnt_hold_back_the_others(module_site):
     """In one site change, so one restart: b doesn't load, so b is put back as it is in the running site
     and a and c are kept, checked together once more; only when none loads is nothing changed."""
     module_site.answer = lambda op, args: (1, "ImportError: b") if op == "check" and args[0] == "b" else (0, "")

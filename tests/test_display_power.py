@@ -45,18 +45,13 @@ def test_time_in_range_invalid():
     # Should default to True on parse error to avoid locking screen permanently
     assert manager._is_time_in_range("invalid", "22:00", time(8, 0)) is True
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_system_settings_display_control_validation(
-    mock_get_ssh, mock_set_ssh, mock_apply, mock_save, mock_load, client
+    mock_get_ssh, mock_set_ssh, mock_apply, mock_save, client
 ):
-    mock_load.return_value = {
-        "admin_auth": {"hash": "dummy", "salt": "dummy"}
-    }
-    
     # Mock require_api_key dependency to bypass authentication in testing
     from mirrordash_core.admin import require_api_key
     app.dependency_overrides[require_api_key] = lambda: None

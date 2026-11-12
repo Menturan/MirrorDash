@@ -2,7 +2,7 @@ import asyncio
 import json
 import re
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, mock_open, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from conftest import call
@@ -235,8 +235,7 @@ def test_change_password_keeps_the_recovery_code(mock_save, client):
 
 
 @patch("mirrordash_core.admin.load_config")
-@patch("mirrordash_core.features.updates.service.load_config")
-def test_auth_headers_required(mock_sys_load, mock_load, client):
+def test_auth_headers_required(mock_load, client):
     mock_load.return_value = MOCK_CONFIG
     
     # Missing header -> 401
@@ -253,12 +252,10 @@ def test_auth_headers_required(mock_sys_load, mock_load, client):
         response = client.get("/admin/system", headers={"X-API-Key": "secret"})
         assert response.status_code == 200
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
-def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, mock_load, client):
-    mock_load.return_value = MOCK_CONFIG.copy()
+def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, client):
     
     payload = {
         "rotation": "left",
@@ -283,9 +280,7 @@ def test_update_system_settings_success(mock_set_ssh, mock_apply, mock_save, moc
     assert saved_cfg["system"]["rotation"] == "left"
     assert saved_cfg["system"]["brightness"] == 75
 
-@patch("mirrordash_core.features.updates.service.load_config")
-def test_update_system_settings_invalid_inputs(mock_load, client):
-    mock_load.return_value = MOCK_CONFIG
+def test_update_system_settings_invalid_inputs(client):
     
     headers = {"X-API-Key": "secret"}
     
@@ -412,17 +407,14 @@ SYSTEM_PAYLOAD_BASE = {
 }
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_without_password_rejected(
-    mock_get_ssh, mock_screen, mock_apply, mock_save, mock_load, client
+    mock_get_ssh, mock_apply, mock_save, client
 ):
     """Enabling SSH without providing a password must return 400."""
     mock_get_ssh.return_value = False
-    mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True}
 
@@ -431,17 +423,14 @@ def test_enable_ssh_without_password_rejected(
     assert "password" in response.json()["detail"].lower()
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_enable_ssh_with_short_password_rejected(
-    mock_get_ssh, mock_screen, mock_apply, mock_save, mock_load, client
+    mock_get_ssh, mock_apply, mock_save, client
 ):
     """Enabling SSH with a password shorter than 8 chars must return 400."""
     mock_get_ssh.return_value = False
-    mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True, "pi_password": "short"}
 
@@ -450,20 +439,17 @@ def test_enable_ssh_with_short_password_rejected(
     assert "password" in response.json()["detail"].lower()
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
-def test_enable_ssh_with_valid_password_calls_chpasswd(
-    mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
-    mock_save, mock_load, client
+def test_enable_ssh_with_valid_password_runs_the_pi_password_helper(
+    mock_get_ssh, mock_set_ssh, mock_subproc, mock_apply,
+    mock_save, client
 ):
     """Enabling SSH with a valid password hashes it, applies the hash for pi and enables SSH."""
     mock_get_ssh.return_value = False
-    mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True, "pi_password": "SecurePass1!"}
 
@@ -473,10 +459,9 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     mock_process.communicate = AsyncMock(side_effect=[(b"$6$salt$hash\n", b""), (b"", b"")])
     mock_subproc.return_value = mock_process
 
-    with patch("builtins.open", mock_open()):
-        response = client.post("/admin/system", json=payload, headers=headers)
-        assert response.status_code == 200
-        assert response.json()["status"] == "success"
+    response = client.post("/admin/system", json=payload, headers=headers)
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
 
     # Verify both openssl and the helper were called
     assert mock_subproc.call_count == 2
@@ -498,20 +483,17 @@ def test_enable_ssh_with_valid_password_calls_chpasswd(
     mock_process.communicate.assert_any_call(input=b"SecurePass1!")
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
-def test_disable_ssh_does_not_call_chpasswd(
-    mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
-    mock_save, mock_load, client
+def test_disable_ssh_does_not_run_the_pi_password_helper(
+    mock_get_ssh, mock_set_ssh, mock_subproc, mock_apply,
+    mock_save, client
 ):
-    """Disabling SSH must NOT call chpasswd regardless of pi_password field."""
+    """Disabling SSH must NOT run the pi password helper regardless of pi_password field."""
     mock_get_ssh.return_value = True
-    mock_load.return_value = MOCK_CONFIG
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": False}
 
@@ -519,23 +501,20 @@ def test_disable_ssh_does_not_call_chpasswd(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
-    # chpasswd must NOT have been called when disabling SSH
+    # the pi password helper must NOT have been run when disabling SSH
     mock_subproc.assert_not_called()
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
-@patch("mirrordash_core.features.hardware.display.set_screen_power", new_callable=AsyncMock)
 @patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec")
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.get_ssh_status", new_callable=AsyncMock)
 def test_ssh_already_enabled_does_not_require_password(
-    mock_get_ssh, mock_set_ssh, mock_subproc, mock_screen, mock_apply,
-    mock_save, mock_load, client
+    mock_get_ssh, mock_set_ssh, mock_subproc, mock_apply,
+    mock_save, client
 ):
     """If SSH is already enabled, saving settings with SSH enabled does not require a password."""
-    mock_load.return_value = MOCK_CONFIG
     mock_get_ssh.return_value = True
     headers = {"X-API-Key": "secret"}
     payload = {**SYSTEM_PAYLOAD_BASE, "ssh": True}  # True but no password provided
@@ -544,7 +523,7 @@ def test_ssh_already_enabled_does_not_require_password(
     assert response.status_code == 200
     assert response.json()["status"] == "success"
 
-    # chpasswd must NOT have been called
+    # the pi password helper must NOT have been run
     mock_subproc.assert_not_called()
 
 
@@ -734,11 +713,9 @@ def test_core_update_check_offers_test_versions_only_when_opted_in(mock_version,
     assert data["update_available"] is prerelease
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("shutil.disk_usage")
-def test_disk_usage_success(mock_disk_usage, mock_load, client):
-    """GET /admin/disk-usage returns correct calculated metrics."""
-    mock_load.return_value = MOCK_CONFIG
+def test_disk_usage_success(mock_disk_usage, client):
+    """get_disk_usage returns correct calculated metrics."""
     mock_disk_usage.return_value = (10000000000, 3000000000, 7000000000)
 
     response = call(get_disk_usage)
@@ -829,12 +806,10 @@ def test_get_panel_system(mock_res, mock_load, client):
     assert "sys-ssh" not in response.text  # SSH lives in Settings › Developer
 
 
-@patch("mirrordash_core.features.updates.service.load_config")
 @patch("mirrordash_core.features.settings.system_settings.save_config")
 @patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock)
 @patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock)
-def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mock_save, mock_load, client):
-    mock_load.return_value = MOCK_CONFIG.copy()
+def test_save_system_settings_route_flat_conversion(mock_set_ssh, mock_apply, mock_save, client):
     headers = {"X-API-Key": "secret"}
     
     # Send flat data with start_h/start_m/end_h/end_m
@@ -1730,7 +1705,8 @@ def test_an_update_to_a_newer_python_tries_every_module_first(mock_modules, mock
         assert response.status_code == 409 and "mirrordash_news" in response.json()["detail"]
         assert service.incompatible == {"version": "1.0.0", "python": "3.15",
                                         "modules": {"mirrordash_news": "ModuleNotFoundError: No module named 'cgi'"}}
-        mock_revert.assert_awaited_once() and mock_commit.assert_not_awaited()
+        mock_revert.assert_awaited_once()
+        mock_commit.assert_not_awaited()
         assert module_site.kept is False
         save.assert_not_called()
     else:
@@ -1888,7 +1864,8 @@ def test_reset_mirror_needs_reset_typed():
         assert "Type RESET" in asyncio.run(routes.factory_reset(confirm="reset me")).headers["HX-Trigger-After-Swap"]
         start.assert_not_called()
         assert asyncio.run(routes.factory_reset(confirm=" RESET ")) == "following"
-    start.assert_called_once() and follow.assert_called_once()
+    start.assert_called_once()
+    follow.assert_called_once()
 
 
 @patch("mirrordash_core.features.auth.routes.load_config", return_value=MOCK_CONFIG)

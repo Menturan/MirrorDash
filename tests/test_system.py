@@ -62,16 +62,13 @@ async def test_get_available_resolutions(mock_subproc):
     assert res[0] == "auto"
 
 @pytest.mark.asyncio
-@patch("asyncio.create_subprocess_exec")
-async def test_set_screen_power_on(mock_subproc):
-    mock_proc = AsyncMock()
-    mock_proc.returncode = 0
-    mock_proc.communicate.return_value = (b"", b"")
-    mock_subproc.return_value = mock_proc
-    
-    await set_screen_power(True)
-    # Checks that it tried at least one screen power command (e.g. wlr-randr or xset or xrandr)
-    assert mock_subproc.called
+@pytest.mark.parametrize("on, switch", [(True, "--on"), (False, "--off")])
+async def test_set_screen_power_runs_the_wlr_randr_switch_for_its_direction(on, switch):
+    run = AsyncMock(return_value=(0, "", ""))
+    with patch("mirrordash_core.features.hardware.display._first_wayland_screen", AsyncMock(return_value="HDMI-A-1")), \
+         patch("mirrordash_core.features.hardware.display.run_command", run):
+        assert await set_screen_power(on) is True
+    run.assert_awaited_once_with("wlr-randr", "--output", "HDMI-A-1", switch)
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
@@ -109,8 +106,9 @@ async def test_get_ssh_status(mock_subproc):
     mock_proc.communicate.return_value = (b"active\n", b"")
     mock_subproc.return_value = mock_proc
     
-    status = await get_ssh_status()
-    assert status is True
+    assert await get_ssh_status() is True
+    mock_proc.communicate.return_value = (b"inactive\n", b"")
+    assert await get_ssh_status() is False
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")

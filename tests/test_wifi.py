@@ -158,16 +158,24 @@ def test_wifi_scan_no_cache_returns_empty(mock_subprocess, mock_cache, client):
     assert result == []
 
 
-@patch("mirrordash_core.features.modules.client.module_host.reload_modules", new_callable=AsyncMock)
-@patch("mirrordash_core.features.wifi.network._teardown_captive_ap", new_callable=AsyncMock)
-@patch("mirrordash_core.features.wifi.routes.reboot_system", new_callable=AsyncMock)
-@patch("mirrordash_core.features.wifi.routes.connect_wifi")
-def test_wifi_setup_tears_down_ap(mock_connect, mock_reboot, mock_teardown, _reload, client):
+def test_connect_wifi_tears_down_the_ap_before_connecting():
     """connect_wifi should tear down the captive AP before connecting."""
-    mock_connect.return_value = (True, "Successfully connected!")
-    response = client.post("/api/wifi/setup", json={"ssid": "HomeNet", "password": "pass"})
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
+    import asyncio
+
+    from mirrordash_core.features.wifi import network
+    order = []
+
+    async def teardown():
+        order.append("teardown")
+
+    async def nmcli(*args, **kwargs):
+        order.append(args)
+        return 0, "ok"
+
+    with patch.object(network, "_teardown_captive_ap", teardown), patch.object(network, "_nmcli", nmcli):
+        assert asyncio.run(network.connect_wifi("HomeNet", "pass")) == (True, "ok")
+    assert order[0] == "teardown"
+    assert order[1][-4:] == ("connect", "HomeNet", "password", "pass")
 
 @patch("mirrordash_core.features.kiosk.routes.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
 @patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock)

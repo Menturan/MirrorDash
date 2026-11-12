@@ -474,13 +474,16 @@ async def test_a_module_reload_leaves_the_system_settings_alone():
     """Saving a module reloads the modules only: re-applying the system settings flickered the screen
     and restarted the Matter node each time."""
     from mirrordash_core.features.modules.client import ModuleHost
-    with patch("mirrordash_core.features.matter.node.start_matter", new_callable=AsyncMock) as matter, \
+    config = {"system": {"ssh": True, "brightness": 50}, "matter": {"enabled": True}}  # all of it would be applied
+    with patch("mirrordash_core.features.settings.system_settings.load_config", return_value=config), \
+         patch("mirrordash_core.features.settings.system_settings.apply_system_settings", new_callable=AsyncMock) as screen, \
+         patch("mirrordash_core.features.matter.node.start_matter", new_callable=AsyncMock) as matter, \
          patch("mirrordash_core.features.settings.ssh.set_ssh_status", new_callable=AsyncMock) as ssh, \
          patch("mirrordash_core.features.modules.client.manager") as manager:
         manager.broadcast = AsyncMock()
         await ModuleHost().reload_modules()
         await asyncio.sleep(0)
-    assert not matter.called and not ssh.called
+    assert not screen.called and not matter.called and not ssh.called
     manager.broadcast.assert_awaited_once_with({"action": "reload"})
 
 

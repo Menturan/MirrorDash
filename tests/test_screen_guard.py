@@ -34,7 +34,7 @@ def _no_entry_points():
 def test_two_crashes_in_ten_minutes_pause_the_module_changed_last():
     start = config(changed={"weather": 100.0, "theme": 500.0})
     once = guard.after_crash(start, 1000.0, set())
-    assert once["level"] == 0 if "level" in once else True
+    assert once.get("level", 0) == 0
     assert not once["paused"]  # one crash is no loop
     twice = guard.after_crash({**start, guard.KEY: once}, 1300.0, set())
     assert twice["level"] == 1 and twice["paused"] == ["theme"] and twice["count"] == 2

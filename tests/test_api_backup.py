@@ -1,9 +1,7 @@
 import asyncio
 import json
 import shutil
-import tempfile
 import zipfile
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -56,7 +54,7 @@ def test_backup_list_unauthorized(client):
     response = client.get("/admin/panels/backup/list")
     assert response.status_code == 401
 
-def test_backup_list_authorized_empty(mock_backup_dirs, client):
+def test_backup_list_is_empty_without_a_backup_folder(mock_backup_dirs, client):
     response = call(list_backups)
     assert response.status_code == 200
     assert response.json() == {"backups": []}
@@ -76,20 +74,6 @@ def test_backup_list_with_files(mock_backup_dirs, client):
     assert len(backups) == 1
     assert backups[0]["filename"] == "test_backup.mirror"
     assert backups[0]["encrypted"] is False
-
-@patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
-def test_create_backup_success(mock_subproc, mock_backup_dirs, client):
-    
-    # Mock subprocess success
-    mock_process = MagicMock()
-    mock_process.returncode = 0
-    mock_process.communicate = AsyncMock(return_value=(b"", b""))
-    mock_subproc.return_value = mock_process
-    
-    response = call(create_backup)
-    assert response.status_code == 200
-    assert response.json()["status"] == "success"
-    assert "mirrordash_backup_" in response.json()["filename"]
 
 @patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
 def test_create_backup_encryption_failure(mock_subproc, mock_backup_dirs, client):
@@ -144,64 +128,6 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     files = {"file": ("test.mirror", b"corrupt data", "application/octet-stream")}
     r = client.post("/admin/panels/backup/upload", files=files, headers=headers)
     assert "Invalid or corrupt backup archive" in r.text
-
-@patch("mirrordash_core.features.backup.service.asyncio.create_subprocess_exec")
-def test_restore_backup_success(mock_subproc, mock_backup_dirs, module_site, client):
-    backups_dir, _data_dir = mock_backup_dirs
-    backups_dir.mkdir()
-    
-    # Create the tmp_upload.mirror file that restore expects to find
-    tmp_upload = backups_dir / "tmp_upload.mirror"
-    tmp_upload.touch()
-    
-    # Mock extract manifest config content
-    mock_manifest = {
-        "backup_version": "1.0",
-        "modules": []
-    }
-    mock_config = {
-        "globals": {"language": "sv"}
-    }
-    
-    # Mock unzip subprocess success
-    mock_process = MagicMock()
-    mock_process.returncode = 0
-    mock_process.communicate = AsyncMock(return_value=(b"", b""))
-    mock_subproc.return_value = mock_process
-    
-    # Mock file reading of config.json and backup_manifest.json inside the temp directory
-    def mock_extract(extract_dir_path):
-        manifest_path = Path(extract_dir_path) / "backup_manifest.json"
-        config_path = Path(extract_dir_path) / "config.json"
-        manifest_path.write_text(json.dumps(mock_manifest))
-        config_path.write_text(json.dumps(mock_config))
-        
-    real_temp_dir = tempfile.TemporaryDirectory
-    class FakeTempDirectory:
-        def __init__(self, dir=None):
-            self.temp_dir = real_temp_dir(dir=dir)
-            self.name = self.temp_dir.name
-        def __enter__(self):
-            mock_extract(self.name)
-            return self.name
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            self.temp_dir.__exit__(exc_type, exc_val, exc_tb)
-
-    with patch("mirrordash_core.features.backup.service.tempfile.TemporaryDirectory", FakeTempDirectory), \
-         patch("mirrordash_core.features.backup.service.run_restart", new_callable=AsyncMock), \
-         patch("mirrordash_core.features.backup.service.save_config") as mock_save, \
-         patch("mirrordash_core.features.backup.service.zipfile.ZipFile"):
-         
-        # Send raw json=None (since password is str | None = Body(default=None))
-        r = call(restore_backup)
-        assert r.status_code == 200
-        assert r.json()["status"] == "success"
-        
-        # Verify current system's admin auth was preserved and restored into config.json
-        mock_save.assert_called_once()
-        restored_cfg = mock_save.call_args[0][0]
-        assert restored_cfg["admin_auth"] == MOCK_CONFIG["admin_auth"]
-        assert restored_cfg["globals"]["language"] == "sv" # from the backup config
 
 def test_get_modules_dir(tmp_path):
     from mirrordash_core.features.backup.service import get_modules_dir

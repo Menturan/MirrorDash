@@ -113,7 +113,7 @@ async def test_event_bus_async_callback_crashes():
     assert result == "safe_async"
 
 
-def test_module_reload_does_not_duplicate_subscriptions():
+def test_stopping_the_modules_clears_the_event_bus():
     import asyncio
 
     from mirrordash_core.event_bus import event_bus
