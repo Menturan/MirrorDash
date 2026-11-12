@@ -62,7 +62,7 @@ All in, about €75–215, depending on what you already have; most of it is the
 
 1. Download the newest image at [mirrordash.net/download](https://mirrordash.net/download).
 2. Flash it with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) (*Choose OS* → *Use custom*).
-3. Start the mirror. On its first start it restarts once by itself, then shows the Wi-Fi setup. The [user guide](USER_GUIDE.md#2-first-start-wi-fi-setup) takes it from there, and its [quick start](USER_GUIDE.md#quick-start) has every step on one screen.
+3. Start the mirror. On its first start it restarts once by itself, then shows the Wi-Fi setup. The [user guide](USER_GUIDE.md#1-first-start-wi-fi-setup) takes it from there, and its [quick start](USER_GUIDE.md#quick-start) has every step on one screen.
 
 ## Modules
 

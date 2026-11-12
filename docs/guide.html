@@ -30,6 +30,10 @@ article th { color: var(--white); font-weight: 500; }
 article blockquote { border-left: 1px solid var(--charcoal); padding-left: 16px; }
 article hr { display: none; }  /* every h2 has its own line */
 article img { height: auto; }
+article details { border-block: 1px solid var(--line); margin: 0 0 16px; }
+article details + details { margin-top: -17px; }  /* neighbours share one line */
+article summary { color: var(--white); font-weight: 500; cursor: pointer; padding: 12px 0; }
+article details[open] { padding-bottom: 4px; }
 </style>
 </head>
 <body>
