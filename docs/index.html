@@ -50,6 +50,9 @@ h1 { font-size: clamp(44px, 9vw, 88px); font-weight: 100; letter-spacing: -.02em
 .center { text-align: center; display: grid; gap: 14px; justify-items: center; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
 .tiles > * { display: grid; gap: 4px; align-content: start; padding: 18px 20px; border: 1px solid var(--line); border-radius: 4px; font-size: 14px; color: var(--gray); text-decoration: none; }
+.pics { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+.pics > * { grid-template-rows: 1fr auto auto; }
+.pics img { align-self: center; max-width: 100%; height: auto; margin-bottom: 8px; }
 a.tile:hover { border-color: var(--charcoal); }
 .tiles b { color: var(--white); font-weight: 500; font-size: 17px; }
 video.demo[role="button"] { cursor: zoom-in; }
@@ -128,16 +131,16 @@ video.demo[role="button"] { cursor: zoom-in; }
         <h2>Modules, one tap away</h2>
         <p>Install them in the admin page under Modules → Add modules.</p>
       </div>
-      <div class="tiles">
-        <a class="tile" href="https://github.com/Menturan/mirrordash-clock"><b>Clock</b>The time and date</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-weather"><b>Weather</b>Now and the forecast</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-calendar"><b>Calendar</b>Your upcoming events</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-news"><b>News</b>The latest headlines</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-homeassistant"><b>Home Assistant</b>Your sensors</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-krisinformation"><b>Krisinformation</b>Crisis alerts, in Sweden</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-namnsdag"><b>Namnsdag</b>Today’s name day, in Sweden</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-photos"><b>Photos</b>A slideshow of your photos</a>
-        <a class="tile" href="https://github.com/Menturan/mirrordash-now-playing-spotify"><b>Spotify</b>What’s playing right now</a>
+      <div class="tiles pics">
+        <a class="tile" href="https://github.com/Menturan/mirrordash-clock#readme"><img src="modules/clock.webp" width="308" height="168" loading="lazy" alt="The Clock module: the time and date in large thin digits"><b>Clock</b>The time and date</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-weather#readme"><img src="modules/weather.webp" width="361" height="427" loading="lazy" alt="The Weather module: the temperature now, the next hours and the coming days"><b>Weather</b>Now and the forecast</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-calendar#readme"><img src="modules/calendar.webp" width="450" height="466" loading="lazy" alt="The Calendar module: a list of your upcoming events"><b>Calendar</b>Your upcoming events</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-news#readme"><img src="modules/news.webp" width="450" height="250" loading="lazy" alt="The News module: the latest headlines with a short summary"><b>News</b>The latest headlines</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-homeassistant#readme"><img src="modules/homeassistant.webp" width="293" height="400" loading="lazy" alt="The Home Assistant module: a column of your sensor readings"><b>Home Assistant</b>Your sensors</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-krisinformation#readme"><img src="modules/krisinformation.webp" width="401" height="219" loading="lazy" alt="The Krisinformation module: a crisis alert from Swedish authorities"><b>Krisinformation</b>Crisis alerts, in Sweden</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-namnsdag#readme"><img src="modules/namnsdag.webp" width="377" height="208" loading="lazy" alt="The Namnsdag module: today’s Swedish name day"><b>Namnsdag</b>Today’s name day, in Sweden</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-photos#readme"><img src="modules/photos.webp" width="800" height="450" loading="lazy" alt="The Photos module: a slideshow photo filling the screen"><b>Photos</b>A slideshow of your photos</a>
+        <a class="tile" href="https://github.com/Menturan/mirrordash-now-playing-spotify#readme"><img src="modules/spotify.webp" width="620" height="256" loading="lazy" alt="The Spotify module: the track playing now, with a progress bar"><b>Spotify</b>What’s playing right now</a>
       </div>
     </section>
 

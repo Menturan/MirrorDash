@@ -27,4 +27,6 @@ After changing any doc, heading or doc link (also in admin templates and `docs/`
 
 The website's pictures are copies, not links: after changing `mirrordash_concept.png`, remake them with `cwebp -q 82 mirrordash_concept.png -o docs/concept.webp`, `cwebp -q 80 -resize 700 0 mirrordash_concept.png -o docs/concept-700.webp` and a 1.9:1 crop to `docs/og.jpg` (`convert … -crop`), and update the sizes in `docs/index.html`.
 
+The module pictures on the start page (`docs/modules/<name>.webp`) are copies of each module's `screenshot.png` (`../mirrordash-modules/mirrordash-<name>/`): after one changes, `cwebp -q 82 screenshot.png -o docs/modules/<name>.webp` and update its `width`/`height` in `docs/index.html`. Two differ: Photos is made 800 px wide (`-resize 800 0`), and Home Assistant is the top 400 px of its picture (`-crop 0 0 293 400`), which ends after a whole row.
+
 The website is built and published by `.github/workflows/site.yml`; `docs/guide.html` is a template that `scripts/build_site.py` fills from `USER_GUIDE.md`. Preview it with `uv run python scripts/build_site.py` and `python3 -m http.server -d build_workspace/site`.
