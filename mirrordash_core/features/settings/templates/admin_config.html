@@ -101,7 +101,7 @@
               hx-on::response-error="this.reset()">
             <div class="form-label-desc" style="margin-bottom: 8px;">
                 <label for="core-auto-update" style="font-weight: 500; font-size: 0.9rem; color: white;">Install updates automatically</label>
-                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">At night, the mirror installs new versions of MirrorDash{% if os_build %} and of the system{% endif %} by itself, the same way the buttons above do. A version that doesn't work is undone by itself and isn't tried again.</p>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 0;">At night, the mirror installs new versions of MirrorDash{% if os_build %} and of the system{% endif %} by itself, the same way the buttons above do. A version that doesn't work is undone by itself and tried again on the next nights, three times in all.</p>
             </div>
             <label class="switch">
                 <input type="hidden" name="auto_update" value="false">
