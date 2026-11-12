@@ -1,0 +1,56 @@
+name: Website
+
+# Builds docs/ with the user guide rendered into guide.html (scripts/build_site.py) and publishes it to
+# GitHub Pages, so search engines get the guide as HTML and not as a script that fetches it.
+on:
+  push:
+    branches: [master]
+    paths:
+      - docs/**
+      - USER_GUIDE.md
+      - scripts/build_site.py
+      - .github/workflows/site.yml
+      - pyproject.toml
+      - uv.lock
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A deploy that has started is finished, not cancelled halfway
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+
+      # --frozen: exactly the versions in uv.lock
+      - name: Install dependencies
+        run: uv sync --frozen --extra dev
+
+      - name: Build the site
+        run: uv run python scripts/build_site.py
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build_workspace/site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v5

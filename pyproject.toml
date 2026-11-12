@@ -33,6 +33,7 @@ dev = [
     "pytest-mock>=3.12.0",
     "pytest-playwright>=0.5.0",
     "httpx2>=2.16",  # Starlette's TestClient (plain httpx is deprecated there)
+    "markdown-it-py>=3",  # renders the website's guide (scripts/build_site.py), never installed on the mirror
 ]
 
 [project.urls]

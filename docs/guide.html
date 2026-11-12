@@ -34,37 +34,13 @@ article img { height: auto; }
 </head>
 <body>
 <nav class="top gutter"><a href="./"><svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><path d="M11.75 75.25V24.75L37.25 50L62.75 24.75V75.25H75.25A13.25 13.25 0 0 0 88.5 62V38A13.25 13.25 0 0 0 75.25 24.75" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>MirrorDash</a></nav>
-<article id="guide" class="gutter">
-  <p>Loading the user guide…</p>
-  <noscript><p>This page needs JavaScript. Read the <a href="https://github.com/Menturan/MirrorDash/blob/master/USER_GUIDE.md">user guide on GitHub</a> instead.</p></noscript>
-</article>
+<!-- The guide is put in by scripts/build_site.py from USER_GUIDE.md -->
+<article id="guide" class="gutter"><!-- guide --></article>
 <footer class="site-footer gutter">
   <a href="./">MirrorDash</a>
   <a href="https://github.com/Menturan/MirrorDash/discussions">Discussions</a>
   <a href="https://github.com/Menturan/MirrorDash/issues">Issues</a>
   <a href="https://github.com/Menturan/MirrorDash/blob/master/CHANGELOG.md">Changelog</a>
 </footer>
-<script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" integrity="sha384-948ahk4ZmxYVYOc+rxN1H2gM1EJ2Duhp7uHtZ4WSLkV4Vtx5MUqnV+l7u9B+jFv+" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked-gfm-heading-id@4.1.1/lib/index.umd.js" integrity="sha384-AfBBApo8mdLz/88akCqlD8FBp9ckhcuqWvfy2E32yJ/5u9z858eGxW7sLxvEdOgR" crossorigin="anonymous"></script>
-<script>
-// ponytail: USER_GUIDE.md is rendered in the browser so it is written in one place only (no Jekyll: Liquid would
-// empty its {{ }} Home Assistant templates). Ceiling: search engines see less; a build step in Actions is the upgrade.
-const repo = "https://github.com/Menturan/MirrorDash/blob/master/";
-const guide = document.getElementById("guide");
-fetch("https://raw.githubusercontent.com/Menturan/MirrorDash/master/USER_GUIDE.md")
-  .then(r => { if (!r.ok) throw new Error(r.status); return r.text(); })
-  .then(md => {
-    marked.use(markedGfmHeadingId.gfmHeadingId());
-    guide.innerHTML = marked.parse(md);
-    // Links to the repo's other files go to GitHub; links within the guide stay here
-    guide.querySelectorAll("a[href]").forEach(a => {
-      const href = a.getAttribute("href");
-      if (href.startsWith("USER_GUIDE.md#")) a.setAttribute("href", href.slice(13));
-      else if (!/^([a-z]+:|#)/i.test(href)) a.setAttribute("href", repo + href);
-    });
-    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
-  })
-  .catch(() => { guide.innerHTML = '<p>The user guide couldn\'t be loaded. Read it <a href="' + repo + 'USER_GUIDE.md">on GitHub</a> instead.</p>'; });
-</script>
 </body>
 </html>

@@ -105,7 +105,7 @@ This creates a module with example data and starts a mirror on your computer tha
 ## Documentation
 
 * [User guide](USER_GUIDE.md) (also [on the website](https://mirrordash.net/guide.html)): setting up, wiring, the screen's rules, recovery, Matter, the API and Home Assistant.
-* The website is `docs/` (GitHub Pages from master, no build step): `index.html`, and `guide.html`, which renders USER_GUIDE.md in the browser.
+* The website is `docs/` (GitHub Pages, built by `.github/workflows/site.yml`): `index.html`, and `guide.html`, which `scripts/build_site.py` fills with USER_GUIDE.md.
 * [Changelog](CHANGELOG.md): what's new in each release.
 * [Contributing](CONTRIBUTING.md): run and change the core on your computer.
 * [Architecture](ARCHITECTURE.md) and [Design system](DESIGN.md): why it's built and looks the way it does.
