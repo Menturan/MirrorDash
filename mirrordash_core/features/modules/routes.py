@@ -23,7 +23,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
-from mirrordash_core.features.modules import guard
+from mirrordash_core.features.modules import discover, guard
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request
 from mirrordash_core.features.modules.client import module_host
@@ -40,7 +40,6 @@ from mirrordash_core.features.modules.service import (
     allow_scripts,
     check_module_update,
     install_module,
-    list_community_modules,
     list_modules,
     module_updates,
     noted,
@@ -92,9 +91,9 @@ async def get_discover_modules(request: Request):
         request=request,
         name="admin_discover_modules.html",
         context={
-            "discoverable_modules": [module for module in await list_community_modules()
+            "discoverable_modules": [module for module in await discover.list_community_modules()
                                      if normalized(module.get("name", "")) not in installed],
-            "last_scan": modules_service.LAST_SCAN_TIMESTAMP or "Never"
+            "last_scan": discover.LAST_SCAN_TIMESTAMP or "Never"
         }
     )
 

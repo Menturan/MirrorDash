@@ -548,10 +548,10 @@ def test_ssh_already_enabled_does_not_require_password(
     mock_subproc.assert_not_called()
 
 
-@patch("mirrordash_core.features.modules.service.scan_community_modules_now", new_callable=AsyncMock)
+@patch("mirrordash_core.features.modules.discover.scan_community_modules_now", new_callable=AsyncMock)
 @patch("mirrordash_core.features.modules.service.load_config")
 def test_list_community_modules(mock_load, mock_scan, client):
-    import mirrordash_core.features.modules.service as adm_mods
+    import mirrordash_core.features.modules.discover as adm_mods
     mock_load.return_value = MOCK_CONFIG
     adm_mods.LAST_SCAN_TIMESTAMP = None
     async def scan():
@@ -1097,7 +1097,7 @@ def test_check_module_update_github(mock_entry_points, mock_urlopen, client):
 
 @patch("mirrordash_core.features.modules.service.urllib.request.urlopen")
 def test_get_panel_and_discover_modules(mock_urlopen, client):
-    import mirrordash_core.features.modules.service as adm_mods
+    import mirrordash_core.features.modules.discover as adm_mods
     adm_mods.LAST_SCAN_TIMESTAMP = None
     adm_mods._LAST_LAZY_SCAN = float("-inf")
     adm_mods.DISCOVERED_COMMUNITY_MODULES = []
