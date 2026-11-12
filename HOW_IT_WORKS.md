@@ -132,7 +132,7 @@ sequenceDiagram
 
 1. **In the module's own process** (`features/modules/instance.py`), the module returns HTML from `render()` (or calls its `broadcast_func`). `loader.py` started it and gave it its helpers: `self.fetch` (`module_fetch.py`), `self.render_template`, `self.translate` and more.
 2. **`HostLink.html`** sends `{"t": "html", "html": ...}` over the instance's connection. The protocol is listed at the top of `host.py`.
-3. **`client.py` `ModuleHost._handle`** gets it in the core. Everything an instance sends is checked like input from outside: its connection is who it is, so it can only fill its own card; a card over 512 kB isn't shown; at most two sends a second reach the screen (#30).
+3. **`client.py` `ModuleHost._handle`** gets it in the core. Everything an instance sends is checked like input from outside (log lines, events and GPIO requests in `from_instances.py`): its connection is who it is, so it can only fill its own card; a card over 512 kB isn't shown; at most two sends a second reach the screen (#30).
 4. **`screen.py` `manager.broadcast`** adds the placement and sends it to every open screen, and keeps it for a screen that connects later.
 5. **`core.js` `showModuleHtml`** puts the card in its area, inside a shadow root so the module's CSS can't touch the rest of the page, and runs its scripts only if the module is trusted (#21, #41).
 
@@ -185,12 +185,17 @@ The biggest part of the core, in `features/modules/`:
 
 | File | Runs in | What it is for |
 |---|---|---|
-| `client.py` | core | `ModuleHost`: the core's side; starts and stops instances, checks what they send |
+| `client.py` | core | `ModuleHost`: the core's side; starts and stops instances and takes what they send |
+| `connection.py` | core | one connection to the module host: an instance's, or the control process's |
+| `from_instances.py` | core | the checks on what an instance sends: log lines, public events, GPIO requests |
+| `guard.py` | core | the screen's guard against a crash loop: pauses modules in steps (#47) |
 | `api_proxy.py` | core | `/api/modules/<instance>/...` forwarded to a module's own routes |
 | `defaults.py` | core | an instance's settings with its schema's defaults filled in (#52) |
 | `trial.py` | core | a module update on trial: put back when it fails soon after |
 | `lan.py` | core | which home-network addresses each instance may reach |
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |
+| `discover.py` | core | the modules there are to install: the scan of PyPI and GitHub |
+| `installed.py` | core | the modules that are installed, and where each one reinstalls from |
 | `choice_field.py` | core | which list or search setting the settings drawer asks the choices of (#48) |
 | `settings_process.py` | core | a short-lived process of a module none of whose instances runs, for the settings drawer (#48) |
 | `files.py` | core | files the owner uploads for a module (photos) |
