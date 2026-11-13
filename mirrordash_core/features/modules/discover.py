@@ -27,7 +27,7 @@ router = APIRouter(prefix="/admin")
 DISCOVERED_COMMUNITY_MODULES = []  # filled by scan_community_modules_now
 LAST_SCAN_TIMESTAMP = None
 _LAST_LAZY_SCAN = float("-inf")  # time.monotonic() of the last scan list_community_modules started
-NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-* packages the community scan skips
+NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk", "mirrordash-wpe"}  # mirrordash-* repos and packages that are not modules; the community scan skips them
 
 
 def github_module(item: dict) -> dict:

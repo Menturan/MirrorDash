@@ -9,6 +9,8 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- The crash banner on the Dashboard now shows the date as well as the time of the crashes, so you can tell when it happened when you open the admin page days later.
+- The Modules tab no longer lists the WPE WebKit build (`mirrordash-wpe`) as a module you can install.
 - The Updates card no longer says a version that doesn't work "isn't tried again": the automatic update tries it on three nights in all.
 - **A module update that doesn't work is undone by itself**: when a module keeps crashing, or the screen crashes, in the first minutes after the module was updated, the mirror puts back the version it had instead of leaving an empty place, and says so on the bell. The other modules are untouched, and the nightly update waits for a newer version.
 - **Catch up after a night off** (Settings → Updates, off by default): a mirror that is switched off at night misses the nightly update; with this on, it updates about ten minutes after it starts instead.

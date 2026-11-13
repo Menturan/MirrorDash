@@ -161,7 +161,7 @@ def banner(config: dict) -> dict | None:
         return [instance_title(name, modules.get(name) if isinstance(modules.get(name), dict) else {}) for name in names or []]
 
     def clock(t) -> str:
-        return datetime.fromtimestamp(t, zone).strftime("%H:%M") if isinstance(t, int | float) and t else ""
+        return datetime.fromtimestamp(t, zone).strftime("%Y-%m-%d %H:%M") if isinstance(t, int | float) and t else ""
 
     return {"level": step, "first": titles(by_step.get("1")), "more": titles(by_step.get("2")),
             "crashes": [clock(t) for t in guard.get("crashes") or []], "count": guard.get("count") or 0,

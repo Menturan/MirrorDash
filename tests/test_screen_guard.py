@@ -83,7 +83,7 @@ def test_the_dashboards_banner_says_what_each_step_paused_and_when():
     shown = guard.banner(config(level=2, by_step={"1": ["theme"], "2": ["photos"]}, crashes=[1762280000.0], count=3,
                                 since=1762279000.0))
     assert shown["level"] == 2 and shown["first"] == ["Theme"] and shown["more"] == ["Photos"]
-    assert shown["count"] == 3 and len(shown["crashes"][0]) == 5  # HH:MM on the owner's clock
+    assert shown["count"] == 3 and len(shown["crashes"][0]) == 16  # YYYY-MM-DD HH:MM on the owner's clock
 
 
 @pytest.mark.asyncio
