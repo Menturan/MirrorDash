@@ -35,6 +35,10 @@ FAKE = textwrap.dedent("""
         t = 0
         while True:
             t += 1; print(f"tick {t}.0", flush=True); time.sleep(0.1)
+    if mode == "quiet":                   # a picture, then nothing: only a stop (SIGTERM) ends it
+        print("playing", flush=True); time.sleep(30)
+    if mode == "closes":                  # closes its output, then exits cleanly a moment later
+        print("playing", flush=True); os.close(1); time.sleep(0.2); sys.exit(0)
     if mode == "hung":                    # SIGSTOP: a stopped player never sees SIGTERM
         print("playing", flush=True); os.kill(os.getpid(), signal.SIGSTOP)
     if mode == "nopicture":
@@ -176,6 +180,27 @@ async def test_a_stopped_video_ends_without_failing(fake):
     p.stop("its card is hidden")
     assert await asyncio.wait_for(task, 5) == (False, "its card is hidden")
     assert p._process.returncode is not None  # gone, with its window
+
+
+@pytest.mark.asyncio
+async def test_a_stop_takes_effect_at_once_not_at_the_next_poll(fake, monkeypatch):
+    monkeypatch.setattr(player, "POLL", 5)  # a stop that waits for the poll takes up to 5 s here
+    started, p = asyncio.Event(), fake("quiet", (60, 60, 60))
+
+    async def picture():
+        started.set()
+    task = asyncio.create_task(p.run(picture))
+    await asyncio.wait_for(started.wait(), 5)
+    begun = time.monotonic()
+    p.stop("privacy mode")
+    assert await asyncio.wait_for(task, 5) == (False, "privacy mode") and time.monotonic() - begun < 1
+
+
+@pytest.mark.asyncio
+async def test_a_player_that_ends_cleanly_after_closing_its_output_is_not_signalled(fake):
+    async def picture():
+        pass
+    assert await fake("closes", (5, 5, 5)).run(picture) == (False, "end of stream")  # not -15 from our own SIGTERM
 
 
 @pytest.mark.asyncio

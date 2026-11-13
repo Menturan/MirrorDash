@@ -101,6 +101,10 @@ def main(uri: str, device: str, volume: float, fullscreen: bool) -> int:
     def on_picture(_pad, _info):
         if not shown:
             shown.append(True)
+            if playing != uri:  # hlsdemux2 reads the master once, at the start, and then only the media playlists it
+                # names: a SIGKILL (the watchdog) after the picture leaves no file behind (unmeasured on the Pi).
+                # ponytail: a kill before the first picture still leaves the ~2 KB file (small, in /tmp)
+                os.unlink(playing.removeprefix("file://"))
             print("playing", flush=True)
         return Gst.PadProbeReturn.REMOVE
 
@@ -127,7 +131,7 @@ def main(uri: str, device: str, volume: float, fullscreen: bool) -> int:
     player.set_state(Gst.State.PLAYING)
     loop.run()
     player.set_state(Gst.State.NULL)
-    if playing != uri:
+    if playing != uri and not shown:
         os.unlink(playing.removeprefix("file://"))
     return result[0]
 

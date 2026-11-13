@@ -18,6 +18,7 @@ START_LIMIT = 30    # seconds to the first picture (a live stream starts in 1-2 
 STALL_LIMIT = 15    # seconds the position stands still once the picture shows
 POLL = 1          # seconds between the watchdog's looks when no line comes
 KILL_AFTER = 2      # seconds a stopped player gets to leave by itself
+EXIT_GRACE = 1      # seconds a player whose output has closed gets to exit by itself before it is signalled
 ENV = ("WAYLAND_DISPLAY", "XDG_RUNTIME_DIR", "PATH", "LANG")  # nothing of the core's secrets goes along
 
 
@@ -43,6 +44,7 @@ class Player:
         self.command, self.limits = command, limits
         self._process: asyncio.subprocess.Process | None = None
         self._stopped: tuple[str, bool] | None = None  # why it is stopped, and whether that is a failure
+        self._stop_now = asyncio.Event()  # set by stop(), so the loop doesn't wait out POLL for it
 
     async def run(self, on_picture) -> tuple[bool, str]:
         """Play until it ends: (failed, reason). await on_picture() is called when the first picture shows. A stop before the process exists, or a start that fails, ends it at once."""
@@ -54,15 +56,23 @@ class Player:
         process = self._process
         started = last_line = moved_at = time.monotonic()
         picture_at, position, error_text = None, None, None
+        stopping = asyncio.ensure_future(self._stop_now.wait())
         try:
             while self._stopped is None:
-                try:
-                    line = (await asyncio.wait_for(process.stdout.readline(), POLL)).decode(errors="replace").strip()
-                except TimeoutError:
-                    line = None
-                else:
+                reading = asyncio.ensure_future(process.stdout.readline())
+                await asyncio.wait({reading, stopping}, timeout=POLL, return_when=asyncio.FIRST_COMPLETED)
+                if self._stopped:
+                    reading.cancel()
+                    break
+                if reading.done():
+                    line = reading.result().decode(errors="replace").strip()
                     if not line and process.stdout.at_eof():
+                        with contextlib.suppress(TimeoutError):  # it is ending: let it say how, not SIGTERM
+                            await asyncio.wait_for(process.wait(), EXIT_GRACE)
                         break
+                else:
+                    reading.cancel()
+                    line = None
                 now = time.monotonic()
                 if line:
                     last_line = now
@@ -77,6 +87,7 @@ class Player:
                 elif why := verdict(now, started, last_line, picture_at, moved_at, self.limits):
                     self._stopped = (why, True)
         finally:
+            stopping.cancel()
             await self._end()
         if self._stopped:
             return self._stopped[1], self._stopped[0]
@@ -88,6 +99,7 @@ class Player:
     def stop(self, reason: str, failed: bool = False) -> None:
         """End it: SIGTERM now, SIGKILL if it hasn't left by then. run() answers with the reason."""
         self._stopped = self._stopped or (reason, failed)
+        self._stop_now.set()
 
     async def _end(self) -> None:
         process = self._process
