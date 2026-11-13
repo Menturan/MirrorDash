@@ -85,3 +85,15 @@ def test_only_the_mirrors_own_screen_says_where_the_window_is():
     assert future.result() is None
     window._asked.clear()
     loop.close()
+
+
+@pytest.mark.asyncio
+async def test_a_module_that_closed_its_socket_is_not_a_failed_video():
+    """Disabling a module closes its socket before the core's last word to it; uvloop then raises RuntimeError."""
+    from unittest.mock import AsyncMock
+
+    from mirrordash_core.features.modules.client import ModuleHost
+    host = ModuleHost.__new__(ModuleHost)
+    conn = AsyncMock()
+    conn.send.side_effect = RuntimeError("unable to perform operation on <UnixTransport closed=True>; the handler is closed")
+    await host._send_quietly(conn, {"t": "video", "event": "ended"})  # must not raise

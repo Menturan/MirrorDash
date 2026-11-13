@@ -295,7 +295,7 @@ class ModuleHost:
     async def _send_quietly(self, conn: Connection, message: dict) -> None:
         try:
             await conn.send(message)
-        except (ConnectionError, OSError, TypeError, ValueError) as e:
+        except (ConnectionError, OSError, TypeError, ValueError, RuntimeError) as e:  # RuntimeError: uvloop's, for a socket that closed (a module just disabled)
             logger.debug(f"Could not send {message.get('t')} to {conn.instance}: {e}")
 
     async def _request(self, message: dict, timeout: float) -> dict:
