@@ -190,6 +190,8 @@ body, html {
 :root[data-privacy] [data-module]:not([data-show-in-privacy]) { display: none !important; }
 /* A module its schedule hides now (features/power/display_power.py): the same, outside its days and times */
 [data-module][data-scheduled-out] { display: none !important; }
+/* A card with nothing to show (core.js showModuleHtml sets hidden): its own :host rule says display: block, which would beat the UA's [hidden] */
+[data-module][hidden] { display: none !important; }
 #privacy-monogram {
     display: none;
     position: fixed;

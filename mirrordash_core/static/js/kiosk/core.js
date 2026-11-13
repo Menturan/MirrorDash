@@ -221,6 +221,9 @@ function showModuleHtml(data) {
     card.toggleAttribute('data-show-in-privacy', data.show_in_privacy === true);  // style.css, privacy mode
     card.toggleAttribute('data-scheduled-out', scheduledOut.includes(data.module));  // style.css, its schedule
     card.toggleAttribute('data-video-is-playing', videoIsPlaying);
+    // Nothing to show ("" means no card, e.g. nothing is playing): the host's padding, background and gap go
+    // too (style.css); a carousel skips it like one a schedule hides.
+    card.hidden = data.html.trim() === '';
 
     const shadow = card.shadowRoot || card.attachShadow({ mode: 'open' });
     shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}</style>` + data.html;

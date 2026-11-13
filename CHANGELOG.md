@@ -10,6 +10,7 @@ There are two kinds of releases:
 ## [Unreleased]
 
 - Cards (calendar rows, the name-day, the news) could go blank while a module played a video and came back when it stopped; they now show at once and just stand still.
+- **A card with nothing to show no longer leaves a gap**: a module that has nothing to show (for example nothing is playing) now takes no room on the screen, instead of leaving a small dark box and a gap between the other cards, also over a background photo. It comes back when the module has something to show.
 - **The cards fade in when the mirror wakes and out when it rests**: the clock first, then the others one by one, instead of everything lighting at once; the screen turns off after the fade-out. *Power → Screen Schedule → Waking and resting* sets the style (*At once* is the old behaviour), the time between cards, the fade time, a *Start delay* for monitors that are slow to show a picture after standby, and whether the cards fade out before the screen turns off.
 - The crash banner on the Dashboard now shows the date as well as the time of the crashes, so you can tell when it happened when you open the admin page days later.
 - **A module on GitHub needs the `mirrordash-module` topic to show up in the Modules tab**, as well as a name starting with `mirrordash-` (`mirrordash-sdk release` adds the topic). This also keeps the WPE WebKit build (`mirrordash-wpe`) out of the list.

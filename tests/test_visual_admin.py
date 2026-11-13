@@ -1380,3 +1380,56 @@ def test_the_mirror_shows_an_unread_error(page):
         page.screenshot(path=os.path.join(os.environ["MIRRORDASH_SCREENSHOTS"], "mirror-error.png"))
     send({"type": "notices", "error": False})
     assert not badge.is_visible()
+
+
+@pytest.mark.only_browser("webkit")
+def test_a_card_with_nothing_to_show_takes_no_space_and_comes_back(page):
+    """A module that returns "" means no card: its host's padding, background and gap in the region go too,
+    in every cards-over-photo mode; a carousel skips it; it is back when the module next has content."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+
+    def send(name, html, position="top_left", order=0, **more):
+        page.evaluate("msg => window.__ws.onmessage({ data: msg })",
+                      json.dumps({"module": name, "position": position, "order": order, "html": html, **more}))
+
+    send("a", "first", order=0)
+    send("b", "", order=1)
+    send("c", "third", order=2)
+    height = "document.querySelector('#top_left').getBoundingClientRect().height"
+    with_empty = page.evaluate(height)
+    assert page.evaluate("document.querySelector('[data-module=b]').getBoundingClientRect().width") == 0
+    for mode in ("see_through", "halo", "half", "solid"):
+        page.evaluate("mode => document.documentElement.dataset.cardsOverPhoto = mode", mode)
+        assert page.evaluate("getComputedStyle(document.querySelector('[data-module=b]')).display") == "none"
+    send("b", "  \n ", order=1)  # blank is empty too
+    assert page.evaluate(height) == with_empty
+    send("b", "back", order=1)
+    assert page.evaluate(height) > with_empty
+    send("b", "", order=1)
+    assert page.evaluate(height) == with_empty  # and gone again
+
+    # in a carousel an empty slide is skipped, the others keep turning
+    for name, html in (("s1", "one"), ("s2", ""), ("s3", "three")):
+        send(name, html, position="top_right", order=10, carousel_group="g", carousel_interval=1)
+    assert page.evaluate("document.querySelectorAll('.carousel-slide:not([hidden])').length") == 2
+    page.wait_for_timeout(2500)
+    assert page.evaluate("document.querySelector('[data-module=s2]').classList.contains('carousel-active')") is False
+    send("s2", "two", position="top_right", order=10, carousel_group="g", carousel_interval=1)
+    assert page.evaluate("document.querySelectorAll('.carousel-slide:not([hidden])').length") == 3
