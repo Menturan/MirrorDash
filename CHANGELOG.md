@@ -9,22 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-- A video a module plays (a TV module is coming) is now started and watched by the mirror itself, so it also works with the module sandbox: it stops when the module's schedule ends, in Privacy Mode and when the screen starts to fade out, and a video that hangs is removed instead of staying frozen on the screen.
-- Cards (calendar rows, the name-day, the news) could go blank while a module played a video and came back when it stopped; they now show at once and just stand still.
-- **A card with nothing to show no longer leaves a gap**: a module that has nothing to show (for example nothing is playing) now takes no room on the screen, instead of leaving a small dark box and a gap between the other cards, also over a background photo. It comes back when the module has something to show.
-- **The cards fade in when the mirror wakes and out when it rests**: the clock first, then the others one by one, instead of everything lighting at once; the screen turns off after the fade-out. *Power → Screen Schedule → Waking and resting* sets the style (*At once* is the old behaviour), the time between cards, the fade time, a *Start delay* for monitors that are slow to show a picture after standby, and whether the cards fade out before the screen turns off.
-- The crash banner on the Dashboard now shows the date as well as the time of the crashes, so you can tell when it happened when you open the admin page days later.
-- **A module on GitHub needs the `mirrordash-module` topic to show up in the Modules tab**, as well as a name starting with `mirrordash-` (`mirrordash-sdk release` adds the topic). This also keeps the WPE WebKit build (`mirrordash-wpe`) out of the list.
-- The Updates card no longer says a version that doesn't work "isn't tried again": the automatic update tries it on three nights in all.
-- **A module update that doesn't work is undone by itself**: when a module keeps crashing, or the screen crashes, in the first minutes after the module was updated, the mirror puts back the version it had instead of leaving an empty place, and says so on the bell. The other modules are untouched, and the nightly update waits for a newer version.
-- **Catch up after a night off** (Settings → Updates, off by default): a mirror that is switched off at night misses the nightly update; with this on, it updates about ten minutes after it starts instead.
-- **A MirrorDash update that is interrupted no longer costs you the version you had**: a restart or a power cut while the new version was being installed could send the mirror back to the version before the current one, or into Safe mode. The mirror now switches to the new version only once it is fully installed.
-- A system update that fails to download goes on from where it stopped the next time, instead of starting the whole download over, and a download that came out incomplete is no longer handed to the install.
-- A system update that can't be installed at night (no room, a download that fails) now says so on the bell, and no longer keeps MirrorDash and the modules from being updated: they go first the night after.
-- The Updates card no longer says a system update "didn't start properly" when you look at it in the seconds before the mirror restarts into the new system.
-- Modules that *Install Anyway* turned off for a newer Python are turned on again if the mirror goes back to the version before.
-- Checking for updates again and again no longer runs into GitHub's hourly limit, and a system update is still found when many app versions came out after it.
-
 ### OS image
 
 - **Root over SSH by a key file, for developers**: if a file `mirrordash-root-key.pub` with a public key is put on the first partition of the card (the one a computer can read), `root` can log in over SSH with that key, for debugging. Nothing changes unless the file is there, and the admin page, a module or the app can't create it. A reset does not remove it: delete it before giving a mirror away. See [RELEASING.md](RELEASING.md#root-on-your-own-mirror).
@@ -47,6 +31,24 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.17.0] - 2026-11-13
+
+- A video a module plays (a TV module is coming) is now started and watched by the mirror itself, so it also works with the module sandbox: it stops when the module's schedule ends, in Privacy Mode and when the screen starts to fade out, and a video that hangs is removed instead of staying frozen on the screen.
+- Cards (calendar rows, the name-day, the news) could go blank while a module played a video and came back when it stopped; they now show at once and just stand still.
+- **A card with nothing to show no longer leaves a gap**: a module that has nothing to show (for example nothing is playing) now takes no room on the screen, instead of leaving a small dark box and a gap between the other cards, also over a background photo. It comes back when the module has something to show.
+- **The cards fade in when the mirror wakes and out when it rests**: the clock first, then the others one by one, instead of everything lighting at once; the screen turns off after the fade-out. *Power → Screen Schedule → Waking and resting* sets the style (*At once* is the old behaviour), the time between cards, the fade time, a *Start delay* for monitors that are slow to show a picture after standby, and whether the cards fade out before the screen turns off.
+- The crash banner on the Dashboard now shows the date as well as the time of the crashes, so you can tell when it happened when you open the admin page days later.
+- **A module on GitHub needs the `mirrordash-module` topic to show up in the Modules tab**, as well as a name starting with `mirrordash-` (`mirrordash-sdk release` adds the topic). This also keeps the WPE WebKit build (`mirrordash-wpe`) out of the list.
+- The Updates card no longer says a version that doesn't work "isn't tried again": the automatic update tries it on three nights in all.
+- **A module update that doesn't work is undone by itself**: when a module keeps crashing, or the screen crashes, in the first minutes after the module was updated, the mirror puts back the version it had instead of leaving an empty place, and says so on the bell. The other modules are untouched, and the nightly update waits for a newer version.
+- **Catch up after a night off** (Settings → Updates, off by default): a mirror that is switched off at night misses the nightly update; with this on, it updates about ten minutes after it starts instead.
+- **A MirrorDash update that is interrupted no longer costs you the version you had**: a restart or a power cut while the new version was being installed could send the mirror back to the version before the current one, or into Safe mode. The mirror now switches to the new version only once it is fully installed.
+- A system update that fails to download goes on from where it stopped the next time, instead of starting the whole download over, and a download that came out incomplete is no longer handed to the install.
+- A system update that can't be installed at night (no room, a download that fails) now says so on the bell, and no longer keeps MirrorDash and the modules from being updated: they go first the night after.
+- The Updates card no longer says a system update "didn't start properly" when you look at it in the seconds before the mirror restarts into the new system.
+- Modules that *Install Anyway* turned off for a newer Python are turned on again if the mirror goes back to the version before.
+- Checking for updates again and again no longer runs into GitHub's hourly limit, and a system update is still found when many app versions came out after it.
 
 ## [0.16.0] - 2026-11-11
 
