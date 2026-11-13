@@ -234,6 +234,35 @@ function showModuleHtml(data) {
     if (groupContainer) updateCarouselGroup(groupContainer);
 }
 
+// Wake and rest (features/power/wake_fade.py): the screen message says whether the screen rests and how the
+// cards fade. style.css hides the cards while <html> has data-resting and fades them by their number --i
+// (the clock first, then reading order); style "none" (At once) sets no attribute, so nothing is ever hidden.
+const AREAS_IN_READING_ORDER = ['top_left', 'top_center', 'top_right', 'middle_left', 'middle_center', 'middle_right',
+                                'bottom_left', 'bottom_center', 'bottom_right'];
+// ponytail: the one place that knows which module is the clock: its instance name is the module's ("mirrordash-clock",
+// "mirrordash-clock-2"), the placement message has nothing else. Upgrade: a module flag in its manifest.
+const CLOCK_INSTANCE = /^mirrordash[-_]clock(-\d+)?$/;
+
+function applyFade(data) {
+    const root = document.documentElement, fade = data.fade || {};
+    if (!fade.style || fade.style === 'none') {
+        root.removeAttribute('data-fade');
+        root.removeAttribute('data-resting');
+        return;
+    }
+    const cards = AREAS_IN_READING_ORDER.flatMap(id => [...document.getElementById(id).children])
+        .filter(card => getComputedStyle(card).display !== 'none');  // not those privacy mode or a schedule hides
+    const isClock = card => [card, ...card.querySelectorAll(':scope > [data-module]')].some(c => CLOCK_INSTANCE.test(c.dataset.module));
+    [...cards.filter(isClock), ...cards.filter(card => !isClock(card))].forEach((card, i) => card.style.setProperty('--i', i));
+    root.style.setProperty('--n', cards.length);
+    for (const [name, key, unit] of [['step', 'step', 'ms'], ['duration', 'duration', 'ms'], ['delay', 'delay', 'ms'], ['rise', 'rise', 'px'],
+                                     ['rest-step', 'rest_step', 'ms'], ['rest-duration', 'rest_duration', 'ms']]) {
+        root.style.setProperty(`--fade-${name}`, fade[key] + unit);
+    }
+    root.dataset.fade = fade.style;
+    root.toggleAttribute('data-resting', data.resting === true);
+}
+
 // What the server sends: "hello" on connecting, a module's HTML, or a change of state
 function handleServerMessage(data) {
     if (data.action === 'reload') {
@@ -259,6 +288,7 @@ function handleServerMessage(data) {
         root.toggleAttribute('data-privacy', data.privacy === true);
         root.dataset.privacyShows = data.privacy_shows;
         root.dataset.cardsOverPhoto = data.cards_over_photo;
+        applyFade(data);
         // and the modules their schedules hide now; a carousel then turns through what is left
         scheduledOut = data.scheduled_out || [];
         document.querySelectorAll('[data-module]').forEach(card =>

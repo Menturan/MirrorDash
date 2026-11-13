@@ -24,6 +24,7 @@ from mirrordash_core.features.hardware.display import (
     get_available_resolutions,
 )
 from mirrordash_core.features.power.display_power import DEFAULT_WAKE
+from mirrordash_core.features.power.wake_fade import DEFAULT_FADE
 from mirrordash_core.features.settings.ssh import apply_ssh, get_ssh_status
 from mirrordash_core.forms import read_form
 from mirrordash_core.host import run_in_background
@@ -115,11 +116,21 @@ class Wake(BaseModel, strict=True, extra="allow"):
     presence: bool = DEFAULT_WAKE["presence"]
 
 
+class Fade(BaseModel, strict=True, extra="allow"):
+    """How the cards fade when the screen wakes and rests (features/power/wake_fade.py)."""
+    style: Literal["none", "together", "stagger", "stagger_still"] = DEFAULT_FADE["style"]
+    step_ms: Annotated[int, Field(ge=0, le=1000)] = DEFAULT_FADE["step_ms"]
+    duration_ms: Annotated[int, Field(ge=200, le=5000)] = DEFAULT_FADE["duration_ms"]
+    start_delay_ms: Annotated[int, Field(ge=0, le=10000)] = DEFAULT_FADE["start_delay_ms"]
+    fade_out: bool = DEFAULT_FADE["fade_out"]
+
+
 class DisplayControl(BaseModel, strict=True, extra="allow"):
     mode: Literal["manual", "interval", "wake"] = "manual"
     cec: bool = True  # a TV off and on with the screen, over HDMI-CEC (features/hardware/cec.py)
     interval: Interval = Interval()
     wake: Wake = Wake()
+    fade: Fade = Fade()
 
     @model_validator(mode="before")
     @classmethod
@@ -154,6 +165,9 @@ REFUSED = {
     "auto_update_modules": "Automatic module updates must be on or off",
     "auto_update_catch_up": "Catching up must be on or off",
     "mode": "Invalid display power mode", "timeout_minutes": "The screen timeout must be 1 to 1440 minutes",
+    "style": "Invalid fade style", "step_ms": "The time between cards must be 0 to 1000 ms",
+    "duration_ms": "The fade time must be 200 to 5000 ms", "start_delay_ms": "The start delay must be 0 to 10000 ms",
+    "fade_out": "Fading out must be on or off",
     "extend": "Invalid wake settings", "presence": "Invalid wake settings",
     "start": "Invalid interval time format (HH:MM)", "end": "Invalid interval time format (HH:MM)",
 }
@@ -177,12 +191,12 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     display_control = dict(system_cfg.get("display_control", {"mode": "manual", "interval": {"start": "07:00", "end": "22:00"},
                                                               "wake": dict(DEFAULT_WAKE)}))
     incoming = settings.get("display_control") or {}
-    if not isinstance(incoming, dict) or not all(isinstance(incoming.get(part, {}), dict) for part in ("interval", "wake")):
+    if not isinstance(incoming, dict) or not all(isinstance(incoming.get(part, {}), dict) for part in ("interval", "wake", "fade")):
         raise HTTPException(status_code=400, detail="Invalid display power settings")
     for key in ("mode", "cec"):
         if key in incoming:
             display_control[key] = incoming[key]
-    for part in ("interval", "wake"):
+    for part in ("interval", "wake", "fade"):
         if part in incoming:
             display_control[part] = {**display_control.get(part, {}), **incoming[part]}
     new["display_control"] = display_control
@@ -253,6 +267,12 @@ async def save_system_settings_route(request: Request):
         for key in ("extend", "presence"):
             if key in wake:
                 wake[key] = wake[key] in (True, "true")
+    if "fade" in display_control:
+        fade = display_control["fade"]
+        for key in ("step_ms", "duration_ms", "start_delay_ms"):
+            _as_int(fade, key, REFUSED[key])
+        if "fade_out" in fade:
+            fade["fade_out"] = fade["fade_out"] in (True, "true")
 
     await update_system_settings(settings=parsed)
     if "ssh" in parsed:  # only the Developer card sends it

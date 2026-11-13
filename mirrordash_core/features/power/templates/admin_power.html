@@ -129,6 +129,57 @@
                 </div>
             </div>
 
+            <!-- How the cards appear when the screen wakes and go when it rests (features/power/wake_fade.py) -->
+            {% set fade = settings.display_control.fade or {} %}
+            {% set fade_style = fade.style if fade.style in ("none", "together", "stagger", "stagger_still") else "stagger" %}
+            <div style="margin-top: 20px; padding-left: 15px; border-left: 2px solid var(--color-dimmed-charcoal); display: grid; gap: 14px;">
+                <div>
+                    <div style="font-weight: 500; font-size: 0.9rem; color: white;">Waking and resting</div>
+                    <p class="field-description" style="font-size: 0.8rem; color: var(--text-secondary); margin: 4px 0 0 0;">
+                        How the cards appear when the screen turns on and go when it turns off. The clock comes first, then the others in reading order.
+                    </p>
+                </div>
+                <div>
+                    <label for="sys-fade-style" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">How the cards appear</label>
+                    <select id="sys-fade-style" name="display_control[fade][style]" class="form-control">
+                        <option value="none" {% if fade_style == "none" %}selected{% endif %}>At once</option>
+                        <option value="together" {% if fade_style == "together" %}selected{% endif %}>Fade together</option>
+                        <option value="stagger" {% if fade_style == "stagger" %}selected{% endif %}>One by one</option>
+                        <option value="stagger_still" {% if fade_style == "stagger_still" %}selected{% endif %}>One by one, no movement</option>
+                    </select>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 0;">
+                        At once is no animation. One by one lets each card rise a little as it fades in.
+                    </p>
+                </div>
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <div style="flex: 1; min-width: 140px;">
+                        <label for="sys-fade-step" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Time between cards (ms)</label>
+                        <input type="number" id="sys-fade-step" name="display_control[fade][step_ms]" class="form-control" min="0" max="1000" step="10" value="{{ fade.step_ms if fade.step_ms is defined else 450 }}">
+                    </div>
+                    <div style="flex: 1; min-width: 140px;">
+                        <label for="sys-fade-duration" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Fade time (ms)</label>
+                        <input type="number" id="sys-fade-duration" name="display_control[fade][duration_ms]" class="form-control" min="200" max="5000" step="50" value="{{ fade.duration_ms if fade.duration_ms is defined else 2500 }}">
+                    </div>
+                    <div style="flex: 1; min-width: 140px;">
+                        <label for="sys-fade-delay" style="font-size: 0.8rem; color: white; display: block; margin-bottom: 4px;">Start delay (ms)</label>
+                        <input type="number" id="sys-fade-delay" name="display_control[fade][start_delay_ms]" class="form-control" min="0" max="10000" step="100" value="{{ fade.start_delay_ms if fade.start_delay_ms is defined else 0 }}">
+                    </div>
+                </div>
+                <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: -6px 0 0 0;">
+                    Start delay: how long after the screen turns on the first card waits before it starts to appear. A monitor takes its own time to show a picture after standby, and no one can know how long yours takes, so raise it until the first card isn't missed.
+                </p>
+                <div>
+                    <label style="display: flex; gap: 10px; align-items: center; font-size: 0.85rem; color: white;">
+                        <input type="hidden" name="display_control[fade][fade_out]" value="false">
+                        <input type="checkbox" name="display_control[fade][fade_out]" value="true" {% if fade.fade_out is not defined or fade.fade_out %}checked{% endif %} style="width: 18px; height: 18px; flex-shrink: 0;">
+                        Fade the cards out before the screen turns off
+                    </label>
+                    <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 4px 0 0 26px;">
+                        The screen then turns off after the fade, the same order backwards and a little faster. Turn it off if your screen should go dark at once.
+                    </p>
+                </div>
+            </div>
+
             <!-- A TV off and on with the screen, over HDMI-CEC (features/hardware/cec.py) -->
             <div style="margin-top: 20px;">
                 <label style="display: flex; gap: 10px; align-items: center; font-size: 0.85rem; color: white;">

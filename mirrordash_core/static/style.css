@@ -244,6 +244,26 @@ body, html {
     to   { opacity: 1; transform: translateY(0); }
 }
 
+/* Wake and rest (core.js applyFade, features/power/wake_fade.py): the cards fade in one by one when the screen
+   turns on and out before it turns off. Only opacity and transform, and only on the anchors' cards (a carousel
+   as a whole): the regions centre with transform, the background and foreground stay lit. An inline opacity
+   (the owner's) is where the fade in ends, since resting only overrides it. While resting the cards stay hidden,
+   so nothing flashes when the output comes back. Reduced motion doubles the times and drops the rise. */
+:root[data-fade] .region:not(.layer) > * {
+    transition: opacity calc(var(--fade-duration) * var(--motion, 1)) cubic-bezier(.22, .61, .36, 1),
+                transform calc(var(--fade-duration) * var(--motion, 1)) cubic-bezier(.22, .61, .36, 1);
+    transition-delay: calc((var(--fade-delay) + var(--i, 0) * var(--fade-step)) * var(--motion, 1));
+}
+:root[data-fade][data-resting] .region:not(.layer) > * {
+    opacity: 0 !important;
+    transform: translateY(calc(var(--fade-rise) * var(--rise-on, 1))) !important;
+    transition-duration: calc(var(--fade-rest-duration) * var(--motion, 1));
+    transition-delay: calc((var(--n, 1) - 1 - var(--i, 0)) * var(--fade-rest-step) * var(--motion, 1));
+}
+@media (prefers-reduced-motion: reduce) {
+    :root { --motion: 2; --rise-on: 0; }
+}
+
 /* ============================================================
    Carousel groups
    ============================================================ */

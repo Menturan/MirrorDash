@@ -97,7 +97,7 @@ flowchart TB
 2. **`main.py`** sets up logging (`~/.mirrordash/logs/`) and starts uvicorn with the app from **`app.py`**.
 3. **`app.py`'s `lifespan`** applies the saved system settings (`features/settings/system_settings.py`: rotation, brightness, time zone, SSH) and starts the long-running parts, each on its own so one failure doesn't stop the rest:
    - `module_host.start_modules()` (`features/modules/client.py`) connects to the module host and asks it to start every enabled instance,
-   - `display_power_manager` (`features/power/`) turns the screen on and off on schedule, and a TV with it over HDMI-CEC (`features/hardware/cec.py`),
+   - `display_power_manager` (`features/power/`) turns the screen on and off on schedule, and a TV with it over HDMI-CEC (`features/hardware/cec.py`); the cards fade in after the output is on and out before it goes off (`features/power/wake_fade.py`, #61),
    - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
    - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42),

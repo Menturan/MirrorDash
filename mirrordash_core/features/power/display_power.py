@@ -15,6 +15,9 @@ the open API (POST /admin/screen {"state": "on", "timeout_minutes": optional}).
 An explicit "off" turns the screen off and keeps it off until something wakes it again or the
 base mode changes (e.g. the schedule starts).
 
+Every change goes through set_state: the cards fade out before the output goes off and in after it is on
+(wake_fade.py, ARCHITECTURE #61).
+
 While the screen is off the modules sleep: their fetch_json waits on `awake` (see
 modules/loader.py), so a due fetch happens once when the screen comes back on and the module's
 own schedule is kept. A module with `keep_running = True` is never held.
@@ -32,8 +35,10 @@ from fastapi import HTTPException
 from mirrordash_core.config import load_config
 from mirrordash_core.features.hardware.cec import set_tv_power
 from mirrordash_core.features.hardware.display import set_screen_power
+from mirrordash_core.features.power.wake_fade import fade_message, rest_wait
 from mirrordash_core.forms import DAYS
 from mirrordash_core.host import run_in_background
+from mirrordash_core.screen import manager
 
 logger = logging.getLogger("mirrordash.core.power")
 
@@ -97,6 +102,7 @@ class DisplayPowerManager:
         self.was_present = False
         self.scheduled_out: list[str] | None = None  # the instances the modules' schedules hid last pass
         self.changed = asyncio.Event()
+        self.resting = False  # the cards are faded out, or fading, for a screen that goes off (wake_fade.py)
         self.awake = asyncio.Event()  # set while the screen is on; modules' fetch_json waits on it
         self.awake.set()
 
@@ -200,15 +206,38 @@ class DisplayPowerManager:
             from mirrordash_core.features.power.privacy import broadcast_screen
             await broadcast_screen(config)
 
+    async def _tell_page(self, resting: bool) -> None:
+        """The page's cards rest or wake: the screen message carries the state and the fade (privacy.py)."""
+        if resting != self.resting:
+            self.resting = resting
+            from mirrordash_core.features.power.privacy import screen_message
+            await manager.broadcast(screen_message())
+
+    async def _fade_out(self, display_cfg: dict) -> None:
+        """Tell the page to rest, and wait for its fade-out: the output goes off after it. Only a screen known
+        to be on waits (not the first pass after a start). ponytail: a wake during the wait is acted on at
+        the next turn of the loop, after the output went off; upgrade: wait on `changed` and cancel."""
+        await self._tell_page(True)
+        if self.is_on:
+            from mirrordash_core.features.modules.client import module_host
+            from mirrordash_core.features.power.privacy import hidden_instances
+            cards = len(set(module_host.running) - hidden_instances(load_config()))
+            await asyncio.sleep(rest_wait(fade_message(display_cfg), cards))
+
     async def set_state(self, on: bool) -> bool:
+        display_cfg = load_config().get("system", {}).get("display_control", {})
+        if not on:
+            await self._fade_out(display_cfg)  # the cards first, then the TV, then the signal
         # A TV over HDMI-CEC: asked to turn off before the signal goes (a TV that switches inputs on its
         # own would otherwise show another one, which is then left on); turned on after the signal is back
-        tv = load_config().get("system", {}).get("display_control", {}).get("cec", True)
+        tv = display_cfg.get("cec", True)
         if tv and not on:
             await set_tv_power(False)
         success = await set_screen_power(on)
         if tv and on and success:
             run_in_background(set_tv_power(True))
+        if success == on:  # lit: the cards wake, now that the page gets frames (animations wait for them);
+            await self._tell_page(False)  # an off that failed: still lit, the cards come back
         if success:
             self.is_on = on
             self.awake.set() if on else self.awake.clear()

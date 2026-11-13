@@ -90,6 +90,7 @@ The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside
 *   What wakes it: someone in front of the mirror (with a motion or presence sensor, if *Wake when someone is in front of the mirror* is on), a button press set to *Wake the screen*, **Turn Screen ON**, a home app over Matter, or Home Assistant (see [6](#6-smart-home-matter-the-api-and-home-assistant)).
 *   *From the last activity* keeps it on while someone is still there; *A fixed time* turns it off after exactly that time, for example for a doorbell.
 *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
+*   When the screen turns on the cards fade in one by one, the clock first; before it turns off they fade out. *Waking and resting* on the Power tab sets the style and the times. A monitor needs a moment to show a picture after standby and nobody knows yours: if the first cards are missed, raise the *Start delay*.
 *   While the screen is off, the modules don't fetch new data (saving API calls). When it comes back on, those whose update was due fetch it right away.
 *   A TV turns off and on with the screen over HDMI-CEC (*Turn a TV off and on with the screen*, on by default), as its remote would. If someone is watching another input on it, the mirror leaves it alone. A computer monitor goes to standby by itself when the screen turns off. Not yet tried on a TV.
 
