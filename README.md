@@ -81,7 +81,7 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 | [Radio](https://github.com/Menturan/mirrordash-radio) | Internet radio through the mirror's speakers: stations worldwide |
 | [Krisinformation](https://github.com/Menturan/mirrordash-krisinformation) | Swedish crisis information from Krisinformation.se |
 | [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
-| [Moment](https://github.com/Menturan/mirrordash-moment) | A short text in the centre of the mirror for a moment, sent by your home automation: someone at the door, the laundry is done |
+| [Heads-up](https://github.com/Menturan/mirrordash-heads-up) | A short text in the centre of the mirror for a few seconds, sent by your home automation: someone at the door, the laundry is done |
 
 ### Make your own
 
