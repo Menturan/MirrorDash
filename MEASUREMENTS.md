@@ -12,6 +12,47 @@ Behind ARCHITECTURE #32 (a lean GStreamer in the image, video played outside the
 * **Sources and sound**: SVT's channels come from `https://api.svt.se/video/ch-svt1` (`svt2`, …): HLS without DRM, geo-blocked to Sweden, every variant from 252p to 1080p at 50 fps, with audio and subtitles as separate renditions. Sveriges Radio is a plain MP3/AAC stream (`https://www.sverigesradio.se/topsy/direkt/srapi/132.mp3` redirects to `live1.sr.se`; about 8 % CPU). Set the volume on the hearing scale (`amixer -M -c Headphones sset PCM 35%`): the raw scale's 20 % is −81 dB, silent. The admin page's volume does that on every card (`_apply_volume`): plain `amixer sset` reaches only card 0, which on the Pi is HDMI. Measured on the mirror (2026-11-03): the jack (`Headphones`, card 1) has 8 subdevices mixed by the VideoCore, so several modules play at once; HDMI (`vc4hdmi`) has one, no mixer controls (volume in GStreamer) and takes `hdmi:CARD=vc4hdmi,DEV=0` or `plughw`. It plays without error to a screen without speakers (the S24D300's ELD has `sad_count 0`), so a module can't tell it's silent. The volume lives in the RAM root and is lost at a restart. The Pi 3's 3.5 mm output is PWM and a little noisy.
 * **Other compositors and strategies**: Set-top boxes running WPE (RDK, Metrological) use hole punch: the page draws a transparent hole at the `<video>` and a platform sink (`westerossink` under the Westeros compositor) puts the picture on a plane under it, at the rectangle WebKit passes it. Trixie's WPE 2.48 has it built in (`WEBKIT_GST_HOLE_PUNCH_QUIRK=westeros`), but Westeros isn't in Debian (not tried). Kodi owns DRM itself and puts its menus and the video on separate planes, which is why it plays smoothly. Cage is wlroots like labwc, so it costs the same, and it shows one client at a time. Pure DRM (`cog -P drm` beside `mpv --vo=drm`) can't work: only one process can be DRM master, and the screen can then only be turned off over CEC. vc4 rotates planes only 0°/180°, so on a portrait mirror (90°) video always goes through the GPU, whatever the compositor (not measured).
 
+### Video in the page and in an own window, WPE 2.54 (2026-11-13)
+
+Pi 3B, test version `v0.16.0-os2`, WPE WebKit 2.54.2, GStreamer 1.26.2, labwc 0.20.2, screen 1920×1080@60, the normal mirror page running, 720p50 H.264 clip with AAC audio unless said otherwise. CPU is in % of one core (4 cores). A gap in the page = a frame more than 45 ms late (`requestVideoFrameCallback`), counted per 30 s run; a gap in the own window = a cluster of 2 or more frames the sink dropped, after the first 3 s, given per 10 s. The two counts are not the same measure. The kit's limits are 60 % CPU and 1 gap per 10 s. Reports: `results/2026-11-13-root-diagnosis.md` and `results/2026-11-13-planb-own-window.md` in the mirrordash-tv-testkit repo.
+
+**`<video>` in the page.** The decoder is `v4l2h264dec` (hardware) and every frame reaches WebKit's sink (about 1383 samples in 30 s), but with the default settings the card stays black on the compositor's screenshot while the page reports 48 fps (1 run). With `WEBKIT_GST_DMABUF_SINK_DISABLED=1` the video is painted (screenshot and camera, 3 runs). The default path hands over DMABuf `YU12` planes; the switch makes WebKit upload them to a GL external-OES texture. Where the default path loses the frame is not shown (no log at any level checked).
+
+| variant | runs | gaps per 30 s | CPU % | fps |
+|---|---|---|---|---|
+| switch set | 3 | 25.3 (23–28) | 141.1 (139.0–142.5) | 47.1 (45.4–48.2) |
+| switch + `WEBKIT_GST_USE_PLAYBIN3=1` | 3 | 19.7 (14–26) | 134.0 (132.0–135.1) | 45.4 (44.6–47.0) |
+| switch, clip without audio track | 2 | 37 / 19 | 119.3 / 118.2 | 45.9 / 47.7 |
+| switch + `WEBKIT_GST_USE_VIDEOCONVERT_SCALE=1` | 2 | 23 / 28 | 140.5 / 140.8 | 47.5 / 48.0 |
+
+* Dropped frames (`getVideoPlaybackQuality`) were 0 in every follow-up run. Earlier single runs with the switch gave 33 and 39 gaps and 144–145 % CPU; without it 28–55 gaps and 126–142 %.
+* Playbin3: CPU about 7 points lower (ranges do not overlap); gaps not shown to differ (ranges overlap); first frame later (1.9–3.3 s against 1.1–2.8 s).
+* Audio track: 22 points less CPU without it (2 runs); the page's `muted` does not remove the audio chain. Gaps did not follow.
+* Threads in one run (% of a core): page main thread 20.6, compositor 19.6, GStreamer queue threads about 36, network process 8, launcher 13, audio sink 4.6, decoder 4.1. The other runs have the same shape.
+* `WEBKIT_GST_DISABLE_GL_SINK=1`: painted, 1.2 fps (1 run). `WEBKIT_GST_USE_PLAYBIN3=1` alone: not painted (1 run). No software H.264 decoder is in the image.
+* Not verified: gap counts vary about 2× between identical runs.
+
+**Own GStreamer window** (`waylandsink`, a Python player as user pi, 30 s runs, window at labwc's default place, the page running). Total = player + screen unit; the idle screen unit alone is 6–8 %.
+
+| variant | runs | total CPU % | dropped / 30 s | gaps per 10 s |
+|---|---|---|---|---|
+| 720p50, `waylandsink`, no audio | 3 | 22.2–26.0 | 74–107 | 1.5–2.6 |
+| 720p50, `glimagesink`, no audio | 3 | 43.4–45.7 | 11–14 | 0.7–1.9 |
+| `waylandsink` fullscreen, 720p50 | 2 | 13.0 / 13.6 | 0 / 0 | 0 / 0 |
+| `waylandsink` fullscreen, 1080p50 | 2 | 16.3 / 14.1 | 0 / 0 | 0 / 0 |
+| `waylandsink` 1080p50 window covering the page | 1 | 14.0 | 0 | 0 |
+| `waylandsink` window, 25 fps clip (720p) | 2 | 13.0 / 14.5 | 0 / 0 | 0 / 0 |
+| `glimagesink` window, 25 fps clip | 1 | 26.0 | 0 | 11 arrival gaps over 45 ms |
+
+* The page is not still: about every 12 s the screen unit jumps to 20–55 % for 1–2 s, and 55–70 % of the gaps lie on those spikes (`waylandsink` loses 20–40 frames in a row there, `glimagesink` 3–13). Beside the live page the window meets the CPU limit but not the gap limit at 50 fps.
+* Fullscreen and covering windows: the screen unit falls to about 2 % (the page stops painting; the cause is inferred). At fullscreen 720p the scanout plane holds the player's `YU12` dmabuf directly (`/sys/kernel/debug/dri/0/state`, 1 run); in every windowed run the plane holds labwc's own `XR24` framebuffer. A compositor screenshot during playback itself causes a gap of 15–17 frames.
+* Audio (`waylandsink`, 720p50 window): none 22–26 % total (3 runs), `fakesink` 30.6 / 31.2 (2), ALSA `hdmi:CARD=vc4hdmi,DEV=0` 39.6 / 36.3 (2), playbin3 with audio 47.9 (1). Gaps did not change. No sound was sent to the jack.
+* Scaling inside the pipeline (720p to 960×540): `v4l2convert` gst 90 %, total 97–100 %, 4 sink drops (2 runs); with the format left open it chose RGB, gst 81 %, 1370 of 1470 frames dropped (2 runs); `videoscale` after the decoder failed to negotiate with DMABuf (1 run).
+* Window placement: `waylandsink` opens a toplevel at the video's size, centred (1280×720 at 320,180), `glimagesink` at 800,420 (partly off screen); neither can set x,y, and `render-rectangle` did nothing. `fullscreen=true` works. A labwc window rule (position, size, no decoration, always on top) put the player exactly where told in a nested labwc 0.20.2 shown in the live session (1 run). SIGSTOP on the player leaves its window on top with the last frame, SIGKILL removes it at once, the page and `screen-kiosk` are unharmed (1 run each).
+* HLS (SVT1 playlist from a local file, `playbin3`, 30 s, 1 run each): with audio to ALSA it played at 47 % total CPU and 55 drops; video only, every frame was dropped as late and no picture appeared.
+* Memory over 10 start/stop cycles of a 5 s window (1 series): V3D buffers 111236 → 107556 kB, `CmaFree` 43316 → 46944 kB, `cma_alloc_fail` 0, screen unit PSS 145119 → 145279 kB, `MemAvailable` 299460 → 298156 kB; throttled 0x0 throughout.
+* Not verified: the window rule in the real session and the stacking against the page's window; the page held still while a window plays (the 12 s spikes were always present); HLS beyond the two runs above; compositor scaling of a window in the real session.
+
 ## A module's video player
 
 Behind ARCHITECTURE #34 (the core places a module's video window, the module plays it).
