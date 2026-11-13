@@ -51,7 +51,21 @@ Pi 3B, test version `v0.16.0-os2`, WPE WebKit 2.54.2, GStreamer 1.26.2, labwc 0.
 * Window placement: `waylandsink` opens a toplevel at the video's size, centred (1280×720 at 320,180), `glimagesink` at 800,420 (partly off screen); neither can set x,y, and `render-rectangle` did nothing. `fullscreen=true` works. A labwc window rule (position, size, no decoration, always on top) put the player exactly where told in a nested labwc 0.20.2 shown in the live session (1 run). SIGSTOP on the player leaves its window on top with the last frame, SIGKILL removes it at once, the page and `screen-kiosk` are unharmed (1 run each).
 * HLS (SVT1 playlist from a local file, `playbin3`, 30 s, 1 run each): with audio to ALSA it played at 47 % total CPU and 55 drops; video only, every frame was dropped as late and no picture appeared.
 * Memory over 10 start/stop cycles of a 5 s window (1 series): V3D buffers 111236 → 107556 kB, `CmaFree` 43316 → 46944 kB, `cma_alloc_fail` 0, screen unit PSS 145119 → 145279 kB, `MemAvailable` 299460 → 298156 kB; throttled 0x0 throughout.
-* Not verified: the window rule in the real session and the stacking against the page's window; the page held still while a window plays (the 12 s spikes were always present); HLS beyond the two runs above; compositor scaling of a window in the real session.
+
+**Own window in the real session** (2026-11-13, the mirror's own labwc and screen unit, the same player and 720p50 clip, no audio, 30 s runs, first 3 s left out; labwc re-read `rc.xml` on `kill -HUP` without restarting). Rule: `serverDecoration="no" ignoreFocusRequest="yes"`, `MoveTo`, `ResizeTo`, plus `ToggleAlwaysOnTop` in the runs below except A'. "Held" = the page held still by `video_is_playing` (a module announcing it, no `<video>`). Report: `results/2026-11-13-window-real-session.md`.
+
+| variant | runs | gst / screen / total CPU % | dropped per run | gaps per run (per 10 s) |
+|---|---|---|---|---|
+| A: card 960x540 at 480,270, live page | 3 | 13.4/7.2/20.6, 14.7/6.6/21.3, 14.3/6.6/20.9 | 45 / 42 / 43 | 2 / 2 / 2 (0.74), each 19-23 frames |
+| A': card, the core's rule without always-on-top | 1 | 15.7/8.4/24.1 | 76 | 2 (30 and 20 frames) |
+| B: card, page held | 3 | 13.6/0.1/13.7, 12.8/0.4/13.2, 13.9/0.1/14.0 | 2 / 3 / 1 | 0 / 0 / 0 |
+| D1: 1280x720 unscaled at 320,180, held | 2 | 14.3/0.2/14.4, 14.4/0.1/14.5 | 9 / 8 | 1 / 1 (0.37) |
+| D2: 1280x720 unscaled, live page | 2 | 16.5/8.3/24.8, 15.8/8.3/24.1 | 86 / 82 | 9 / 4 (3.3 / 1.5) |
+
+* Placement: the window stood exactly at 480..1440 x 270..810, no title bar, above the page, with and without always-on-top (screenshots, 1 run each); the compositor scaled the 720p video to 960x540. Scaled by the compositor it was cheaper than 1:1 (A total 21 % against D2 24-25 %, dropped 42-55 against 82-86).
+* Live page: all 6 gaps in the three A runs lay on a page spike (screen unit 28-41 % every 12 s). The spikes come with the news module's 12 s scroll step (inferred from the module's code: its timer is 12 s at `scroll_speed: slow`, all other modules push every 30 s or slower). Held: the screen unit idled at 0.1-0.4 % and the spikes were gone (observed, 3 runs).
+* The page's blank cards while held (calendar rows, name-day, news) were seen in a screenshot during the hold and back after it.
+* Not verified: the window following a moved card; HLS beyond the two runs above.
 
 ## A module's video player
 
