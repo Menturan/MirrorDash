@@ -41,6 +41,7 @@ from mirrordash_core.features.modules.module_files import (
     scripts_allowed,
 )
 from mirrordash_core.features.modules.settings_process import SettingsProcesses
+from mirrordash_core.features.video import playback
 from mirrordash_core.host import run_in_background, run_restart
 from mirrordash_core.screen import manager
 from mirrordash_core.venv import get_venv_paths
@@ -171,6 +172,8 @@ class ModuleHost:
         """Which instances' cards the screen hides (their schedule, privacy mode): each one that changed is told,
         and the module hears whether its card is shown (`on_shown`, with the screen being on)."""
         changed, self._hidden = hidden ^ self._hidden, set(hidden)
+        for instance_id in sorted(changed & hidden):
+            playback.stop(instance_id, "its card is hidden")  # a video window isn't part of the hidden card
         for instance_id in sorted(changed):
             if conn := self._instances.get(instance_id):
                 await self._send_quietly(conn, {"t": "hidden", "on": instance_id in hidden})
@@ -540,9 +543,9 @@ class ModuleHost:
             if isinstance(request, int) and request not in conn.windows and (
                     hz is None or (isinstance(hz, int) and 1 <= hz <= 240)):
                 conn.windows[request] = asyncio.Event()  # here, not in the task: the end can come first
-                run_in_background(self._hold_window(conn, request, bool(message.get("fullscreen")), hz))
+                run_in_background(self._hold_window(conn, request, message))
             elif isinstance(request, int):
-                await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})  # the module gets an error
+                await self._send_quietly(conn, {"t": "reply", "id": request, "error": "hz must be a whole number from 1 to 240"})
         elif kind == "gpio":
             if isinstance(message.get("id"), int) and (error := from_instances.hand_over_gpio_lines(message, conn)):
                 logger.warning(f"{instance_id}: no GPIO {message.get('pins')}: {error}")
@@ -550,19 +553,15 @@ class ModuleHost:
         elif kind == "video_window_end" and message.get("id") in conn.windows:
             conn.windows[message["id"]].set()
 
-    async def _hold_window(self, conn: Connection, request: int, fullscreen: bool, hz: int | None) -> None:
-        from mirrordash_core.features.video.window import video_window
-        answered = False
+    async def _hold_window(self, conn: Connection, request: int, options: dict) -> None:
+        """A module's video block (features/video/playback.py): the first answer is the reply to its call,
+        the rest are {"t": "video", "event": ...} (playing, ended, failed)."""
+        async def send(answer: dict) -> None:
+            kind = {"t": "video"} if "event" in answer else {"t": "reply"}
+            await self._send_quietly(conn, {**kind, "id": request, **answer})
+
         try:
-            async with video_window(conn.instance, fullscreen=fullscreen, hz=hz) as window:
-                await conn.send({"t": "reply", "id": request, "window": {
-                    "app_id": window.app_id, "rect": window.rect, "fullscreen": window.fullscreen}})
-                answered = True
-                await conn.windows[request].wait()
-        except Exception as e:
-            logger.warning(f"{conn.instance}: video window failed: {e!r}")
-            if not answered:
-                await self._send_quietly(conn, {"t": "reply", "id": request, "window": None})
+            await playback.hold(conn.instance, options, send, conn.windows[request])
         finally:
             conn.windows.pop(request, None)
 

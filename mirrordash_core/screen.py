@@ -39,6 +39,7 @@ class ConnectionManager:
         # While a module plays a video (its video_is_playing()), the other modules' updates wait for the
         # next whole minute, so the page redraws once a minute instead of under the video (ARCHITECTURE #33)
         self.video_players: set[str] = set()
+        self.video_fullscreen: set[str] = set()  # of them, those that play fullscreen: nothing is sent at all meanwhile
         self.pending: set[str] = set()  # the instances whose update waits for the next whole minute
         self._minute_task: asyncio.Task | None = None
         # The crash guard (features/modules/guard.py): the page's id (a new one is a new load), whether that page was loaded
@@ -129,11 +130,13 @@ class ConnectionManager:
 
         await asyncio.gather(*(send(connection) for connection in connections))
 
-    async def set_video_playing(self, instance_id: str, playing: bool) -> None:
+    async def set_video_playing(self, instance_id: str, playing: bool, fullscreen: bool = False) -> None:
         """A module starts or stops playing a video. The page hears when the first starts and the last
-        stops; the updates held meanwhile go out on each whole minute, and at once when the last stops."""
+        stops; the updates held meanwhile go out on each whole minute (not while one plays fullscreen:
+        the page is covered), and at once when the last stops."""
         was_playing = bool(self.video_players)
         (self.video_players.add if playing else self.video_players.discard)(instance_id)
+        (self.video_fullscreen.add if playing and fullscreen else self.video_fullscreen.discard)(instance_id)
         if playing:
             self.played_video.add(instance_id)  # the guard's step 2 pauses it
         if bool(self.video_players) == was_playing:
@@ -149,7 +152,8 @@ class ConnectionManager:
     async def _each_minute(self) -> None:
         while True:
             await asyncio.sleep(60 - time.time() % 60)  # on the minute, when the page steps its carousels
-            await self.send_pending()
+            if not self.video_fullscreen:
+                await self.send_pending()
 
     async def send_pending(self) -> None:
         """Send the latest update of each module held while a video plays."""

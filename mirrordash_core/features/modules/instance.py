@@ -21,7 +21,6 @@ import os
 import socket
 import struct
 import threading
-from types import SimpleNamespace
 
 from fastapi import APIRouter, FastAPI
 
@@ -30,6 +29,7 @@ from mirrordash_core.features.hardware.gpio import GpioLines
 from mirrordash_core.features.modules.choices import setting_choices
 from mirrordash_core.features.modules.loader import ModuleLoader
 from mirrordash_core.features.modules.preview import render_preview
+from mirrordash_core.features.modules.video_playback import VideoPlayback
 
 logger = logging.getLogger("mirrordash.core.modules.host")
 
@@ -50,6 +50,7 @@ class HostLink:
         self.hidden = False  # the screen hides its card: its schedule, or privacy mode
         self.gen = 0
         self.pending: dict[int, asyncio.Future] = {}
+        self.videos: dict[int, VideoPlayback] = {}  # its video_window blocks, by request
         self.gpio_lines: dict[str, list[GpioLines]] = {}  # each instance's, released when its run_loop ends
         self._ids = itertools.count(1)
         self._lock = asyncio.Lock()
@@ -72,19 +73,23 @@ class HostLink:
         await self.send({"t": "video_playing", "instance": instance_id, "on": bool(playing)})
 
     @contextlib.asynccontextmanager
-    async def video_window(self, instance_id: str, *, fullscreen: bool = False, hz: int | None = None):
-        """features/video/window.py's video_window, held by the core for as long as the block runs."""
+    async def video_window(self, instance_id: str, *, url: str, output: str = "jack", volume: float = 1.0,
+                           fullscreen: bool = False, hz: int | None = None):
+        """The core plays url in a window (features/video/playback.py) for as long as the block runs, and yields
+        a VideoPlayback with its events. What the module asks for is checked by the core, which says why not."""
         request = next(self._ids)
+        video = self.videos[request] = VideoPlayback()
         future = self.pending[request] = asyncio.get_running_loop().create_future()
         try:
-            await self.send({"t": "video_window", "id": request, "instance": instance_id,
-                             "fullscreen": bool(fullscreen), "hz": hz})
-            window = (await asyncio.wait_for(future, VIDEO_WINDOW_TIMEOUT)).get("window")
-            if not isinstance(window, dict):
-                raise RuntimeError("the mirror couldn't place the video window (see its log)")
-            yield SimpleNamespace(**window)
+            await self.send({"t": "video_window", "id": request, "instance": instance_id, "url": url, "output": output,
+                             "volume": volume, "fullscreen": bool(fullscreen), "hz": hz})
+            reply = await asyncio.wait_for(future, VIDEO_WINDOW_TIMEOUT)
+            if reply.get("error"):
+                raise RuntimeError(reply["error"])
+            yield video
         finally:
             self.pending.pop(request, None)
+            self.videos.pop(request, None)
             with contextlib.suppress(Exception):  # the core has gone: the host is about to exit anyway
                 await self.send({"t": "video_window_end", "id": request})
 
@@ -264,6 +269,9 @@ class Host:
         elif kind == "diagnose":
             gpio = {i: [p for lines in held for p in lines.pins] for i, held in self.link.gpio_lines.items()}
             self._spawn(self.link.send({"t": "reply", "id": message.get("id"), "gpio": gpio}))
+        elif kind == "video":
+            if video := self.link.videos.get(message.get("id")):
+                video.event(message)
         elif kind == "reply":
             future = self.link.pending.get(message.get("id"))
             if future and not future.done():

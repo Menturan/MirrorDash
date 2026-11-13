@@ -36,6 +36,7 @@ from mirrordash_core.config import load_config
 from mirrordash_core.features.hardware.cec import set_tv_power
 from mirrordash_core.features.hardware.display import set_screen_power
 from mirrordash_core.features.power.wake_fade import fade_message, rest_wait
+from mirrordash_core.features.video import playback
 from mirrordash_core.forms import DAYS
 from mirrordash_core.host import run_in_background
 from mirrordash_core.screen import manager
@@ -210,6 +211,8 @@ class DisplayPowerManager:
         """The page's cards rest or wake: the screen message carries the state and the fade (privacy.py)."""
         if resting != self.resting:
             self.resting = resting
+            if resting:
+                playback.stop_all("the screen is resting")  # a video window doesn't fade with the cards
             from mirrordash_core.features.power.privacy import screen_message
             await manager.broadcast(screen_message())
 

@@ -25,12 +25,13 @@ for that one instance (Host):
                     choices {id, instance, config, globals, kind, key, item, query}
                                                             a list or search setting's choices (choices.py)
                     diagnose {id}                           its GPIO lines (Logs → Diagnostics)
-                    reply {id, window}                      the answer to video_window
+                    reply {id, error}                       the answer to video_window (error: refused, and why)
+                    video {id, event, reason}               a video's picture showed, or it ended or failed
                     control {name, value}                   a command for what it exposes, checked (on_control)
   instance -> core  html {gen, instance, html}              its card (the core places it)
                     status {gen, running}                   whether its run_loop runs
                     video_playing {instance, on}
-                    video_window {id, instance, fullscreen, hz}, video_window_end {id}
+                    video_window {id, instance, url, output, volume, fullscreen, hz}, video_window_end {id}
                     gpio {id, instance, pins, output, ...}  lines for it (features/hardware/gpio.py)
                     log {name, level, text}
                     state {name, value}                     a value of what it exposes (expose, MQTT)

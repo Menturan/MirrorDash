@@ -84,8 +84,8 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
         plugin_instance.video_is_playing = video_is_playing
 
     if not hasattr(plugin_instance, "video_window"):
-        # `async with self.video_window(fullscreen=False, hz=None) as window:` around the module's own
-        # player, whose window has window.app_id: it lands over the card's data-video-window element
+        # `async with self.video_window(url=..., output="jack", volume=1.0, fullscreen=False, hz=None) as video:`
+        # the core plays url over the card's data-video-window element, and video says how it goes
         plugin_instance.video_window = functools.partial(link.video_window, module_name)
 
     if not hasattr(plugin_instance, "expose"):

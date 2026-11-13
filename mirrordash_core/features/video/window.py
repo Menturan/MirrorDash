@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""A module's video window (ARCHITECTURE #34): `async with self.video_window() as window:` places the
-module's own player over the element with `data-video-window` on its card, or lets it play fullscreen.
+"""The window a video plays in (ARCHITECTURE #34), for as long as playback.py's block runs.
 
 The core does what a module may not: it writes a labwc window rule for the player's app id into rc.xml
-at the element's place on the page, switches the screen's refresh rate with hz= (50 for European TV,
-which otherwise judders at 60 Hz), and holds video_is_playing so the other modules update once a minute.
-The player itself, and what it plays, belong to the module.
+at the place of the element with `data-video-window` on the module's card (or none, for fullscreen),
+switches the screen's refresh rate with hz= (50 for European TV, which otherwise judders at 60 Hz), and
+holds video_is_playing so the other modules update once a minute (not at all in fullscreen).
+The player itself runs in playback.py, started by the core, not by the module.
 """
 import asyncio
 import contextlib
@@ -114,8 +114,8 @@ class VideoWindow:
 @contextlib.asynccontextmanager
 async def video_window(instance_id: str, *, fullscreen: bool = False, hz: int | None = None):
     """While the block runs, a window with app id `mirrordash-video` lands over the card's data-video-window
-    element (or the module plays fullscreen), the screen runs at hz if it can, and the other modules update
-    once a minute. The module starts and stops its own player inside the block."""
+    element (or plays fullscreen), the screen runs at hz if it can, and the other modules update once a
+    minute, or not at all in fullscreen. The caller runs the player inside the block."""
     async with _one_at_a_time:
         rect = None
         if not fullscreen:
@@ -127,7 +127,7 @@ async def video_window(instance_id: str, *, fullscreen: bool = False, hz: int | 
             await _place(rect)
             if switch:
                 await _run("wlr-randr", "--output", switch[0], "--mode", switch[1])
-            await manager.set_video_playing(instance_id, True)
+            await manager.set_video_playing(instance_id, True, fullscreen)
             yield VideoWindow(APP_ID, rect, fullscreen)
         finally:
             await manager.set_video_playing(instance_id, False)
