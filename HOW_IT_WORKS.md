@@ -136,6 +136,31 @@ sequenceDiagram
 4. **`screen.py` `manager.broadcast`** adds the placement and sends it to every open screen, and keeps it for a screen that connects later.
 5. **`core.js` `showModuleHtml`** puts the card in its area, inside a shadow root so the module's CSS can't touch the rest of the page, and runs its scripts only if the module is trusted (#21, #41).
 
+A video is the other thing a module can ask for (`async with self.video_window(url=...)`, #34). The module can't open the decoder or the screen's socket, so the core runs the player, as `pi`, and tells the module how it goes:
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false}}}%%
+sequenceDiagram
+    autonumber
+    box rgb(255,248,197) The module host · the instance's own process
+        participant M as Module
+    end
+    box rgb(221,244,255) The core
+        participant H as ModuleHost<br/>client.py
+        participant P as playback.py<br/>player.py
+    end
+    box rgb(246,248,250) The screen
+        participant S as core.js, labwc
+    end
+    M->>H: video_window {url, output, volume, fullscreen, hz}
+    Note over P: command.py checks every value
+    P->>S: where is the card's video element?<br/>window rule into labwc, 50 Hz, the other cards held
+    P-->>M: reply (the window is up)
+    P->>P: play.py as pi, a status line every 2 s
+    P-->>M: video: playing, then ended or failed + why
+    Note over P: stopped by: the module leaving its block,<br/>its card hidden, the fade-out starting,<br/>a silent or stalled player, the module dying
+```
+
 The other way, the core sends an instance: the screen going on or off (its fetches sleep meanwhile, #29), hardware events (`event_bus.py`), calls to its own routes (`api_proxy.py`, #40) and Home Assistant commands (`on_control`).
 
 ## Flow 3: the owner saves a module's settings
@@ -210,6 +235,18 @@ The biggest part of the core, in `features/modules/`:
 | `throwaway.py` | host | a throwaway instance made from the unsaved form, for the preview and the choices |
 | `sandbox_checks.py` | host | what a module could reach that it must not |
 | `site_folders.py`, `package_names.py` | host | where and as whom each module is installed |
+
+The video feature, `features/video/`:
+
+| File | What it is for |
+|---|---|
+| `playback.py` | a module's video block: checks, window, player, events to the module, and the stops (`stop`, `stop_all`) |
+| `command.py` | the checks on what the module asked (address, output, volume) and the player's command line |
+| `player.py` | runs `play.py`, reads its status lines and kills it when it hangs, stalls or never shows a picture |
+| `play.py` | the GStreamer player itself, on the system's Python (`python3-gi`), filtering HLS playlists |
+| `window.py` | the labwc window rule at the card's place, the refresh rate and the hold of the other cards |
+
+`features/modules/video_playback.py` is the module's side of the events (`video.playing`, `video.finished`).
 
 ## Where to start for common changes
 

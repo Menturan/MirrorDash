@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- A video a module plays (a TV module is coming) is now started and watched by the mirror itself, so it also works with the module sandbox: it stops when the module's schedule ends, in Privacy Mode and when the screen starts to fade out, and a video that hangs is removed instead of staying frozen on the screen.
 - Cards (calendar rows, the name-day, the news) could go blank while a module played a video and came back when it stopped; they now show at once and just stand still.
 - **A card with nothing to show no longer leaves a gap**: a module that has nothing to show (for example nothing is playing) now takes no room on the screen, instead of leaving a small dark box and a gap between the other cards, also over a background photo. It comes back when the module has something to show.
 - **The cards fade in when the mirror wakes and out when it rests**: the clock first, then the others one by one, instead of everything lighting at once; the screen turns off after the fade-out. *Power → Screen Schedule → Waking and resting* sets the style (*At once* is the old behaviour), the time between cards, the fade time, a *Start delay* for monitors that are slow to show a picture after standby, and whether the cards fade out before the screen turns off.

@@ -71,7 +71,29 @@ Pi 3B, test version `v0.16.0-os2`, WPE WebKit 2.54.2, GStreamer 1.26.2, labwc 0.
 
 Behind ARCHITECTURE #34 (the core places a module's video window, the module plays it).
 
-* **For a module's player** (measured 2026-10-21 on the Pi 3 with SVT1): `gst-launch-1.0` doesn't do: its window's app id is its own name, and with SVT's subtitle renditions it hung in preroll (`uridecodebin3`) or waited about 20 s before the first frame (`playbin3`). A small GStreamer player in Python works: `GLib.set_prgname(window.app_id)` for the app id, `playbin3` with `waylandsink` (`fullscreen` from `window.fullscreen`) and `flags` video+audio. hlsdemux2 holds the first frame some 18 s when the master playlist has a subtitle rendition, whatever streams are selected; with the subtitle renditions removed from the playlist (and its addresses made absolute) SVT1 starts in about 1.5 s. The player from commit 776ceb4 (`mirrordash_core/features/video/play.py`, since removed: `git show 776ceb4:mirrordash_core/features/video/play.py`) does all of this and is the starting point for a TV module.
+* **For a module's player** (measured 2026-10-21 on the Pi 3 with SVT1): `gst-launch-1.0` doesn't do: its window's app id is its own name, and with SVT's subtitle renditions it hung in preroll (`uridecodebin3`) or waited about 20 s before the first frame (`playbin3`). A small GStreamer player in Python works: `GLib.set_prgname(window.app_id)` for the app id, `playbin3` with `waylandsink` (`fullscreen` from `window.fullscreen`) and `flags` video+audio. hlsdemux2 holds the first frame some 18 s when the master playlist has a subtitle rendition, whatever streams are selected; with the subtitle renditions removed from the playlist (and its addresses made absolute) SVT1 starts in about 1.5 s. The player from commit 776ceb4 does all of this; `mirrordash_core/features/video/play.py` is its descendant, run by the core (a module's sandbox can't open the decoder, ARCHITECTURE #34), with an audio output and a volume, the soft-volume flag, a status line every 2 s and a 720p cap.
+
+## Step 0 for the TV module (2026-11-13)
+
+Behind ARCHITECTURE #34 (the core runs the player). Pi 3B, OS v0.16.0-os2, GStreamer 1.26.2, labwc 0.20.2, screen 1920x1080@60, the normal mirror page running; % of one core. gst = the player process, screen = the screen unit, labwc = the compositor, which **the earlier own-window totals above left out: it costs 15-18 % in every windowed run** (7 % fullscreen). "Held" = the page held still by `video_is_playing` (#33), "live" = the normal page. Gaps = clusters of 2 or more late frames after the first 3 s.
+
+* **SVT1 live with sound** in a 960x540 card, 60 s, `playbin3` with `hlsdemux2` and the filtered playlist (the source picked 960x540 p50 each time):
+
+| variant | page | gst | screen | labwc | gst+screen+labwc | dropped in 60 s | gaps per 10 s | first frame |
+|---|---|---|---|---|---|---|---|---|
+| jack, 3 runs | held | 43.5-46.2 | 0.4 | 17.5-18.1 | 61.5-64.7 | 3-12 | 0.18-0.54 | 1.2-1.4 s |
+| jack, volume 0.05 | held | 46.9 | 0.5 | 17.4 | 64.8 | 8 | 0.36 | 1.24 s |
+| HDMI | held | 45.7 | 0.2 | 17.2 | 63.0 | 3 | 0.18 | 1.16 s |
+| HDMI, volume 0 (audio chain kept) | held | 46.5 | 0.2 | 17.3 | 64.0 | 8 | 0.18 | 1.18 s |
+| jack, volume 0 (audio chain kept) | held | 45.7 | 0.5 | 17.7 | 63.9 | 10 | 0.54 | 1.37 s |
+| jack | live | 48.8 | 8.7 | 18.0 | 75.5 | 128 | 0.89, each a half-second freeze | 1.22 s |
+
+  Jack, HDMI and volume 0 cost the same (the chain stays: no saving, no harm). The hold is needed for SVT1 too. Soft-volume: playbin3 without flag 0x10 logs "No volume control found" and plays at full volume whatever `volume` says (the first five runs here did, at the jack mixer's 95 %). The jack's real output delay and lip sync were not measured.
+* **Sizes**, a 720p50 clip without sound, 30 s, held: 480x270, 640x360, 854x480 and 960x540 gave gst 14-16 %, labwc 15-17 %, 0 gaps in 7 runs, 1-3 drops: the size makes no measurable difference, and labwc recomposites the whole 1080p output whatever the window's size. 1280x720 held (earlier report): 0.37 gaps per 10 s. Live page: 0.7-1.1 gaps per 10 s at every size up to 960x540, 1.5-3.3 at 1280x720.
+* **A moved rule** (one run): `SIGHUP` to labwc did not move or resize a window that was already mapped; a restarted player landed on the new rule. Restart break, SIGTERM to the first frame, 3 runs each: a clip 1.0-1.1 s, SVT1 1.7-2.0 s (of which 0.7-0.9 s is Python's start).
+* **Fullscreen and the modules**, SVT1 fullscreen with the page held, 63 s, one run per condition: player 31.9 %, labwc 7.0 %, 0 drops of 3220, first frame 1.57 s. The page's web process fell from 5.5 % to 0.1 % and the screen process from 2.0 % to 0.1 %. All six module instances together took 0.1-0.2 % of one core with or without video (the core 1.8-2.3 %, Matter 1.4-2.7 %): stopping the modules while a video plays fullscreen would save nothing worth any code.
+* **GStreamer plugins on the image:** `subtitleoverlay`, `subparse`, `overlaycomposition`, `hlsdemux2` and `alsasink` are there; `textoverlay`, `pango`, `webvttdec` and `webvttparse` are not, so subtitles drawn into a video need a plugin in the image. `waylandsink` has no position, size or overlay property.
+* **Not measured:** audible sync on the jack, a 10-30 minute run, temperature and `cma_alloc_fail` with the real stream, and the core-run player's own start time (the figures above are the kit's player).
 
 ## The module sandbox
 

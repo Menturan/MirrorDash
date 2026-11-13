@@ -4,7 +4,12 @@
 A module is untrusted and the player runs as the core's user with the screen and the decoder, so every
 value the module sends is checked here, at the one place it crosses over: the address (http or https
 only, to a public host), the output (a name from OUTPUTS, never a device string) and the volume.
-Nothing goes through a shell, and the address is a single argument that play.py reads as a value."""
+Nothing goes through a shell, and the address is a single argument that play.py reads as a value.
+
+Why the core runs the player and the module only asks (checked on a real mirror, 2026-11-13, as the module's
+uid 70100): it gets EACCES on /dev/video10 (root:video 660, the uid isn't in video) and on /run/user/1000
+(pi, 0700, also hidden by ProtectHome) and on connect() to wayland-0. The unit's DevicePolicy=closed allows
+no /dev/video* either, but that was read from the unit's properties, not tried from inside its cgroup."""
 import asyncio
 import ipaddress
 import math
