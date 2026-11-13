@@ -1207,9 +1207,13 @@ def test_while_a_video_plays_the_page_holds_still(page):
     assert page.evaluate("window.__heard") is True
     assert page.evaluate(f"document.documentElement.hasAttribute('data-video-is-playing') && {slide}.hasAttribute('data-video-is-playing')")
     assert page.evaluate(f"getComputedStyle({slide}).transitionDuration") == "0s"
-    assert page.evaluate(f"getComputedStyle({slide}.shadowRoot.querySelector('span')).animationPlayState") == "paused"
+    assert page.evaluate(f"getComputedStyle({slide}.shadowRoot.querySelector('span')).animationDuration") == "0s"
     assert page.evaluate(f"{group}._carouselTimer") is None
     send({"module": "clock", "position": "top_right", "html": "<p>12:00</p>"})  # drawn while playing
+    fade = "<style>@keyframes f { from { opacity: 0 } } p { animation: f 0.5s }</style><p>x</p>"
+    send({"module": "clock", "position": "top_right", "html": fade})  # a fade-in under the hold is not stuck invisible
+    page.wait_for_timeout(100)
+    assert page.evaluate("getComputedStyle(document.querySelector('[data-module=clock]').shadowRoot.querySelector('p')).opacity") == "1"
     assert page.evaluate("document.querySelector('[data-module=clock]').hasAttribute('data-video-is-playing')")
 
     send({"type": "video_is_playing", "playing": False})

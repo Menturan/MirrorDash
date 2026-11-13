@@ -335,12 +335,19 @@ svg.lucide, .lucide {
 }
 
 /* ============================================================
-   While a video plays (data-video-is-playing on the module's host, ARCHITECTURE #33): every
-   animation and transition in a module stands still, so nothing redraws under the video
+   While a video plays (data-video-is-playing on the module's host, ARCHITECTURE #33): nothing moves.
+   Not paused: content drawn meanwhile with an entrance animation (opacity 0 first) would stay invisible
+   at its first frame. Every animation runs once in 0s instead and holds its last frame, so a one-shot
+   fade-in is finished at once and an infinite spinner or pulse stands still at its end (the same as
+   its start for a loop). One in flight jumps to its end; when the hold ends it's long finished.
    ============================================================ */
 :host([data-video-is-playing]) *,
 :host([data-video-is-playing]) *::before,
 :host([data-video-is-playing]) *::after {
-    animation-play-state: paused !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    animation-iteration-count: 1 !important;
+    animation-direction: normal !important;
+    animation-fill-mode: forwards !important;
     transition: none !important;
 }

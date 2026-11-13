@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- Cards (calendar rows, the name-day, the news) could go blank while a module played a video and came back when it stopped; they now show at once and just stand still.
 - The crash banner on the Dashboard now shows the date as well as the time of the crashes, so you can tell when it happened when you open the admin page days later.
 - **A module on GitHub needs the `mirrordash-module` topic to show up in the Modules tab**, as well as a name starting with `mirrordash-` (`mirrordash-sdk release` adds the topic). This also keeps the WPE WebKit build (`mirrordash-wpe`) out of the list.
 - The Updates card no longer says a version that doesn't work "isn't tried again": the automatic update tries it on three nights in all.
