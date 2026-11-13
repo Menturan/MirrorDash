@@ -65,8 +65,8 @@ uv run --project "$SDK" mirrordash-sdk release X.Y.Z --dry-run
 echo y | uv run --project "$SDK" mirrordash-sdk release X.Y.Z       # after the user's yes
 ```
 
-It validates, runs the module's tests, sets the version, tags `vX.Y.Z`, pushes and makes the GitHub Release
-(notes generated from the commits). Mirrors offer it on the module's card. A new module starts at `1.0.0`.
+It validates, runs the module's tests, sets the version, tags `vX.Y.Z`, pushes, makes the GitHub Release
+(notes generated from the commits) and puts the `mirrordash-module` topic on the repository, which mirrors need to list it. Mirrors offer it on the module's card. A new module starts at `1.0.0`.
 
 For `mirrordash-clock`: the OS image installs its newest release by itself, so the new tag reaches mirrors
 with the next OS image; nothing to bump.

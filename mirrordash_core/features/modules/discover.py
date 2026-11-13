@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
-"""The modules an owner can install: every mirrordash-* package on PyPI and repository on GitHub, scanned
+"""The modules an owner can install: every mirrordash-* package on PyPI and every mirrordash-* repository on GitHub with the
+`mirrordash-module` topic, scanned
 when the Modules tab asks, and the two routes of that list."""
 
 import asyncio
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/admin")
 DISCOVERED_COMMUNITY_MODULES = []  # filled by scan_community_modules_now
 LAST_SCAN_TIMESTAMP = None
 _LAST_LAZY_SCAN = float("-inf")  # time.monotonic() of the last scan list_community_modules started
-NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk", "mirrordash-wpe"}  # mirrordash-* repos and packages that are not modules; the community scan skips them
+NOT_MODULES = {"mirrordash", "mirrordash-core", "mirrordash-sdk"}  # mirrordash-* PyPI packages that are not modules; GitHub needs no list, a module has the topic
 
 
 def github_module(item: dict) -> dict:
@@ -106,11 +107,11 @@ async def _scan_pypi() -> list[dict]:
 
 
 def _search_github_repositories() -> dict:
-    """GitHub's search for repositories named mirrordash-*. One request: unauthenticated, GitHub allows 60
+    """GitHub's search for repositories named mirrordash-* that have the mirrordash-module topic. One request: unauthenticated, GitHub allows 60
     an hour per IP address, shared by everything on the home network, so the latest release is looked up
     only when a module is installed (install_module), not here for every repository."""
     request = urllib.request.Request(
-        "https://api.github.com/search/repositories?q=mirrordash-+in:name&per_page=100",
+        "https://api.github.com/search/repositories?q=topic:mirrordash-module+mirrordash-+in:name&per_page=100",
         headers={"User-Agent": "MirrorDash/1.0", "Accept": "application/vnd.github.v3+json"},
     )
     with urllib.request.urlopen(request, timeout=10) as response:
@@ -123,7 +124,8 @@ def _add_github_modules(modules: list[dict], search_result: dict) -> list[dict]:
     names = {module["name"] for module in modules}
     for item in search_result.get("items", []):
         repo_name = item.get("name", "")
-        if not repo_name.startswith("mirrordash-") or repo_name in NOT_MODULES:
+        # in:name is a loose, case-insensitive match, hence the prefix check
+        if not repo_name.startswith("mirrordash-"):
             continue
         module = github_module(item)
         if repo_name in names:

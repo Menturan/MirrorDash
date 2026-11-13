@@ -85,6 +85,6 @@ gh repo create Menturan/mirrordash-<name> --public --source . --push --descripti
 ```
 
 The description is the About text mirrors show in their module list. Then make the first release with the
-`release` skill (module, version `1.0.0`; mirrors only see modules that have a GitHub Release).
+`release` skill (module, version `1.0.0`; mirrors only see modules that have a GitHub Release, the `mirrordash-module` topic and a name starting with `mirrordash-`; `release` sets the topic).
 
 Last, in this repo: add a row to the **Modules** table in `README.md` (link + what it shows), commit and push.

@@ -875,6 +875,7 @@ def test_scan_lists_github_modules_with_one_request(mock_load, mock_urlopen, cli
     modules = {m["name"]: m for m in client.get("/admin/community-modules", headers=headers).json()}
 
     assert len(github_urls) == 1 and "search/repositories" in github_urls[0]
+    assert "topic:mirrordash-module+mirrordash-+in:name" in github_urls[0]
     assert set(modules) == {"mirrordash-weather", "mirrordash-calendar"}
     assert modules["mirrordash-weather"]["install_name"] == "git+https://github.com/u/mirrordash-weather.git"
 
