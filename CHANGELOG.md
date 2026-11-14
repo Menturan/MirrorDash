@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- **A TV or video module can play a source on your home network** (a NAS, a camera): type its address in the module's settings (where a module asks for a home-network address) and it plays; an address you didn't type, this mirror's own address and the like still don't.
+- A stream that offers a very small picture (such as 234 lines) as its lowest quality now starts at a sharper one when a 480 to 720 line picture is there, and a stream's server can no longer send the mirror to a home address while it fetches the playlist.
+- In the admin page, a list in a module's settings that depends on the rows of another list (a channel list that includes your own sources) now refreshes when you change a row, not only after Save.
+
 ### OS image
 
 - **More TV channels can play**: the system now understands MPEG-TS video, the format most international news channels (DW, tagesschau24, RTVE, Rai News, TRT, Bloomberg, ABC Australia and others) stream in, and radio streams that start with an ID3 tag. Takes effect with the next system update.

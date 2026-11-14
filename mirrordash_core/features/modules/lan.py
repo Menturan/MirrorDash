@@ -5,6 +5,8 @@ A module's sandbox reaches nothing at home, except the addresses the owner typed
 "format": "lan-url" (Home Assistant's address, a camera's). The core finds those settings (lan_hosts),
 looks the names up (lan_addresses) and hands the addresses, per instance's user, to the OS image's helper
 mirrordash-module-network through sudo (apply), which opens exactly those for exactly that user.
+The same hosts are the ones the core's video player may open for that instance (video/command.py, #34),
+judged with the same is_home_address() (home_address.py).
 """
 
 import asyncio
@@ -13,6 +15,8 @@ import logging
 import os
 import socket
 import urllib.parse
+
+from mirrordash_core.home_address import is_home_address
 
 logger = logging.getLogger("mirrordash.core.modules.client")
 
@@ -73,7 +77,7 @@ async def lan_addresses(hosts: set[str]) -> dict[str, list[str]]:
         addresses = set()
         for *_, sockaddr in infos:
             ip = ipaddress.ip_address(sockaddr[0].split("%")[0])
-            if ip.is_private and not ip.is_loopback and not ip.is_unspecified:
+            if is_home_address(ip):
                 addresses.add(str(ip))
         found[host] = sorted(addresses)
     return found

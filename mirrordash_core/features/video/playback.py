@@ -19,21 +19,22 @@ logger = logging.getLogger("mirrordash.core.video")
 _players: dict[str, Player] = {}  # instance id -> its player while the block runs (one window at a time)
 
 
-async def checked_command(options: dict) -> list[str]:
-    """The player's command for what the module asked, or a ValueError that says what is wrong."""
+async def checked_command(options: dict, lan_hosts: set[str] = frozenset()) -> list[str]:
+    """The player's command for what the module asked, or a ValueError that says what is wrong.
+    lan_hosts: the hosts this instance's lan-url settings hold (command.check_host)."""
     url = command.check_url(options.get("url"))
     output = command.check_output(options.get("output", "jack"))
     volume = command.check_volume(options.get("volume", 1.0))
-    await command.check_host_is_public(url)
+    await command.check_host(url, lan_hosts)
     return command.build_command(url, output, volume, bool(options.get("fullscreen")))
 
 
-async def hold(instance_id: str, options: dict, send, ended: asyncio.Event) -> None:
+async def hold(instance_id: str, options: dict, send, ended: asyncio.Event, lan_hosts: set[str] = frozenset()) -> None:
     """Run one block. send(message) tells the module: {"error": ...} or {} once the window is up (the reply
     to its call), then {"event": "playing"} and at the end {"event": "ended" | "failed", "reason": ...}.
     Returns when `ended` is set, which the module does by leaving its block."""
     try:
-        player_command = await checked_command(options)
+        player_command = await checked_command(options, lan_hosts)
     except ValueError as e:
         await send({"error": str(e)})
         return

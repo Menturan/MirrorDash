@@ -14,9 +14,11 @@ mirrordash-video (labwc's rule places it) or fullscreen, and tells the core on s
     error TEXT        what went wrong; the exit code is then 1 (0 at the end of the stream or on SIGTERM)
 """
 import argparse
+import ipaddress
 import os
 import re
 import signal
+import socket
 import sys
 import tempfile
 import urllib.parse
@@ -27,6 +29,8 @@ VIDEO, AUDIO, SOFT_VOLUME = 0x1, 0x2, 0x10  # GstPlayFlags: no subtitles, which 
 TICK = 2  # seconds between tick lines; player.py's watchdog counts on it
 MAX_HEIGHT = 720  # the Pi 3's decoder and compositor: more than 720p drops frames (MEASUREMENTS.md)
 FETCH_TIMEOUT = 5  # under the core's silence limit, which counts from "starting"
+MIN_HEIGHT = 480  # a guess, not measured: hlsdemux2 starts on the lowest variant and was seen to stay on a 234-line
+# one for 30 s (Sky News Arabia, 2026-11-14); with a 480-720 line variant to start on, those below aren't offered
 RESOLUTION = re.compile(r"RESOLUTION=\d+x(\d+)")
 
 
@@ -34,11 +38,13 @@ def filtered(playlist: str, base: str) -> str:
     """An HLS master playlist for this Pi: without its subtitle renditions (with them, as in SVT's, hlsdemux2
     waits some 18 s for the subtitle track before the first frame; without, a live stream starts in under
     2 s), without its I-frame lists and variants above MAX_HEIGHT, and with every address made absolute.
-    If every variant is above MAX_HEIGHT they all stay: a picture that drops frames beats none.
+    If every variant is above MAX_HEIGHT they all stay: a picture that drops frames beats none. Variants below
+    MIN_HEIGHT go only when one from MIN_HEIGHT to MAX_HEIGHT is there. A variant without RESOLUTION stays.
     ponytail: only the master playlist is filtered; a plain file or a media playlist plays as it is."""
     lines = playlist.splitlines()
     heights = [int(m.group(1)) for line in lines if line.startswith("#EXT-X-STREAM-INF") and (m := RESOLUTION.search(line))]
     capped = any(height <= MAX_HEIGHT for height in heights)
+    floored = any(MIN_HEIGHT <= height <= MAX_HEIGHT for height in heights)
     out, skip_uri = [], False
     for line in lines:
         if skip_uri:  # the address under a variant that was left out
@@ -46,13 +52,39 @@ def filtered(playlist: str, base: str) -> str:
             continue
         if line.startswith(("#EXT-X-MEDIA:TYPE=SUBTITLES", "#EXT-X-I-FRAME-STREAM-INF")):
             continue
-        if capped and line.startswith("#EXT-X-STREAM-INF") and (m := RESOLUTION.search(line)) and int(m.group(1)) > MAX_HEIGHT:
-            skip_uri = True
-            continue
+        if line.startswith("#EXT-X-STREAM-INF") and (m := RESOLUTION.search(line)):
+            height = int(m.group(1))
+            if (capped and height > MAX_HEIGHT) or (floored and height < MIN_HEIGHT):
+                skip_uri = True
+                continue
         line = re.sub(r',SUBTITLES="[^"]*"', "", line)
         line = re.sub(r'URI="([^"]+)"', lambda m: f'URI="{urllib.parse.urljoin(base, m.group(1))}"', line)
         out.append(urllib.parse.urljoin(base, line) if line and not line.startswith("#") else line)
     return "\n".join(out) + "\n"
+
+
+class Refused(Exception):
+    pass
+
+
+class _NoRedirectIntoTheLan(urllib.request.HTTPRedirectHandler):
+    """A public server may not send this fetch (which runs as the core's user) to this mirror or the home network.
+    ponytail: only the master playlist's fetch; GStreamer's own fetches (a media file, a segment) follow redirects
+    unchecked. A hop from a home-network address is let through (a NAS may redirect http to https)."""
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if _public(req.full_url) and not _public(urllib.parse.urljoin(req.full_url, newurl)):
+            raise Refused("the stream's server sent the player to this mirror or the home network")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _public(url: str) -> bool:
+    """Every address of the url's host is a global one; a host that isn't found isn't."""
+    try:
+        found = socket.getaddrinfo(urllib.parse.urlsplit(url).hostname, None)
+    except (OSError, UnicodeError):
+        return False
+    addresses = [ipaddress.ip_address(f[4][0].split("%")[0]) for f in found]
+    return all((getattr(a, "ipv4_mapped", None) or a).is_global for a in addresses)
 
 
 def playable(uri: str) -> str:
@@ -62,7 +94,7 @@ def playable(uri: str) -> str:
     if not urllib.parse.urlsplit(uri).path.endswith(".m3u8"):
         return uri
     try:
-        with urllib.request.urlopen(uri, timeout=FETCH_TIMEOUT) as response:
+        with urllib.request.build_opener(_NoRedirectIntoTheLan).open(uri, timeout=FETCH_TIMEOUT) as response:
             playlist = response.read(1 << 20).decode("utf-8", "replace")
             base = response.geturl()
     except OSError:
@@ -93,7 +125,11 @@ def main(uri: str, device: str, volume: float, fullscreen: bool) -> int:
     player.set_property("audio-sink", audio)
     player.set_property("flags", VIDEO | AUDIO | SOFT_VOLUME)
     player.set_property("volume", volume)
-    playing = playable(uri)
+    try:
+        playing = playable(uri)
+    except Refused as e:
+        print(f"error {e}", flush=True)
+        return 1
     player.set_property("uri", playing)
 
     loop, result, shown = GLib.MainLoop(), [0], []

@@ -136,7 +136,7 @@ sequenceDiagram
 4. **`screen.py` `manager.broadcast`** adds the placement and sends it to every open screen, and keeps it for a screen that connects later.
 5. **`core.js` `showModuleHtml`** puts the card in its area, inside a shadow root so the module's CSS can't touch the rest of the page, and runs its scripts only if the module is trusted (#21, #41).
 
-A video is the other thing a module can ask for (`async with self.video_window(url=...)`, #34). The module can't open the decoder or the screen's socket, so the core runs the player, as `pi`, and tells the module how it goes:
+A video is the other thing a module can ask for (`async with self.video_window(url=...)`, #34). The module can't open the decoder or the screen's socket, so the core runs the player, as `pi`, and tells the module how it goes (it plays a public address, or a home-network one only if the owner typed that host in a `lan-url` setting of that module, checked in `features/video/command.py`):
 
 ```mermaid
 %%{init: {"sequence": {"mirrorActors": false}}}%%
@@ -217,7 +217,7 @@ The biggest part of the core, in `features/modules/`:
 | `api_proxy.py` | core | `/api/modules/<instance>/...` forwarded to a module's own routes |
 | `defaults.py` | core | an instance's settings with its schema's defaults filled in (#52) |
 | `trial.py` | core | a module update on trial: put back when it fails soon after |
-| `lan.py` | core | which home-network addresses each instance may reach |
+| `lan.py` | core | which home-network addresses each instance may reach (and, for a video, which hosts it may play from) |
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |
 | `discover.py` | core | the modules there are to install: the scan of PyPI and GitHub |
 | `installed.py` | core | the modules that are installed, and where each one reinstalls from |

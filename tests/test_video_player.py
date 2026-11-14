@@ -84,11 +84,11 @@ def test_the_volume_is_a_number_from_0_to_1():
 
 @pytest.mark.asyncio
 async def test_a_module_cannot_play_from_this_mirror_or_the_home_network():
-    await command.check_host_is_public("http://93.184.216.34/stream.m3u8")
+    await command.check_host("http://93.184.216.34/stream.m3u8")
     for private in ("http://127.0.0.1:8000/admin", "http://192.168.1.20/cam", "http://10.0.0.1/", "http://[::1]/",
                     "http://[::ffff:192.168.1.1]/", "http://169.254.169.254/"):
         with pytest.raises(ValueError):
-            await command.check_host_is_public(private)
+            await command.check_host(private)
 
 
 def test_the_command_is_one_argument_per_value_and_dies_with_the_core():
@@ -99,7 +99,7 @@ def test_the_command_is_one_argument_per_value_and_dies_with_the_core():
 
 @pytest.mark.asyncio
 async def test_nothing_unchecked_reaches_the_command():
-    with patch.object(command, "check_host_is_public", new=AsyncMock()):
+    with patch.object(command, "check_host", new=AsyncMock()):
         assert (await playback.checked_command({"url": "https://x/y"}))[-2:] == ["--output=plughw:CARD=Headphones,DEV=0", "--volume=1.0"]
         for bad in ({"url": "file:///etc/shadow"}, {"url": "https://x/y", "output": "evil"}, {"url": "https://x/y", "volume": "x"}, {}):
             with pytest.raises(ValueError):
@@ -115,7 +115,7 @@ def play_py():
     return module
 
 
-def test_the_playlist_loses_subtitles_iframes_and_variants_over_720p():
+def test_the_playlist_loses_subtitles_iframes_and_variants_outside_480_to_720p():
     master = textwrap.dedent("""\
         #EXTM3U
         #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="sv",URI="audio/sv.m3u8"
@@ -131,9 +131,33 @@ def test_the_playlist_loses_subtitles_iframes_and_variants_over_720p():
     out = play_py().filtered(master, "https://cdn.example/live/master.m3u8")
     assert "SUBTITLES" not in out and "iframe" not in out and "1080" not in out
     assert 'URI="https://cdn.example/live/audio/sv.m3u8"' in out
-    assert "\nhttps://cdn.example/live/v360/index.m3u8\n" in out and "\nhttps://cdn.example/live/v720/index.m3u8\n" in out
+    assert "\nhttps://cdn.example/live/v720/index.m3u8\n" in out and "v360" not in out  # 720 is there: 360 is under the floor
+    low = ("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=500,RESOLUTION=416x234\nv234.m3u8\n"
+           "#EXT-X-STREAM-INF:BANDWIDTH=900,RESOLUTION=960x540\nv540.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=300\naudio.m3u8\n")
+    out = play_py().filtered(low, "https://x/m.m3u8")  # a 540 line variant exists: the 234 one goes; no RESOLUTION stays
+    assert "v234" not in out and "v540" in out and "audio.m3u8" in out
+    only_low = ("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=500,RESOLUTION=416x234\nv234.m3u8\n"
+                "#EXT-X-STREAM-INF:BANDWIDTH=6000,RESOLUTION=1920x1080\nbig.m3u8\n")
+    assert "v234" in play_py().filtered(only_low, "https://x/m.m3u8")  # nothing from 480 to 720: it stays
     only_big = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=6000,RESOLUTION=1920x1080\nbig.m3u8\n"
     assert "https://x/big.m3u8" in play_py().filtered(only_big, "https://x/m.m3u8")  # nothing else to play: it stays
+
+
+def test_a_public_server_may_not_redirect_the_playlist_fetch_into_the_lan():
+    play = play_py()
+    handler = play._NoRedirectIntoTheLan()
+    request = play.urllib.request.Request("https://cdn.example/m.m3u8")
+    book = {"cdn.example": "93.184.216.34", "nas.local": "192.168.1.20", "loopback.example": "127.0.0.1", "127.0.0.1": "127.0.0.1"}
+
+    def getaddrinfo(host, port):
+        return [(2, 1, 6, "", (book[host], 0))]
+    with patch.object(play.socket, "getaddrinfo", getaddrinfo):
+        for target in ("http://127.0.0.1:8000/admin", "http://nas.local/x", "//loopback.example/x"):
+            with pytest.raises(play.Refused):
+                handler.redirect_request(request, None, 302, "Found", {}, target)
+        assert handler.redirect_request(request, None, 302, "Found", {}, "https://cdn.example/other.m3u8").full_url == "https://cdn.example/other.m3u8"
+        lan_request = play.urllib.request.Request("http://nas.local/m.m3u8")  # a hop from home isn't judged
+        assert handler.redirect_request(lan_request, None, 302, "Found", {}, "https://nas.local/m.m3u8")
 
 
 # The watchdog
@@ -229,7 +253,7 @@ async def test_the_module_hears_the_picture_and_the_end_and_leaving_stops_the_pl
         told.append(message)
     ended = asyncio.Event()
 
-    async def checked(options):
+    async def checked(options, lan_hosts):
         return [sys.executable, "-c", "pass"]
     with patch.object(playback, "video_window", video_window), patch.object(playback, "checked_command", checked), \
          patch.object(playback, "Player", lambda cmd: fake("live", (5, 5, 5))):

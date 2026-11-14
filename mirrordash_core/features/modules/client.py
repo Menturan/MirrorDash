@@ -560,8 +560,10 @@ class ModuleHost:
             kind = {"t": "video"} if "event" in answer else {"t": "reply"}
             await self._send_quietly(conn, {**kind, "id": request, **answer})
 
+        saved = load_config().get("modules", {}).get(conn.instance)  # the owner's, not what the module says
+        hosts = lan.lan_hosts({conn.instance: saved}).get(conn.instance, set()) if isinstance(saved, dict) else set()
         try:
-            await playback.hold(conn.instance, options, send, conn.windows[request])
+            await playback.hold(conn.instance, options, send, conn.windows[request], hosts)
         finally:
             conn.windows.pop(request, None)
 
