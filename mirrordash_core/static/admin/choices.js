@@ -136,8 +136,8 @@ function setUpChoiceFields(root) {
     });
 }
 
-// A changed field reloads the lists it may feed: those in its own list item, or, for a field outside any
-// item (an API key), every list of the form.
+// A changed field reloads the lists it may feed: those in its own list item and the ones outside any item
+// (a list of the rows, like a channel list), or, for a field outside any item (an API key), every list of the form.
 let choiceReloadTimer = null;
 document.addEventListener('change', (event) => {
     const form = event.target.closest?.('#config-fields-global form');
@@ -145,8 +145,9 @@ document.addEventListener('change', (event) => {
     const scope = event.target.closest('.array-item-card') || form;
     clearTimeout(choiceReloadTimer);
     choiceReloadTimer = setTimeout(() => {
-        scope.querySelectorAll('[data-choice-field="list"]').forEach((field) => {
-            if (!field.contains(event.target)) loadChoiceList(field);
+        form.querySelectorAll('[data-choice-field="list"]').forEach((field) => {
+            if (field.contains(event.target)) return;
+            if (scope.contains(field) || !field.closest('.array-item-card')) loadChoiceList(field);
         });
     }, 400);
 });
