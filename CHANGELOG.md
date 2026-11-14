@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### OS image
 
+- **More TV channels can play**: the system now understands MPEG-TS video, the format most international news channels (DW, tagesschau24, RTVE, Rai News, TRT, Bloomberg, ABC Australia and others) stream in, and radio streams that start with an ID3 tag. Takes effect with the next system update.
 - **Root over SSH by a key file, for developers**: if a file `mirrordash-root-key.pub` with a public key is put on the first partition of the card (the one a computer can read), `root` can log in over SSH with that key, for debugging. Nothing changes unless the file is there, and the admin page, a module or the app can't create it. A reset does not remove it: delete it before giving a mirror away. See [RELEASING.md](RELEASING.md#root-on-your-own-mirror).
 - **A damaged SD card's backups are really rescued now**: when the storage partition was past repair, the mirror looked for your backups in the wrong folder, found none and started as a new mirror without them. It now finds the newest automatic and hand-made backup and puts them back in the Backup list. A partition that a check repaired is also no longer reported as having lost your settings when it didn't.
 - A new MirrorDash version that crashes later than ten seconds into its start (a Raspberry Pi 3 can take that long) is now rolled back too, instead of being started again and again.

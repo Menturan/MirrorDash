@@ -191,16 +191,17 @@ step_installing_packages() {
 }
 
 # Sound and hardware video for modules (ARCHITECTURE #32): GStreamer's base plugins, and only the
-# plugins of good and bad that play radio, TV (HLS, the Pi's H.264 decoder) and camera streams. The
+# plugins of good and bad that play radio, TV (HLS with fMP4 or MPEG-TS segments, the Pi's H.264 decoder) and camera streams. The
 # whole of good and bad is about 270 MB (bad alone pulls in ONNX, oneDNN and GTK); this is about 12 MB.
 # autodetect (autoaudiosink): without it WebKit's web process crashes on any <audio> or <video>.
 # python3-gi and the two GStreamer typelibs (about 3 MB): a module's video player runs on the system's
 # Python with them (ARCHITECTURE #34); the app's own Python has no GStreamer bindings.
-MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux autodetect"
-MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad"
+MEDIA_PLUGINS_GOOD="video4linux2 adaptivedemux2 isomp4 audioparsers mpg123 soup icydemux id3demux autodetect"
+MEDIA_PLUGINS_BAD="videoparsersbad waylandsink faad mpegtsdemux"
 
 step_media() {
-  # Every library the copied plugins need (objdump -p, NEEDED; checked on a Pi 3, 2026-11-06), apart from
+  # Every library the copied plugins need (objdump -p, NEEDED; checked on a Pi 3, 2026-11-06; mpegtsdemux and
+  # id3demux added 2026-11-14 from the 1.26.2 .debs: their libraries are libgstmpegts/codecparsers, already here), apart from
   # the base system's (libc, glib, OpenSSL, zlib): nothing here counts on another step having brought it
   apt-get install -y --no-install-recommends \
       gstreamer1.0-plugins-base gstreamer1.0-alsa gstreamer1.0-gl gstreamer1.0-tools \
