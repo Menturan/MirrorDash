@@ -9,6 +9,7 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+- The list under the bell in the admin page no longer opens outside the screen on a phone: the bell now sits at the top right there too, beside the headline.
 - **A TV or video module can play a source on your home network** (a NAS, a camera): type its address in the module's settings (where a module asks for a home-network address) and it plays; an address you didn't type, this mirror's own address and the like still don't.
 - A stream that offers a very small picture (such as 234 lines) as its lowest quality now starts at a sharper one when a 480 to 720 line picture is there, and a stream's server can no longer send the mirror to a home address while it fetches the playlist.
 - In the admin page, a list in a module's settings that depends on the rows of another list (a channel list that includes your own sources) now refreshes when you change a row, not only after Save.

@@ -346,7 +346,6 @@ code {
 /* Responsive */
 @media (max-width: 600px) {
     .admin-container { padding: 20px 14px; }
-    header { flex-direction: column; align-items: flex-start; gap: 12px; }
     .input-group { flex-direction: column; }
     .card { padding: 20px; }
 }
