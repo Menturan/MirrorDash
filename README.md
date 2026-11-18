@@ -83,6 +83,7 @@ The clock comes with the mirror. Install the others in the admin page under **Mo
 | [Namnsdag](https://github.com/Menturan/mirrordash-namnsdag) | The Swedish name day |
 | [Heads-up](https://github.com/Menturan/mirrordash-heads-up) | A short text in the centre of the mirror for a few seconds, sent by your home automation: someone at the door, the laundry is done |
 | [TV](https://github.com/Menturan/mirrordash-tv) | Live TV in a card: SVT's channels, played by the mirror in a window of its own |
+| [Skolmatsedel](https://github.com/Menturan/mirrordash-skolmatsedel) | Swedish school lunch menus from Skolmaten.se and Mateo, several schools in one card |
 
 ### Make your own
 
