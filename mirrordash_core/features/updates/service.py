@@ -127,7 +127,7 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
     if code != 0:
         raise HTTPException(status_code=500, detail=f"Installing Python {python} failed: {err.strip()}")
     modules = [module for module in installed_modules() if module["name"] not in skip]  # from the running module site
-    prerelease_arguments = ["--prerelease=allow"] if prerelease_enabled() else []
+    prerelease_arguments = ["--prerelease=explicit"] if prerelease_enabled() else []  # only the pinned mirrordash==X.YrcN, never its dependencies
     try:
         # The site is switched in with the venv; launch.sh's fallback to venv_old switches back to the old one
         async with venv_swap(force_clean=True, python=python) as new_venv_python, \
@@ -207,9 +207,13 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
             # --refresh-package: ask PyPI again instead of trusting uv's cached index (PyPI lets it be
             # cached for up to 10 minutes), or a version published moments ago isn't seen yet.
             install_arguments = ["--upgrade", "--refresh-package", "mirrordash"]
+            requirement = "mirrordash"
             if prerelease_enabled():
-                install_arguments.append("--prerelease=allow")
-            code, _, err = await uv_pip(python, "install", *install_arguments, "mirrordash")
+                # "explicit" lets only a requirement that names a pre-release be one, so the new version is
+                # pinned; "allow" would let every dependency be an alpha too (aiomqtt 3.0.0a1 broke MQTT)
+                install_arguments.append("--prerelease=explicit")
+                requirement = f"mirrordash=={info['latest_version']}"
+            code, _, err = await uv_pip(python, "install", *install_arguments, requirement)
             if code != 0:
                 logger.error(f"mirrordash upgrade failed: {err}")
                 raise HTTPException(status_code=500, detail=f"Upgrade failed: {err}")

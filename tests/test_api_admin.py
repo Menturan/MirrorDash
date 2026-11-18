@@ -635,7 +635,9 @@ def test_core_update_success(mock_version, mock_create_task, mock_exec, mock_res
     assert "Restarting" in data["message"]
     mock_create_task.assert_called_once()
     install = mock_exec.call_args_list[0].args
-    assert ("--prerelease=allow" in install) is prerelease
+    assert ("--prerelease=explicit" in install) is prerelease
+    assert ("mirrordash==1.1.0" in install) is prerelease  # the pin is what lets a test version in, not its dependencies
+    assert "--prerelease=allow" not in install
     assert install[install.index("--refresh-package") + 1] == "mirrordash"  # a fresh index, not uv's cache
 
 
