@@ -19,6 +19,7 @@ This file is the connection (MqttBridge, mqtt_bridge). Beside it:
   entities.py  what a module may expose, and the states and commands that pass (the SDK's validator
                imports declarations from this file, so it stays imported here)
   routes.py    the Settings tab's MQTT card
+  health.py    the bell, when MQTT has been off for ten minutes
 """
 
 import asyncio
@@ -35,6 +36,7 @@ from paho.mqtt.packettypes import PacketTypes
 from paho.mqtt.properties import Properties
 from paho.mqtt.subscribeoptions import SubscribeOptions
 
+from mirrordash_core import notifications
 from mirrordash_core.config import get_core_version, load_config
 from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.modules.module_files import SAFE_NAME
@@ -46,6 +48,7 @@ from mirrordash_core.features.mqtt.entities import (
     on_off,
     state_payload,
 )
+from mirrordash_core.features.mqtt.health import ConnectionHealth
 from mirrordash_core.forms import SAFE_KEY
 
 logger = logging.getLogger("mirrordash.core.mqtt")
@@ -96,6 +99,7 @@ class MqttBridge:
         self.status = "off"  # for the admin card
         self._base_topic = ""  # _base's
         self._task: asyncio.Task | None = None
+        self._health = ConnectionHealth()
         self._client: aiomqtt.Client | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._published: dict[str, str] = {}  # retained topic -> what was sent last
@@ -130,6 +134,7 @@ class MqttBridge:
             await asyncio.gather(self._task, return_exceptions=True)
             self._task = None
         self.status = "off"
+        self._health.reset()
 
     async def restart(self) -> None:
         """After its settings changed: connect again with them, or stay off."""
@@ -138,6 +143,16 @@ class MqttBridge:
         cfg = load_config().get("mqtt", {})
         if cfg.get("enabled") and cfg.get("host") and cfg.get("id"):
             self._task = asyncio.create_task(self._run(), name="mqtt")
+            self._task.add_done_callback(self._on_task_done)
+
+    def _on_task_done(self, task: asyncio.Task) -> None:
+        """_run only ends by an error that got past its own handlers: say so, or MQTT is silently gone."""
+        if task.cancelled():
+            return
+        error = task.exception()
+        self.status = "stopped: an error, see Logs"
+        logger.error(f"MQTT stopped: {error!r}", exc_info=error)
+        notifications.add("error", "MQTT stopped because of an error and won't come back until the mirror restarts. See Logs.", once=True)
 
     async def forget(self) -> bool:
         """Turned off by the owner: Home Assistant removes the devices (an empty retained discovery), and
@@ -197,14 +212,17 @@ class MqttBridge:
                 async with self._client_for(load_config().get("mqtt", {})) as client:
                     self._client, self._published, self._discovered_at = client, {}, 0.0
                     self.status, delay = "connected", RETRY_FIRST
+                    self._health.reset()
                     logger.info("MQTT: connected")
                     await self._serve(client)
             except aiomqtt.MqttError as e:
                 self.status = f"not connected: {e}"
                 logger.warning(f"MQTT: {e}; trying again in {delay} s")
+                self._health.failed(self.status)
             except Exception as e:  # anything else ends this connection, never MQTT until the next restart
                 self.status = "not connected: an error, see Logs"
                 logger.error(f"MQTT: {e!r}; trying again in {delay} s", exc_info=True)
+                self._health.failed(self.status)
             finally:
                 self._client = None
             await asyncio.sleep(delay)
