@@ -134,6 +134,8 @@ Google Home only adds uncertified devices it has been told about, once: in the [
 
 **Starting over:** *Reset Pairing* on the card starts the pairing from scratch. Turning Matter off keeps the pairing for when you turn it on again.
 
+If Matter stops running and doesn't come back (the system restarts it by itself after a crash), the bell on the admin page says so after about three minutes.
+
 </details>
 
 ### MQTT
@@ -145,6 +147,8 @@ With MQTT the mirror appears in Home Assistant by itself, with nothing to paste 
 3.  **Choose what Home Assistant may do.** At first it can only look; allow what you need on the card, no more, and save after each change.
 
 Buttons show up as events (single, double, triple, long press) that you can use as automation triggers. Any device logged in to your broker could fake a press or the motion sensor, so don't let them unlock a door or turn an alarm off.
+
+If the mirror hasn't been connected to the broker for 10 minutes (the broker or Home Assistant is off, or the password is wrong), the bell on the admin page says so, with the reason the MQTT card shows. It does the same if MQTT stops because of an error.
 
 A backup without a password leaves the broker password out: restoring one keeps the mirror's, and on a new mirror you type it again.
 

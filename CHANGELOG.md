@@ -9,6 +9,12 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### App
+
+- **MQTT no longer breaks on a test version's new dependencies**: with *Test versions* on, an update let every dependency be a pre-release, and MQTT to Home Assistant stopped working when one of them (`aiomqtt` 3.0 alpha) changed. Only MirrorDash itself may be a test version now, and `aiomqtt` and `paho-mqtt` are held to the versions MirrorDash was written for.
+- **The bell tells you when MQTT stops**: when its connection ends by an error (before, it stopped silently with the card stuck on *connecting*), and when the mirror hasn't been connected to the broker for 10 minutes.
+- **The bell tells you when Matter stays down**: if the Matter node doesn't come back after the system's own restarts, after about three minutes.
+
 ### OS image
 
 - **More TV channels can play**: the system now understands MPEG-TS video, the format most international news channels (DW, tagesschau24, RTVE, Rai News, TRT, Bloomberg, ABC Australia and others) stream in, and radio streams that start with an ID3 tag. Takes effect with the next system update.

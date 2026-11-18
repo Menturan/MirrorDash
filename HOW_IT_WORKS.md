@@ -100,7 +100,8 @@ flowchart TB
    - `display_power_manager` (`features/power/`) turns the screen on and off on schedule, and a TV with it over HDMI-CEC (`features/hardware/cec.py`); the cards fade in after the output is on and out before it goes off (`features/power/wake_fade.py`, #61),
    - `gpio_inputs` (`features/hardware/inputs.py`) listens for buttons and motion sensors,
    - `internet_monitor` (`features/kiosk/`) notices when the internet goes away,
-   - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up (#42),
+   - `mqtt_bridge` (`features/mqtt/`) connects to Home Assistant, if set up, and tells the bell when it dies or stays away for 10 minutes (#42),
+   - `matter_watch` (`features/matter/`) tells the bell when the Matter node stays down after systemd's restarts (#35),
    - `notification_watch` (`features/notifications/`) tells the bell of versions that went up since the last start and, once a minute, of new saved logs (#57).
 4. **mirrordash-screen** (`screen-kiosk.service`) shows `loading.html` until the server answers, then the mirror's page. `core.js` opens the WebSocket `/ws`, and the core sends it every card it already has (`screen.py` keeps the last one of each, #9).
 

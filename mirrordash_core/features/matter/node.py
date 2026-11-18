@@ -8,6 +8,7 @@ import shutil
 
 from mirrordash_core.admin import token_hash
 from mirrordash_core.config import get_base_dir, load_config, save_config, write_atomic
+from mirrordash_core.features.matter.watch import matter_watch
 from mirrordash_core.host import run_command
 
 logger = logging.getLogger("mirrordash.core.matter")
@@ -46,6 +47,7 @@ async def start_matter() -> bool:
     write_atomic(ENV_FILE, f"MIRRORDASH_TOKEN={token}\nMATTER_PASSCODE={matter['passcode']}\n"
                            f"MATTER_DISCRIMINATOR={matter['discriminator']}\nMATTER_UNIQUE_ID={matter['unique_id']}\n"
                            f"MATTER_STORAGE_PATH={MATTER_DIR}\n", 0o600)
+    matter_watch.hold_off()
     return await systemctl("restart")  # restart: a running node picks up the new token
 
 

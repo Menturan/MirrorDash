@@ -22,6 +22,7 @@ from mirrordash_core.features.kiosk import routes as kiosk
 from mirrordash_core.features.kiosk.internet import internet_monitor
 from mirrordash_core.features.logs import routes as logs
 from mirrordash_core.features.matter import routes as matter
+from mirrordash_core.features.matter.watch import matter_watch
 from mirrordash_core.features.modules import discover as module_discover
 from mirrordash_core.features.modules import files as module_files
 from mirrordash_core.features.modules import routes as modules
@@ -55,7 +56,7 @@ async def lifespan(app: FastAPI):
     module_host.on_state = mqtt_bridge.module_state
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,
-                 mqtt_bridge.start, notification_watch.start):
+                 mqtt_bridge.start, notification_watch.start, matter_watch.start):
         try:
             await step()
         except Exception as e:
@@ -63,7 +64,7 @@ async def lifespan(app: FastAPI):
     run_in_background(confirm_venv())  # an update is kept once this start has run for a minute
     run_in_background(catch_up())  # the nightly update, for a mirror that was off at night and asked for it
     yield
-    for step in (notification_watch.stop, mqtt_bridge.stop, internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
+    for step in (matter_watch.stop, notification_watch.stop, mqtt_bridge.stop, internet_monitor.stop, gpio_inputs.stop, display_power_manager.stop, module_host.stop_modules):
         try:
             await step()
         except Exception as e:
