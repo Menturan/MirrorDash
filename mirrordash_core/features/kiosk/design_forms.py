@@ -11,7 +11,12 @@ from mirrordash_core.features.modules.shared_settings import (
     default_shared_value,
     shared_keys,
 )
-from mirrordash_core.forms import SharedState, render_schema_form
+from mirrordash_core.forms import (
+    SharedState,
+    fields_loading,
+    render_fields,
+    render_schema_form,
+)
 
 LIST_METHOD = '''
 # plugin.py: the choices, asked when the form opens and again when another field changes
@@ -29,6 +34,32 @@ SEARCH_METHOD = '''
 async def settings_search_place(self, item, query):
     data, error = await self.fetch_json("https://api.example.com/places", params={"q": query})
     return [{"id": p["id"], "name": p["name"], "detail": p["region"]} for p in data or []]'''
+
+FIELDS_METHOD = '''
+# plugin.py: the boxes, asked when the form opens and again when another field of its list item changes
+async def settings_fields_extras(self, item):
+    # item: the other fields of its list item (or the whole form); self.config: the unsaved form
+    if not item.get("device_id"):
+        raise ValueError("Enter the device ID first")   # shown under the field; what was saved is kept
+    readings = await self.read_all(item["device_id"])   # {"battery": "87 %", "humidity": "41 %"}
+    if not readings:
+        return {}                                       # "Nothing to set for this one."
+    keys = sorted(readings)
+    return {"shown": {"type": "array", "title": "Show", "default": keys,   # default: only for a box with no saved value
+                      "items": {"type": "string", "enum": keys,
+                                "enum_titles": [f"{k} ({readings[k]})" for k in keys]}},
+            "labels": {"type": "boolean", "title": "Show Names", "default": True}}
+
+# saved as {"shown": ["battery"], "labels": true}: only the boxes the module gave last
+shown = self.config["extras"].get("shown", [])'''
+
+# What the module's answer above is drawn as, for the card (the admin page asks the module; here it is fixed)
+FIELDS_DRAWN = {
+    "shown": {"type": "array", "title": "Show", "default": ["battery", "humidity", "pressure"],
+              "items": {"type": "string", "enum": ["battery", "humidity", "pressure"],
+                        "enum_titles": ["battery (87 %)", "humidity (41 %)", "pressure (1013 hPa)"]}},
+    "labels": {"type": "boolean", "title": "Show Names", "default": True},
+}
 
 LIST_ITEM_FIELDS = (
     "<p>A row's fields are drawn as the form's own: every kind of setting on this page works in a row, "
@@ -153,6 +184,18 @@ EXAMPLES = [
      "the mouse or the arrow keys and Enter. Answers and is saved as a list is.", {
          "place": {"type": "object", "format": "search", "title": "Place", "description": "Start typing to find it."}},
      {"place": {"id": "2711537", "name": "Gävle"}}, [], SEARCH_METHOD),
+    ("Fields (Built by the Module)", "type: object  +  format: fields  →  settings_fields_<key>(self, item)",
+     "For boxes only the module can know (the readings a device has). The module returns ordinary settings "
+     "(<code>string</code>, <code>integer</code>, <code>number</code>, <code>boolean</code>, or a list of texts from an "
+     "<code>enum</code> as tick boxes, with <code>format</code>, <code>show_if</code> and <code>group</code> as above; no objects, "
+     "lists of rows, list, search, files or fields), drawn as the form's own and asked again when another field of the "
+     "row changes. The key is a–z, 0–9 and _; at most 100 boxes. Saved under the setting's key with only the boxes "
+     "given last: unticked and vanished ones go. A <code>default</code> applies to a box with no saved value. "
+     "A <code>ValueError</code>'s text shows under the field and what was saved is kept; <code>{}</code> shows "
+     "&ldquo;Nothing to set for this one.&rdquo; Below, the answer the method gives.", {
+         "extras": {"type": "object", "format": "fields", "title": "Extra Readings",
+                    "description": "The device's other readings."}},
+     {"extras": {"shown": ["battery", "pressure"]}}, [], FIELDS_METHOD),
     ("Rules on What Is Typed", "required  ·  minimum / maximum  ·  minLength / maxLength  ·  pattern + pattern_message",
      "The admin page points at a broken rule before saving (opening a folded item that holds it), and the save "
      "refuses it. pattern matches the whole value; an empty value breaks only required. pattern_message is the "
@@ -173,11 +216,21 @@ def _code(properties: dict, required: list) -> str:
     return ",\n".join(parts)
 
 
+def _form(properties: dict, values: dict, required: list) -> Markup:
+    """The settings of an example drawn by the form's own code; a fields setting with the module's answer
+    (FIELDS_DRAWN) in place of "Loading…", which the admin page's fields.js would ask the module for."""
+    html = render_schema_form({"properties": properties, "required": required}, values, "modules[demo]", "demo",
+                              _shared_states(properties, values))
+    if "extras" in properties and properties["extras"].get("format") == "fields":
+        drawn = render_fields(FIELDS_DRAWN, values.get("extras", {}), "modules[demo][extras]")
+        html = html.replace(fields_loading(), f'<div class="fields-body">{drawn}</div>')
+    return Markup(html)
+
+
 def design_cards() -> list[dict]:
     """The cards of /design#forms: each example's words, its JSON and the form drawn from it."""
     return [{"name": name, "tag": tag, "desc": Markup(desc), "code": _code(properties, required) + extra,
-             "form": Markup(render_schema_form({"properties": properties, "required": required}, values,
-                                               "modules[demo]", "demo", _shared_states(properties, values)))}
+             "form": _form(properties, values, required)}
             for name, tag, desc, properties, values, required, extra in EXAMPLES]
 
 

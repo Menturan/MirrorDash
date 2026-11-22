@@ -23,7 +23,7 @@ for that one instance (Host):
                     http {id, instance, method, path, ...}  a call to /api/modules/<instance>/...
                     preview {id, instance, config, globals}  the card the admin's unsaved form would show (preview.py)
                     choices {id, instance, config, globals, kind, key, item, query}
-                                                            a list or search setting's choices (choices.py)
+                                                            a list or search setting's choices, a fields setting's boxes (choices.py)
                     diagnose {id}                           its GPIO lines (Logs → Diagnostics)
                     reply {id, error}                       the answer to video_window (error: refused, and why)
                     video {id, event, reason}               a video's picture showed, or it ended or failed

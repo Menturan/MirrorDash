@@ -168,6 +168,29 @@
     </div></div>
 {%- endmacro %}
 
+{# A fields setting (ARCHITECTURE #63): boxes the module builds, drawn by fields.js from the route's answer. Until
+   then, and while the module can't answer, the setting as it was saved rides along as __saved (in the row, so a
+   moved or removed row needs no matching up): the save keeps it when no __types came with real boxes. #}
+{% macro fields_loading() -%}
+<div class="fields-body"><p class="field-description fields-status" aria-live="polite">Loading…</p></div>
+{%- endmacro %}
+
+{% macro fields(f) -%}
+{% set saved = f.stored_value if f.stored_value is mapping else {} %}
+<div class="form-group schema-field wide">{{ label(f, false) }}
+    <div class="fields-setting">
+        <input type="hidden" name="{{ f.name }}[__saved]" value="{{ saved | tojson | forceescape }}">
+        {{ fields_loading() }}
+    </div></div>
+{%- endmacro %}
+
+{# What the route answers with besides the boxes: the type of each, for the save to cast the values by #}
+{% macro fields_types(prefix, types_json) -%}
+<input type="hidden" name="{{ prefix }}[__types]" value="{{ types_json }}">
+{%- endmacro %}
+
+{% macro fields_empty() -%}<p class="field-description">Nothing to set for this one.</p>{%- endmacro %}
+
 {# One card in a list setting (e.g. a calendar), folded to one line (admin.js arrayItemSummary fills it in) #}
 {% macro array_item(index, item_title, fields, is_open) -%}
 <details class="array-item-card"{% if is_open %} open{% endif %}>

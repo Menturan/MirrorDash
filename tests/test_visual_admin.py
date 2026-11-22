@@ -1433,3 +1433,46 @@ def test_a_card_with_nothing_to_show_takes_no_space_and_comes_back(page):
     assert page.evaluate("document.querySelector('[data-module=s2]').classList.contains('carousel-active')") is False
     send("s2", "two", position="top_right", order=10, carousel_group="g", carousel_interval=1)
     assert page.evaluate("document.querySelectorAll('.carousel-slide:not([hidden])').length") == 3
+
+
+def test_a_fields_setting_loads_its_boxes_follows_its_row_and_shows_the_modules_error(page, server_url):
+    """fields.js (ARCHITECTURE #63) in the real admin page: the boxes the route answers are swapped in and set up,
+    a change in the same row asks again, a change in the boxes asks nobody, and the module's error replaces the
+    boxes while the saved value stays in the row. The route's answers are made up here."""
+    from mirrordash_core.forms import render_array_item, render_fields
+    field = "modules[s][entities][0][extras]"
+    boxes = render_fields({"shown": {"type": "array", "title": "Show", "items": {"type": "string", "enum": ["a", "b"]}}},
+                          {"shown": ["a"]}, field)
+    row = {"entity_id": {"type": "string", "title": "Entity"},
+           "extras": {"type": "object", "format": "fields", "title": "Extra Readings"}}
+    card = render_array_item("modules[s]", "entities", row, 0, {"entity_id": "x", "extras": {"shown": ["b"]}}, "Entity")
+    form = ('<form class="module-config-form" hx-post="/admin/panels/modules/config/md_s/save?instance_id=s">'
+            f'{card}</form>')
+    requests, previews = [], []
+    answers = [(200, boxes), (422, "Enter the entity ID first")]
+
+    def answer(route):
+        requests.append(route.request.url)
+        status, body = answers[min(len(requests), len(answers)) - 1]
+        route.fulfill(status=status, body=body, content_type="text/html" if status == 200 else "text/plain")
+
+    page.route("**/admin/panels/modules/fields/**", answer)
+    page.route("**/admin/panels/modules/preview/**", lambda route: (previews.append(1), route.fulfill(status=204))[1])
+    navigate_authenticated(page, server_url)
+    page.evaluate("""html => { const box = document.getElementById('config-fields-global'); box.innerHTML = html;
+                               box.querySelector('details').open = true; htmx.trigger(box, 'htmx:afterSwap'); }""", form)
+    box = page.locator(".fields-setting")
+    box.locator('input[type=checkbox][value="a"]').wait_for(state="attached")  # the drawer isn't open: all by script
+    assert "/admin/panels/modules/fields/md_s?instance_id=s&field=modules%5Bs%5D%5Bentities%5D%5B0%5D%5Bextras%5D" in requests[0]
+    assert box.locator("[name$='[__types]']").count() == 1
+
+    box.locator('input[type=checkbox][value="b"]').evaluate("b => b.click()")  # a change inside the boxes asks nobody
+    page.wait_for_timeout(700)
+    assert len(requests) == 1
+
+    page.locator("[name='modules[s][entities][0][entity_id]']").evaluate(  # another field of the row: asked again
+        "e => { e.value = 'y'; e.dispatchEvent(new Event('change', { bubbles: true })); }")
+    box.locator(".error-text").wait_for(state="attached")
+    assert box.locator(".error-text").text_content() == "Enter the entity ID first. The saved settings are kept."
+    assert box.locator("input[type=checkbox]").count() == 0 and box.locator("[name$='[__types]']").count() == 0
+    assert box.locator("[name$='[__saved]']").get_attribute("value") == '{"shown": ["b"]}'  # what a save keeps

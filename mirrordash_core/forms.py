@@ -59,6 +59,8 @@ STANDARD_SCHEMA = {"properties": {
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
 # A setting whose choices the module gives (ARCHITECTURE #48): saved as {"id", "name"}
 CHOICE_FORMATS = ("list", "search")
+# A setting whose boxes the module builds (ARCHITECTURE #63): saved as {field: value} of the boxes it gave last
+FIELDS_FORMAT = "fields"
 # The colour box's swatches ("format": "color", e.g. a calendar's colour); any CSS colour may be typed beside them.
 # Each swatch: (name, the value saved, the colour shown on the button)
 SWATCHES = [
@@ -177,6 +179,7 @@ def _is_choices(key: str, prop: dict) -> bool:
 # it, never the key's name (ARCHITECTURE #53); a macro's name in templates/schema_form.html, or a function
 # for the fields that hold fields
 WIDGET_RULES = [
+    (lambda key, p: p.get("format") == FIELDS_FORMAT, "fields"),
     (lambda key, p: p.get("format") == "files", "files"),
     (lambda key, p: p.get("type") == "boolean", "toggle"),
     (lambda key, p: bool(p.get("enum")), "select"),
@@ -256,6 +259,20 @@ def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, nam
     names = {(f"{name_prefix}[{key}]" if name_prefix else key): values for key, values in rules.items()}
     return Markup('<div class="show-if" data-show-if="{}"{}>{}</div>').format(
         json.dumps(names), "" if shown else Markup(" hidden"), Markup(html))
+
+
+def render_fields(fields: dict, current: dict, name_prefix: str) -> str:
+    """A fields setting's boxes (ARCHITECTURE #63): the module's cleaned properties drawn as the form's own,
+    named under name_prefix (the setting's form name), then the type of each, so the save can type the values.
+    current: the boxes' values now; a field without one gets its default."""
+    inner = (render_schema_form({"properties": fields}, current, name_prefix) if fields
+             else str(_macros().fields_empty()))
+    return inner + str(_macros().fields_types(name_prefix, json.dumps({key: prop["type"] for key, prop in fields.items()})))
+
+
+def fields_loading() -> str:
+    """What a fields setting shows until the module has answered (the design page swaps in a drawn answer)."""
+    return str(_macros().fields_loading())
 
 
 def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, index: int, item_val: dict, item_title: str,
@@ -343,8 +360,34 @@ def clean_nested_structures(data):
     return data
 
 
+def _plain_dict(text) -> dict:
+    """A JSON object's text as a dict, {} when it is anything else."""
+    try:
+        data = json.loads(text)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _cast_fields(value) -> dict:
+    """A fields setting as saved (ARCHITECTURE #63): exactly the boxes the module gave last, each typed by the
+    type the form carried for it (__types), so a box that is gone or unticked is not kept. When the boxes never
+    loaded (no __types: the module didn't answer) the setting as it was saved, carried in __saved. The form
+    comes from the browser, so it is only cast here, never believed."""
+    if not isinstance(value, dict):
+        return {}
+    if "__types" not in value:
+        return _plain_dict(value.get("__saved"))
+    types = _plain_dict(value["__types"])
+    return {key: _cast_to_schema_type(value[key], {"type": schema_type, "items": {"type": "string"}})
+            for key, schema_type in types.items() if key in value and SAFE_KEY.match(key)
+            and schema_type in ("string", "integer", "number", "boolean", "array")}
+
+
 def _cast_to_schema_type(value, prop: dict):
     """One form value as the type its schema property says."""
+    if prop.get("format") == FIELDS_FORMAT:
+        return _cast_fields(value)
     schema_type = prop.get("type")
     if schema_type == "boolean":
         return value.lower() in ("true", "1", "yes", "on") if isinstance(value, str) else bool(value)

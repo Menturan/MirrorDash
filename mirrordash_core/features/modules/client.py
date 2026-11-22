@@ -231,12 +231,13 @@ class ModuleHost:
         return reply.get("html") if isinstance(reply.get("html"), str) else None
 
     async def choices(self, instance_id: str, module_cfg: dict, request: dict) -> dict:
-        """The choices of a list or search setting of the admin's unsaved form (ARCHITECTURE #48), from a
-        process of the module: {"choices": [...]} or {"error": text}. request: {kind, key, item, query}."""
+        """The choices of a list or search setting of the admin's unsaved form (ARCHITECTURE #48), or the boxes
+        of a fields setting (#63), from a process of the module: {"choices": [...]}, {"fields": {...}} or
+        {"error": text}. request: {kind, key, item, query}."""
         conn = await self._connection_for(instance_id, module_cfg)
         reply = await conn.request({"t": "choices", "instance": conn.instance, "config": module_cfg,
                                     "globals": load_config().get("globals", {}), **request}, REQUEST_TIMEOUT)
-        return {key: reply[key] for key in ("choices", "error") if key in reply}
+        return {key: reply[key] for key in ("choices", "fields", "error") if key in reply}
 
     async def _connection_for(self, instance_id: str, module_cfg: dict) -> Connection:
         """A process of the module to ask for the settings drawer: the instance's own, another instance's

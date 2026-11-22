@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### App
 
+- **Settings a module builds itself**: a module can now add boxes to its settings that depend on what it finds out (for example the readings a device has, as tick boxes), and they change as you change the fields beside them. Only the boxes shown are saved, and if the module can't be reached a message shows under them and what was saved stays. Modules have to use it, so you see it once a module you use does.
 - **Settings shared by all instances of a module**: a module can now mark a setting as shared (an address, an access token), so with three cards of the same module you type it once. In each card's settings it shows a note and an *Own value* switch: off, the card uses the shared value (changing it changes them all); on, it keeps its own. Modules have to mark their settings for this, so you see it once a module you use does. Backups treat a shared password like any other.
 - **MQTT no longer breaks on a test version's new dependencies**: with *Test versions* on, an update let every dependency be a pre-release, and MQTT to Home Assistant stopped working when one of them (`aiomqtt` 3.0 alpha) changed. Only MirrorDash itself may be a test version now, and `aiomqtt` and `paho-mqtt` are held to the versions MirrorDash was written for.
 - **The bell tells you when MQTT stops**: when its connection ends by an error (before, it stopped silently with the card stuck on *connecting*), and when the mirror hasn't been connected to the broker for 10 minutes.

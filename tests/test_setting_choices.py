@@ -57,7 +57,7 @@ def test_errors_say_what_is_wrong_without_the_modules_internals(caplog):
     assert "no async settings_search_school()" in ask({"kind": "search", "key": "school", "item": {}})["error"]
     for bad in ({"kind": "list", "key": "School", "item": {}}, {"kind": "list", "key": "a-b", "item": {}},
                 {"kind": "run", "key": "school", "item": {}}, {"kind": "list", "key": "school", "item": "x"}):
-        assert ask(bad) == {"error": "Not a list or search setting."}
+        assert ask(bad) == {"error": "Not a list, search or fields setting."}
 
 
 @pytest.mark.asyncio

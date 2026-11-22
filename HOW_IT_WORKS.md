@@ -224,7 +224,7 @@ The biggest part of the core, in `features/modules/`:
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |
 | `discover.py` | core | the modules there are to install: the scan of PyPI and GitHub |
 | `installed.py` | core | the modules that are installed, and where each one reinstalls from |
-| `choice_field.py` | core | which list or search setting the settings drawer asks the choices of (#48) |
+| `choice_field.py` | core | which list, search or fields setting the settings drawer asks the module about (#48, #63) |
 | `settings_process.py` | core | a short-lived process of a module none of whose instances runs, for the settings drawer (#48) |
 | `files.py` | core | files the owner uploads for a module (photos) |
 | `module_files.py` | both | finding installed modules and reading their files without running them |
@@ -234,7 +234,8 @@ The biggest part of the core, in `features/modules/`:
 | `loader.py` | host | starts a module and gives it its helpers |
 | `module_fetch.py` | host | the module's `self.fetch`, with a saved last good answer |
 | `preview.py` | host | the settings drawer's preview from sample answers (#43) |
-| `choices.py` | host | a list or search setting's choices from the module's `settings_list_<key>` / `settings_search_<key>` (#48) |
+| `choices.py` | host | a list or search setting's choices, a fields setting's boxes, from the module's `settings_list_<key>` / `settings_search_<key>` / `settings_fields_<key>` (#48, #63) |
+| `fields_schema.py` | host | checks the schema properties a fields setting's method returns: which types and formats pass (#63) |
 | `throwaway.py` | host | a throwaway instance made from the unsaved form, for the preview and the choices |
 | `sandbox_checks.py` | host | what a module could reach that it must not |
 | `site_folders.py`, `package_names.py` | host | where and as whom each module is installed |

@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from mirrordash_core.admin import (
     job_response,
@@ -25,7 +25,7 @@ from mirrordash_core.config import (
 )
 from mirrordash_core.features.modules import discover, guard
 from mirrordash_core.features.modules import service as modules_service
-from mirrordash_core.features.modules.choice_field import choice_request
+from mirrordash_core.features.modules.choice_field import choice_request, locate_field
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.instances import set_instances_enabled
 from mirrordash_core.features.modules.module_files import (
@@ -63,6 +63,7 @@ from mirrordash_core.forms import (
     cast_standard_fields,
     cast_values_by_schema,
     read_form,
+    render_fields,
     render_schema_form,
 )
 from mirrordash_core.host import get_disk_usage
@@ -267,28 +268,48 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
                  "modules_css": MODULES_CSS.read_text(encoding="utf-8")})
 
 
-@router.post("/panels/modules/choices/{module_name}", dependencies=[Depends(require_api_key)])
-async def module_choices_route(module_name: str, request: Request, instance_id: str | None = None,
-                               field: str = "", query: str = "") -> dict:
-    """The choices of a list or search setting of the unsaved form (ARCHITECTURE #48), from the module:
-    {"choices": [{"id", "name", "detail"}, ...]} or {"error": text shown under the field}."""
+async def _ask_module(module_name: str, request: Request, instance_id: str | None, field: str,
+                      query: str = "") -> tuple[dict, dict]:
+    """The module's answer about one field of the unsaved form (choices, or a fields setting's boxes; the
+    module host's choices.py), and the form's settings as the module got them: ({"choices" | "fields" |
+    "error": ...}, settings). HTTPException when the module is unknown or field isn't a setting it may ask about."""
     try:
         config, instance_id = await _config_from_form(module_name, request, instance_id)
     except HTTPException as e:
         if e.status_code == 404:
             raise
-        return {"error": f"Fix the settings first: {e.detail}"}
+        return {"error": f"Fix the settings first: {e.detail}"}, {}
     module_cfg = _settings_of(config, instance_id, module_name)
     try:
         ask = choice_request(field, get_module_schema(find_entry_point(module_name)), module_cfg, query)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     try:
-        return await module_host.choices(instance_id, module_cfg, ask)
+        return await module_host.choices(instance_id, module_cfg, ask), module_cfg
     except TimeoutError:
-        return {"error": "The module didn't answer in time."}
+        return {"error": "The module didn't answer in time."}, module_cfg
     except (ConnectionError, OSError):
-        return {"error": "The modules aren't running right now."}
+        return {"error": "The modules aren't running right now."}, module_cfg
+
+
+@router.post("/panels/modules/choices/{module_name}", dependencies=[Depends(require_api_key)])
+async def module_choices_route(module_name: str, request: Request, instance_id: str | None = None,
+                               field: str = "", query: str = "") -> dict:
+    """The choices of a list or search setting of the unsaved form (ARCHITECTURE #48), from the module:
+    {"choices": [{"id", "name", "detail"}, ...]} or {"error": text shown under the field}."""
+    return (await _ask_module(module_name, request, instance_id, field, query))[0]
+
+
+@router.post("/panels/modules/fields/{module_name}", dependencies=[Depends(require_api_key)])
+async def module_fields_route(module_name: str, request: Request, instance_id: str | None = None,
+                              field: str = "") -> Response:
+    """A fields setting's boxes for the unsaved form (ARCHITECTURE #63): the module says which, the form's own
+    macros draw them, holding what the form holds now. HTML, or the error text shown under the field (422)."""
+    answer, module_cfg = await _ask_module(module_name, request, instance_id, field)
+    if "fields" not in answer:
+        return PlainTextResponse(answer.get("error") or "Couldn't load the fields.", status_code=422)
+    key, _, row = locate_field(field, get_module_schema(find_entry_point(module_name)), module_cfg)
+    return HTMLResponse(render_fields(answer["fields"], row[key] if isinstance(row.get(key), dict) else {}, field))
 
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])

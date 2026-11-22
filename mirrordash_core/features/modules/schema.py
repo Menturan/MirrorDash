@@ -10,12 +10,20 @@ import json
 import logging
 import re
 
-from mirrordash_core.forms import CHOICE_FORMATS, DAYS, POSITIONS, STANDARD_SCHEMA
+from mirrordash_core.forms import (
+    CHOICE_FORMATS,
+    DAYS,
+    FIELDS_FORMAT,
+    POSITIONS,
+    SAFE_KEY,
+    STANDARD_SCHEMA,
+)
 
 logger = logging.getLogger("mirrordash.core.modules")
 
 
 VALID_POSITIONS = set(POSITIONS)
+MAX_FIELDS = 100  # boxes in a fields setting, as the module host cuts them (fields_schema.py)
 MAX_CHOICE_TEXT = 200  # characters of a choice's id or name, as the module host cuts them (choices.py MAX_TEXT)
 
 
@@ -80,6 +88,17 @@ def _check_module_settings(name: str, cfg: dict, properties: dict) -> None:
             raise ValueError(f"Module '{name}' setting '{title}' must be one of: {prop['enum']}")
         if prop.get("format") in CHOICE_FORMATS and not _is_choice(value):
             raise ValueError(f"Module '{name}' setting '{title}' must be a choice: {{\"id\": text, \"name\": text}} or {{}}.")
+        if prop.get("format") == FIELDS_FORMAT and not _is_fields(value):
+            raise ValueError(f"Module '{name}' setting '{title}' must be an object of plain values (text, numbers, switches, lists of text).")
+
+
+def _is_fields(value) -> bool:
+    """A fields setting's value (ARCHITECTURE #63): an object of plain values (text, number, switch, or a list of
+    texts), one per box the module gave."""
+    def plain(v):
+        return isinstance(v, (str, int, float, bool)) or (isinstance(v, list) and all(isinstance(t, str) for t in v))
+    return (isinstance(value, dict) and len(value) <= MAX_FIELDS
+            and all(SAFE_KEY.match(str(k)) and not str(k).startswith("__") and plain(v) for k, v in value.items()))
 
 
 def _is_choice(value) -> bool:

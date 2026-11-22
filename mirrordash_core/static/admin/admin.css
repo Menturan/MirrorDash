@@ -1481,6 +1481,9 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .choice-suggestions li { padding: 7px 10px; font-size: 0.85rem; color: #e4e4e7; cursor: pointer; }
 .choice-suggestions li span { color: var(--text-muted); margin-left: 6px; }
 .choice-suggestions li.active, .choice-suggestions li:hover { background: #27272a; }
+/* A fields setting (ARCHITECTURE #63, fields.js): the module's boxes, drawn as the form's own, then the status */
+.fields-body .form-group { margin-bottom: 10px; }
+.fields-status { margin: 4px 0 0; }
 .color-swatch-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #52525b; cursor: pointer; outline: none; transition: transform 0.1s; }
 .color-swatch-btn.active { border: 2px solid white; transform: scale(1.15); box-shadow: 0 0 8px white; }
 

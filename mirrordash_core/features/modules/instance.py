@@ -301,8 +301,8 @@ class Host:
         await self.link.send({"t": "reply", "id": message.get("id"), "html": html if isinstance(html, str) else None})
 
     async def _choices(self, message: dict) -> None:
-        """The choices of a list or search setting in the admin's unsaved form (choices.py)."""
-        reply = {"error": "Not a list or search setting."}
+        """The choices of a list or search setting, or a fields setting's boxes, in the admin's unsaved form (choices.py)."""
+        reply = {"error": "Not a list, search or fields setting."}
         if isinstance(message.get("config"), dict) and isinstance(message.get("instance"), str):
             reply = await setting_choices(message["instance"], message["config"], message.get("globals") or {},
                                           self.link, message)
