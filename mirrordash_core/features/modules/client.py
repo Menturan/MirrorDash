@@ -41,6 +41,10 @@ from mirrordash_core.features.modules.module_files import (
     scripts_allowed,
 )
 from mirrordash_core.features.modules.settings_process import SettingsProcesses
+from mirrordash_core.features.modules.shared_settings import (
+    merged_instances,
+    with_shared,
+)
 from mirrordash_core.features.video import playback
 from mirrordash_core.host import run_in_background, run_restart
 from mirrordash_core.screen import manager
@@ -395,8 +399,12 @@ class ModuleHost:
                 _installed_module_schemas,  # as lan.py: no import cycle
             )
             schemas = _installed_module_schemas()
-            wanted = {instance_id: with_defaults(cfg, schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {})
-                      for instance_id, cfg in modules.items() if cfg.get("enabled", True) and instance_id not in held}
+            # The shared settings of the module in (#62), so a change of one restarts every instance of the module
+            wanted = {}
+            for instance_id, cfg in modules.items():
+                if cfg.get("enabled", True) and instance_id not in held:
+                    schema = schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {}
+                    wanted[instance_id] = with_defaults(with_shared(cfg, config, schema), schema)
             # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)
             holes = reply.get("sandbox_open")
@@ -560,8 +568,9 @@ class ModuleHost:
             kind = {"t": "video"} if "event" in answer else {"t": "reply"}
             await self._send_quietly(conn, {**kind, "id": request, **answer})
 
-        saved = load_config().get("modules", {}).get(conn.instance)  # the owner's, not what the module says
-        hosts = lan.lan_hosts({conn.instance: saved}).get(conn.instance, set()) if isinstance(saved, dict) else set()
+        # The owner's settings, not what the module says; a shared lan-url counts as the instance's (#62)
+        saved = merged_instances(load_config()).get(conn.instance)
+        hosts = lan.lan_hosts({conn.instance: saved}).get(conn.instance, set()) if saved is not None else set()
         try:
             await playback.hold(conn.instance, options, send, conn.windows[request], hosts)
         finally:
@@ -579,8 +588,7 @@ class ModuleHost:
         while True:
             await asyncio.sleep(lan.LAN_REFRESH)
             try:
-                modules = {k: v for k, v in load_config().get("modules", {}).items()
-                           if isinstance(v, dict) and k not in self.paused}
+                modules = {k: v for k, v in merged_instances(load_config()).items() if k not in self.paused}
                 await self._apply_lan(modules)
             except Exception as e:
                 logger.warning(f"Could not refresh the modules' home-network addresses: {e!r}")

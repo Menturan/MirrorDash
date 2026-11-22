@@ -138,6 +138,15 @@ class Field:
         return match[1] if match else None
 
 
+@dataclass
+class SharedState:
+    """How one shared setting stands in an instance's form (ARCHITECTURE #62): its row under the control."""
+    own: bool  # the instance has an own value (its "Own value" switch is on)
+    shared_value: object  # the value every other instance gets
+    count: int  # how many instances the module has, counting this one if it is new
+    module_title: str
+
+
 def _array(field: Field) -> str:
     items_schema = field.schema.get("items", {})
     item_title = str(items_schema.get("title", "Item"))
@@ -191,10 +200,12 @@ def _render(widget, field: Field) -> str:
     return widget(field) if callable(widget) else getattr(_macros(), widget)(field)
 
 
-def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "") -> str:
+def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "",
+                       shared: dict[str, SharedState] | None = None) -> str:
     """The form for a schema's properties: the core's standard fields first, then the module's own. Fields
     with the same "group" (a title) share a collapsible section where the first of them is; only the form
-    changes, they're saved as if they had none (ARCHITECTURE #51)."""
+    changes, they're saved as if they had none (ARCHITECTURE #51). shared: the fields that are shared
+    settings of an instance's form (#62) get the "Own value" row under their box."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
         raise ValueError("Unsafe form name prefix or module name")
     properties = _safe_properties(schema.get("properties", {}))
@@ -209,7 +220,10 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name, key in required)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
-        html = _shown_if(_render(widget, field), prop, properties, current_values, name_prefix)
+        html = _render(widget, field)
+        if shared and key in shared:
+            html = _macros().shared_field(field, shared[key], Markup(html))
+        html = _shown_if(html, prop, properties, current_values, name_prefix)
         if group := str(prop.get("group") or ""):
             if group not in groups:
                 groups[group] = []

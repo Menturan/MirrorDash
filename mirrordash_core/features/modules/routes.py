@@ -48,10 +48,18 @@ from mirrordash_core.features.modules.service import (
     update_modules,
 )
 from mirrordash_core.features.modules.setting_rules import check_setting_rules
+from mirrordash_core.features.modules.shared_settings import (
+    default_shared_value,
+    move_shared_values,
+    shared_keys,
+    shared_values,
+    with_shared,
+)
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
     STANDARD_FIELDS,
     STANDARD_SCHEMA,
+    SharedState,
     cast_standard_fields,
     cast_values_by_schema,
     read_form,
@@ -115,8 +123,12 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     standard = STANDARD_SCHEMA["properties"]
     standard_without_position = {key: prop for key, prop in standard.items() if key not in ("instance_name", "position", "schedule")}
 
-    def form(properties: dict, values: dict = instance_config, prefix: str = form_name_prefix) -> str:
-        return render_schema_form({"properties": properties}, values, prefix, module_name)
+    def form(properties: dict, values: dict = instance_config, prefix: str = form_name_prefix, **kwargs) -> str:
+        return render_schema_form({"properties": properties}, values, prefix, module_name, **kwargs)
+
+    # Shared settings (#62): the box holds the shared value until the instance has an own one
+    shared = _shared_states(module_name, schema, modules_config, instance_id, instance_config)
+    module_values = {**instance_config, **{key: state.shared_value for key, state in shared.items() if not state.own}}
 
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
         "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
@@ -129,10 +141,26 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
         "schedule_form": form(standard["schedule"]["properties"],
                               instance_config.get("schedule") if isinstance(instance_config.get("schedule"), dict) else {},
                               f"{form_name_prefix}[schedule]"),
-        "module_form": form(module_own_properties),
+        "module_form": form(module_own_properties, module_values, shared=shared),
         "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, load_config()),
         "auto_update_allowed": site_name(ep) not in load_config().get("module_auto_update_off", []),
     })
+
+
+def _shared_states(module_name: str, schema: dict, modules_config: dict, instance_id: str,
+                   instance_config: dict) -> dict[str, SharedState]:
+    """How each shared setting of the module stands in this instance's form (forms.py SharedState)."""
+    keys = shared_keys(schema)
+    if not keys:
+        return {}
+    saved = shared_values(load_config(), module_name)
+    count = sum(1 for cfg in modules_config.values() if isinstance(cfg, dict) and cfg.get("module") == module_name)
+    count += instance_id not in modules_config  # a new one counts too
+    title = schema.get("title") or modules_service.module_title(module_name)
+    return {key: SharedState(own=key in instance_config,
+                             shared_value=saved[key] if key in saved else default_shared_value(schema["properties"][key]),
+                             count=count, module_title=str(title))
+            for key in keys}
 
 
 @router.post("/panels/modules/scripts/{module_name}", dependencies=[Depends(require_api_key)])
@@ -178,7 +206,8 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
-    forms_by_instance = (await read_form(request)).get("modules", {})
+    posted = await read_form(request)
+    forms_by_instance = posted.get("modules", {})
     if not forms_by_instance or not isinstance(forms_by_instance, dict):
         raise HTTPException(status_code=400, detail="Invalid form data structure")
     instance_id = instance_id or next(iter(forms_by_instance))
@@ -192,14 +221,22 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
 
     config = load_config()
     config.setdefault("modules", {})[instance_id] = instance_config
+    # A shared setting without "Own value" goes to the module's shared values (#62); the rules check what the module gets
+    own = posted.get("shared_own") if isinstance(posted.get("shared_own"), dict) else {}
+    move_shared_values(config, module_name, instance_config, {key for key, on in own.items() if on in ("true", True)}, schema)
     from mirrordash_core.features.modules.schema import validate_config
     try:
         validate_config(config)
         if check_rules and schema:
-            check_setting_rules(instance_config, schema)
+            check_setting_rules(with_shared(instance_config, config, schema), schema)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return config, instance_id
+
+
+def _settings_of(config: dict, instance_id: str, module_name: str) -> dict:
+    """The form's instance as its module gets it: its shared settings filled in (#62), unsaved edits too."""
+    return with_shared(config["modules"][instance_id], config, get_module_schema(find_entry_point(module_name)))
 
 
 @router.post("/panels/modules/preview/{module_name}", dependencies=[Depends(require_api_key)])
@@ -216,7 +253,7 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
         config, message = None, f"The preview waits for valid settings: {e.detail}"
     if config is not None:
         try:
-            html, source = await module_host.preview(instance_id, config["modules"][instance_id]), "sample"
+            html, source = await module_host.preview(instance_id, _settings_of(config, instance_id, module_name)), "sample"
         except (ConnectionError, TimeoutError, OSError) as e:
             logger.debug(f"{instance_id}: no preview from the module ({e!r})")
         if html is None and isinstance(saved := manager.latest_messages.get(instance_id, {}).get("html"), str):
@@ -241,7 +278,7 @@ async def module_choices_route(module_name: str, request: Request, instance_id: 
         if e.status_code == 404:
             raise
         return {"error": f"Fix the settings first: {e.detail}"}
-    module_cfg = config["modules"][instance_id]
+    module_cfg = _settings_of(config, instance_id, module_name)
     try:
         ask = choice_request(field, get_module_schema(find_entry_point(module_name)), module_cfg, query)
     except ValueError as e:

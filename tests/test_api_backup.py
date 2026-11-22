@@ -317,7 +317,8 @@ def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, modul
     """With a password: one encrypted file with the admin password, the pi password and the Wi-Fi;
     never the login sessions or the config's last good copy. It restores them on a fresh mirror."""
     backups_dir, data_dir = mock_backup_dirs
-    old_config = {"admin_auth": {"hash": "old-hash", "salt": "old-salt"}, "globals": {"language": "sv"}}
+    old_config = {"admin_auth": {"hash": "old-hash", "salt": "old-salt"}, "globals": {"language": "sv"},
+                  "module_settings": {"mirrordash-ha": {"token": "shared-token"}}}  # a shared secret (#62)
     for name, text in {"config.json": "{}", "config.json.bak": "old-hash", "sessions.json": "cookie",
                        "pi_password.hash": "$6$pi"}.items():
         (data_dir / name).write_text(text)
@@ -343,6 +344,7 @@ def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, modul
     assert asyncio.run(contents("wrong")) is None
     files = asyncio.run(contents(password))
     assert json.loads(files["config.json"])["admin_auth"]["hash"] == "old-hash"
+    assert json.loads(files["config.json"])["module_settings"] == {"mirrordash-ha": {"token": "shared-token"}}
     assert json.loads(files["wifi.json"]) == wifi and files["data/pi_password.hash"] == b"$6$pi"
     assert not {"data/sessions.json", "data/config.json.bak", "data/config.json"} & set(files)
 

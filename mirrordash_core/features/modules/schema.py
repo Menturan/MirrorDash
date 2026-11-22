@@ -100,6 +100,19 @@ def _is_schedule(schedule) -> bool:
             and all(isinstance(t, str) and TIME_OR_BLANK.fullmatch(t) for t in times))
 
 
+def _check_shared_settings(module_settings) -> None:
+    """config["module_settings"] (shared_settings.py): module name -> {setting: value}, each value of the
+    type its module's schema gives that setting."""
+    if module_settings is None:
+        return
+    if not isinstance(module_settings, dict) or not all(isinstance(values, dict) for values in module_settings.values()):
+        raise ValueError("'module_settings' must be a JSON object of objects, one per module.")
+    schemas = _installed_module_schemas()
+    for module, values in module_settings.items():
+        if schema := schemas.get(str(module).replace("-", "_")):
+            _check_module_settings(str(module), values, schema["properties"])
+
+
 def validate_config(config: dict) -> None:
     """Trust boundary for a saved config: its shape, the module positions and each module's settings
     against that module's config_schema. Raises ValueError on bad data."""
@@ -109,6 +122,7 @@ def validate_config(config: dict) -> None:
     timezone = (config.get("globals") or {}).get("timezone")
     if timezone is not None and not is_known_timezone(timezone):
         raise ValueError(f"Unknown time zone {timezone!r}: use a name like Europe/Stockholm.")
+    _check_shared_settings(config.get("module_settings"))
     modules = config.get("modules")
     if modules is None:
         return

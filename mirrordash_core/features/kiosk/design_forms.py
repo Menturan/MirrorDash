@@ -7,7 +7,11 @@ import json
 
 from markupsafe import Markup
 
-from mirrordash_core.forms import render_schema_form
+from mirrordash_core.features.modules.shared_settings import (
+    default_shared_value,
+    shared_keys,
+)
+from mirrordash_core.forms import SharedState, render_schema_form
 
 LIST_METHOD = '''
 # plugin.py: the choices, asked when the form opens and again when another field changes
@@ -127,6 +131,17 @@ EXAMPLES = [
      "settings). Not in a list item or a nested object.", {
          "photos": {"format": "files", "accept": "image", "max_files": 500, "title": "Photos"}},
      {}, [], ""),
+    ("Shared by Every Instance", "\"shared\": true  on a top-level setting",
+     "For what is the same in every instance of the module (a server, an account): the owner sets it once and each "
+     "instance uses it, unless that instance turns on <b>Own value</b>. The module sees no difference: "
+     "<code>self.config[\"url\"]</code> as always. Try the switch. Only on a text, number, switch or dropdown "
+     "(<code>password</code>, <code>lan-url</code>, <code>textarea</code>, <code>color</code>, <code>icon</code> and "
+     "<code>time</code> too), at the top of the settings: not in a list item, an object, a list of boxes, files, "
+     "a list or search setting or the core's own fields. Below, three instances, the second with its own token.", {
+         "url": {"type": "string", "format": "lan-url", "title": "Home Assistant Address", "shared": True,
+                 "default": "http://homeassistant.local:8123"},
+         "token": {"type": "string", "format": "password", "title": "Access Token", "shared": True}},
+     {"token": "own-token"}, [], ""),
     ("List (Choices From the Module)", "type: object  +  format: list  →  settings_list_<key>(self, item)",
      "For choices from outside the module (schools, calendars); choices known when the module is written are an "
      "<code>\"enum\"</code>. The key is a–z, 0–9 and _. A <code>ValueError</code>'s text shows under the field; the saved "
@@ -162,5 +177,12 @@ def design_cards() -> list[dict]:
     """The cards of /design#forms: each example's words, its JSON and the form drawn from it."""
     return [{"name": name, "tag": tag, "desc": Markup(desc), "code": _code(properties, required) + extra,
              "form": Markup(render_schema_form({"properties": properties, "required": required}, values,
-                                               "modules[demo]", "demo"))}
+                                               "modules[demo]", "demo", _shared_states(properties, values)))}
             for name, tag, desc, properties, values, required, extra in EXAMPLES]
+
+
+def _shared_states(properties: dict, values: dict) -> dict[str, SharedState]:
+    """The "shared": true settings of an example as an instance of three shows them: those in values have an own value."""
+    return {key: SharedState(own=key in values, shared_value=default_shared_value(properties[key]), count=3,
+                             module_title="Home Assistant")
+            for key in shared_keys({"properties": properties})}

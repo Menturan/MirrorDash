@@ -196,6 +196,7 @@ sequenceDiagram
 1. **The admin page** shows the settings form, built from the module's JSON schema (`config_schema.json`) by `forms.py`, without running the module.
 2. **Save** posts it to `features/modules/routes.py` `save_module_config_route`, which:
    - reads the form (`forms.read_form`) and types each value by the schema (`cast_values_by_schema`),
+   - moves a shared setting (`"shared": true`) the instance has no own value for to the module's shared values (`features/modules/shared_settings.py`, #62),
    - checks the whole config (`features/modules/schema.py` `validate_config`, the trust boundary) and this instance's
      settings against the rules its schema sets on what is typed (`features/modules/setting_rules.py`: required,
      pattern, minimum/maximum, length; the browser checks the same ones first),
@@ -217,6 +218,7 @@ The biggest part of the core, in `features/modules/`:
 | `guard.py` | core | the screen's guard against a crash loop: pauses modules in steps (#47) |
 | `api_proxy.py` | core | `/api/modules/<instance>/...` forwarded to a module's own routes |
 | `defaults.py` | core | an instance's settings with its schema's defaults filled in (#52) |
+| `shared_settings.py` | core | settings a module marks `"shared": true`: one value for all its instances, merged in before a module gets its settings (#62) |
 | `trial.py` | core | a module update on trial: put back when it fails soon after |
 | `lan.py` | core | which home-network addresses each instance may reach (and, for a video, which hosts it may play from) |
 | `routes.py`, `service.py` | core | the admin page's Modules tab; installing, updating and removing modules |

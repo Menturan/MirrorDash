@@ -364,7 +364,12 @@ async def uninstall_module(package_name: str) -> dict:
     for instance_id in instances:
         logger.info(f"Removing configuration for module instance '{instance_id}' on uninstall")
         del modules_config[instance_id]
-    if instances:
+    shared = config.get("module_settings")  # the shared settings (#62) go with the module
+    shared = shared if isinstance(shared, dict) else {}
+    gone = [module for module in shared if module.replace("-", "_") == package_name.replace("-", "_")]
+    for module in gone:
+        del shared[module]
+    if instances or gone:
         save_config(config)
     allow_scripts(package_key(package_name), False)
     return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}

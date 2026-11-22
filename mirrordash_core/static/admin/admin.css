@@ -1417,6 +1417,14 @@ input:checked + .slider:before {
 .schema-group > .form-label-desc { margin-bottom: 10px; }
 .schema-checkboxes { display: flex; flex-direction: column; gap: 4px; }
 .checkbox-inline { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: white; cursor: pointer; }
+/* A shared setting (shared_field.js, ARCHITECTURE #62): its note on the left, the "Own value" switch on the right */
+.shared-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
+.shared-note { margin: 0; }
+.shared-note[hidden] { display: none; }
+.shared-note i { margin-right: 4px; opacity: .8; }
+.shared-own { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--on-surface-variant); white-space: nowrap; cursor: pointer; }
+.shared-field { margin-bottom: 12px; }
+.shared-field > .schema-field { margin-bottom: 0; }
 .form-accordion { margin-bottom: 16px; border: 1px solid #27272a; border-radius: 6px; background: rgba(255, 255, 255, 0.01); overflow: hidden; }
 .form-accordion > summary { padding: 12px; font-weight: 600; color: white; cursor: pointer; user-select: none; background: rgba(255, 255, 255, 0.03); outline: none; }
 .form-accordion-body { padding: 12px; border-top: 1px solid #27272a; }

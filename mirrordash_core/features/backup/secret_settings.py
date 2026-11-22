@@ -3,7 +3,8 @@
 
 A backup without a password carries no password, key or pairing code: without_secrets takes them out of
 the config (the admin password, the MQTT password, the Matter code, and every module setting its schema
-shows as a password field, in a nested object or a list's rows too). A restore of such a backup keeps this
+shows as a password field, in a nested object or a list's rows too: an instance's own value and a shared one,
+#62, alike). A restore of such a backup keeps this
 mirror's own ones (_keep_this_mirrors_secrets).
 """
 
@@ -83,7 +84,14 @@ def without_secrets(config: dict) -> dict:
     for instance_config in config.get("modules", {}).values():
         if isinstance(instance_config, dict):
             _strip(instance_config, module_secrets(instance_config))
+    for module, values in _shared_settings(config).items():
+        _strip(values, module_secrets({"module": module}))
     return config
+
+def _shared_settings(config: dict) -> dict:
+    """config["module_settings"] (shared_settings.py) as {module: {setting: value}}: what isn't that is left out."""
+    settings = config.get("module_settings")
+    return {module: values for module, values in settings.items() if isinstance(values, dict)} if isinstance(settings, dict) else {}
 
 def _keep_this_mirrors_secrets(restored: dict, current: dict) -> None:
     """A plain backup has no secrets: what it left out comes from this mirror's own settings, where it has
@@ -104,3 +112,7 @@ def _keep_this_mirrors_secrets(restored: dict, current: dict) -> None:
                 and current_instance.get("module") == instance_config.get("module")):
             continue
         _put_back(instance_config, current_instance, module_secrets(instance_config))
+    current_shared = _shared_settings(current)
+    for module, values in _shared_settings(restored).items():
+        if module in current_shared:
+            _put_back(values, current_shared[module], module_secrets({"module": module}))
