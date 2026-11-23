@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """The schema of the Settings tab's form: the settings every module inherits ("globals")."""
 
-from mirrordash_core.features.power.privacy import CARDS_OVER_PHOTO
+from mirrordash_core.features.power.privacy import CARDS_OVER_PHOTO, SCREEN_SCALES
 
 
 async def get_globals_schema() -> dict:
@@ -62,6 +62,14 @@ async def get_globals_schema() -> dict:
                 "default": 18.0686,
                 "title": "Decimal Longitude",
                 "description": "Longitude coordinates for weather/astronomy."
+            },
+            "screen_scale": {
+                "type": "integer",
+                "default": 100,
+                "enum": list(SCREEN_SCALES),
+                "enum_titles": [f"{scale} %" for scale in SCREEN_SCALES],
+                "title": "Screen Scale",
+                "description": "Makes everything on the mirror larger or smaller, like display scaling on a computer: the modules and the notices at the screen edges. The screen padding stays as set."
             },
             "cards_over_photo": {
                 "type": "string",

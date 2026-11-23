@@ -29,12 +29,18 @@ def saved():
 
 def test_the_screens_message_with_defaults_for_what_isnt_set_or_known():
     assert privacy.screen_message({}) == {"type": "screen", "privacy": False, "privacy_shows": "monogram",
-                                          "cards_over_photo": "see_through", "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None}
+                                          "cards_over_photo": "see_through", "screen_scale": 100, "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None}
     config = {"privacy": {"on": True}, "globals": {"privacy_shows": "nothing", "cards_over_photo": "halo"}}
     assert privacy.screen_message(config) == {"type": "screen", "privacy": True, "privacy_shows": "nothing",
-                                              "cards_over_photo": "halo", "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None}
+                                              "cards_over_photo": "halo", "screen_scale": 100, "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None}
     junk = {"privacy": {"on": "yes"}, "globals": {"privacy_shows": "<b>", "cards_over_photo": "<script>"}}
     assert privacy.screen_message(junk) == privacy.screen_message({})
+
+
+def test_the_screen_scale_passes_only_as_one_of_the_steps():
+    scale = lambda value: privacy.screen_message({"globals": {"screen_scale": value}})["screen_scale"]
+    assert [scale(value) for value in (50, 125, 200)] == [50, 125, 200]
+    assert [scale(value) for value in ("<b>", 110, True, None, "150", 150.0)] == [100] * 6
 
 
 @pytest.mark.asyncio
@@ -43,7 +49,7 @@ async def test_switching_it_saves_it_apart_from_the_settings_form_and_tells_the_
     await privacy.set_privacy(True)
     assert config["privacy"] == {"on": True} and save.call_count == 1
     broadcast.assert_awaited_once_with({"type": "screen", "privacy": True, "privacy_shows": "nothing",
-                                        "cards_over_photo": "see_through", "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None})
+                                        "cards_over_photo": "see_through", "screen_scale": 100, "scheduled_out": [], **WAKE, "guard": 0, "guard_message": None})
     await privacy.set_privacy(True)  # already on: the screen hears it again, the card isn't written again
     assert save.call_count == 1
     await privacy.toggle_privacy()

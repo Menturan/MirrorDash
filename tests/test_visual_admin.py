@@ -837,6 +837,57 @@ def test_mirror_page_keeps_the_settings_order_whichever_card_comes_first(page):
 
 
 @pytest.mark.only_browser("webkit")
+def test_the_screen_scale_grows_the_cards_and_the_top_badges_but_not_the_regions(page):
+    """Settings, screen_scale: zoom on the anchors' cards (their region's place stays), a scale on the
+    badges that keeps them centred."""
+    import json
+    from pathlib import Path
+    static = Path(__file__).parent.parent / "mirrordash_core" / "static"
+
+    def serve(route):
+        path = route.request.url.split("mirror.test", 1)[1].split("?")[0]
+        if path == "/api/active-modules":
+            return route.fulfill(json={"modules": []})
+        file = static / path.removeprefix("/static/")
+        if not file.is_file():
+            return route.fulfill(status=404)
+        types = {".html": "text/html", ".css": "text/css"}
+        route.fulfill(body=file.read_bytes(), content_type=types.get(file.suffix, "text/javascript"))
+
+    page.route("http://mirror.test/**", serve)
+    page.add_init_script("window.WebSocket = class { constructor() { window.__ws = this; } };")
+    page.goto("http://mirror.test/static/index.html")
+    page.wait_for_function("window.__ws")
+    send = lambda message: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(message))
+    send({"module": "clock", "position": "top_right", "html": "<div style='width: 200px; height: 50px'>12:00</div>"})
+    page.evaluate("document.getElementById('error-badge').hidden = false")
+    measure = """() => {
+        const box = e => { const r = document.querySelector(e).getBoundingClientRect(); return [r.width, r.left + r.width / 2, r.top]; };
+        const region = document.getElementById('top_right').getBoundingClientRect();
+        return {card: box("[data-module='clock']"), region: [region.right, region.top],
+                badge: box('#error-badge'), ws: box('#ws-status'), centre: innerWidth / 2};
+    }"""
+
+    def at(scale):
+        send({"type": "screen", "privacy": False, "privacy_shows": "monogram", "cards_over_photo": "see_through",
+              "scheduled_out": [], "screen_scale": scale})
+        page.wait_for_timeout(1000)  # the ws-status transform transition (0.3s, slow in headless)
+        return page.evaluate(measure)
+
+    base = at(100)
+    for scale, factor in ((200, 2), (50, 0.5)):
+        now = at(scale)
+        assert abs(now["card"][0] - base["card"][0] * factor) <= 1, scale
+        assert now["region"] == base["region"], scale  # the region's place is unscaled
+        for name in ("badge", "ws"):
+            assert abs(now[name][0] - base[name][0] * factor) <= 1, (scale, name)
+            assert abs(now[name][1] - now["centre"]) <= 1, (scale, name)  # still centred
+            assert abs(now[name][2] - base[name][2]) <= 1, (scale, name)  # same top offset
+    page.evaluate("document.querySelector('#ws-status').classList.add('ws-status--hidden')")
+    assert abs(at(200)["ws"][0] - base["ws"][0] * 2) <= 1  # hidden keeps the scale
+
+
+@pytest.mark.only_browser("webkit")
 def test_privacy_mode_keeps_only_the_marked_modules_else_the_monogram_or_nothing(page):
     """Privacy mode (features/power/privacy.py): only cards marked show_in_privacy stay; with none, the
     monogram or nothing, as the owner chose; off, everything is back."""

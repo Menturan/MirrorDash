@@ -18,6 +18,7 @@ from mirrordash_core.features.power.wake_fade import fade_message
 
 # How the anchors' cards look while a module is in the background layer (style.css); the first is the default
 CARDS_OVER_PHOTO = ("see_through", "halo", "half", "solid")
+SCREEN_SCALES = (50, 75, 100, 125, 150, 175, 200)  # percent; 100 is the default
 PRIVACY_SHOWS = ("monogram", "nothing")  # with no module marked; the first is the default
 
 
@@ -29,16 +30,19 @@ def privacy_on(config: dict | None = None) -> bool:
 
 def screen_message(config: dict | None = None) -> dict:
     """The screen-wide settings js/kiosk/core.js puts on <html>: privacy mode and what it shows, and how
-    the modules look over a background photo (an unknown value: the default); and the module instances
+    the modules look over a background photo (an unknown value: the default); the screen scale in percent
+    (anything but an exact step: 100); and the module instances
     their schedules hide now, which it marks on their cards; and whether the screen rests, with how the cards
     fade (wake_fade.py): every message says both, so a page that missed one is right with the next."""
     from mirrordash_core.features.modules import guard
     config = config if config is not None else load_config()
     globals_config = config.get("globals") or {}
     shows, cards = globals_config.get("privacy_shows"), globals_config.get("cards_over_photo")
+    scale = globals_config.get("screen_scale")
     return {"type": "screen", "privacy": privacy_on(config),
             "privacy_shows": shows if shows in PRIVACY_SHOWS else PRIVACY_SHOWS[0],
             "cards_over_photo": cards if cards in CARDS_OVER_PHOTO else CARDS_OVER_PHOTO[0],
+            "screen_scale": scale if type(scale) is int and scale in SCREEN_SCALES else 100,
             "scheduled_out": scheduled_out(config, local_now(config)),
             "resting": display_power_manager.resting,
             "fade": fade_message(config.get("system", {}).get("display_control") or {}),

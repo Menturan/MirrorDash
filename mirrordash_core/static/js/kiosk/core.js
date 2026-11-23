@@ -286,11 +286,12 @@ function handleServerMessage(data) {
         setVideoIsPlaying(data.video_is_playing === true);
     } else if (data.type === 'screen') {
         // The screen-wide settings (features/power/privacy.py), for style.css: privacy mode and what it
-        // shows with no module marked for it, and how the modules look over a background photo
+        // shows with no module marked for it, how the modules look over a background photo, and the screen scale
         const root = document.documentElement;
         root.toggleAttribute('data-privacy', data.privacy === true);
         root.dataset.privacyShows = data.privacy_shows;
         root.dataset.cardsOverPhoto = data.cards_over_photo;
+        root.style.setProperty('--screen-scale', typeof data.screen_scale === 'number' ? data.screen_scale / 100 : 1);
         applyFade(data);
         // and the modules their schedules hide now; a carousel then turns through what is left
         scheduledOut = data.scheduled_out || [];

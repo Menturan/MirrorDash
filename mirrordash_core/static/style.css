@@ -155,6 +155,11 @@ body, html {
     z-index: 1;
 }
 
+/* Screen scale (Settings, screen_scale; core.js sets --screen-scale): zoom on each anchor's child (a card, or a
+   carousel as a whole: once, not again per slide), not on the region, so the regions' positions and the safe
+   margins stay in px. The layers don't scale. */
+.region:not(.layer) > * { zoom: var(--screen-scale, 1); }
+
 /* Full-screen layers: the background behind the nine anchors, the foreground in front of them (never
    above the connection and offline indicators, z-index 1000+). Each its own compositing layer, so a card
    that changes doesn't repaint a photo under it. Several modules (or a carousel) overlay, not stack. */
@@ -301,7 +306,8 @@ html[data-video-is-playing] .carousel-slide {
     position: fixed;
     top: 20px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) scale(var(--screen-scale, 1));  /* zoom would scale left/top too: off centre */
+    transform-origin: top center;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -351,8 +357,10 @@ html[data-video-is-playing] .carousel-slide {
     position: fixed;
     left: 50%;
     bottom: var(--safe-margin-bottom);
-    transform: translateX(-50%);
-    width: min(980px, calc(100vw - var(--safe-margin-left) - var(--safe-margin-right)));
+    transform: translateX(-50%) scale(var(--screen-scale, 1));
+    transform-origin: bottom center;
+    /* divided by the scale: scaled up, it still fits between the margins */
+    width: min(980px, calc((100vw - var(--safe-margin-left) - var(--safe-margin-right)) / var(--screen-scale, 1)));
     box-sizing: border-box;
     background: rgba(0, 0, 0, 0.93);
     border: 1px solid var(--color-dimmed-charcoal);
@@ -369,7 +377,8 @@ html[data-video-is-playing] .carousel-slide {
     position: fixed;
     top: 45px;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) scale(var(--screen-scale, 1));
+    transform-origin: top center;
     display: flex;
     flex-direction: column;
     align-items: center;
