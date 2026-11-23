@@ -92,6 +92,7 @@ def test_a_failed_uninstall_keeps_the_module_settings():
 
 def _uninstall_with(venv_has, uv, paths=("/storage/mirrordash/venv", None, None), package="mirrordash-clock"):
     from pathlib import Path
+
     from mirrordash_core.features.modules import service
     config = {"modules": {"clock-one": {"module": package}}}
     order = []

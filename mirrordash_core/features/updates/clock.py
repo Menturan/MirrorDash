@@ -10,8 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from mirrordash_core import notifications
-from mirrordash_core.venv import venv_distributions
-from mirrordash_core.venv import uv_pip
+from mirrordash_core.venv import uv_pip, venv_distributions
 
 logger = logging.getLogger("mirrordash.core.updates")
 
