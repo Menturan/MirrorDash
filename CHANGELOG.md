@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### App
+
+- **System update checks say when GitHub's limit is reached**: when GitHub has stopped answering because too many requests came from your network (60 an hour, shared by every device on it), the check now says when to try again instead of blaming your internet connection, and it downloads far less.
+
 ### OS image
 
 - **No going back to an older system**: a system update older than the one the mirror runs is refused, so an update can't take the mirror back to a version with a known security hole. Installing the same version again still works, and the update page says why it was refused.

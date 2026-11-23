@@ -475,3 +475,85 @@ def test_a_refused_os_update_shows_the_guards_reason(tmp_path, monkeypatch):
         asyncio.run(service.update_os({"build": "20261001-0800", "tag": "v0", "url": "u", "size": 1}))
     assert refused.value.detail == "Installing the OS update failed: Refusing an older OS (build 1) over the running one (build 2)."
     assert calls[1][:3] == ("journalctl", "-t", "mirrordash-os-guard")
+
+
+# --- Asking GitHub for releases: pages, and its rate limit ---
+
+def release(tag, bundle=None, prerelease=False):
+    assets = [{"name": f"mirrordash-os-v{tag}-{bundle}.raucb", "browser_download_url": "u", "size": 1}] if bundle else []
+    return {"tag_name": tag, "prerelease": prerelease, "assets": assets}
+
+
+def pages_of(monkeypatch, pages, prerelease=False):
+    """Serves release pages (a failed page is None); returns the page numbers asked for."""
+    import asyncio
+    asked = []
+
+    async def fake_fetch(url, headers=None, max_age=0):
+        number = int(url.rsplit("page=", 1)[1])
+        asked.append(number)
+        return pages[number - 1] if number <= len(pages) else []
+
+    monkeypatch.setattr(service, "fetch_json_cached", fake_fetch)
+    monkeypatch.setattr(service, "prerelease_enabled", lambda: prerelease)
+    monkeypatch.setattr(service, "rate_limit_reset", lambda url: None)
+    return asked, lambda: asyncio.run(service.find_os_bundle())
+
+
+def full(*first):
+    return list(first) + [release(f"app{i}") for i in range(20 - len(first))]
+
+
+def test_releases_stop_at_the_first_page_with_a_bundle(monkeypatch):
+    asked, find = pages_of(monkeypatch, [full(release("1", "20261101-1200")), full()])
+    assert find()["build"] == "20261101-1200" and asked == [1]
+
+
+def test_releases_go_on_when_a_page_has_only_app_releases(monkeypatch):
+    asked, find = pages_of(monkeypatch, [full(), full(release("1", "20261101-1200"))])
+    assert find()["build"] == "20261101-1200" and asked == [1, 2]
+
+
+def test_releases_stop_at_a_short_page(monkeypatch):
+    asked, find = pages_of(monkeypatch, [full(), [release("app")], full()])
+    assert find() is None and asked == [1, 2]
+
+
+def test_releases_are_read_five_pages_at_most(monkeypatch):
+    asked, find = pages_of(monkeypatch, [full()] * 8)
+    assert find() is None and asked == [1, 2, 3, 4, 5]
+
+
+def test_releases_skip_test_versions_unless_wanted(monkeypatch):
+    pages = [full(release("2rc1", "20261102-1200", prerelease=True)), full(release("1", "20261101-1200"))]
+    asked, find = pages_of(monkeypatch, pages)
+    assert find()["build"] == "20261101-1200" and asked == [1, 2]
+    asked, find = pages_of(monkeypatch, pages, prerelease=True)
+    assert find()["build"] == "20261102-1200" and asked == [1]
+
+
+def test_a_failed_later_page_is_an_error_not_no_update(monkeypatch):
+    from fastapi import HTTPException
+    _, find = pages_of(monkeypatch, [full(), None])
+    with pytest.raises(HTTPException) as error:
+        find()
+    assert error.value.status_code == 502 and "GitHub didn't answer" in error.value.detail
+
+
+def test_a_used_up_rate_limit_says_when_to_try_again(monkeypatch):
+    import time
+
+    from fastapi import HTTPException
+    monkeypatch.setenv("TZ", "UTC")
+    time.tzset()
+    try:
+        _, find = pages_of(monkeypatch, [None])
+        monkeypatch.setattr(service, "rate_limit_reset", lambda url: 1793012400.0)  # 2026-10-26 11:00 UTC
+        with pytest.raises(HTTPException) as error:
+            find()
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert error.value.status_code == 503
+    assert error.value.detail == ("GitHub's limit for update checks from your network is used up (60 an hour, "
+                                  "shared by every device on it). Try again after 11:00.")

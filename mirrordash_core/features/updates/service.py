@@ -11,6 +11,7 @@ import shutil
 import sys
 import time
 import urllib.request
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -22,7 +23,7 @@ from mirrordash_core.features.logs.saved import save_log
 from mirrordash_core.features.modules.trial import UPDATE_TRIES
 from mirrordash_core.features.updates.clock import carry_clock
 from mirrordash_core.features.updates.download import download, partial_file
-from mirrordash_core.fetch import fetch_json_cached
+from mirrordash_core.fetch import fetch_json_cached, rate_limit_reset
 from mirrordash_core.host import (
     installed_os_build,
     reboot_system,
@@ -284,9 +285,12 @@ OS_PENDING_FILE = Path("/storage/mirrordash/os-update-pending")
 # 1 while the firmware runs a new OS version on trial (see rauc-bootloader in configure_image.sh)
 TRYBOOT_FLAG = Path("/proc/device-tree/chosen/bootloader/tryboot")
 TRYBOOT_ON = b"\x00\x00\x00\x01"  # a device tree value: a 32-bit big-endian 1
-# ponytail: the newest 100 releases (the most GitHub gives at once), app and test versions among them: a
-# system bundle further back than that isn't found; follow the Link header's next page if that ever comes
-RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=100"
+# Releases are asked for in pages of 20 (a page of 100 is ~500 KB, too much for a Pi 3 on Wi-Fi), newest first,
+# until one holds a bundle for this mirror. ponytail: at most 5 pages (the newest 100 releases, app and test
+# versions among them): a system bundle further back than that isn't found
+RELEASES_URL = "https://api.github.com/repos/Menturan/MirrorDash/releases?per_page={per_page}&page={page}"
+RELEASES_PER_PAGE = 20
+RELEASES_MAX_PAGES = 5
 BUNDLE_NAME = re.compile(r"^mirrordash-os-v.+-(\d{8}-\d{4})\.raucb$")
 
 
@@ -358,19 +362,37 @@ def failed_os_update(installed: str) -> str | None:
     return target
 
 
+async def find_os_bundle() -> dict | None:
+    """The newest bundle for this mirror, reading release pages until one holds it (see RELEASES_URL)."""
+    prerelease = prerelease_enabled()
+    releases: list[dict] = []
+    for page in range(1, RELEASES_MAX_PAGES + 1):
+        url = RELEASES_URL.format(per_page=RELEASES_PER_PAGE, page=page)
+        # ponytail: an answer may be a minute old (as the modules' on the Updates card), so checking again
+        # and again, and Install right after a check, can't use up GitHub's 60 requests an hour
+        answer = await fetch_json_cached(url, headers={"Accept": "application/vnd.github+json"}, max_age=60)
+        if not isinstance(answer, list):
+            reset = rate_limit_reset(url)
+            if reset is not None:
+                raise HTTPException(status_code=503, detail=(
+                    "GitHub's limit for update checks from your network is used up (60 an hour, shared by every "
+                    f"device on it). Try again after {datetime.fromtimestamp(reset).strftime('%H:%M')}."))
+            raise HTTPException(status_code=502, detail="GitHub didn't answer. Check the mirror's internet "
+                                                        "connection, or try again in a while.")
+        releases += answer
+        bundle = newest_os_bundle(answer, prerelease)
+        if bundle or len(answer) < RELEASES_PER_PAGE:
+            break
+    return newest_os_bundle(releases, prerelease)
+
+
 async def check_os_update() -> dict:
     """Whether a newer OS is available for this mirror, and whether the last OS update failed."""
     installed = installed_os_build()
     if installed is None:
         return {"supported": False}
 
-    # ponytail: an answer may be a minute old (as the modules' on the Updates card), so checking again
-    # and again, and Install right after a check, can't use up GitHub's 60 requests an hour
-    releases = await fetch_json_cached(RELEASES_URL, headers={"Accept": "application/vnd.github+json"}, max_age=60)
-    if not isinstance(releases, list):
-        raise HTTPException(status_code=502, detail="GitHub didn't answer. Check the mirror's internet connection, "
-                                                    "or try again in a while.")
-    bundle = newest_os_bundle(releases, prerelease_enabled())
+    bundle = await find_os_bundle()
     return {
         "supported": True,
         "installed_build": installed,
