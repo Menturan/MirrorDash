@@ -88,3 +88,60 @@ def test_a_failed_uninstall_keeps_the_module_settings():
          pytest.raises(HTTPException):
         asyncio.run(service.uninstall_module("mirrordash-clock"))
     save.assert_not_called()
+
+
+def _uninstall_with(venv_has, uv, paths=("/storage/mirrordash/venv", None, None), package="mirrordash-clock"):
+    from pathlib import Path
+    from mirrordash_core.features.modules import service
+    config = {"modules": {"clock-one": {"module": package}}}
+    order = []
+
+    async def change(*args, **kwargs):
+        order.append("site")
+
+    async def fake_uv(python, command, *args, timeout=None):
+        order.append(("venv", python, command, args))
+        return await uv()
+
+    with patch.object(service, "load_config", return_value=config), patch.object(service, "save_config") as save, \
+         patch.object(service, "_change_packages", side_effect=change), patch.object(service, "allow_scripts"), \
+         patch.object(service, "get_venv_paths", return_value=paths and (Path(paths[0]), None, None)), \
+         patch.object(service, "venv_distributions",
+               return_value=iter([object()] if venv_has else [])), \
+         patch.object(service, "uv_pip", fake_uv):
+        try:
+            asyncio.run(service.uninstall_module(package))
+            error = None
+        except HTTPException as e:
+            error = e
+    return order, save, error
+
+
+async def _ok():
+    return 0, "", ""
+
+
+def test_uninstalling_the_clock_removes_it_from_the_venv_then_the_site():
+    order, _, error = _uninstall_with(True, _ok)
+    assert error is None
+    assert order == [("venv", "/storage/mirrordash/venv/bin/python", "uninstall", ("mirrordash-clock",)), "site"]
+
+
+def test_a_failed_venv_uninstall_changes_nothing_else():
+    async def fail():
+        return 1, "", "boom"
+
+    order, save, error = _uninstall_with(True, fail)
+    assert error.status_code == 500 and "Uninstall failed: boom" in error.detail
+    assert [o for o in order if o == "site"] == []
+    save.assert_not_called()
+
+
+def test_another_module_is_not_uninstalled_from_the_venv():
+    order, _, _ = _uninstall_with(True, _ok, package="mirrordash-ha")
+    assert order == ["site"]
+
+
+def test_not_on_a_mirror_the_venv_is_left_alone():
+    order, _, _ = _uninstall_with(True, _ok, paths=None)
+    assert order == ["site"]

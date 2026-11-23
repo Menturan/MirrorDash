@@ -1,6 +1,7 @@
 import asyncio
 import json
 import re
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -55,8 +56,8 @@ def mock_admin_shared_load_config():
 
 @pytest.fixture(autouse=True)
 def no_clock_download():
-    """The venv tests here don't fetch the clock module (tests/test_clock_always_there.py does)."""
-    with patch("mirrordash_core.features.updates.service.ensure_clock", new_callable=AsyncMock):
+    """The venv tests here don't fetch the clock module (tests/test_clock_carried.py does)."""
+    with patch("mirrordash_core.features.updates.service.carry_clock", new_callable=AsyncMock):
         yield
 
 
@@ -746,7 +747,7 @@ def test_disk_usage_success(mock_disk_usage, client):
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.revert_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=True)
+@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=(Path("/old/venv"), None, None))
 def test_rebuild_venv_success(mock_paths, mock_revert, mock_commit, mock_prepare, mock_version,
                                mock_create_task, mock_exec, mock_restart,
                                mock_load, client):
@@ -782,7 +783,7 @@ REBUILD_MODULES = [
 @patch("mirrordash_core.features.updates.service.get_core_version", return_value="1.0.0")
 @patch("mirrordash_core.venv.prepare_venv_next", new_callable=AsyncMock)
 @patch("mirrordash_core.venv.commit_venv_next", new_callable=AsyncMock)
-@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=True)
+@patch("mirrordash_core.features.updates.service.get_venv_paths", return_value=(Path("/old/venv"), None, None))
 def test_rebuild_venv_installs_the_core_only(mock_paths, mock_commit, mock_prepare, mock_version,
                                              mock_create_task, mock_restart, module_site):
     """The modules aren't in the core's venv (the module site, ARCHITECTURE #41): a rebuild installs

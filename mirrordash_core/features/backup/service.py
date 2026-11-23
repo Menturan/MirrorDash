@@ -13,7 +13,6 @@ This file makes, lists, deletes and restores backups. Beside it:
 
 import asyncio
 import contextlib
-import importlib.metadata
 import json
 import logging
 import os
@@ -91,14 +90,6 @@ def get_modules_dir() -> Path:
     if dev_modules.exists() and os.access(dev_modules, os.W_OK):
         return dev_modules
     return get_module_dir() / "local"
-
-
-def venv_distributions(venv_dir: Path | None = None, **kwargs):
-    """The installed packages of this process, or of another venv read from its files: one whose
-    Python doesn't run here (the venv Safe mode couldn't start, another Python version)."""
-    if venv_dir is not None:
-        kwargs["path"] = [str(p) for p in Path(venv_dir).glob("lib/python3.*/site-packages")]
-    return importlib.metadata.distributions(**kwargs)
 
 
 def temp_upload() -> str:

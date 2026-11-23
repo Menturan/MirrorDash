@@ -6,6 +6,7 @@ and keeps the previous environment as venv_old, only when the change worked. Unt
 the active one: a restart or a power cut mid-install starts the mirror as it was."""
 
 import asyncio
+import importlib.metadata
 import logging
 import os
 import shutil
@@ -27,6 +28,14 @@ SAFE_ENV_KEYS = ("PATH", "HOME", "USER", "LANG", "LC_ALL", "VIRTUAL_ENV", "UV_PY
 # there is the new version's, however late it comes, and launch.sh goes back to venv_old
 TRIAL_FILE = "venv-trial"
 CONFIRM_AFTER_SECONDS = 60
+
+
+def venv_distributions(venv_dir: Path | None = None, **kwargs):
+    """The installed packages of this process, or of another venv read from its files: one whose
+    Python doesn't run here (the venv Safe mode couldn't start, another Python version)."""
+    if venv_dir is not None:
+        kwargs["path"] = [str(p) for p in Path(venv_dir).glob("lib/python3.*/site-packages")]
+    return importlib.metadata.distributions(**kwargs)
 
 
 def get_venv_paths():

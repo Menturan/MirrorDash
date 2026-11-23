@@ -28,6 +28,7 @@ from mirrordash_core.features.modules.schema import get_module_schema
 from mirrordash_core.features.modules.site_folders import site_links, site_paths
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_in_background, run_restart
+from mirrordash_core.venv import get_venv_paths, uv_pip, venv_distributions
 
 logger = logging.getLogger("mirrordash.core.modules")
 
@@ -372,10 +373,26 @@ async def module_updates(max_age: float = REMOTE_JSON_TTL) -> tuple[list[dict], 
     return [update for update in checked if update["latest_version"]], min(answer_times, default=None)
 
 
+async def _uninstall_from_venv(package_name: str) -> None:
+    """The image's clock lives in the core's venv, not the module site: uninstalling it removes it there too,
+    so it stays gone (updates/clock.py only carries a clock over that the old venv had)."""
+    if package_name not in guard.CLOCK_MODULES or not (paths := get_venv_paths()):
+        return
+    venv = paths[0]
+    if not next(iter(venv_distributions(venv, name=package_name)), None):
+        return
+    code, _, err = await uv_pip(str(venv / "bin" / "python"), "uninstall", package_name)
+    if code != 0:
+        logger.error(f"Uninstall from the core's environment failed: {err}")
+        raise HTTPException(status_code=500, detail=f"Uninstall failed: {err.strip()}")
+
+
 async def uninstall_module(package_name: str) -> dict:
     """Uninstall a module, delete its instances' settings, and restart."""
     check_package_name(package_name, allow_git=False)
     logger.info(f"Uninstalling package: {package_name}")
+    await _uninstall_from_venv(package_name)
+    # (uv succeeds for a package the site doesn't have, so a clock that was only in the venv goes through)
     await _change_packages("Uninstall", ["uninstall", "-y", package_name])
     # Its instances go too, once it is gone (a failed uninstall keeps them); a reinstall starts from defaults.
     # _change_packages only schedules the restart, so this is saved before it.
