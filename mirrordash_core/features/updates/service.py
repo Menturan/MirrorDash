@@ -20,6 +20,7 @@ from mirrordash_core import notifications
 from mirrordash_core.config import get_core_version, load_config, version_key
 from mirrordash_core.features.logs.saved import save_log
 from mirrordash_core.features.modules.trial import UPDATE_TRIES
+from mirrordash_core.features.updates.clock import ensure_clock
 from mirrordash_core.features.updates.download import download, partial_file
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.host import (
@@ -136,6 +137,7 @@ async def _update_to_new_python(python: str, version: str, skip: tuple[str, ...]
             code, _, err = await uv_pip(new_venv_python, "install", *prerelease_arguments, f"mirrordash=={version}")
             if code != 0:
                 raise HTTPException(status_code=500, detail=f"Upgrade failed: {err.strip()}")
+            await ensure_clock(new_venv_python)
             failed = {}
             for module in modules:
                 # ponytail: 10 minutes each, so a module that builds C code on the Pi can't hang the update
@@ -224,6 +226,7 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
             if version_key(installed) <= version_key(current_version):
                 logger.warning(f"mirrordash upgrade installed {installed or 'nothing'}, not newer than {current_version}")
                 raise HTTPException(status_code=409, detail="The new version isn't available yet. Try again in a few minutes.")
+            await ensure_clock(python)  # a venv an older rebuild left without it
     except HTTPException:
         raise
     except Exception as e:
@@ -234,8 +237,8 @@ async def update_core(skip: tuple[str, ...] = ()) -> dict:
 
 
 async def rebuild_venv() -> dict:
-    """Build a fresh venv with this MirrorDash version. The modules aren't in it (the module site,
-    ARCHITECTURE #41) and stay as they are."""
+    """Build a fresh venv with this MirrorDash version and the image's clock module (ensure_clock). The other
+    modules aren't in it (the module site, ARCHITECTURE #41) and stay as they are."""
     from mirrordash_core.features.backup.service import venv_distributions
     paths = get_venv_paths()
     if not paths:
@@ -256,6 +259,7 @@ async def rebuild_venv() -> dict:
             if code != 0:
                 logger.error(f"Failed to install mirrordash: {err}")
                 raise HTTPException(status_code=500, detail=f"Failed to install core: {err}")
+            await ensure_clock(python)
     except HTTPException:
         raise
     except Exception as e:

@@ -54,6 +54,13 @@ def mock_admin_shared_load_config():
 
 
 @pytest.fixture(autouse=True)
+def no_clock_download():
+    """The venv tests here don't fetch the clock module (tests/test_clock_always_there.py does)."""
+    with patch("mirrordash_core.features.updates.service.ensure_clock", new_callable=AsyncMock):
+        yield
+
+
+@pytest.fixture(autouse=True)
 def clear_config_cache():
     """Invalidate the in-memory config cache before each test to prevent test pollution."""
     from mirrordash_core.config import invalidate_config_cache
