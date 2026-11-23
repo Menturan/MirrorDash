@@ -9,21 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### App
-
-- **Module order**: on the Modules tab's screen map, each module that shares a screen position with others has up and down arrows, so you can choose which stacks first. The mirror redraws at once.
-- **The clock stays as you left it**: after *Rebuild environment* or an update to a newer Python, the clock module is still there (it went missing before), and a clock you uninstalled is really gone and stays gone.
-- **Modules can say which MirrorDash they need**: if a module's new version needs a newer MirrorDash than yours, the mirror doesn't install or update it, keeps the version you have, and says *Needs MirrorDash X or newer: update MirrorDash first*. Modules have to name their version for this, so you see it once a module you use does.
-- **Backups are checked before they're restored**: a backup with a password that was damaged or changed is refused with a clear message before anything is restored. Backups made by older versions can't be read any more: after updating, make a new backup (an old one says so).
-- **The Wi-Fi password no longer shows in the system's process list** while the mirror joins a network.
-- **HDMI-CEC is marked experimental**: it hasn't been tried on many TVs yet.
-- **Screen Scale**: a new setting makes everything on the mirror larger or smaller, 50 to 200 % in steps of 25, like display scaling on a computer: the modules and the notices at the screen edges grow, the screen padding stays as set.
-- **Settings a module builds itself**: a module can now add boxes to its settings that depend on what it finds out (for example the readings a device has, as tick boxes), and they change as you change the fields beside them. Only the boxes shown are saved, and if the module can't be reached a message shows under them and what was saved stays. Modules have to use it, so you see it once a module you use does.
-- **Settings shared by all instances of a module**: a module can now mark a setting as shared (an address, an access token), so with three cards of the same module you type it once. In each card's settings it shows a note and an *Own value* switch: off, the card uses the shared value (changing it changes them all); on, it keeps its own. Modules have to mark their settings for this, so you see it once a module you use does. Backups treat a shared password like any other.
-- **MQTT no longer breaks on a test version's new dependencies**: with *Test versions* on, an update let every dependency be a pre-release, and MQTT to Home Assistant stopped working when one of them (`aiomqtt` 3.0 alpha) changed. Only MirrorDash itself may be a test version now, and `aiomqtt` and `paho-mqtt` are held to the versions MirrorDash was written for.
-- **The bell tells you when MQTT stops**: when its connection ends by an error (before, it stopped silently with the card stuck on *connecting*), and when the mirror hasn't been connected to the broker for 10 minutes.
-- **The bell tells you when Matter stays down**: if the Matter node doesn't come back after the system's own restarts, after about three minutes.
-
 ### OS image
 
 - **No going back to an older system**: a system update older than the one the mirror runs is refused, so an update can't take the mirror back to a version with a known security hole. Installing the same version again still works, and the update page says why it was refused.
@@ -49,6 +34,23 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.19.0] - 2026-11-24
+
+### App
+
+- **Module order**: on the Modules tab's screen map, each module that shares a screen position with others has up and down arrows, so you can choose which stacks first. The mirror redraws at once.
+- **The clock stays as you left it**: after *Rebuild environment* or an update to a newer Python, the clock module is still there (it went missing before), and a clock you uninstalled is really gone and stays gone.
+- **Modules can say which MirrorDash they need**: if a module's new version needs a newer MirrorDash than yours, the mirror doesn't install or update it, keeps the version you have, and says *Needs MirrorDash X or newer: update MirrorDash first*. Modules have to name their version for this, so you see it once a module you use does.
+- **Backups are checked before they're restored**: a backup with a password that was damaged or changed is refused with a clear message before anything is restored. Backups made by older versions can't be read any more: after updating, make a new backup (an old one says so).
+- **The Wi-Fi password no longer shows in the system's process list** while the mirror joins a network.
+- **HDMI-CEC is marked experimental**: it hasn't been tried on many TVs yet.
+- **Screen Scale**: a new setting makes everything on the mirror larger or smaller, 50 to 200 % in steps of 25, like display scaling on a computer: the modules and the notices at the screen edges grow, the screen padding stays as set.
+- **Settings a module builds itself**: a module can now add boxes to its settings that depend on what it finds out (for example the readings a device has, as tick boxes), and they change as you change the fields beside them. Only the boxes shown are saved, and if the module can't be reached a message shows under them and what was saved stays. Modules have to use it, so you see it once a module you use does.
+- **Settings shared by all instances of a module**: a module can now mark a setting as shared (an address, an access token), so with three cards of the same module you type it once. In each card's settings it shows a note and an *Own value* switch: off, the card uses the shared value (changing it changes them all); on, it keeps its own. Modules have to mark their settings for this, so you see it once a module you use does. Backups treat a shared password like any other.
+- **MQTT no longer breaks on a test version's new dependencies**: with *Test versions* on, an update let every dependency be a pre-release, and MQTT to Home Assistant stopped working when one of them (`aiomqtt` 3.0 alpha) changed. Only MirrorDash itself may be a test version now, and `aiomqtt` and `paho-mqtt` are held to the versions MirrorDash was written for.
+- **The bell tells you when MQTT stops**: when its connection ends by an error (before, it stopped silently with the card stuck on *connecting*), and when the mirror hasn't been connected to the broker for 10 minutes.
+- **The bell tells you when Matter stays down**: if the Matter node doesn't come back after the system's own restarts, after about three minutes.
 
 ## [0.18.0] - 2026-11-15
 
