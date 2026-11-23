@@ -417,7 +417,7 @@ async def upgrade_panel_module(package_name: str = Form(...)):
 @router.post("/panels/modules/upgrade-all", dependencies=[Depends(require_api_key)])
 async def upgrade_all_modules():
     # Asked again here rather than taken from the page: only what GitHub or PyPI offers right now is installed
-    updates, _ = await module_updates()
+    updates = [update for update in (await module_updates())[0] if not update.get("needs")]
     if not updates:
         return notify("Every module is up to date.")
     names = ", ".join(update["package_name"] for update in updates)

@@ -82,6 +82,7 @@ def test_create_backup_encryption_failure(mock_subproc, mock_backup_dirs, client
     mock_process = MagicMock()
     mock_process.returncode = 1
     mock_process.communicate = AsyncMock(return_value=(b"", b"openssl error"))
+    mock_process.stdout.read = AsyncMock(return_value=b"")
     mock_subproc.return_value = mock_process
 
     response = call(create_backup, "secret")
@@ -128,6 +129,38 @@ def test_upload_backup_corrupt_zip(mock_backup_dirs, client):
     files = {"file": ("test.mirror", b"corrupt data", "application/octet-stream")}
     r = client.post("/admin/panels/backup/upload", files=files, headers=headers)
     assert "Invalid or corrupt backup archive" in r.text
+
+def test_an_old_or_changed_backup_is_refused_with_a_message_before_a_restore(mock_backup_dirs, client, tmp_path):
+    """Upload shows why, a restore answers 400 with it and unpacks nothing; the file stays for a retry."""
+    backups_dir, _ = mock_backup_dirs
+    headers = {"X-API-Key": "secret"}
+    old = b"Salted__" + bytes(200)
+    r = client.post("/admin/panels/backup/upload", files={"file": ("old.mirror", old)}, headers=headers)
+    assert "older MirrorDash" in r.text and "make a new backup" in r.text and "password" not in r.text
+
+    plain = tmp_path / "p.zip"
+    with zipfile.ZipFile(plain, "w") as zf:
+        zf.writestr("backup_manifest.json", "{}")
+    locked = tmp_path / "locked.mirror"
+    from mirrordash_core.features.backup.archive import encrypt_zip
+    asyncio.run(encrypt_zip("a password", str(plain), str(locked)))
+    changed = bytearray(locked.read_bytes())
+    changed[-40] ^= 1
+    r = client.post("/admin/panels/backup/upload", files={"file": ("c.mirror", bytes(changed))}, headers=headers)
+    assert "Encrypted Backup" in r.text  # the password prompt first
+    r = client.post("/admin/panels/backup/validate-password", headers=headers,
+                    data={"filename": "c.mirror", "password": "a password", "is_local": "false"})
+    assert "damaged or has been changed" in r.text
+    r = client.post("/admin/panels/backup/validate-password", headers=headers,
+                    data={"filename": "c.mirror", "password": "wrong", "is_local": "false"})
+    assert "Invalid backup password" in r.text
+    for name, raw, message in (("old", old, "older MirrorDash"), ("changed", bytes(changed), "damaged or has been changed")):
+        (backups_dir / "tmp_upload.mirror").write_bytes(raw)
+        with patch("mirrordash_core.features.backup.service.save_config") as mock_save:
+            r = call(restore_backup, "a password")
+        assert r.status_code == 400 and message in r.json()["detail"], name
+        mock_save.assert_not_called()
+
 
 def test_get_modules_dir(tmp_path):
     from mirrordash_core.features.backup.service import get_modules_dir
@@ -283,7 +316,7 @@ def test_backup_round_trip_to_fresh_mirror(mock_backup_dirs, module_site, client
 @pytest.mark.asyncio
 async def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_path):
     from mirrordash_core.features.backup.archive import (
-        _openssl,
+        encrypt_zip,
         is_encrypted,
         read_manifest,
     )
@@ -291,7 +324,7 @@ async def test_read_manifest_tells_a_locked_backup_from_a_wrong_password(tmp_pat
     with zipfile.ZipFile(plain, "w") as zf:
         zf.writestr("backup_manifest.json", '{"backup_version": "2.0"}')
     locked = str(tmp_path / "locked.mirror")
-    assert await _openssl("my secret", "-salt", "-in", str(plain), "-out", locked)
+    await encrypt_zip("my secret", str(plain), locked)
     assert is_encrypted(locked) and not is_encrypted(str(plain))
     assert await read_manifest(locked) is None
     assert all([await read_manifest(locked, f"wrong{i}") is None for i in range(3)])
@@ -309,7 +342,7 @@ async def test_an_old_zipcrypto_backup_says_so(tmp_path):
     from mirrordash_core.features.backup.archive import read_manifest
     (tmp_path / "backup_manifest.json").write_text('{"backup_version": "1.0"}')
     subprocess.run(["zip", "-q", "-P", "secret", "old.mirror", "backup_manifest.json"], cwd=tmp_path, check=True)
-    with pytest.raises(ValueError, match="older"):
+    with pytest.raises(ValueError, match="older MirrorDash"):
         await read_manifest(str(tmp_path / "old.mirror"), "secret")
 
 
@@ -332,7 +365,7 @@ def test_an_encrypted_backup_carries_the_logins_and_wifi(mock_backup_dirs, modul
     assert r.status_code == 200, r.json()
     archive = backups_dir / r.json()["filename"]
     raw = archive.read_bytes()
-    assert raw.startswith(b"Salted__") and b"wifi pass" not in raw and b"old-hash" not in raw
+    assert raw.startswith(b"MDBAKv01") and b"wifi pass" not in raw and b"old-hash" not in raw
 
     async def contents(pw):
         from mirrordash_core.features.backup.archive import plain_zip

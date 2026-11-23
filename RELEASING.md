@@ -172,7 +172,7 @@ For debugging (an environment variable on the screen service, `debugfs`, stoppin
 2. Power the mirror off, put the card in a computer and copy `~/.ssh/mirrordash_debug.pub` to the first partition (AUTOBOOT) as `mirrordash-root-key.pub`. Several people: one public key per line.
 3. Boot, turn SSH on in the admin page, then `ssh -i ~/.ssh/mirrordash_debug root@mirrordash.local`.
 
-What root changes in system files is gone at the next reboot (the root is read-only). A factory reset does **not** remove the file: delete it from the card, or flash a fresh image, before giving a mirror away. A card from someone you don't trust should be flashed anew anyway.
+What root changes in system files is gone at the next reboot (the root is read-only). A factory reset removes the file. A card from someone you don't trust should be flashed anew anyway.
 
 ---
 

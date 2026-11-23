@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -394,12 +395,18 @@ async def update_os(bundle: dict) -> None:
     OS_PENDING_FILE.write_text(bundle["build"])
     logger.info("OS update: installing")
     # No timeout: writing a slot takes minutes on a slow card, and stopping RAUC halfway helps nobody
+    started = int(time.time())
     exit_code, _, error_output = await run_command("sudo", "-n", "rauc", "install", str(OS_BUNDLE_FILE), timeout=None)
     OS_BUNDLE_FILE.unlink(missing_ok=True)
     if exit_code != 0:
         OS_PENDING_FILE.unlink(missing_ok=True)
         await save_log("os-install", "-u", "rauc", "-b", "-n", "300")  # RAUC's own account of the failure
         last_error_line = (error_output.strip().splitlines() or ["unknown error"])[-1]
+        # RAUC's own last line only says "handler failed"; the image's downgrade guard (rauc-pre-install) logs why
+        _, guard, _ = await run_command("journalctl", "-t", "mirrordash-os-guard", "--since", f"@{started}", "-n", "1",
+                                        "--no-pager", "-o", "cat")
+        if guard.startswith("Refusing"):  # not its "not checking" note: then RAUC failed for another reason
+            last_error_line = guard.strip()
         logger.error(f"OS update failed: {error_output}")
         raise HTTPException(status_code=500, detail=f"Installing the OS update failed: {last_error_line}")
     logger.info("OS update installed. Restarting into it on trial...")

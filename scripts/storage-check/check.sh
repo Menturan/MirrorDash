@@ -33,10 +33,10 @@ new_disk() {
     local b=/storage/mirrordash/data/data/backups
     mkdir -p $b
     echo '{"settings": "mine"}' > /storage/mirrordash/data/data/config.json
-    # Encrypted backups (openssl's "Salted__" header): storage-rescue keeps only what looks like a backup
-    { printf Salted__; head -c 200000 /dev/urandom; } > $b/mirrordash_autobackup_20261101_033000.mirror
-    { printf Salted__; head -c 300000 /dev/urandom; } > $b/mirrordash_autobackup_20261108_033000.mirror
-    { printf Salted__; head -c 100000 /dev/urandom; } > $b/mirrordash_backup_20261102_120000.mirror
+    # Encrypted backups (the "MDBAKv01" header): storage-rescue keeps only what looks like a backup
+    { printf MDBAKv01; head -c 200000 /dev/urandom; } > $b/mirrordash_autobackup_20261101_033000.mirror
+    { printf MDBAKv01; head -c 300000 /dev/urandom; } > $b/mirrordash_autobackup_20261108_033000.mirror
+    { printf MDBAKv01; head -c 100000 /dev/urandom; } > $b/mirrordash_backup_20261102_120000.mirror
     sha256sum < $b/mirrordash_autobackup_20261101_033000.mirror | cut -d' ' -f1 > /want-older
     sha256sum < $b/mirrordash_autobackup_20261108_033000.mirror | cut -d' ' -f1 > /want-auto
     sha256sum < $b/mirrordash_backup_20261102_120000.mirror | cut -d' ' -f1 > /want-hand

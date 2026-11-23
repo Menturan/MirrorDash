@@ -1,8 +1,10 @@
 {# A module has a newer version (routes.check_module_update_route): its badge and buttons, swapped
    in out of band. The version comes from PyPI or a GitHub release, so it is only ever text here.
-   target: what to install (the PyPI name, or git+url@tag); notes: PyPI has release notes. #}
+   target: what to install (the PyPI name, or git+url@tag); notes: PyPI has release notes; needs: an update
+   refused it for needing a newer MirrorDash (service.too_new), then it is text and no Upgrade button. #}
 <div id="update-badge-{{ module_name }}" hx-swap-oob="true">
     <span class="status-badge update-avail">Update Available (v{{ latest_version }})</span>
+    {% if needs %}<p class="muted">v{{ latest_version }}: {{ needs }}</p>{% endif %}
 </div>
 <div id="update-actions-{{ module_name }}" class="update-item-actions" hx-swap-oob="true">
     {% if notes %}
@@ -13,6 +15,7 @@
         <i class="fas fa-file-alt"></i> Notes
     </button>
     {% endif %}
+    {% if not needs %}
     <button class="btn secondary btn-sm"
             hx-post="/admin/panels/modules/upgrade"
             hx-vals='{{ {"package_name": target} | tojson }}'
@@ -20,4 +23,5 @@
             hx-confirm="Are you sure you want to upgrade {{ package_name }} to v{{ latest_version }}?">
         <i class="fas fa-arrow-alt-circle-up"></i> Upgrade
     </button>
+    {% endif %}
 </div>

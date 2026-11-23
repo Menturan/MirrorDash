@@ -1,0 +1,32 @@
+#!/bin/bash
+# RAUC's pre-install handler ([handlers] in /etc/rauc/system.conf, ARCHITECTURE #31): runs as root before
+# RAUC writes a slot, and a non-zero exit stops the install. It refuses a bundle older than the running OS:
+# RAUC takes any bundle signed with our key, also an old one with a known hole, and `pi` may run
+# `rauc install` (sudoers.d/mirrordash-rauc). It lives in the image, not in the bundle, so a bundle can't
+# switch it off.
+# Both sides are build stamps (UTC YYYYMMDD-HHMM, build_image.sh): the running OS's in /etc/mirrordash-os-build,
+# the bundle's at the end of its manifest version (RAUC_MF_VERSION, e.g. 0.17.0-20261113-1200). A higher stamp
+# is a newer OS, whatever the release number says (an rc of 0.10.1 is older than 0.10.1 by its stamp too).
+# The same stamp is allowed (a reinstall). A stamp that can't be read, on either side, is allowed and
+# logged: a check that fails shut would stop every update on a mirror whose build file is odd.
+# Everything it reads is root's (an image file, the signed manifest); nothing of pi's.
+set -euo pipefail
+export LC_ALL=C
+
+BUILD_FILE=${MIRRORDASH_OS_BUILD_FILE:-/etc/mirrordash-os-build}  # overridable for tests/test_ab_updates.py
+STAMP='[0-9]{8}-[0-9]{4}'
+
+say() { logger -t mirrordash-os-guard -- "$1" || true; }  # the admin page shows this line when the install fails
+
+running=$(head -c 64 "$BUILD_FILE" 2>/dev/null | tr -d '[:space:]') || running=
+[[ "$running" =~ ^$STAMP$ ]] || { say "The running OS's build stamp is unknown ('$running'); not checking for a downgrade."; exit 0; }
+
+[[ "${RAUC_MF_VERSION:-}" =~ -($STAMP)$ ]] || { say "The bundle's version '${RAUC_MF_VERSION:-}' has no build stamp; not checking for a downgrade."; exit 0; }
+bundle=${BASH_REMATCH[1]}
+
+if [[ "$bundle" < "$running" ]]; then
+  msg="Refusing an older OS (build $bundle) over the running one (build $running): an old build may hold a security hole that is fixed."
+  say "$msg"
+  echo "$msg" >&2
+  exit 1
+fi

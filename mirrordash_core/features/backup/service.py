@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 """Backups: a .mirror file is a zip of the settings, the data dir, the modules' data and the source of
 local modules, with a manifest of the installed modules to reinstall. With a password the whole zip is
-encrypted with openssl and also carries what logs in (the admin password, the pi user's, the Wi-Fi).
+encrypted and authenticated (archive.py) and also carries what logs in (the admin password, the pi user's, the Wi-Fi).
 
 This file makes, lists, deletes and restores backups. Beside it:
   archive.py          the .mirror file: zip, encryption, reading its manifest
@@ -35,8 +35,9 @@ from mirrordash_core.config import (
     save_config,
 )
 from mirrordash_core.features.backup.archive import (
-    _openssl,
+    BackupError,
     content_hash,
+    encrypt_zip,
     is_encrypted,
     plain_zip,
 )
@@ -231,8 +232,7 @@ async def create_backup(password: str | None = None, automatic: bool = False, un
             finished = zip_path
             if password:
                 finished = str(temp_dir / "backup.enc")
-                if not await _openssl(password, "-salt", "-in", zip_path, "-out", finished):
-                    raise RuntimeError("encryption failed")
+                await encrypt_zip(password, zip_path, finished)
             if automatic:
                 os.chmod(finished, 0o600)  # the passwords, unencrypted: pi's alone, like the files they come from
             await asyncio.to_thread(replace_durably, finished, backup_path)
@@ -367,6 +367,8 @@ async def restore_backup(password: str | None = None) -> dict:
         os.remove(upload)
     except HTTPException:
         raise
+    except BackupError as e:  # an old, damaged or changed backup: refused before anything was restored
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error during restoration: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Restoration failed: {e}")

@@ -30,13 +30,13 @@ newest_first() {
 }
 
 # Whether a copied file looks like a whole backup: a zip (its start and, within its last 64 KiB, the end
-# of its central directory) or openssl's header. ponytail: catches blocks lost at the start or end, not
+# of its central directory) or the encrypted backup header (MDBAKv01). ponytail: catches blocks lost at the start or end, not
 # in the middle; a broken middle shows only when the backup is restored, so the other rescued one is the
 # way back then (ARCHITECTURE #58, Limits).
 looks_whole() {
   local start
   start=$(head -c 8 "$1" | od -An -tx1 | tr -d ' \n')
-  [ "$start" = 53616c7465645f5f ] && return 0  # "Salted__"
+  [ "$start" = 4d4442414b763031 ] && return 0  # "MDBAKv01": an encrypted backup (backup/archive.py)
   [ "${start:0:8}" = 504b0304 ] && tail -c 65558 "$1" | LC_ALL=C grep -qaF $'PK\x05\x06'
 }
 

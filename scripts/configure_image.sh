@@ -833,6 +833,7 @@ step_ab_updates() {
 
   mkdir -p /usr/local/lib/mirrordash
   put 0755 /usr/local/lib/mirrordash/rauc-bootloader
+  put 0755 /usr/local/lib/mirrordash/rauc-pre-install
 
   # p1 holds the Pi 3's firmware (bootcode.bin, start.elf, fixup.dat) and autoboot.txt. On a Pi 3 it
   # is p1's start.elf that boots the chosen slot, so the firmware files in the slots are never used

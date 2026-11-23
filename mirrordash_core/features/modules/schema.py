@@ -27,17 +27,17 @@ MAX_FIELDS = 100  # boxes in a fields setting, as the module host cuts them (fie
 MAX_CHOICE_TEXT = 200  # characters of a choice's id or name, as the module host cuts them (choices.py MAX_TEXT)
 
 
-def get_module_schema(ep) -> dict | None:
+def get_module_schema(ep, also_in=None) -> dict | None:
     """A module's config_schema.json (or schema.json) next to its plugin file, with its icon.svg as
     "icon" (a data: URL, shown as a mask so its scripts never run). Read as files: the core never
-    imports a module (ARCHITECTURE #41)."""
+    imports a module (ARCHITECTURE #41). also_in: see module_file."""
     from mirrordash_core.features.modules.module_files import module_file, package_dir
     plugin_dir = package_dir(ep) if ep else None
 
     schema = None
     if plugin_dir:
         for filename in ("config_schema.json", "schema.json"):
-            if (raw := module_file(plugin_dir, filename)) is not None:
+            if (raw := module_file(plugin_dir, filename, also_in=also_in)) is not None:
                 try:
                     data = json.loads(raw.decode("utf-8"))
                     if isinstance(data, dict):
@@ -47,7 +47,7 @@ def get_module_schema(ep) -> dict | None:
                     logger.warning(f"Error loading standalone schema {plugin_dir / filename}: {e}")
 
     # If we resolved a schema and have a plugin_dir, check for icon.svg next to it
-    if schema and (svg := module_file(plugin_dir, "icon.svg")) is not None:
+    if schema and (svg := module_file(plugin_dir, "icon.svg", also_in=also_in)) is not None:
         svg_content = svg.strip()
         if svg_content.startswith(b"<svg"):
             schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()

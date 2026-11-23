@@ -14,7 +14,7 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from mirrordash_core import notifications
-from mirrordash_core.config import load_config, save_config, version_key
+from mirrordash_core.config import get_module_dir, load_config, save_config, version_key
 from mirrordash_core.features.modules import guard, trial
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.modules.module_files import (
@@ -22,8 +22,10 @@ from mirrordash_core.features.modules.module_files import (
     module_entry_points,
     site_name,
 )
+from mirrordash_core.features.modules.module_requirements import folder_problem
 from mirrordash_core.features.modules.package_names import package_key
 from mirrordash_core.features.modules.schema import get_module_schema
+from mirrordash_core.features.modules.site_folders import site_links, site_paths
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
 from mirrordash_core.host import run_in_background, run_restart
 
@@ -161,6 +163,19 @@ async def _pinned_to_latest_release(package_name: str) -> str:
     return package_name if "@" in package_name else f"{package_name}@{tag}"
 
 
+# Releases an update refused because they need a newer MirrorDash: {target: (version, message)}. Found only
+# after the download (requires_mirrordash is a file in the release), so the update list shows "needs MirrorDash
+# X" from the first refusal until the next restart. ponytail: in memory, so each start tries once more.
+too_new: dict[str, tuple[str, str]] = {}
+
+
+def release_problem(target: str) -> tuple[str, str] | None:
+    """(version, message) when the module just installed from target in the next site needs a newer MirrorDash
+    than this one (requires_mirrordash, module_requirements.py), or its field is malformed; else None."""
+    folder = site_links(site_paths()[2]).get(package_key(target) or "")
+    return folder_problem(get_module_dir() / "pkgs" / folder) if folder else None
+
+
 async def _change_packages(what: str, *changes: list[str]) -> None:
     """Run uv pip changes, one module each, in the next module site (module_host.packages, ARCHITECTURE
     #41); keep it only if uv succeeds."""
@@ -171,6 +186,8 @@ async def _change_packages(what: str, *changes: list[str]) -> None:
                 if code != 0:
                     logger.error(f"{what} failed: {err}")
                     raise HTTPException(status_code=500, detail=f"{what} failed: {err}")
+                if uv_arguments[0] == "install" and (problem := release_problem(_local_target(uv_arguments[-1]))):
+                    raise HTTPException(status_code=409, detail=problem[1])  # nothing is switched in
     except HTTPException:
         raise
     except Exception as e:
@@ -202,8 +219,8 @@ async def modules_to_auto_update(config: dict) -> list[dict]:
     but not the ones the owner turned off in their settings (config's "module_auto_update_off")."""
     held = set(config.get("module_auto_update_off", []))
     updates, _ = await module_updates()
-    return [update for update in updates
-            if (ep := find_entry_point(update["module_name"])) is None or site_name(ep) not in held]
+    return [update for update in updates if not update.get("needs")
+            and ((ep := find_entry_point(update["module_name"])) is None or site_name(ep) not in held)]
 
 
 async def noted(work, *packages: str):
@@ -264,6 +281,8 @@ async def update_modules(*package_names: str) -> dict:
         async with module_host.packages() as site:
             for package_name in package_names:
                 code, err = await site.pip("install", "--upgrade", _local_target(package_name))
+                if code == 0 and (problem := release_problem(_local_target(package_name))):
+                    too_new[package_name], code, err = problem, 1, problem[1]
                 if code == 0:
                     code, err = await site.check(_name_spellings(package_name))
                 if code == 0:
@@ -273,7 +292,7 @@ async def update_modules(*package_names: str) -> dict:
                     failed[package_name] = err.strip()
             for package_name in failed:
                 notifications.add("warning", f"{module_title(_name_spellings(package_name)[0])} couldn't be updated "
-                                  "and stays as it was")
+                                  f"and stays as it was{': ' + failed[package_name] if package_name in too_new else ''}")
             if not updated:
                 raise HTTPException(status_code=500, detail=f"Verification failed. Rolled back successfully. Error: {'; '.join(failed.values())}")
             await _put_back(site, failed)
@@ -296,14 +315,14 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
     """An installed module (entry point name) against its latest release: GitHub's when it was installed from
     there (PEP 610 direct_url.json), else PyPI's. None when it isn't installed, else {"module_name", "package_name",
     "current_version", "latest_version" (None when up to date or nobody answered), "target" (what update_modules installs),
-    "notes" (PyPI has release notes), "checked_at" (when the answer was fetched, seconds since 1970)}."""
+    "needs" (the message of a release an update refused for needing a newer MirrorDash, else None), "notes" (PyPI has release notes), "checked_at" (when the answer was fetched, seconds since 1970)}."""
     ep = find_entry_point(module_name)
     if not ep:
         return None
     package_name = ep.dist.name if ep.dist else module_name
     current_version = ep.dist.version if ep.dist else "0.0.0"
     result = {"module_name": module_name, "package_name": package_name, "current_version": current_version,
-              "latest_version": None, "target": package_name, "notes": True, "checked_at": None}
+              "latest_version": None, "target": package_name, "notes": True, "checked_at": None, "needs": None}
 
     # Where pip/uv installed it from (PEP 610): a git URL and commit for a module from GitHub
     direct_url_info = None
@@ -328,6 +347,7 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
         on_latest = vcs_info.get("requested_revision") == tag_name
         if not on_latest and version_key(latest_version) > version_key(current_version):
             result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False)
+            result["needs"] = too_new.get(result["target"], (None, None))[1]
         return result
 
     pypi_url = f"https://pypi.org/pypi/{package_name}/json"
@@ -337,6 +357,9 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
         latest_version = pypi_data.get("info", {}).get("version", current_version)
         if version_key(latest_version) > version_key(current_version):
             result["latest_version"] = latest_version
+            refused_version, result["needs"] = too_new.get(package_name, (None, None))
+            if refused_version != latest_version:
+                result["needs"] = None
     return result
 
 

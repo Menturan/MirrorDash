@@ -399,3 +399,79 @@ def test_test_versions_skip_a_withdrawn_release(monkeypatch):
     monkeypatch.setattr(service.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(answer))
     monkeypatch.setattr(service, "prerelease_enabled", lambda: True)
     assert asyncio.run(service.check_core_update())["latest_version"] == "0.9.0"
+
+
+def run_guard(tmp_path, running, bundle_version):
+    """The pre-install handler RAUC runs (scripts/image/rootfs/usr/local/lib/mirrordash/rauc-pre-install) with a fake
+    build file and logger: (exit code, what it told RAUC, what it logged)."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    (bin_dir / "logger").write_text(f'#!/bin/bash\necho "$*" >> {tmp_path}/logged\n')
+    (bin_dir / "logger").chmod(0o755)
+    build = tmp_path / "os-build"
+    if running is not None:
+        build.write_text(running + "\n")
+    script = tmp_path / "guard"
+    script.write_text(unit("/usr/local/lib/mirrordash/rauc-pre-install"))
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "MIRRORDASH_OS_BUILD_FILE": str(build), "RAUC_MF_VERSION": bundle_version}
+    done = subprocess.run(["bash", str(script)], env=env, capture_output=True, text=True)
+    logged = tmp_path / "logged"
+    return done.returncode, done.stderr, logged.read_text() if logged.exists() else ""
+
+
+@pytest.mark.parametrize("running, bundle_version, allowed", [
+    ("20261101-1200", "0.17.0-20261113-0900", True),   # newer
+    ("20261101-1200", "0.17.0-20261101-1200", True),   # the same build: a reinstall
+    ("20261101-1200", "0.17.0-20261101-1201", True),   # a minute later
+    ("20261101-1200", "0.16.0-20261031-2359", False),  # older
+    ("20261101-1200", "0.17.0-20261101-1159", False),  # a minute earlier
+    ("20261101-1200", "0.10.1rc2-20261001-0800", False),  # an old rc
+    ("20261001-0800", "0.10.1-20261101-1200", True),   # a release after its rc
+])
+def test_the_install_guard_refuses_only_an_older_os(tmp_path, running, bundle_version, allowed):
+    code, error, logged = run_guard(tmp_path, running, bundle_version)
+    assert (code == 0) == allowed
+    if not allowed:
+        assert "Refusing an older OS" in error and "Refusing an older OS" in logged  # logged: the admin page shows it
+
+
+@pytest.mark.parametrize("running, bundle_version", [
+    (None, "0.17.0-20261113-0900"),            # no build file: an image from before A/B
+    ("garbage", "0.17.0-20261113-0900"),       # unreadable stamp
+    ("20261101-1200", "0.17.0"),               # a bundle version without a stamp
+    ("20261101-1200", ""),                     # RAUC gave no version
+    ("20261101-1200", "0.17.0-2026110-1200"),  # a malformed stamp
+])
+def test_the_install_guard_lets_unknown_versions_through_and_says_so(tmp_path, running, bundle_version):
+    code, _, logged = run_guard(tmp_path, running, bundle_version)
+    assert code == 0 and "not checking for a downgrade" in logged
+
+
+def test_the_install_guard_is_in_the_image_and_not_in_the_bundle():
+    assert "pre-install=/usr/local/lib/mirrordash/rauc-pre-install\n" in unit("/etc/rauc/system.conf")
+    assert re.search(r"put 0755 /usr/local/lib/mirrordash/rauc-pre-install\n", SETUP)
+    assert "pre-install" not in (Path(__file__).parent.parent / "scripts" / "build_image.sh").read_text()
+
+
+def test_a_refused_os_update_shows_the_guards_reason(tmp_path, monkeypatch):
+    """RAUC's own last line says only that a handler failed: the admin page shows the guard's logged reason."""
+    import asyncio
+    from unittest.mock import AsyncMock
+
+    from fastapi import HTTPException
+    monkeypatch.setattr(service, "OS_BUNDLE_FILE", tmp_path / "os-update.raucb")
+    monkeypatch.setattr(service, "OS_PENDING_FILE", tmp_path / "pending")
+    monkeypatch.setattr(service, "download", lambda *a: None)
+    monkeypatch.setattr(service, "save_log", AsyncMock())
+    calls = []
+
+    async def fake_run(*command, **kwargs):
+        calls.append(command)
+        if command[0] == "sudo":
+            return 1, "", "Installing failed: Handler error"
+        return 0, "Refusing an older OS (build 1) over the running one (build 2).\n", ""
+    monkeypatch.setattr(service, "run_command", fake_run)
+    with pytest.raises(HTTPException) as refused:
+        asyncio.run(service.update_os({"build": "20261001-0800", "tag": "v0", "url": "u", "size": 1}))
+    assert refused.value.detail == "Installing the OS update failed: Refusing an older OS (build 1) over the running one (build 2)."
+    assert calls[1][:3] == ("journalctl", "-t", "mirrordash-os-guard")

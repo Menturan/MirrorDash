@@ -8,7 +8,11 @@ import os
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from mirrordash_core.admin import start_job
-from mirrordash_core.features.backup.archive import backup_wifi, read_manifest
+from mirrordash_core.features.backup.archive import (
+    BackupError,
+    backup_wifi,
+    read_manifest,
+)
 from mirrordash_core.features.backup.service import restore_backup, temp_upload
 from mirrordash_core.features.wifi.network import connect_wifi, restore_captive_ap
 from mirrordash_core.features.wifi.routes import check_wifi_auth
@@ -37,8 +41,10 @@ async def post_wifi_restore(file: UploadFile = File(...), password: str = Form(d
             out.write(chunk)
     try:
         manifest = await read_manifest(temp_upload(), password or None)
+    except BackupError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception:
-        raise HTTPException(status_code=400, detail="That file isn't a MirrorDash backup, or it's from an older version.")
+        raise HTTPException(status_code=400, detail="That file isn't a MirrorDash backup.")
     if manifest is None:
         raise HTTPException(status_code=400, detail="Wrong password for this backup." if password
                             else "This backup is protected: enter its password.")

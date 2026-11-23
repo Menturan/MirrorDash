@@ -227,12 +227,20 @@ def test_factory_reset_leaves_only_the_logs(tmp_path):
         f.chmod(0o755)
     script = tmp_path / "reset"
     script.write_text(unit("/usr/local/bin/mirrordash-factory-reset"))
-    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "MIRRORDASH_STORAGE": str(storage)}
+    autoboot = tmp_path / "autoboot"
+    autoboot.mkdir()
+    (autoboot / "mirrordash-root-key.pub").write_text("ssh-ed25519 AAAA debug\n")
+    (autoboot / "autoboot.txt").write_text("[all]\n")
+    env = {"PATH": f"{bin_dir}:/usr/bin:/bin", "MIRRORDASH_STORAGE": str(storage), "MIRRORDASH_AUTOBOOT_DIR": str(autoboot)}
     assert subprocess.run(["bash", str(script)], env=env, capture_output=True).returncode == 2
-    assert (storage / "data" / "config.json").exists()
+    assert (storage / "data" / "config.json").exists() and (autoboot / "mirrordash-root-key.pub").exists()
     subprocess.run(["bash", str(script), "--yes"], env=env, check=True, capture_output=True)
     assert [p.name for p in storage.iterdir()] == ["logs"] and (storage / "logs" / "os-trial-1.log").exists()
     assert (tmp_path / "systemctl").read_text() == "reboot\n"
+    # Root's SSH key file (ARCHITECTURE #60) goes too; the rest of p1 stays. Without one it is no error.
+    assert [p.name for p in autoboot.iterdir()] == ["autoboot.txt"]
+    (storage / "x").write_text("x")
+    subprocess.run(["bash", str(script), "--yes"], env=env, check=True, capture_output=True)
     assert "pi ALL=(ALL) NOPASSWD: /usr/local/bin/mirrordash-factory-reset --yes" in unit("/etc/sudoers.d/mirrordash")
 
 

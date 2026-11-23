@@ -14,8 +14,8 @@ AUTH = {"admin_auth": {"hash": hash_password("secret", "salt"), "salt": "salt"}}
 
 
 def make_backup(tmp_path, password: str | None, wifi: list | None) -> bytes:
-    """A minimal .mirror file: plain, or encrypted with openssl like create_backup does."""
-    from mirrordash_core.features.backup.archive import _openssl
+    """A minimal .mirror file: plain, or encrypted like create_backup does."""
+    from mirrordash_core.features.backup.archive import encrypt_zip
     plain = tmp_path / "plain.zip"
     with zipfile.ZipFile(plain, "w") as zf:
         zf.writestr("backup_manifest.json", json.dumps({"backup_version": "2.0", "modules": []}))
@@ -24,7 +24,7 @@ def make_backup(tmp_path, password: str | None, wifi: list | None) -> bytes:
     if not password:
         return plain.read_bytes()
     out = tmp_path / "locked.mirror"
-    assert asyncio.run(_openssl(password, "-salt", "-in", str(plain), "-out", str(out)))
+    asyncio.run(encrypt_zip(password, str(plain), str(out)))
     return out.read_bytes()
 
 
@@ -59,6 +59,13 @@ def test_setup_restore_answers_before_it_leaves_the_hotspot(setup_client, tmp_pa
     with patch("mirrordash_core.features.backup.setup_restore.start_job"):
         r = client.post("/api/wifi/restore", files={"file": ("b.mirror", locked)}, data={"password": "pw"})
     assert r.status_code == 200 and r.json()["networks"] == ["Home"]
+    # An older MirrorDash's backup and a changed one: told apart from a wrong password, nothing joined
+    r = client.post("/api/wifi/restore", files={"file": ("b.mirror", b"Salted__" + bytes(64))}, data={"password": "pw"})
+    assert r.status_code == 400 and "older MirrorDash" in r.json()["detail"]
+    changed = bytearray(locked)
+    changed[-5] ^= 1
+    r = client.post("/api/wifi/restore", files={"file": ("b.mirror", bytes(changed))}, data={"password": "pw"})
+    assert r.status_code == 400 and "damaged or has been changed" in r.json()["detail"]
 
 
 def test_wifi_api_counts_wrong_passwords_like_the_login():

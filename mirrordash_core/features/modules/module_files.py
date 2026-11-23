@@ -107,16 +107,17 @@ def package_dir(ep) -> Path | None:
     return Path(spec.origin).parent if spec.origin else None
 
 
-def module_file(pkg_dir: Path | None, *parts: str) -> bytes | None:
+def module_file(pkg_dir: Path | None, *parts: str, also_in: Path | None = None) -> bytes | None:
     """A file in a module's package, read for the core, or None. One that really lies outside the folders
     modules are found in isn't read: the module host writes the site, and a link it put there to the core's
     data would have the core show that (a translated title on the screen). Where it lies is asked of the
     open file (/proc/self/fd), and it is read from that descriptor, so a link the host swaps in between the
-    check and the read isn't followed either."""
+    check and the read isn't followed either. also_in: one more folder it may lie in (a module just installed
+    in the next site, not switched in yet: module_requirements.py)."""
     if pkg_dir is None:
         return None
     path = Path(pkg_dir, *parts)
-    roots = [Path(p).resolve() for p in module_search_path() if p]
+    roots = [Path(p).resolve() for p in [*module_search_path(), also_in] if p]
     try:
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)  # NONBLOCK: a FIFO there can't hang the core
     except OSError:

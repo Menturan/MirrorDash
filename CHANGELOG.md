@@ -11,6 +11,10 @@ There are two kinds of releases:
 
 ### App
 
+- **Modules can say which MirrorDash they need**: if a module's new version needs a newer MirrorDash than yours, the mirror doesn't install or update it, keeps the version you have, and says *Needs MirrorDash X or newer: update MirrorDash first*. Modules have to name their version for this, so you see it once a module you use does.
+- **Backups are checked before they're restored**: a backup with a password that was damaged or changed is refused with a clear message before anything is restored. Backups made by older versions can't be read any more: after updating, make a new backup (an old one says so).
+- **The Wi-Fi password no longer shows in the system's process list** while the mirror joins a network.
+- **HDMI-CEC is marked experimental**: it hasn't been tried on many TVs yet.
 - **Screen Scale**: a new setting makes everything on the mirror larger or smaller, 50 to 200 % in steps of 25, like display scaling on a computer: the modules and the notices at the screen edges grow, the screen padding stays as set.
 - **Settings a module builds itself**: a module can now add boxes to its settings that depend on what it finds out (for example the readings a device has, as tick boxes), and they change as you change the fields beside them. Only the boxes shown are saved, and if the module can't be reached a message shows under them and what was saved stays. Modules have to use it, so you see it once a module you use does.
 - **Settings shared by all instances of a module**: a module can now mark a setting as shared (an address, an access token), so with three cards of the same module you type it once. In each card's settings it shows a note and an *Own value* switch: off, the card uses the shared value (changing it changes them all); on, it keeps its own. Modules have to mark their settings for this, so you see it once a module you use does. Backups treat a shared password like any other.
@@ -20,6 +24,8 @@ There are two kinds of releases:
 
 ### OS image
 
+- **No going back to an older system**: a system update older than the one the mirror runs is refused, so an update can't take the mirror back to a version with a known security hole. Installing the same version again still works, and the update page says why it was refused.
+- **Reset Mirror removes the root key file** from the card too, so a mirror you give away has no way in for you.
 - **More TV channels can play**: the system now understands MPEG-TS video, the format most international news channels (DW, tagesschau24, RTVE, Rai News, TRT, Bloomberg, ABC Australia and others) stream in, and radio streams that start with an ID3 tag. Takes effect with the next system update.
 - **Root over SSH by a key file, for developers**: if a file `mirrordash-root-key.pub` with a public key is put on the first partition of the card (the one a computer can read), `root` can log in over SSH with that key, for debugging. Nothing changes unless the file is there, and the admin page, a module or the app can't create it. A reset does not remove it: delete it before giving a mirror away. See [RELEASING.md](RELEASING.md#root-on-your-own-mirror).
 - **A damaged SD card's backups are really rescued now**: when the storage partition was past repair, the mirror looked for your backups in the wrong folder, found none and started as a new mirror without them. It now finds the newest automatic and hand-made backup and puts them back in the Backup list. A partition that a check repaired is also no longer reported as having lost your settings when it didn't.

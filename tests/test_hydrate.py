@@ -230,7 +230,7 @@ def test_storage_rescue_copies_the_newest_backups_off_a_broken_partition(tmp_pat
     subprocess.run(["truncate", "-s", "256M", str(disk)], check=True)  # two block groups: a superblock copy
     subprocess.run(["mkfs.ext4", "-q", "-F", "-b", "4096", str(disk)], check=True, env=env)
     def encrypted(size):  # what an encrypted backup starts with (archive.ENCRYPTED_MAGIC)
-        return b"Salted__" + os.urandom(size)
+        return b"MDBAKv01" + os.urandom(size)
     files = {"mirrordash_autobackup_20261101_033000.mirror": encrypted(3000),
              "mirrordash_autobackup_20261108_033000.mirror": encrypted(70000),
              "mirrordash_backup_20261102_120000.mirror": encrypted(5000),

@@ -278,7 +278,7 @@ template:
 *   **Automatic updates** run between 03:30 and 04:30, one a night: the system first, MirrorDash the next night, and the modules once both are up to date.
 *   **A mirror that is off at night** (on a smart plug or a switch) can turn on *Catch up after a night off*: it then runs the night's update about ten minutes after it starts, when the last one is more than 20 hours ago.
 *   **System updates** (the Linux system underneath MirrorDash) have their own *System* part in the same card, checked by the same **Check for Updates**. **Install System Update** downloads it, installs it next to the running system and restarts the mirror into it. It takes 10–30 minutes; keep the mirror plugged in. If the network or MirrorDash doesn't come up with the new system, the mirror goes back to the old one by itself within a few minutes, and the admin page says so. Nothing is lost either way. When MirrorDash and the system both have an update, install the system first; the MirrorDash button waits until then.
-*   **A backup** (Backup tab): a new card can be set up from a backup made with a password on the Wi-Fi setup page (section 1). The modules are installed again (this needs internet) and the mirror restarts. Backups made before version 0.9.1 can't be restored. **Files you uploaded** in a module's settings (photos) are never in a backup: keep the originals.
+*   **A backup** (Backup tab): a new card can be set up from a backup made with a password on the Wi-Fi setup page (section 1). The modules are installed again (this needs internet) and the mirror restarts. A backup with a password is also checked when it is restored: one that was damaged or changed is refused before anything is restored. Backups made before this version (and before 0.9.1) can't be read: the mirror says so, and you make a new backup. **Files you uploaded** in a module's settings (photos) are never in a backup: keep the originals.
 *   **Automatic backups** are not encrypted. If the storage partition is ever damaged beyond repair, they are what brings your mirror back (section 9). For a copy somewhere else, create a backup yourself and download it.
 
 <details>
@@ -335,7 +335,7 @@ Then put the card back and start the mirror.
 
 ### Starting over
 
-To give the mirror away or start over, use **Reset Mirror** at the bottom of the Settings tab (type RESET): your settings, the admin password, modules and their data, backups, the Wi-Fi networks and the API token are deleted, and the mirror restarts as when its card was flashed: it asks for Wi-Fi and a password on its own screen. Download a backup first if you want to keep anything. A reset does not remove a root key file that someone put on the card (see [Root on your own mirror](RELEASING.md#root-on-your-own-mirror)); flash the card anew to be sure.
+To give the mirror away or start over, use **Reset Mirror** at the bottom of the Settings tab (type RESET): your settings, the admin password, modules and their data, backups, the Wi-Fi networks and the API token are deleted, and the mirror restarts as when its card was flashed: it asks for Wi-Fi and a password on its own screen. Download a backup first if you want to keep anything. A reset also removes a root key file that someone put on the card (see [Root on your own mirror](RELEASING.md#root-on-your-own-mirror)); a card you don't trust should still be flashed anew.
 
 ---
 

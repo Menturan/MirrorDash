@@ -20,7 +20,7 @@ from mirrordash_core.admin import (
     start_job,
     templates,
 )
-from mirrordash_core.features.backup.archive import read_manifest
+from mirrordash_core.features.backup.archive import BackupError, read_manifest
 from mirrordash_core.features.backup.service import (
     backup_file,
     create_backup,
@@ -83,9 +83,9 @@ async def _summary_or_password_prompt(filename: str, is_local: bool, password: s
     """What the backup in temp_upload() holds, or a password prompt when it's encrypted."""
     try:
         manifest = await read_manifest(temp_upload(), password)
-    except ValueError as e:  # a backup in the old format, or a file that isn't one
+    except BackupError as e:  # an older MirrorDash's backup, or a damaged or changed one
         logger.error(f"Not a readable backup: {e}")
-        return _error(str(e) if "older" in str(e) else "Invalid or corrupt backup archive.")
+        return _error(str(e))
     except Exception as e:
         logger.error(f"Not a backup file: {e}")
         return _error("Invalid or corrupt backup archive.")
