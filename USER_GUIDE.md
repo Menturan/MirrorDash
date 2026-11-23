@@ -92,7 +92,7 @@ The Power tab chooses *Always on*, *On a schedule* or *Off until woken*. Outside
 *   Turning the screen off by hand keeps it off until something wakes it again or the schedule starts.
 *   When the screen turns on the cards fade in one by one, the clock first; before it turns off they fade out. *Waking and resting* on the Power tab sets the style and the times. A monitor needs a moment to show a picture after standby and nobody knows yours: if the first cards are missed, raise the *Start delay*.
 *   While the screen is off, the modules don't fetch new data (saving API calls). When it comes back on, those whose update was due fetch it right away.
-*   A TV turns off and on with the screen over HDMI-CEC (*Turn a TV off and on with the screen*, on by default), as its remote would. If someone is watching another input on it, the mirror leaves it alone. A computer monitor goes to standby by itself when the screen turns off. Not yet tried on a TV.
+*   *(Experimental)* A TV turns off and on with the screen over HDMI-CEC (*Turn a TV off and on with the screen*, on by default), as its remote would. If someone is watching another input on it, the mirror leaves it alone. A computer monitor goes to standby by itself when the screen turns off. Not yet tried on many TVs.
 
 Always use **Shut Down** (Power tab) before unplugging the mirror. To start it again, unplug the power and plug it back in, or use a button on GPIO 3 (see the *Hardware* tab).
 
@@ -103,7 +103,7 @@ Always use **Shut Down** (Power tab) before unplugging the mirror. To start it a
 Add buttons, sensors and a fan in the Hardware tab under *Sensors & Inputs*; it shows how to wire each one. Some things it doesn't say:
 
 *   An **on/off fan** (2 or 3 wires) needs a transistor or MOSFET between the GPIO and the fan, never the GPIO alone. A 4-wire PWM fan is connected directly.
-*   **Brightness on an HDMI screen** is sent over the cable (DDC/CI). Most computer monitors understand it, most TVs don't. Some monitors have it turned off in their own menu: turn it on there and move the slider again.
+*   **Brightness on an HDMI screen** is sent over the cable (DDC/CI). Many computer monitors accept it, but not all, and TVs mostly don't. The official 7" touchscreen and other DSI screens use their backlight instead. Some monitors have it turned off in their own menu: turn it on there and move the slider again.
 *   **Sound** (for a module that plays, like a radio) comes out of the **3.5 mm jack**, for powered speakers or headphones, or over **HDMI** if the screen has speakers; the module chooses which (the radio has a setting for it). A screen without speakers stays silent without saying so. *System Volume* in the Hardware tab is the whole mirror's.
 
 ---

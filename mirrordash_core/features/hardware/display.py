@@ -47,8 +47,10 @@ brightness_supported: bool | None = None
 
 async def apply_brightness(brightness: int) -> bool:
     """Set the screen brightness (10-100 %). A DSI screen has a backlight device; an HDMI screen
-    can only be asked over DDC/CI, which most monitors understand and most TVs don't."""
+    can only be asked over DDC/CI, which many monitors accept but not all, and TVs mostly don't."""
     global brightness_supported
+    # The trust boundary: the sudo rule lets ddcutil through only for a whole number from 10 to 100
+    brightness = max(10, min(100, int(brightness)))
     brightness_supported = await _set_backlight(brightness) or await _set_ddc_brightness(brightness)
     return brightness_supported
 

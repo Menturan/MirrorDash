@@ -64,9 +64,9 @@ SETUP_HOSTS = ("mirrordash.setup", "10.42.0.1")  # the mirror's name and address
 SCAN_BEFORE_HOTSPOT_FILE = "/var/lib/mirrordash-wifi-scan.cache"
 
 
-async def _nmcli(*args: str, timeout: float = 15) -> tuple[int, str]:
-    """`nmcli <args>`: (exit_code, its output, or its error when it failed)."""
-    exit_code, output, error_output = await run_command("nmcli", *args, timeout=timeout)
+async def _nmcli(*args: str, timeout: float = 15, input_text: str | None = None) -> tuple[int, str]:
+    """`nmcli <args>`: (exit_code, its output, or its error when it failed). input_text goes to its stdin."""
+    exit_code, output, error_output = await run_command("nmcli", *args, timeout=timeout, input_text=input_text)
     return exit_code, (output if exit_code == 0 else error_output).strip()
 
 
@@ -132,10 +132,11 @@ async def connect_wifi(ssid: str, password: str | None = None) -> tuple[bool, st
     logger.info(f"Attempting to connect to WiFi SSID: {ssid}")
     await _teardown_captive_ap()
 
-    # ponytail: the password shows in `ps` while nmcli runs (local only); passwd-file would close that.
-    # nmcli gives up by itself (--wait 30) before our timeout, so a slow join isn't cut off while it still runs
-    password_arguments = ["password", password] if password else []
-    exit_code, message = await _nmcli("--wait", "30", "dev", "wifi", "connect", ssid, *password_arguments, timeout=40)
+    # nmcli gives up by itself (--wait 30) before our timeout, so a slow join isn't cut off while it still runs.
+    # The password goes in on stdin (--ask makes nmcli read it there), never as an argument: `ps` shows those.
+    ask_arguments = ["--ask"] if password else []
+    exit_code, message = await _nmcli(*ask_arguments, "--wait", "30", "dev", "wifi", "connect", ssid, timeout=40,
+                                      input_text=f"{password}\n" if password else None)
     if exit_code == 0:
         logger.info(f"WiFi connection successful: {message}")
         return True, message

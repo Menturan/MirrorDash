@@ -169,13 +169,32 @@ def test_connect_wifi_tears_down_the_ap_before_connecting():
         order.append("teardown")
 
     async def nmcli(*args, **kwargs):
-        order.append(args)
+        order.append((args, kwargs))
         return 0, "ok"
 
     with patch.object(network, "_teardown_captive_ap", teardown), patch.object(network, "_nmcli", nmcli):
         assert asyncio.run(network.connect_wifi("HomeNet", "pass")) == (True, "ok")
     assert order[0] == "teardown"
-    assert order[1][-4:] == ("connect", "HomeNet", "password", "pass")
+    args, kwargs = order[1]
+    assert args == ("--ask", "--wait", "30", "dev", "wifi", "connect", "HomeNet")
+    assert "pass" not in args  # never on the command line, where `ps` shows it
+    assert kwargs["input_text"] == "pass\n"  # nmcli --ask reads it from stdin
+
+
+def test_connect_wifi_open_network_has_no_password_prompt():
+    import asyncio
+
+    from mirrordash_core.features.wifi import network
+    calls = []
+
+    async def nmcli(*args, **kwargs):
+        calls.append((args, kwargs))
+        return 0, "ok"
+
+    with patch.object(network, "_teardown_captive_ap", AsyncMock()), patch.object(network, "_nmcli", nmcli):
+        asyncio.run(network.connect_wifi("Cafe"))
+    assert calls[0][0] == ("--wait", "30", "dev", "wifi", "connect", "Cafe")
+    assert calls[0][1]["input_text"] is None
 
 @patch("mirrordash_core.features.kiosk.routes.get_hotspot_password", new_callable=AsyncMock, return_value="abcde23456")
 @patch("mirrordash_core.features.kiosk.routes.is_wifi_hotspot_active", new_callable=AsyncMock)

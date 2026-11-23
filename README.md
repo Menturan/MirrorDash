@@ -51,7 +51,7 @@ No keyboard, no terminal, no config files, now or later.
 | Raspberry Pi 3 B or newer | €45–60 | Developed on a Pi 3B+; a Pi 4 or 5 should work too. |
 | SD card, 8 GB or more | €0–10 | An old phone's card will do; a new one should be class A1 (Pi 3 and 4) or A2 (Pi 5). |
 | The official power supply | €0–10 | 5.1 V, 2.5 A for a Pi 3. A weaker one makes the mirror slow, and it warns you. |
-| A screen with HDMI | €0–100 | An old computer monitor is ideal: most of them let the mirror set their brightness (DDC/CI), most TVs don't. Take it out of its case for a slim build. |
+| A screen with HDMI | €0–100 | An old computer monitor is ideal: many let the mirror set their brightness over DDC/CI, but not all, and TVs mostly don't. The official 7" touchscreen and other DSI screens use their backlight. Take it out of its case for a slim build. |
 | A two-way mirror | €30–150 | Glass is the clearest; acrylic is cheaper and lighter but can warp; mirror film on plain glass is the cheapest. A bit larger than the screen. |
 | A frame | €0–30 | Wood from the hardware store, or an old picture frame. |
 | *Optional:* a motion sensor | €3–6 | A PIR sensor (HC-SR501) or an mmWave sensor (LD2410, which also notices someone standing still), so the screen is on only when someone's there. Buttons, a light sensor and a fan can be added too. |

@@ -92,12 +92,12 @@ async def test_connect_wifi_success(mock_subproc):
     success, msg = await connect_wifi("MySSID", "MyPassword")
     assert success is True
     assert "successfully activated" in msg
-    # verify password was passed in the command line (headless nmcli support)
+    # the password goes to nmcli's stdin (--ask), never into the argv that `ps` shows
     assert mock_subproc.call_count >= 1
-    # The last call should be the actual connection command containing the password
-    args = mock_subproc.call_args_list[-1][0]
-    assert "MyPassword" in args
-    mock_proc.communicate.assert_called_with(input=None)
+    for call in mock_subproc.call_args_list:
+        assert "MyPassword" not in call[0]
+    assert "--ask" in mock_subproc.call_args_list[-1][0]
+    mock_proc.communicate.assert_called_with(input=b"MyPassword\n")
 
 @pytest.mark.asyncio
 @patch("asyncio.create_subprocess_exec")
@@ -183,6 +183,23 @@ def test_hdmi_brightness_goes_over_ddc(monkeypatch):
         with patch("asyncio.create_subprocess_exec", ddc(1)):
             assert asyncio.run(apply_brightness(40)) is False
         assert display.brightness_supported is False
+
+
+def test_brightness_is_clamped_to_what_sudo_allows(monkeypatch):
+    """The sudo rule takes only a whole number from 10 to 100; anything else is clamped before it gets there."""
+    from mirrordash_core.features.hardware import display
+    monkeypatch.setattr(display, "brightness_supported", None)
+    sent = []
+
+    async def fake_run(*command, **kwargs):
+        sent.append(command[-1])
+        return 0, "", ""
+
+    with patch("mirrordash_core.features.hardware.display.glob.glob", return_value=[]), \
+         patch.object(display, "run_command", fake_run):
+        for value in (0, 5, 55.7, 250):
+            asyncio.run(display.apply_brightness(value))
+    assert sent == ["10", "10", "55", "100"]
 
 
 def test_volume_reaches_the_jack_on_card_1():
