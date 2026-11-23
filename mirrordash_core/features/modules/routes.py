@@ -354,6 +354,21 @@ async def toggle_module_instance(module_name: str, instance_id: str | None = Non
     return notify(f"Module instance {'enabled' if new_state else 'disabled'}.")
 
 
+@router.post("/panels/modules/move", dependencies=[Depends(require_api_key)])
+async def move_module_instance(instance_id: str, direction: str):
+    """One place up or down among the instances at the same screen position (the screen map's arrows)."""
+    if direction not in ("up", "down"):
+        raise HTTPException(status_code=422, detail="direction is up or down")
+    try:
+        moved = modules_service.move_instance(instance_id, -1 if direction == "up" else 1)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Instance not found") from None
+    if not moved:
+        return Response(status_code=204)  # already first or last there: nothing to save or redraw
+    await module_host.reload_modules()
+    return notify("Module moved.", refreshModules=True)
+
+
 @router.get("/panels/modules/check-update/{module_name}", dependencies=[Depends(require_api_key)])
 async def check_module_update_route(module_name: str):
     update = await check_module_update(module_name)

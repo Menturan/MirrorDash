@@ -124,6 +124,30 @@ def screen_layout() -> dict[str, list[dict]]:
     return layout
 
 
+def move_instance(instance_id: str, direction: int) -> bool:
+    """Move an instance one place up (-1) or down (+1) among those at its screen position: the order of
+    `modules` is the stacking order. False when it is already first or last there. KeyError if unknown."""
+    config = load_config()
+    modules = config.get("modules", {})
+    if not isinstance(modules.get(instance_id), dict):
+        raise KeyError(instance_id)
+
+    def position(key):
+        return modules[key].get("position", "middle_center")
+
+    same = [key for key, value in modules.items() if isinstance(value, dict) and position(key) == position(instance_id)]
+    target = same.index(instance_id) + direction
+    if not 0 <= target < len(same):
+        return False
+    here = same.index(instance_id)
+    same[here], same[target] = same[target], same[here]
+    # The instances of this position take the places the position held, in the new order
+    queue = iter(same)
+    config["modules"] = {(key := next(queue) if k in same else k): modules[key] for k in modules}
+    save_config(config)
+    return True
+
+
 def check_package_name(package_name: str, allow_git: bool = True) -> None:
     """Trust boundary: a PyPI-safe name, a local path or a GitHub git+https URL, never `..`, and never
     one starting with "-", which uv would read as an option ("-r/some/file" installs what a file lists)."""

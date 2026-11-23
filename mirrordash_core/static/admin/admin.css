@@ -2298,6 +2298,9 @@ button.mirror-tile-name { cursor: pointer; }
 button.mirror-tile-name::after { content: ""; position: absolute; inset: 0; border-radius: 8px; }  /* the whole tile opens it */
 button.mirror-tile-name:focus-visible { outline: none; }
 button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary); outline-offset: 2px; }
+.mirror-tile-move { display: flex; justify-content: flex-end; margin: 0 -8px -6px; position: relative; z-index: 1; }  /* its own row under the name, above the name's ::after */
+.mirror-tile-arrow { padding: 6px 10px; border: 0; background: none; color: var(--text-muted); font-size: 0.7rem; cursor: pointer; }
+.mirror-tile-arrow:hover, .mirror-tile-arrow:focus-visible { color: var(--text-primary); }
 .mirror-tile .switch { position: relative; z-index: 1; transform: scale(0.7); transform-origin: right center; margin: -4px -6px -4px 0; }
 .mirror-tile.off { background: none; border-color: var(--border-color); color: var(--text-muted); }
 .mirror-tile.missing { background: none; border: 1px dashed rgba(245, 158, 11, 0.5); color: var(--text-secondary); }

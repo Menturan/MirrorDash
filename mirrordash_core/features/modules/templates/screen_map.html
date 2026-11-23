@@ -52,6 +52,19 @@
                                             hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
                                             hx-target="#config-fields-global"
                                             onclick='openConfigureModule({{ m.module | tojson }}, {{ m.package | tojson }}, {{ m.id | tojson }})'>{{ m.name }}</button>
+                                    {% if placed|length > 1 %}
+                                        {% set first, last = loop.first, loop.last %}
+                                        {# Order within this position; no up arrow on the first, no down arrow on the last #}
+                                        <span class="mirror-tile-move">
+                                            {% for dir, arrow in [('up', 'fa-chevron-up'), ('down', 'fa-chevron-down')] %}
+                                                <button type="button" class="mirror-tile-arrow"
+                                                        aria-label="Move {{ m.name }} {{ dir }}"
+                                                        {% if (dir == 'up' and first) or (dir == 'down' and last) %}hidden{% endif %}
+                                                        hx-post="/admin/panels/modules/move?instance_id={{ m.id }}&direction={{ dir }}"
+                                                        hx-swap="none"><i class="fas {{ arrow }}" aria-hidden="true"></i></button>
+                                            {% endfor %}
+                                        </span>
+                                    {% endif %}
                                 </div>
                             {% else %}
                                 <div class="mirror-tile{% if not m.enabled %} off{% endif %}">

@@ -194,7 +194,7 @@ function showModuleHtml(data) {
     const parentContainer = groupContainer || area;
 
     if (card) {
-        if (card.parentElement !== parentContainer) insertInOrder(parentContainer, card, data.order);
+        if (card.parentElement !== parentContainer || Number(card.dataset.order) !== data.order) insertInOrder(parentContainer, card, data.order);
         if (card.classList.contains('module-loading-placeholder')) {
             card.replaceChildren();  // the pulsing loading content goes, not just hidden behind the module
             card.classList.remove('module-loading-placeholder');

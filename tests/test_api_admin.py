@@ -1949,3 +1949,83 @@ def test_a_modules_traceback_stays_in_its_own_log(tmp_path, monkeypatch):
         "2026-10-19T08:15:03.000Z [ERROR] mirrordash.modules.clock: broke",
         "Traceback (most recent call last):", "ValueError: no time"]
     assert asyncio.run(get_logs("modules", lines=1))["logs"] == "2026-10-19T08:15:04.000Z [INFO] mirrordash.modules.clock2: fine\n"
+
+
+# Module order: the arrows on the screen map
+
+def _order_cfg():
+    return {"modules": {"a": {"position": "top_left"}, "x": {"position": "top_right"}, "b": {"position": "top_left"},
+                        "junk": "not a dict", "c": {}, "d": {"position": "top_left"}}}
+
+
+def test_move_instance_swaps_within_a_position_and_skips_the_others():
+    from mirrordash_core.features.modules.service import move_instance
+    with patch("mirrordash_core.features.modules.service.load_config", return_value=_order_cfg()), \
+         patch("mirrordash_core.features.modules.service.save_config") as save:
+        assert move_instance("b", -1) is True
+    assert list(save.call_args[0][0]["modules"]) == ["b", "x", "a", "junk", "c", "d"]
+    with patch("mirrordash_core.features.modules.service.load_config", return_value=_order_cfg()), \
+         patch("mirrordash_core.features.modules.service.save_config") as save:
+        assert move_instance("b", 1) is True
+    assert list(save.call_args[0][0]["modules"]) == ["a", "x", "d", "junk", "c", "b"]
+
+
+def test_move_instance_does_nothing_at_the_edges_and_rejects_unknown():
+    from mirrordash_core.features.modules.service import move_instance
+    with patch("mirrordash_core.features.modules.service.load_config", side_effect=lambda: _order_cfg()), \
+         patch("mirrordash_core.features.modules.service.save_config") as save:
+        assert move_instance("a", -1) is False and move_instance("d", 1) is False
+        assert move_instance("c", 1) is False  # alone at middle_center
+        with pytest.raises(KeyError):
+            move_instance("nope", 1)
+        with pytest.raises(KeyError):
+            move_instance("junk", 1)
+    save.assert_not_called()
+
+
+def test_move_route(client):
+    url = "/admin/panels/modules/move"
+    headers = {"X-API-Key": "secret"}
+    assert client.post(f"{url}?instance_id=b&direction=up").status_code in (401, 403)
+    with patch("mirrordash_core.features.modules.service.load_config", side_effect=lambda: _order_cfg()), \
+         patch("mirrordash_core.features.modules.service.save_config") as save, \
+         patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock) as reload:
+        r = client.post(f"{url}?instance_id=b&direction=up", headers=headers)
+        assert r.status_code == 200 and "refreshModules" in r.headers["HX-Trigger-After-Swap"]
+        save.assert_called_once()
+        reload.assert_awaited_once()
+        save.reset_mock()
+        reload.reset_mock()
+        r = client.post(f"{url}?instance_id=a&direction=up", headers=headers)  # first already
+        assert r.status_code == 204
+        save.assert_not_called()
+        reload.assert_not_awaited()
+        assert client.post(f"{url}?instance_id=b&direction=left", headers=headers).status_code == 422
+        assert client.post(f"{url}?instance_id=nope&direction=up", headers=headers).status_code == 404
+
+
+def test_screen_map_arrows_only_when_interactive_and_not_at_the_ends(client):
+    cfg = {"modules": {"mirrordash-clock": {"position": "top_left"},
+                       "mirrordash-clock-2": {"module": "mirrordash-clock", "position": "top_left"},
+                       "mirrordash-clock-3": {"module": "mirrordash-clock", "position": "top_left"},
+                       "mirrordash-clock-4": {"module": "mirrordash-clock", "position": "bottom_right"}}}
+    clock = SimpleNamespace(name="mirrordash_clock", dist=None)
+    headers = {"X-API-Key": "secret"}
+    with patch("mirrordash_core.features.dashboard.routes.load_config", return_value=cfg), \
+         patch("mirrordash_core.features.modules.service.load_config", return_value=cfg), \
+         patch("mirrordash_core.features.modules.service.find_entry_point", return_value=clock), \
+         patch("mirrordash_core.features.modules.routes.list_modules", AsyncMock(return_value={"modules": {}})), \
+         patch("mirrordash_core.features.dashboard.telemetry.get_cpu_load", return_value=1.0):
+        modules_html = client.get("/admin/panels/modules", headers=headers).text
+        dashboard_html = client.get("/admin/panels/dashboard", headers=headers).text
+
+    def arrow(html, name, direction):
+        i = html.index(f'aria-label="Move {name} {direction}"')
+        return html[i:html.index("<i ", i)]
+
+    assert "mirror-tile-arrow" not in dashboard_html
+    assert "hidden" in arrow(modules_html, "Clock", "up") and "hidden" not in arrow(modules_html, "Clock", "down")
+    assert "hidden" not in arrow(modules_html, "Clock 2", "up") and "hidden" not in arrow(modules_html, "Clock 2", "down")
+    assert "hidden" in arrow(modules_html, "Clock 3", "down") and "hidden" not in arrow(modules_html, "Clock 3", "up")
+    assert "instance_id=mirrordash-clock-2&direction=up" in arrow(modules_html, "Clock 2", "up")
+    assert "Move Clock 4" not in modules_html  # alone at its position

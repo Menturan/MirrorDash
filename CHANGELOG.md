@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### App
 
+- **Module order**: on the Modules tab's screen map, each module that shares a screen position with others has up and down arrows, so you can choose which stacks first. The mirror redraws at once.
 - **The clock stays as you left it**: after *Rebuild environment* or an update to a newer Python, the clock module is still there (it went missing before), and a clock you uninstalled is really gone and stays gone.
 - **Modules can say which MirrorDash they need**: if a module's new version needs a newer MirrorDash than yours, the mirror doesn't install or update it, keeps the version you have, and says *Needs MirrorDash X or newer: update MirrorDash first*. Modules have to name their version for this, so you see it once a module you use does.
 - **Backups are checked before they're restored**: a backup with a password that was damaged or changed is refused with a clear message before anything is restored. Backups made by older versions can't be read any more: after updating, make a new backup (an old one says so).
