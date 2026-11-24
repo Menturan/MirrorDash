@@ -2,8 +2,15 @@
    titles, descriptions, options and values come from a module's author. A value in a JS string goes
    through tojson, since the browser decodes HTML escapes before the JS runs. #}
 
+{# The info button after a title, when the schema has a "help" (a longer text than the description). It sits outside
+   the label (a click never toggles a box) and carries its text in data attributes: help.js shows it in one popup.
+   Not an id: rows are renumbered and forms swapped in and out. #}
+{% macro help_button(f) -%}
+{%- if f.help %}<button type="button" class="help-btn" aria-label="More about {{ f.title }}" aria-haspopup="dialog" data-help="{{ f.help }}" data-help-title="{{ f.title }}"><i class="fas fa-circle-info" aria-hidden="true"></i></button>{% endif -%}
+{%- endmacro %}
+
 {% macro label(f, with_for=true) -%}
-<div class="form-label-desc"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label><p class="field-description">{{ f.description }}</p></div>
+<div class="form-label-desc"><div class="field-title-row"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label>{{ help_button(f) }}</div><p class="field-description">{{ f.description }}</p></div>
 {%- endmacro %}
 
 {# The schema's rules as the browser's own checks (setting_rules.py checks them again on save, ARCHITECTURE #49);
@@ -67,7 +74,7 @@
 {%- endmacro %}
 
 {% macro accordion(f, inner) -%}
-<details class="form-accordion"><summary>{{ f.title }}</summary>
+<details class="form-accordion"><summary>{{ f.title }}{{ help_button(f) }}</summary>
     <div class="form-accordion-body">{% if f.description %}<p class="field-description">{{ f.description }}</p>{% endif %}{{ inner }}</div></details>
 {%- endmacro %}
 
@@ -217,7 +224,7 @@
 <div class="wide shared-field">
     <div class="shared-row" data-shared-control="{{ f.id }}" data-shared-value="{{ state.shared_value|tojson if state.shared_value is boolean else state.shared_value }}">
         <div class="shared-notes">
-            <strong class="shared-title">{{ f.schema.title or f.key }}</strong>
+            <strong class="shared-title">{{ f.schema.title or f.key }}</strong>{{ help_button(f) }}
             <p class="field-description shared-note shared-note-linked"{% if state.own %} hidden{% endif %}><i class="fas fa-link"></i> Shared: set in Shared Settings above.</p>
             <p class="field-description shared-note shared-note-own"{% if not state.own %} hidden{% endif %}><i class="fas fa-user"></i> Only this instance. The shared value {% if is_secret %}stays as it is.{% else %}is <span class="shared-note-value">{{ shown }}</span>.{% endif %}</p>
         </div>

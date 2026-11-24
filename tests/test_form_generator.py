@@ -281,3 +281,14 @@ def test_render_array_item_checkboxes():
     parsed = parse_flat_form_data({"entities[0][readings]": ""})
     schema = {"properties": {"entities": {"type": "array", "items": {"type": "object", "properties": {"readings": prop}}}}}
     assert cast_values_by_schema(parsed, schema) == {"entities": [{"readings": []}]}
+
+
+def test_a_field_with_help_gets_an_info_button_with_the_text_escaped_and_one_without_gets_none():
+    schema = {"properties": {
+        "a": {"type": "boolean", "title": "Has Help", "description": "Short.", "help": 'Long <b>"text"</b>'},
+        "b": {"type": "string", "title": "No Help"}}}
+    html = render_schema_form(schema, {}, "modules[x]", "x")
+    assert html.count('class="help-btn"') == 1
+    assert 'data-help="Long &lt;b&gt;&#34;text&#34;&lt;/b&gt;" data-help-title="Has Help"' in html
+    assert 'aria-label="More about Has Help" aria-haspopup="dialog"' in html
+    assert html.index("</label>") < html.index("help-btn")  # outside the label: a click never toggles the switch

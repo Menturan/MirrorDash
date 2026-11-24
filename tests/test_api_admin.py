@@ -2029,3 +2029,11 @@ def test_screen_map_arrows_only_when_interactive_and_not_at_the_ends(client):
     assert "hidden" in arrow(modules_html, "Clock 3", "down") and "hidden" not in arrow(modules_html, "Clock 3", "up")
     assert "instance_id=mirrordash-clock-2&direction=up" in arrow(modules_html, "Clock 2", "up")
     assert "Move Clock 4" not in modules_html  # alone at its position
+
+
+def test_a_modules_root_help_reaches_its_settings_header(client):
+    mod = {"installed": True, "instances": [], "icon": "x", "summary": None, "package_name": "mirrordash-photos", "version": "1.0", "screenshot": None, "repo": None,
+           "schema": {"title": "Photos", "description": "Short.", "help": "Long <b>text</b>"}}
+    with patch("mirrordash_core.features.modules.routes.list_modules", AsyncMock(return_value={"modules": {"mirrordash_photos": mod}})):
+        html = client.get("/admin/panels/modules", headers={"X-API-Key": "secret"}).text
+    assert 'data-help="Long &lt;b&gt;text&lt;/b&gt;"' in html  # openConfigSheet puts it on the title's info button

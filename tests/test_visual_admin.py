@@ -1527,3 +1527,25 @@ def test_a_fields_setting_loads_its_boxes_follows_its_row_and_shows_the_modules_
     assert box.locator(".error-text").text_content() == "Enter the entity ID first. The saved settings are kept."
     assert box.locator("input[type=checkbox]").count() == 0 and box.locator("[name$='[__types]']").count() == 0
     assert box.locator("[name$='[__saved]']").get_attribute("value") == '{"shown": ["b"]}'  # what a save keeps
+
+
+def test_a_long_word_in_a_switchs_description_keeps_the_switch_in_its_row_and_help_opens_a_popup(page, server_url):
+    """A toggle in a two-column row wraps a long unbreakable description instead of pushing its switch out of
+    the row; the info button opens the help in the page's one popup and Esc closes it."""
+    page.goto(f"{server_url}/design#forms")
+    card = page.locator(".component-card", has_text="List of Items")
+    card.evaluate("c => c.querySelectorAll('.array-item-card').forEach(row => row.open = true)")  # a filled row folds
+    row = card.locator(".array-item-card").first
+    row.evaluate("""r => r.querySelector('.toggle-group .field-description').textContent =
+        'mirrordash_homeassistant.sensor.outdoor_temperature.with_a_very_long_unbreakable_name'""")
+    box = row.locator(".array-item-fields").bounding_box()
+    switch = row.locator(".toggle-group .switch").first.bounding_box()
+    assert switch["x"] + switch["width"] <= box["x"] + box["width"] + 1
+    button = page.locator(".component-card", has_text="Info Button").locator(".help-btn")
+    button.click()
+    popup = page.locator("#help-popup")
+    assert popup.is_visible()
+    assert "sensor.outdoor_temperature" in popup.inner_text()
+    assert popup.locator(".help-popup-title").inner_text() == "Entity ID"
+    page.keyboard.press("Escape")
+    assert popup.is_hidden()

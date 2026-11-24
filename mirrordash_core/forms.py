@@ -134,6 +134,11 @@ class Field:
         return str(self.schema.get("description", ""))
 
     @property
+    def help(self) -> str:
+        """The longer text behind the info button (schema keyword "help"); the description stays one short line."""
+        return str(self.schema.get("help", ""))
+
+    @property
     def instance_id(self) -> str | None:
         """The module instance a top-level field of its settings belongs to ("modules[clock-2]" -> "clock-2")."""
         match = re.fullmatch(r"modules\[([A-Za-z0-9_-]+)\]", self.prefix)

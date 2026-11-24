@@ -348,6 +348,13 @@ async function triggerRestart() {
 window.openConfigSheet = function(name, title, description, iconHtml, color, textColor, packageName, activeInstanceId) {
     document.getElementById('profileTitle').innerText = title;
     document.getElementById('profileDesc').innerText = description || 'Configure instance properties.';
+    // The schema's root "help": an info button after the title (help.js); the module lists show the short text only
+    const help = (document.getElementById('module-card-' + name) || {dataset: {}}).dataset.help || '';
+    const helpButton = document.getElementById('profileHelp');
+    helpButton.hidden = !help;
+    helpButton.dataset.help = help;
+    helpButton.dataset.helpTitle = title;
+    helpButton.setAttribute('aria-label', 'More about ' + title);
     
     const profileIcon = document.getElementById('profileIcon');
     if (profileIcon) {

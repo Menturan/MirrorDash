@@ -34,6 +34,7 @@
                          data-search="{{ (title ~ ' ' ~ name)|lower }}"
                          data-title="{{ title }}"
                          data-description="{{ meta.schema.description or meta.summary or '' }}"
+                         data-help="{{ meta.schema.help or '' }}"
                          data-screenshot="{{ meta.screenshot or '' }}"
                          data-repo="{{ meta.repo or '' }}"
                          data-instances="{{ meta.instances | tojson | forceescape }}">

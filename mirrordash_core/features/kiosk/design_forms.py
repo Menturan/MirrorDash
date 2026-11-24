@@ -72,6 +72,14 @@ EXAMPLES = [
     ("Text Input", "type: string", "", {
         "city": {"type": "string", "title": "City", "description": "The city to show the weather for.", "default": "Stockholm"}},
      {}, [], ""),
+    ("Info Button (Longer Help)", "help  on any field",
+     "Keep <code>description</code> to one short line; put examples, formats and edge cases in <code>help</code>. "
+     "The title gets an info button that opens the text in a popup (plain text; a blank line starts a paragraph). "
+     "Older MirrorDash versions ignore it.", {
+         "entity_id": {"type": "string", "title": "Entity ID", "description": "The sensor to show.",
+                       "help": "The ID from Home Assistant, such as sensor.outdoor_temperature.\n\nFind it under Settings, "
+                               "Devices & services, Entities."}},
+     {}, [], ""),
     ("Toggle Switch", "type: boolean", "", {
         "show_seconds": {"type": "boolean", "title": "Show Seconds", "description": "Seconds in the clock.", "default": True}},
      {}, [], ""),

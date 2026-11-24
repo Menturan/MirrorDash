@@ -485,6 +485,8 @@ select:focus-visible {
     flex-direction: column;
     gap: 2px;
     flex: 1;
+    min-width: 0;  /* a long unbreakable word wraps instead of pushing the switch out of its column */
+    overflow-wrap: anywhere;
     padding-right: 16px;
 }
 
@@ -2388,3 +2390,19 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
     .module-row-title { white-space: normal; }
     .discover-details { padding-left: 0; }
 }
+
+/* The info button after a title (a schema's "help") and the one popup that shows it (help.js) */
+.field-title-row { display: flex; align-items: center; gap: 6px; }
+.help-btn { background: none; border: 0; padding: 0 2px; font-size: 0.8rem; line-height: 1; color: var(--text-muted); cursor: pointer; }
+.help-btn:is(:hover, :focus-visible) { color: white; }
+.help-popup {
+    max-width: min(520px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 12px;
+    border: 1px solid var(--card-border); background: rgba(18, 18, 22, 0.98); color: var(--text-secondary);
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6); overflow-wrap: anywhere;
+}
+.help-popup::backdrop { background: rgba(0, 0, 0, 0.45); }
+.help-popup-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
+.help-popup-title { margin: 0; font-size: 0.95rem; color: white; }
+.help-popup-close { background: none; border: 0; padding: 0 2px; color: var(--text-muted); cursor: pointer; }
+.help-popup-close:is(:hover, :focus-visible) { color: white; }
+.help-popup-text { margin: 0; font-size: 0.85rem; line-height: 1.5; white-space: pre-line; }

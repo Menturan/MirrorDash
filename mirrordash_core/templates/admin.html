@@ -141,7 +141,8 @@
                 <i class="fas fa-puzzle-piece"></i>
             </div>
             <div class="sheet-heading">
-                <h2 class="profile-title" id="profileTitle">Module Name</h2>
+                <div class="field-title-row"><h2 class="profile-title" id="profileTitle">Module Name</h2>
+                    <button type="button" class="help-btn" id="profileHelp" aria-haspopup="dialog" hidden><i class="fas fa-circle-info" aria-hidden="true"></i></button></div>
                 <p class="profile-desc" id="profileDesc">Description</p>
             </div>
             <a class="btn secondary btn-sm" id="profileReadme" target="_blank" rel="noopener" hidden><i class="fab fa-github"></i> README</a>
@@ -265,5 +266,6 @@
     <script src="/static/admin/fields.js?v={{ version }}"></script>
     <script src="/static/admin/show_if.js?v={{ version }}"></script>
     <script src="/static/admin/shared_field.js?v={{ version }}"></script>
+    <script src="/static/admin/help.js?v={{ version }}"></script>
 </body>
 </html>
