@@ -1,8 +1,9 @@
-// A shared setting's "Own value" switch (ARCHITECTURE #62): forms.py draws the box, a note and the switch
-// under data-shared-control="<the box's id>" data-shared-value="<what the other instances have>". Off, the
-// box holds the shared value; on, the instance's own, which starts as a copy of the shared one. Both are
-// kept here until the form is saved, so switching back and forth loses nothing. A switch (boolean) box is
-// a checkbox, read as "true" or "false". Only the switch is saved with the form (shared_own[key]).
+// A shared setting's "Own value" switch (ARCHITECTURE #62): forms.py draws a line saying the value is set in
+// Shared Settings, the switch, and the box in a disabled fieldset (neither sent nor checked) that is shown
+// only while the switch is on: data-shared-control="<the box's id>" data-shared-value="<the shared value>"
+// (empty for a secret, which is never printed). Turned on, the box starts as a copy of the shared value;
+// the own value is kept here while it is off, so switching back and forth loses nothing. A switch (boolean)
+// box is a checkbox, read as "true" or "false". Only the switch and an own value are saved with the form.
 
 function sharedRead(box) {
     return box.type === 'checkbox' ? String(box.checked) : box.value;
@@ -19,15 +20,14 @@ document.addEventListener('change', (event) => {
     const row = own?.closest('.shared-row');
     const box = row && document.getElementById(row.dataset.sharedControl);
     if (!box) return;
-    if (own.checked) {  // what was typed while it was the shared value is the shared value
-        row.dataset.sharedValue = sharedRead(box);
+    const fieldset = row.parentElement.querySelector('.shared-box');
+    if (own.checked) {
+        fieldset.disabled = fieldset.hidden = false;
         sharedWrite(box, row.dataset.ownValue ?? row.dataset.sharedValue);
     } else {
         row.dataset.ownValue = sharedRead(box);
-        sharedWrite(box, row.dataset.sharedValue);
+        fieldset.disabled = fieldset.hidden = true;
     }
     row.querySelector('.shared-note-linked').hidden = own.checked;
     row.querySelector('.shared-note-own').hidden = !own.checked;
-    const shown = row.querySelector('.shared-note-value');  // a secret's note has none
-    if (shown) shown.textContent = row.dataset.sharedValue === '' ? 'empty' : row.dataset.sharedValue;
 });

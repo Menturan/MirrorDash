@@ -235,7 +235,6 @@ def design_cards() -> list[dict]:
 
 
 def _shared_states(properties: dict, values: dict) -> dict[str, SharedState]:
-    """The "shared": true settings of an example as an instance of three shows them: those in values have an own value."""
-    return {key: SharedState(own=key in values, shared_value=default_shared_value(properties[key]), count=3,
-                             module_title="Home Assistant")
+    """The "shared": true settings of an example as an instance shows them: those in values have an own value."""
+    return {key: SharedState(own=key in values, shared_value=default_shared_value(properties[key]))
             for key in shared_keys({"properties": properties})}

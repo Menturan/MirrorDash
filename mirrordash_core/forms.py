@@ -144,9 +144,7 @@ class Field:
 class SharedState:
     """How one shared setting stands in an instance's form (ARCHITECTURE #62): its row under the control."""
     own: bool  # the instance has an own value (its "Own value" switch is on)
-    shared_value: object  # the value every other instance gets
-    count: int  # how many instances the module has, counting this one if it is new
-    module_title: str
+    shared_value: object  # the value the other instances get ("" for a secret, which is never printed)
 
 
 def _array(field: Field) -> str:
@@ -208,7 +206,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     """The form for a schema's properties: the core's standard fields first, then the module's own. Fields
     with the same "group" (a title) share a collapsible section where the first of them is; only the form
     changes, they're saved as if they had none (ARCHITECTURE #51). shared: the fields that are shared
-    settings of an instance's form (#62) get the "Own value" row under their box."""
+    settings of an instance's form (#62) get the "Own value" row, and their box only while it is on."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
         raise ValueError("Unsafe form name prefix or module name")
     properties = _safe_properties(schema.get("properties", {}))

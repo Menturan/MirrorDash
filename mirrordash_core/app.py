@@ -26,6 +26,7 @@ from mirrordash_core.features.matter.watch import matter_watch
 from mirrordash_core.features.modules import discover as module_discover
 from mirrordash_core.features.modules import files as module_files
 from mirrordash_core.features.modules import routes as modules
+from mirrordash_core.features.modules import shared_routes as module_shared
 from mirrordash_core.features.modules.api_proxy import module_routes
 from mirrordash_core.features.modules.client import module_host
 from mirrordash_core.features.mqtt import routes as mqtt
@@ -80,7 +81,7 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None
 app.middleware("http")(wifi.captive_portal_redirect)
 
 for feature in (admin, system_settings, auth, backup, setup_restore, dashboard, hardware, api,
-                kiosk, logs, matter, modules, module_discover, module_files, mqtt, notifications, power, settings, updates, wifi):
+                kiosk, logs, matter, modules, module_discover, module_files, module_shared, mqtt, notifications, power, settings, updates, wifi):
     app.include_router(feature.router)
 app.mount("/api/v1", api_v1.api)
 app.mount("/api/modules", module_routes)

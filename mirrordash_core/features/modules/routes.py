@@ -50,7 +50,8 @@ from mirrordash_core.features.modules.service import (
 from mirrordash_core.features.modules.setting_rules import check_setting_rules
 from mirrordash_core.features.modules.shared_settings import (
     default_shared_value,
-    move_shared_values,
+    drop_unowned_shared,
+    is_secret,
     shared_keys,
     shared_values,
     with_shared,
@@ -127,8 +128,8 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     def form(properties: dict, values: dict = instance_config, prefix: str = form_name_prefix, **kwargs) -> str:
         return render_schema_form({"properties": properties}, values, prefix, module_name, **kwargs)
 
-    # Shared settings (#62): the box holds the shared value until the instance has an own one
-    shared = _shared_states(module_name, schema, modules_config, instance_id, instance_config)
+    # Shared settings (#62): the hidden box holds the shared value (never a secret) until the instance has an own one
+    shared = _shared_states(module_name, schema, instance_config)
     module_values = {**instance_config, **{key: state.shared_value for key, state in shared.items() if not state.own}}
 
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
@@ -148,20 +149,15 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     })
 
 
-def _shared_states(module_name: str, schema: dict, modules_config: dict, instance_id: str,
-                   instance_config: dict) -> dict[str, SharedState]:
+def _shared_states(module_name: str, schema: dict, instance_config: dict) -> dict[str, SharedState]:
     """How each shared setting of the module stands in this instance's form (forms.py SharedState)."""
-    keys = shared_keys(schema)
-    if not keys:
-        return {}
     saved = shared_values(load_config(), module_name)
-    count = sum(1 for cfg in modules_config.values() if isinstance(cfg, dict) and cfg.get("module") == module_name)
-    count += instance_id not in modules_config  # a new one counts too
-    title = schema.get("title") or modules_service.module_title(module_name)
-    return {key: SharedState(own=key in instance_config,
-                             shared_value=saved[key] if key in saved else default_shared_value(schema["properties"][key]),
-                             count=count, module_title=str(title))
-            for key in keys}
+    states = {}
+    for key in shared_keys(schema):
+        prop = schema["properties"][key]
+        value = "" if is_secret(prop) else saved[key] if key in saved else default_shared_value(prop)
+        states[key] = SharedState(own=key in instance_config, shared_value=value)
+    return states
 
 
 @router.post("/panels/modules/scripts/{module_name}", dependencies=[Depends(require_api_key)])
@@ -222,9 +218,9 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
 
     config = load_config()
     config.setdefault("modules", {})[instance_id] = instance_config
-    # A shared setting without "Own value" goes to the module's shared values (#62); the rules check what the module gets
+    # A shared setting without "Own value" isn't the instance's: Shared Settings saves it (#62); the rules check what the module gets
     own = posted.get("shared_own") if isinstance(posted.get("shared_own"), dict) else {}
-    move_shared_values(config, module_name, instance_config, {key for key, on in own.items() if on in ("true", True)}, schema)
+    drop_unowned_shared(instance_config, {key for key, on in own.items() if on in ("true", True)}, schema)
     from mirrordash_core.features.modules.schema import validate_config
     try:
         validate_config(config)

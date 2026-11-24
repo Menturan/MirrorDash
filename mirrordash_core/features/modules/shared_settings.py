@@ -57,16 +57,14 @@ def merged_instances(config: dict) -> dict[str, dict]:
             for instance_id, cfg in config.get("modules", {}).items() if isinstance(cfg, dict)}
 
 
-def move_shared_values(config: dict, module: str, instance_config: dict, own: set[str], schema: dict | None) -> None:
-    """A saved form: each shared setting the instance has no own value for (not in own) moves from the
-    instance's settings (changed in place) to the module's shared values in config. Shared values of
-    settings the schema no longer marks shared are dropped."""
-    keys = shared_keys(schema)
-    saved = {key: value for key, value in shared_values(config, module).items() if key in keys}
-    for key in keys:
-        if key in instance_config and key not in own:
-            saved[key] = instance_config.pop(key)
-    if saved:
-        config.setdefault("module_settings", {})[module] = saved
-    elif isinstance(config.get("module_settings"), dict):
-        config["module_settings"].pop(module, None)
+def is_secret(prop: dict) -> bool:
+    """A shared setting that is a password: the forms never print its saved value."""
+    return prop.get("format") == "password"
+
+
+def drop_unowned_shared(instance_config: dict, own: set[str], schema: dict | None) -> None:
+    """A saved instance form: a shared setting the instance has no own value for (not in own) isn't the
+    instance's, so it is taken out of its settings (changed in place). Shared Settings is where it is saved."""
+    for key in shared_keys(schema):
+        if key not in own:
+            instance_config.pop(key, None)

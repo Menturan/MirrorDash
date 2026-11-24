@@ -11,6 +11,8 @@ There are two kinds of releases:
 
 ### App
 
+- **Instances are named in Home Assistant**: a module instance shared over MQTT, and its on/off switch, now carry the name you gave it in its settings (*MirrorDash Kitchen*, *Module Kitchen*), or the admin page's name (*Home Assistant 2*) when it has none. Renaming one keeps its entities, history and automations; the new name shows in Home Assistant within a minute.
+- **Shared settings have their own place**: a module's shared settings, like the address and password of a Home Assistant, now have a Shared Settings section with its own Save button, above the instances in the module's settings. In an instance the setting is only a line saying where it is set and an *Own value* switch for giving that instance its own.
 - **System update checks say when GitHub's limit is reached**: when GitHub has stopped answering because too many requests came from your network (60 an hour, shared by every device on it), the check now says when to try again instead of blaming your internet connection, and it downloads far less.
 
 ### OS image

@@ -264,3 +264,71 @@ async def test_a_plain_backup_leaves_the_broker_password_out_and_a_restore_keeps
          patch.object(service, "sync_gpio_overlays", AsyncMock(return_value=(False, None))):
         await service._restore_config(tmp_path)
     assert saved["mqtt"]["id"] == "mine"
+
+
+# Display names: the owner's instance_name, else the admin page's fallback; ids and topics stay on the instance id
+
+async def _discovery(modules, control=False):
+    from types import SimpleNamespace
+    sent = {}
+
+    class Broker:
+        async def publish(self, topic, payload, qos=0, retain=False, **_):
+            sent[topic] = json.loads(payload) if payload else None
+
+    schema = {**TV, "title": "Television"}
+    config = {"mqtt": {"id": "m1", "control_modules": control, "modules": {name: {"share": True, "control": []} for name in modules}},
+              "modules": modules, "system": {}}
+    with patch.object(mqtt, "load_config", return_value=config), \
+         patch("mirrordash_core.features.modules.module_files.find_entry_point", return_value=SimpleNamespace()), \
+         patch("mirrordash_core.features.modules.schema.get_module_schema", return_value=schema):
+        await MqttBridge()._discover(Broker(), config, 1000.0)
+    return sent
+
+
+def _unique_ids(device):
+    return {c["unique_id"] for c in device["components"].values()}
+
+
+@pytest.mark.asyncio
+async def test_a_shared_instance_is_named_by_the_owner_but_keeps_its_ids():
+    sent = await _discovery({"tv-2": {"module": "tv", "instance_name": "Kök"}})
+    device = sent["homeassistant/device/m1/tv-2/config"]
+    assert device["device"]["name"] == "MirrorDash Kök"
+    assert device["device"]["identifiers"] == ["m1_tv-2"]
+    assert all("tv-2" in uid for uid in _unique_ids(device))
+    assert all("/m/tv-2/" in c["state_topic"] for c in device["components"].values())
+
+
+@pytest.mark.asyncio
+async def test_an_unnamed_shared_instance_gets_the_admin_pages_fallback():
+    sent = await _discovery({"tv-2": {"module": "tv"}})
+    assert sent["homeassistant/device/m1/tv-2/config"]["device"]["name"] == "MirrorDash Television 2"
+
+
+@pytest.mark.asyncio
+async def test_the_module_switches_are_named_like_the_admin_page_but_keep_their_ids():
+    sent = await _discovery({"tv-2": {"module": "tv", "instance_name": "Kök"}, "tv-3": {"module": "tv"}}, control=True)
+    comps = sent["homeassistant/device/m1/config"]["components"]
+    named, unnamed = comps["enabled_tv-2"], comps["enabled_tv-3"]
+    assert named["name"] == "Module Kök" and unnamed["name"] == "Module Television 3"
+    assert named["unique_id"] == "m1_enabled_tv-2"
+    assert named["state_topic"] == "mirrordash/m1/enabled/tv-2/state"
+    assert named["command_topic"] == "mirrordash/m1/enabled/tv-2/set"
+
+
+@pytest.mark.asyncio
+async def test_a_rename_changes_the_names_in_the_next_discovery_but_no_ids():
+    before = await _discovery({"tv-2": {"module": "tv"}}, control=True)
+    after = await _discovery({"tv-2": {"module": "tv", "instance_name": "Kök"}}, control=True)
+    assert set(before) == set(after)
+    names = lambda sent: (sent["homeassistant/device/m1/tv-2/config"]["device"]["name"],
+                          sent["homeassistant/device/m1/config"]["components"]["enabled_tv-2"]["name"])
+    assert names(before) == ("MirrorDash Television 2", "Module Television 2")
+    assert names(after) == ("MirrorDash Kök", "Module Kök")
+
+    def stripped(value):  # everything but the display names
+        if isinstance(value, dict):
+            return {k: stripped(v) for k, v in value.items() if k != "name"}
+        return value
+    assert stripped(before) == stripped(after)

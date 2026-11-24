@@ -207,16 +207,21 @@
 </details>
 {%- endmacro %}
 
-{# A shared setting in an instance's form (ARCHITECTURE #62): its box, then a note on the left and the "Own value"
-   switch on the right. shared_field.js swaps the value and the note as the switch moves; its own value is
-   posted only while the switch is on (routes.py _config_from_form). A secret's value never goes in the note. #}
+{# A shared setting in an instance's form (ARCHITECTURE #62): a line saying it is set in Shared Settings and the "Own
+   value" switch on the right; the box (in a disabled fieldset, so it is neither sent nor checked) shows only while
+   the switch is on. shared_field.js moves the switch; its own value is posted only while it is on (routes.py
+   _config_from_form). A secret's value never goes in the page. #}
 {% macro shared_field(f, state, control) -%}
 {% set is_secret = f.schema.format == "password" %}
 {% set shown = ("empty" if state.shared_value == "" else (state.shared_value|tojson if state.shared_value is boolean else state.shared_value|string)) %}
-<div class="wide shared-field">{{ control }}
+<div class="wide shared-field">
     <div class="shared-row" data-shared-control="{{ f.id }}" data-shared-value="{{ state.shared_value|tojson if state.shared_value is boolean else state.shared_value }}">
-        <p class="field-description shared-note shared-note-linked"{% if state.own %} hidden{% endif %}><i class="fas fa-link"></i> {% if state.count > 1 %}Shared by all {{ state.count }} {{ state.module_title }} instances{% else %}Shared by all instances of {{ state.module_title }}{% endif %}: changing it changes them all.</p>
-        <p class="field-description shared-note shared-note-own"{% if not state.own %} hidden{% endif %}><i class="fas fa-user"></i> Only this instance. The shared value {% if is_secret %}stays as it is.{% else %}is <span class="shared-note-value">{{ shown }}</span>.{% endif %}</p>
+        <div class="shared-notes">
+            <strong class="shared-title">{{ f.schema.title or f.key }}</strong>
+            <p class="field-description shared-note shared-note-linked"{% if state.own %} hidden{% endif %}><i class="fas fa-link"></i> Shared: set in Shared Settings above.</p>
+            <p class="field-description shared-note shared-note-own"{% if not state.own %} hidden{% endif %}><i class="fas fa-user"></i> Only this instance. The shared value {% if is_secret %}stays as it is.{% else %}is <span class="shared-note-value">{{ shown }}</span>.{% endif %}</p>
+        </div>
         <label class="shared-own"><span>Own value</span><span class="switch"><input type="checkbox" name="shared_own[{{ f.key }}]" value="true"{% if state.own %} checked{% endif %}><span class="slider round"></span></span></label>
-    </div></div>
+    </div>
+    <fieldset class="shared-box"{% if not state.own %} disabled hidden{% endif %}>{{ control }}</fieldset></div>
 {%- endmacro %}

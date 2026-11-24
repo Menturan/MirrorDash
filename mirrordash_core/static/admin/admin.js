@@ -368,6 +368,11 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
         }
     }
 
+    // The shared settings, if the module has any (an empty answer hides the section)
+    const shared = document.getElementById('shared-settings-global');
+    shared.innerHTML = '';
+    htmx.ajax('GET', `/admin/panels/modules/shared/${encodeURIComponent(name)}`, {target: shared});
+
     // Render instances list
     const card = document.getElementById('module-card-' + name);
 
@@ -475,6 +480,7 @@ window.closeConfigSheet = function() {
     document.getElementById('configOverlay').classList.remove('open');
     const fields = document.getElementById('config-fields-global');
     if (fields) fields.innerHTML = '';
+    document.getElementById('shared-settings-global').innerHTML = '';
     clearTimeout(previewTimer);
     clearTimeout(previewPoll);
     previewRun++;  // an answer still on its way is dropped

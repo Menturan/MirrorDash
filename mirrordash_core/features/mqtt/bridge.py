@@ -92,6 +92,18 @@ def guard_packet_size(client: aiomqtt.Client) -> None:
     paho._sock_recv = guarded
 
 
+def _instance_title(instance: str, instance_config, schema: dict | None = None) -> str:
+    """The instance's name as the admin page shows it (the owner's instance_name, else the module's title and number)."""
+    # Imported here, not at the top: it would be an import cycle
+    from mirrordash_core.features.modules.module_files import find_entry_point
+    from mirrordash_core.features.modules.schema import get_module_schema
+    from mirrordash_core.features.modules.service import instance_title
+    if schema is None and isinstance(instance_config, dict):
+        ep = find_entry_point(str(instance_config.get("module", instance)))
+        schema = get_module_schema(ep) if ep else None
+    return instance_title(instance, instance_config if isinstance(instance_config, dict) else {}, schema)
+
+
 class MqttBridge:
     """The connection to the owner's broker (config["mqtt"]), kept up while it is on."""
 
@@ -349,10 +361,11 @@ class MqttBridge:
                 components[button] = component(f"{mirror_id}_{button}", "event", button.replace("_", " ").capitalize(),
                                                f"{base}/{button}/state", device_class="button", event_types=list(PRESS_TYPES))
         if mqtt_config.get("control_modules") is True:
-            for instance in modules:
+            for instance, instance_config in modules.items():
                 if SAFE_NAME.match(instance):
+                    title = _instance_title(instance, instance_config)
                     components[f"enabled_{instance}"] = component(
-                        f"{mirror_id}_enabled_{instance}", "switch", f"Module {instance}",
+                        f"{mirror_id}_enabled_{instance}", "switch", f"Module {title}",
                         f"{base}/enabled/{instance}/state", f"{base}/enabled/{instance}/set", entity_category="config")
         return components
 
@@ -369,13 +382,17 @@ class MqttBridge:
                     and SAFE_NAME.match(instance) and instance_config.get("enabled", True)):
                 continue
             ep = find_entry_point(str(instance_config.get("module", instance)))
-            if not (entities := declarations(get_module_schema(ep) if ep else None)):
+            schema = get_module_schema(ep) if ep else None
+            if not (entities := declarations(schema)):
                 continue
             shared[instance] = entities
             allowed_controls = {name for name in choice.get("control") or [] if isinstance(name, str)}
-            # Under the mirror's id (node id/object id): one ACL line, homeassistant/device/<id>/#, covers all
+            # Under the mirror's id (node id/object id): one ACL line, homeassistant/device/<id>/#, covers all.
+            # Only display names use the owner's instance name; ids and topics stay on the instance id. The name is
+            # not in the discovery fingerprint: a rename reaches Home Assistant at the next periodic discovery.
             devices[f"{DISCOVERY}/device/{mirror_id}/{instance}/config"] = {
-                "device": {"identifiers": [f"{mirror_id}_{instance}"], "name": f"MirrorDash {instance}", "via_device": mirror_id},
+                "device": {"identifiers": [f"{mirror_id}_{instance}"], "name": f"MirrorDash {_instance_title(instance, instance_config, schema)}",
+                           "via_device": mirror_id},
                 "origin": origin, "availability_topic": f"{base}/status",
                 "components": module_components(base, mirror_id, instance, entities, allowed_controls)}
         return devices, shared

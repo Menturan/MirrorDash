@@ -1418,6 +1418,15 @@ input:checked + .slider:before {
 .schema-checkboxes { display: flex; flex-direction: column; gap: 4px; }
 .checkbox-inline { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: white; cursor: pointer; }
 /* A shared setting (shared_field.js, ARCHITECTURE #62): its note on the left, the "Own value" switch on the right */
+/* The Shared Settings section above the instances: the same box and small uppercase header */
+.shared-section { margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px; }
+.shared-section-header { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.shared-section-header .btn { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
+.shared-box { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
+.shared-box[hidden] { display: none; }
+.shared-title { display: block; font-size: 14px; }
+.shared-box .field-title { display: none; }  /* the row above already names it */
+.shared-settings-form > .field-description { margin-bottom: 14px; }
 .shared-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 6px; }
 .shared-note { margin: 0; }
 .shared-note[hidden] { display: none; }
@@ -1507,13 +1516,13 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .module-config-actions { margin: 20px -1.25rem -1.25rem; padding: 12px 1.25rem; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end;
     position: sticky; bottom: 0; background: #0f0f11; border-top: 1px solid #27272a; border-radius: 0 0 6px 6px; z-index: 1; }
 /* The drawer's settings two by two; the long ones (lists, keys, addresses, text) across */
-.module-config-own, .standard-settings-content, .form-accordion-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-:is(.module-config-own, .form-accordion-body, .standard-settings-content, .show-if, .array-item-fields) > :is(h5, .schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
+.module-config-own, .shared-fields, .standard-settings-content, .form-accordion-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
+:is(.module-config-own, .shared-fields, .form-accordion-body, .standard-settings-content, .show-if, .array-item-fields) > :is(h5, .schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
 /* A setting with show_if (show_if.js): its field stays in the grid; hidden while the other field doesn't match */
 .show-if { display: contents; }
 .show-if[hidden] { display: none; }
 .standard-settings-content .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; }  /* the schedule's days in a row */
-@media (max-width: 600px) { .module-config-own, .standard-settings-content, .form-accordion-body { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 600px) { .module-config-own, .shared-fields, .standard-settings-content, .form-accordion-body { grid-template-columns: minmax(0, 1fr); } }
 .standard-settings-accordion { margin-top: 14px; border: 1px solid #27272a; border-radius: 6px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }
 .standard-settings-accordion summary { padding: 10px 14px; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none; outline: none; background: rgba(255, 255, 255, 0.02); transition: background 0.2s ease, color 0.2s ease; }
 .standard-settings-accordion summary > span { display: flex; align-items: center; gap: 6px; }
