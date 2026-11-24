@@ -1549,3 +1549,25 @@ def test_a_long_word_in_a_switchs_description_keeps_the_switch_in_its_row_and_he
     assert popup.locator(".help-popup-title").inner_text() == "Entity ID"
     page.keyboard.press("Escape")
     assert popup.is_hidden()
+
+
+def test_a_copy_value_row_follows_its_sibling_field_and_its_switch_and_works_in_a_new_list_item(page, server_url):
+    """The "Shared as" row under a switch shows the template with the sibling's value as it is typed and hides
+    with the switch; the copy button swaps its icon for a check."""
+    page.goto(f"{server_url}/design#forms")
+    card = page.locator(".component-card", has_text="Copyable Text Under a Switch")
+    row = card.locator(".copy-row")
+    assert row.is_visible()
+    assert row.locator(".copy-chip").text_content() == "mirrordash_homeassistant.sensor.outdoor_temperature"
+    card.locator("input[type=text]").fill("sensor.kitchen")
+    assert row.locator(".copy-chip").text_content() == "mirrordash_homeassistant.sensor.kitchen"
+    assert row.locator(".copy-btn").get_attribute("aria-label") == "Copy mirrordash_homeassistant.sensor.kitchen"
+    card.locator("input[type=text]").fill("")
+    assert row.locator(".copy-chip").text_content() == "mirrordash_homeassistant.<entity_id>"
+    page.evaluate("document.execCommand = () => true; if (navigator.clipboard) navigator.clipboard.writeText = async () => {}")
+    row.locator(".copy-btn").click()
+    row.locator(".copy-btn .fa-check").wait_for()
+    card.locator(".switch").click()
+    assert row.is_hidden()
+    card.locator(".switch").click()
+    assert row.is_visible()

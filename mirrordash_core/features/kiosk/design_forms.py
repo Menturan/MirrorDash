@@ -80,6 +80,15 @@ EXAMPLES = [
                        "help": "The ID from Home Assistant, such as sensor.outdoor_temperature.\n\nFind it under Settings, "
                                "Devices & services, Entities."}},
      {}, [], ""),
+    ("Copyable Text Under a Switch", "copy_value  on a boolean",
+     "Try it: type in Entity ID, or turn the switch off. While the switch is on, a row under it shows the text with a "
+     "copy button; <code>{key}</code> is the value of the field <code>key</code> of the same form (or list row), "
+     "<code>&lt;key&gt;</code> while it is empty. Use it to show a name the owner must type elsewhere. "
+     "Older MirrorDash versions ignore it.", {
+         "entity_id": {"type": "string", "title": "Entity ID", "default": "sensor.outdoor_temperature"},
+         "share": {"type": "boolean", "title": "Share with Other Modules", "description": "Send it as an event.",
+                   "copy_value": "mirrordash_homeassistant.{entity_id}", "default": True}},
+     {}, [], ""),
     ("Toggle Switch", "type: boolean", "", {
         "show_seconds": {"type": "boolean", "title": "Show Seconds", "description": "Seconds in the clock.", "default": True}},
      {}, [], ""),

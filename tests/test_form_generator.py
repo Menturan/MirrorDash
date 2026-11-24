@@ -292,3 +292,18 @@ def test_a_field_with_help_gets_an_info_button_with_the_text_escaped_and_one_wit
     assert 'data-help="Long &lt;b&gt;&#34;text&#34;&lt;/b&gt;" data-help-title="Has Help"' in html
     assert 'aria-label="More about Has Help" aria-haspopup="dialog"' in html
     assert html.index("</label>") < html.index("help-btn")  # outside the label: a click never toggles the switch
+
+
+def test_a_switch_with_copy_value_gets_a_shared_as_row_filled_from_its_sibling_and_hidden_while_off():
+    schema = {"properties": {
+        "entity_id": {"type": "string", "title": "Entity ID"},
+        "share": {"type": "boolean", "title": "Share", "copy_value": "mod.{entity_id}"},
+        "plain": {"type": "boolean", "title": "Plain"},
+        "text": {"type": "string", "title": "Text", "copy_value": "ignored.{entity_id}"}}}
+    on = render_schema_form(schema, {"entity_id": "sensor.a", "share": True}, "modules[x]", "x")
+    assert on.count('class="copy-row"') == 1  # only a boolean gets one
+    assert 'data-copy-value="mod.{entity_id}">' in on and ">mod.sensor.a</code>" in on
+    assert 'aria-label="Copy mod.sensor.a"' in on
+    assert on.index("slider round") < on.index("copy-row")
+    off = render_schema_form(schema, {"entity_id": "", "share": False}, "modules[x]", "x")
+    assert 'data-copy-value="mod.{entity_id}" hidden>' in off and ">mod.&lt;entity_id&gt;</code>" in off

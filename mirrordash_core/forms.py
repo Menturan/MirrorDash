@@ -120,6 +120,7 @@ class Field:
     prefix: str  # the form name of what the field sits in
     module_name: str
     required: bool = False  # in its schema's "required": the browser won't send the form empty (setting_rules.py)
+    copy_text: str = ""  # copy_value filled in from the stored values of the form level, the row's first text
 
     @property
     def value(self) -> str:
@@ -137,6 +138,11 @@ class Field:
     def help(self) -> str:
         """The longer text behind the info button (schema keyword "help"); the description stays one short line."""
         return str(self.schema.get("help", ""))
+
+    @property
+    def copy_value(self) -> str:
+        """The template of the "Shared as" row under a switch (schema keyword "copy_value", "{key}" = a sibling's value)."""
+        return str(self.schema.get("copy_value", "")) if self.schema.get("type") == "boolean" else ""
 
     @property
     def instance_id(self) -> str | None:
@@ -225,6 +231,8 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
         field = Field(key, prop, default if value is None else value,
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
                       name_prefix, module_name, key in required)
+        if field.copy_value:  # copy_value.js keeps it up to date from here
+            field.copy_text = re.sub(r"\{(\w+)\}", lambda m: _sibling_text(m[1], properties, current_values), field.copy_value)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
         html = _render(widget, field)
         if shared and key in shared:
@@ -240,6 +248,13 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
     return "\n".join(part if isinstance(part, str)
                      else _macros().accordion({"title": part[0], "description": ""}, Markup("\n".join(part[1])))
                      for part in parts)
+
+
+def _sibling_text(key: str, properties: dict, current_values: dict) -> str:
+    """A sibling field's value for a copy_value template, "<key>" while it is empty."""
+    value = current_values.get(key)
+    text = str(properties.get(key, {}).get("default", "") if value is None else value).strip()
+    return text or f"<{key}>"
 
 
 def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, name_prefix: str) -> str:

@@ -11,6 +11,7 @@ There are two kinds of releases:
 
 ### App
 
+- **A shared Home Assistant entity shows its event name**: with *Share with Other Modules* on, the settings now show the event name to type into another module, with a copy button.
 - **Info buttons in module settings**: a setting with a longer explanation now has an *i* button after its title that opens it in a popup. A switch whose description had a long unbroken word, like an entity ID, no longer slides out of its list item.
 - **Updates show at once**: Settings → Updates now shows the last check as soon as it opens, and a new system version gets a banner on the dashboard too. *Check for Updates* still checks anew.
 

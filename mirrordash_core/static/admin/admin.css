@@ -2395,6 +2395,12 @@ button.mirror-tile-name:focus-visible::after { outline: 2px solid var(--primary)
 .field-title-row { display: flex; align-items: center; gap: 6px; }
 .help-btn { background: none; border: 0; padding: 0 2px; font-size: 0.8rem; line-height: 1; color: var(--text-muted); cursor: pointer; }
 .help-btn:is(:hover, :focus-visible) { color: white; }
+/* The "Shared as" row under a switch with a schema "copy_value" (copy_value.js) */
+.copy-row { display: flex; align-items: center; gap: 6px; margin: -6px 0 14px; font-size: 0.75rem; color: var(--text-muted); min-width: 0; grid-column: 1 / -1; }
+.copy-row[hidden] { display: none; }
+.copy-chip { font-family: ui-monospace, monospace; font-size: 0.72rem; color: #e4e4e7; background: rgba(255, 255, 255, 0.06); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 6px; padding: 2px 6px; overflow-wrap: anywhere; min-width: 0; }
+.copy-btn { background: none; border: 0; color: var(--text-muted); cursor: pointer; }
+.copy-btn:is(:hover, :focus-visible) { color: white; }
 .help-popup {
     max-width: min(520px, calc(100vw - 32px)); padding: 18px 20px; border-radius: 12px;
     border: 1px solid var(--card-border); background: rgba(18, 18, 22, 0.98); color: var(--text-secondary);

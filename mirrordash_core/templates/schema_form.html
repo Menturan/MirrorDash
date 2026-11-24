@@ -37,11 +37,15 @@
 {%- endfor %}
 {%- endmacro %}
 
+{# A switch with a "copy_value": a "Shared as" row after it, shown while it is on, with the text and a copy button (copy_value.js) #}
 {% macro toggle(f) -%}
 <div class="form-group toggle-group schema-field">{{ label(f) }}
     <label class="switch"><input type="hidden" name="{{ f.name }}" value="false">
     <input type="checkbox" id="{{ f.id }}" name="{{ f.name }}" value="true"{% if f.stored_value %} checked{% endif %}>
     <span class="slider round"></span></label></div>
+{%- if f.copy_value %}
+<div class="copy-row" data-copy-value="{{ f.copy_value }}"{% if not f.stored_value %} hidden{% endif %}><span>Shared as</span><code class="copy-chip">{{ f.copy_text }}</code><button type="button" class="copy-btn" aria-label="Copy {{ f.copy_text }}"><i class="far fa-copy" aria-hidden="true"></i></button></div>
+{%- endif %}
 {%- endmacro %}
 
 {% macro select(f) -%}
