@@ -115,24 +115,24 @@ async def get_undervoltage_detected() -> bool:
 
 
 async def check_all_updates() -> dict:
-    """MirrorDash's and the modules' updates, for the dashboard banner."""
+    """MirrorDash's, the modules' and the system's updates, for the dashboard banner. The last check's
+    answer (features/updates/known.py), so the banner doesn't ask PyPI and GitHub again."""
+    from mirrordash_core.features.updates.known import known_updates
     updates = {
         "core": {"update_available": False, "latest_version": get_core_version(), "current_version": get_core_version()},
         "modules": [],
+        "os": {"update_available": False, "version": None},
     }
-    try:
-        from mirrordash_core.features.modules.service import module_updates
-        updates["modules"] = [u["package_name"] for u in (await module_updates())[0]]
-    except Exception:
-        pass
-    try:
-        from mirrordash_core.features.updates.service import check_core_update
-        core_res = await check_core_update()
+    known = await known_updates()
+    if not isinstance(known["modules"], BaseException):
+        updates["modules"] = [u["package_name"] for u in known["modules"][0]]
+    if isinstance(known["core"], dict):
         updates["core"] = {
-            "update_available": core_res.get("update_available", False),
-            "latest_version": core_res.get("latest_version", ""),
-            "current_version": core_res.get("current_version", "")
+            "update_available": known["core"].get("update_available", False),
+            "latest_version": known["core"].get("latest_version", ""),
+            "current_version": known["core"].get("current_version", "")
         }
-    except Exception:
-        pass
+    system = known["os"]
+    if isinstance(system, dict) and system.get("supported") and system.get("update_available"):
+        updates["os"] = {"update_available": True, "version": system["bundle"]["tag"]}
     return updates

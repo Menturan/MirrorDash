@@ -446,9 +446,9 @@ def test_update_check_fills_the_modules_and_when(page, server_url):
     """Settings → Updates → Check for Updates: the modules section lists what's new, and the card says when."""
     news = {"module_name": "mirrordash_news", "package_name": "mirrordash-news", "current_version": "1.2.0",
             "latest_version": "1.2.1", "target": "mirrordash-news", "notes": True}
-    with patch("mirrordash_core.features.updates.routes.module_updates", new_callable=AsyncMock,
+    with patch("mirrordash_core.features.updates.known.module_updates", new_callable=AsyncMock,
                return_value=([news], time.time())), \
-         patch("mirrordash_core.features.updates.routes.check_core_update", new_callable=AsyncMock,
+         patch("mirrordash_core.features.updates.known.check_core_update", new_callable=AsyncMock,
                return_value={"current_version": "0.9.0", "latest_version": "0.9.0", "update_available": False}):
         navigate_authenticated(page, server_url)
         page.click("#page-tab-config")

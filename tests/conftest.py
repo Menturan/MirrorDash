@@ -21,6 +21,17 @@ def _clear_remote_json_cache():
 
 
 @pytest.fixture(autouse=True)
+def _forget_known_updates():
+    """The last update check's answer is kept in memory (features/updates/known.py); start without it, and
+    with a lock of this test's own event loop."""
+    import asyncio
+
+    from mirrordash_core.features.updates import known
+    known.forget()
+    known._lock = asyncio.Lock()
+
+
+@pytest.fixture(autouse=True)
 def _own_notifications(monkeypatch, tmp_path):
     """Notifications go to the test's own folder, never the developer's ~/.mirrordash (updates, a crashing
     module and the app's start all add them)."""

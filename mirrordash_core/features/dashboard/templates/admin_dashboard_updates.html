@@ -73,6 +73,21 @@
     </div>
     {% endif %}
 
+    {% if updates.os and updates.os.update_available %}
+    <div class="update-banner" onclick="document.getElementById('page-tab-config').click()">
+        <div style="display: flex; align-items: center; gap: 16px;">
+            <i class="fas fa-arrow-alt-circle-up"></i>
+            <div>
+                <h4>Update Available: System</h4>
+                <p>System <strong>{{ updates.os.version }}</strong> is now available.</p>
+            </div>
+        </div>
+        <div class="action-text">
+            Go to Settings <i class="fas fa-arrow-right"></i>
+        </div>
+    </div>
+    {% endif %}
+
     {% if updates.modules %}
     <div class="update-banner" onclick="document.getElementById('page-tab-config').click()">
         <div style="display: flex; align-items: center; gap: 16px;">

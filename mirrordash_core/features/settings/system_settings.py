@@ -26,6 +26,7 @@ from mirrordash_core.features.hardware.display import (
 from mirrordash_core.features.power.display_power import DEFAULT_WAKE
 from mirrordash_core.features.power.wake_fade import DEFAULT_FADE
 from mirrordash_core.features.settings.ssh import apply_ssh, get_ssh_status
+from mirrordash_core.features.updates.known import forget
 from mirrordash_core.forms import read_form
 from mirrordash_core.host import run_in_background
 
@@ -209,6 +210,8 @@ async def update_system_settings(settings: dict = Body(...)) -> dict:
     # Saved only now: a refused SSH password must not leave "ssh: on" in the config. The config is read
     # again here: SSH is slow, and anything saved meanwhile must not be written over.
     config = load_config()
+    if new["prerelease"] != config.get("system", {}).get("prerelease", False):
+        forget()  # the kept update check was made for the other setting (updates/known.py)
     config.setdefault("system", {}).update(new)
     save_config(config)
 

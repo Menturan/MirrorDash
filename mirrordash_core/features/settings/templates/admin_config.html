@@ -42,7 +42,7 @@
             <p class="panel-subtitle" style="margin: 0;">Check for new versions of MirrorDash{% if os_build %}, the system{% endif %} and the modules, and install them.
                 <span id="update-checked-at" style="display: block; font-size: 0.75rem; color: var(--text-muted);"></span></p>
             <button type="button" id="core-check-btn" class="btn secondary" style="margin-left: auto;"
-                    hx-get="/admin/panels/system/update-check"
+                    hx-get="/admin/panels/system/update-check?force=true"
                     hx-target="#core-update-result"
                     hx-swap="innerHTML"
                     hx-disabled-elt="this">
@@ -58,14 +58,15 @@
                 The mirror's screen, the modules and this admin page. Takes a minute or two; MirrorDash restarts.</p>
             <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
             <span id="core-current-version" style="font-weight: 600; color: white;">{{ current_version }}</span>
-            <div id="core-update-result"><!-- filled by Check for Updates --></div>
+            <!-- Shows the last check at once (features/updates/known.py); Check for Updates makes a new one -->
+            <div id="core-update-result" hx-get="/admin/panels/system/update-check" hx-trigger="load" hx-swap="innerHTML"></div>
         </div>
 
         <div class="update-section" style="margin-top: 20px;">
             <h3 style="margin: 0; font-size: 1rem; color: white;">Modules</h3>
             <p class="field-description" style="font-size: 0.75rem; color: var(--text-muted); margin: 2px 0 6px 0;">
                 The panels on the mirror. All are updated together; MirrorDash restarts once.</p>
-            <div id="modules-update-result"><!-- filled by Check for Updates --></div>
+            <div id="modules-update-result"><!-- filled by the check --></div>
         </div>
 
         {% if os_build %}
@@ -76,7 +77,7 @@
                 back to the current system by itself if the new one doesn't work.</p>
             <span style="font-size: 0.8rem; color: var(--text-muted);">Installed: </span>
             <span id="os-current-build" style="font-weight: 600; color: white;">{% if os_version %}{{ os_version }} (build {{ os_build }}){% else %}build {{ os_build }}{% endif %}</span>
-            <div id="os-update-result"><!-- filled by Check for Updates --></div>
+            <div id="os-update-result"><!-- filled by the check --></div>
         </div>
         {% endif %}
 

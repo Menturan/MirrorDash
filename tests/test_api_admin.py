@@ -1546,17 +1546,17 @@ def test_update_check_lists_module_updates_and_when_it_checked(client, monkeypat
     from datetime import datetime
 
     from mirrordash_core.features.modules import routes as module_routes
-    from mirrordash_core.features.updates import routes
+    from mirrordash_core.features.updates import known
     news = {"module_name": "mirrordash_news", "package_name": "mirrordash-news", "current_version": "1.2.0",
             "latest_version": "1.2.1", "target": "git+https://github.com/Menturan/mirrordash-news@v1.2.1", "notes": False}
     checked = datetime.now().replace(hour=0, minute=5).timestamp()  # earlier today: the oldest answer counts
     module_updates = AsyncMock(return_value=([news], checked))
-    monkeypatch.setattr(routes, "module_updates", module_updates)
-    monkeypatch.setattr(routes, "check_core_update", AsyncMock(return_value={"current_version": "0.9.0", "latest_version": "0.9.0", "update_available": False}))
-    monkeypatch.setattr(routes, "check_os_update", AsyncMock(return_value={"supported": False}))
+    monkeypatch.setattr(known, "module_updates", module_updates)
+    monkeypatch.setattr(known, "check_core_update", AsyncMock(return_value={"current_version": "0.9.0", "latest_version": "0.9.0", "update_available": False}))
+    monkeypatch.setattr(known, "check_os_update", AsyncMock(return_value={"supported": False}))
     key = {"X-API-Key": "secret"}
 
-    page = client.get("/admin/panels/system/update-check", headers=key).text
+    page = client.get("/admin/panels/system/update-check?force=true", headers=key).text
     assert module_updates.call_args.kwargs == {"max_age": 60}
     assert "mirrordash-news: v1.2.0 → v1.2.1" in page and "Update All Modules" in page
     assert '<span id="update-checked-at" hx-swap-oob="innerHTML">Last checked 00:05</span>' in page
@@ -1572,27 +1572,27 @@ def test_update_check_lists_module_updates_and_when_it_checked(client, monkeypat
 
 def test_update_check_shows_mirrordash_and_the_system_apart(client, monkeypatch):
     """One check, two sections; with an update for both, the system goes first and MirrorDash's button waits."""
-    monkeypatch.setattr("mirrordash_core.features.updates.routes.module_updates", AsyncMock(return_value=([], None)))
+    monkeypatch.setattr("mirrordash_core.features.updates.known.module_updates", AsyncMock(return_value=([], None)))
     app = {"current_version": "0.6.2", "latest_version": "0.6.3", "update_available": True}
     system = {"supported": True, "installed_build": "20261001-0800", "failed_build": None, "update_available": True,
               "bundle": {"tag": "v0.6.3-os1", "build": "20261018-2237", "url": "https://example.com/b.raucb", "size": 880_000_000}}
     key = {"X-API-Key": "secret"}
-    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
-         patch("mirrordash_core.features.updates.routes.check_os_update", AsyncMock(return_value=system)):
-        page = client.get("/admin/panels/system/update-check", headers=key).text
+    with patch("mirrordash_core.features.updates.known.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.known.check_os_update", AsyncMock(return_value=system)):
+        page = client.get("/admin/panels/system/update-check?force=true", headers=key).text
     core, oob = page.split('<div id="os-update-result" hx-swap-oob="innerHTML">')
     assert "Install the system update first" in core and "update-trigger" not in core
     assert "Install System Update" in oob and "2026-10-18 22:37 UTC" in oob
 
-    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
-         patch("mirrordash_core.features.updates.routes.check_os_update",
+    with patch("mirrordash_core.features.updates.known.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.known.check_os_update",
                AsyncMock(return_value={**system, "update_available": False, "bundle": None})):
-        page = client.get("/admin/panels/system/update-check", headers=key).text
+        page = client.get("/admin/panels/system/update-check?force=true", headers=key).text
     assert "Install MirrorDash v0.6.3" in page and "The system is up-to-date (build 2026-10-01 08:00 UTC)" in page
 
-    with patch("mirrordash_core.features.updates.routes.check_core_update", AsyncMock(return_value=app)), \
-         patch("mirrordash_core.features.updates.routes.check_os_update", AsyncMock(return_value={"supported": False})):
-        page = client.get("/admin/panels/system/update-check", headers=key).text
+    with patch("mirrordash_core.features.updates.known.check_core_update", AsyncMock(return_value=app)), \
+         patch("mirrordash_core.features.updates.known.check_os_update", AsyncMock(return_value={"supported": False})):
+        page = client.get("/admin/panels/system/update-check?force=true", headers=key).text
     assert "os-update-result" not in page  # no system section on mirrors without system updates
 
 

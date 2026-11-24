@@ -9,6 +9,10 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
+### App
+
+- **Updates show at once**: Settings → Updates now shows the last check as soon as it opens, and a new system version gets a banner on the dashboard too. *Check for Updates* still checks anew.
+
 ### OS image
 
 - **No going back to an older system**: a system update older than the one the mirror runs is refused, so an update can't take the mirror back to a version with a known security hole. Installing the same version again still works, and the update page says why it was refused.

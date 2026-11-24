@@ -2,9 +2,7 @@
 """The admin page's update buttons: check for and install a MirrorDash update or an OS update, rebuild
 the app's venv, and the nightly automatic update the OS image's timer asks for. The work is in service.py."""
 
-import asyncio
 import logging
-import time
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,11 +18,10 @@ from mirrordash_core.admin import (
     templates,
 )
 from mirrordash_core.features.backup.automatic import automatic_backup
-from mirrordash_core.features.modules.service import module_updates
 from mirrordash_core.features.updates.catch_up import note_round
+from mirrordash_core.features.updates.known import known_updates
 from mirrordash_core.features.updates.service import (
     auto_update,
-    check_core_update,
     check_os_update,
     format_build,
     incompatible,
@@ -47,23 +44,22 @@ async def restart_system() -> dict:
 
 
 @router.get("/panels/system/update-check", dependencies=[Depends(require_api_key)])
-async def get_system_update_check():
+async def get_system_update_check(force: bool = False):
     """One check, two answers: MirrorDash's goes into #core-update-result (the response itself), the
     system's into #os-update-result (an out-of-band swap; that section only exists on A/B images).
     When both have an update, the system goes first: a new MirrorDash can count on something only
-    the new system has, while a new system works with the MirrorDash already installed."""
-    # ponytail: the modules' answers may be a minute old, so tapping again and again can't use up GitHub's
-    # 60 requests an hour (one per module installed from GitHub)
-    app, os_update, modules = await asyncio.gather(check_core_update(), check_os_update(), module_updates(max_age=60),
-                                                   return_exceptions=True)
+    the new system has, while a new system works with the MirrorDash already installed.
+    Without force it shows the last check's answer (known.py); the Check for Updates button forces a new one."""
+    known = await known_updates(force)
+    app, os_update, modules = known["core"], known["os"], known["modules"]
     system_first = isinstance(os_update, dict) and os_update.get("update_available", False)
     content = _app_update_html(app, system_first)
     if not (isinstance(os_update, dict) and not os_update.get("supported")):
         content += f'<div id="os-update-result" hx-swap-oob="innerHTML">{_os_update_html(os_update)}</div>'
     if isinstance(modules, BaseException):
-        modules_html, checked = _render("update_modules.html", error=str(modules)), time.time()
+        modules_html, checked = _render("update_modules.html", error=str(modules)), known["checked_at"]
     else:
-        modules_html, checked = _render("update_modules.html", updates=modules[0]), min(time.time(), modules[1] or time.time())
+        modules_html, checked = _render("update_modules.html", updates=modules[0]), min(known["checked_at"], modules[1] or known["checked_at"])
     content += f'<div id="modules-update-result" hx-swap-oob="innerHTML">{modules_html}</div>'
     content += f'<span id="update-checked-at" hx-swap-oob="innerHTML">Last checked {_clock(checked)}</span>'
     return HTMLResponse(content=content)
