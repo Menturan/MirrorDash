@@ -25,12 +25,9 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
 
     steps:
       - name: Checkout repository
@@ -51,6 +48,17 @@ jobs:
         with:
           path: build_workspace/site
 
+  # A job of its own, as in GitHub's Pages example: deploy-pages looked the artifact up within a second
+  # of the upload in the same job and sometimes didn't find it yet ("No artifacts named github-pages")
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v5
