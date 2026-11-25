@@ -51,7 +51,7 @@
                                             aria-label="{{ m.name }} settings, {{ where }}"
                                             hx-get="/admin/panels/modules/config/{{ m.module }}?instance_id={{ m.id }}"
                                             hx-target="#config-fields-global"
-                                            onclick='openConfigureModule({{ m.module | tojson }}, {{ m.package | tojson }}, {{ m.id | tojson }})'>{{ m.name }}</button>
+                                            onclick='openConfigureModule({{ m.module | tojson }})'>{{ m.name }}</button>
                                     {% if placed|length > 1 %}
                                         {% set first, last = loop.first, loop.last %}
                                         {# Order within this position; no up arrow on the first, no down arrow on the last #}

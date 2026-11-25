@@ -7,7 +7,7 @@ import itertools
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from jinja2 import Environment, PackageLoader
 from markupsafe import Markup
@@ -27,7 +27,7 @@ STANDARD_SCHEMA = {"properties": {
     # saving keeps what is saved (features/modules/routes.py)
     "instance_name": {"type": "string", "default": "", "maxLength": 40, "title": "Name", "section": "name",
                       "description": "What this one is called on the admin page and in its notifications, e.g. Kitchen Clock. Blank: the module's own name."},
-    "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Position", "section": "placement",
+    "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Position", "section": "placement", "reset": False,
                  "description": "Which anchor region on the mirror this module floats from. Background and Foreground fill the whole screen, behind and in front of the others."},
     "width_percent": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "step": 5, "default": 0,
                       "title": "Width", "section": "placement", "min_label": "Auto", "unit": "%",
@@ -129,6 +129,11 @@ def _safe_properties(properties) -> dict:
     return {key: prop for key, prop in properties.items() if key not in unsafe_keys}
 
 
+UNIT_WORDS = {"s": "seconds", "min": "minutes", "h": "hours", "%": "%"}  # schema keyword "unit" -> the suffix drawn
+# Never reset to a default: secrets, files, and the kinds whose value is a list or an object
+NO_RESET_FORMATS = ("password", "files", "lan-url", FIELDS_FORMAT, *CHOICE_FORMATS)
+
+
 @dataclass
 class Field:
     """One schema property, ready to render (the template escapes it)."""
@@ -141,6 +146,7 @@ class Field:
     module_name: str
     required: bool = False  # in its schema's "required": the browser won't send the form empty (setting_rules.py)
     copy_text: str = ""  # copy_value filled in from the stored values of the form level, the row's first text
+    suggestions: list = field(default_factory=list)  # names to offer in a text box (a <datalist>)
 
     @property
     def value(self) -> str:
@@ -158,6 +164,50 @@ class Field:
     def help(self) -> str:
         """The longer text behind the info button (schema keyword "help"); the description stays one short line."""
         return str(self.schema.get("help", ""))
+
+    @property
+    def unit(self) -> str:
+        """The suffix after a number or slider ("seconds"), from the schema keyword "unit"; any other value is ignored."""
+        unit = self.schema.get("unit")
+        return UNIT_WORDS.get(unit, "") if isinstance(unit, str) else ""
+
+    @property
+    def min_label(self) -> str:
+        """A slider's words at its minimum, in place of the number (schema keyword "min_label", e.g. "Auto")."""
+        return str(self.schema.get("min_label", ""))
+
+    def slider_text(self, value) -> str:
+        """What a slider's readout says for value: the min_label at the minimum, else the number and its unit."""
+        if self.min_label and value == self.schema["minimum"]:
+            return self.min_label
+        return f"{value} {self.unit}".strip()
+
+    @property
+    def can_reset(self) -> bool:
+        """Whether the field offers "Reset to <default>": it has a default and holds one plain value, outside a
+        list row (rows have no default of their own to go back to). The core turns it off with "reset": false
+        where going back is no help (the position: the card would jump to the middle)."""
+        schema = self.schema
+        return (schema.get("reset", True) is not False and "default" in schema and schema.get("format") not in NO_RESET_FORMATS and schema.get("type") not in ("array", "object")
+                and not re.search(r"\[\d+\]", self.prefix))
+
+    @property
+    def default_json(self) -> str:
+        return json.dumps(self.schema.get("default"))
+
+    @property
+    def default_text(self) -> str:
+        """The default as words for the reset link."""
+        default = self.schema.get("default")
+        if isinstance(default, bool):
+            return "on" if default else "off"
+        if "enum" in self.schema and default in self.schema["enum"]:
+            return str(_macros().option_title(self.schema, self.schema["enum"].index(default))).strip()
+        if self.schema.get("format") == "slider" and isinstance(default, (int, float)):
+            return self.slider_text(default)
+        if default == "":
+            return "empty"
+        return f"{default} {self.unit}".strip()
 
     @property
     def copy_value(self) -> str:
@@ -186,7 +236,9 @@ def _array(field: Field) -> str:
     required = items_schema.get("required") if isinstance(items_schema.get("required"), list) else []
     cards = "\n".join(render_array_item(field.prefix, field.key, items_schema.get("properties", {}), i, item, item_title,
                                          required) for i, item in enumerate(items))
-    return _macros().array(field, Markup(cards), item_title)
+    # "Add entity" from the list's items.title; without one, "Add Item"
+    add_label = f"Add {item_title.lower()}" if "title" in items_schema else "Add Item"
+    return _macros().array(field, Markup(cards), item_title, add_label)
 
 
 def _object(field: Field) -> str:
@@ -233,11 +285,13 @@ def _render(widget, field: Field) -> str:
 
 
 def render_schema_form(schema: dict, current_values: dict, name_prefix: str = "", module_name: str = "",
-                       shared: dict[str, SharedState] | None = None) -> str:
+                       shared: dict[str, SharedState] | None = None,
+                       suggestions: dict[str, list[str]] | None = None) -> str:
     """The form for a schema's properties: the core's standard fields first, then the module's own. Fields
     with the same "group" (a title) share a collapsible section where the first of them is; only the form
     changes, they're saved as if they had none (ARCHITECTURE #51). shared: the fields that are shared
-    settings of an instance's form (#62) get the "Own value" row, and their box only while it is on."""
+    settings of an instance's form (#62) get the "Own value" row, and their box only while it is on.
+    suggestions: names to offer in a string field's box, by key (a <datalist>; any other text can still be typed)."""
     if not SAFE_PREFIX.match(name_prefix) or not SAFE_PREFIX.match(module_name):
         raise ValueError("Unsafe form name prefix or module name")
     properties = _safe_properties(schema.get("properties", {}))
@@ -250,7 +304,7 @@ def render_schema_form(schema: dict, current_values: dict, name_prefix: str = ""
         default = "" if prop.get("format") == "lan-url" else prop.get("default", "")  # lan_url: a hint only
         field = Field(key, prop, default if value is None else value,
                       _html_id("field", name_prefix, key), f"{name_prefix}[{key}]" if name_prefix else key,
-                      name_prefix, module_name, key in required)
+                      name_prefix, module_name, key in required, suggestions=(suggestions or {}).get(key, []))
         if field.copy_value:  # copy_value.js keeps it up to date from here
             field.copy_text = re.sub(r"\{(\w+)\}", lambda m: _sibling_text(m[1], properties, current_values), field.copy_value)
         widget = next((widget for matches, widget in WIDGET_RULES if matches(key, prop)), "text")
@@ -287,13 +341,20 @@ def _shown_if(html: str, prop: dict, properties: dict, current_values: dict, nam
 
     def text(value):  # a switch's True as the browser has it: "true"
         return json.dumps(value) if isinstance(value, bool) else str(value)
-    rules = {key: [text(v) for v in (values if isinstance(values, list) else [values])]
+
+    def texts(values):
+        return [text(v) for v in (values if isinstance(values, list) else [values])]
+    # {"not": [...]} is "anything but these"
+    rules = {key: {"not": texts(values["not"])} if isinstance(values, dict) and "not" in values else texts(values)
              for key, values in rules.items() if key in properties}  # keys from _safe_properties: SAFE_KEY
 
     def current(key):
         value = current_values.get(key)
         return text(properties[key].get("default", "") if value is None else value)
-    shown = all(current(key) in values for key, values in rules.items())
+
+    def matches(key, values):
+        return current(key) not in values["not"] if isinstance(values, dict) else current(key) in values
+    shown = all(matches(key, values) for key, values in rules.items())
     names = {(f"{name_prefix}[{key}]" if name_prefix else key): values for key, values in rules.items()}
     return Markup('<div class="show-if" data-show-if="{}"{}>{}</div>').format(
         json.dumps(names), "" if shown else Markup(" hidden"), Markup(html))
@@ -322,7 +383,32 @@ def render_array_item(name_prefix: str, array_key: str, sub_properties: dict, in
     fields = render_schema_form({"properties": sub_properties, "required": list(required)}, item_val,
                                 f"{name_prefix}[{array_key}][{index}]")
     # A new, empty item opens to be filled in
-    return str(_macros().array_item(index, str(item_title), Markup(fields), not any(item_val.values())))
+    return str(_macros().array_item(index, str(item_title), Markup(fields), not any(item_val.values()),
+                                    _row_summary(sub_properties, item_val)))
+
+
+# A string field that names nothing a row could be called by
+_UNNAMING_FORMATS = ("password", "color", "icon", "textarea", "files", "time", "lan-url")
+
+
+def _row_summary(properties: dict, item: dict) -> str:
+    """A list row's header: the display text of its first enum field (its enum_titles title), else its first
+    non-empty string field, with " \u00b7 off" when its boolean "enabled" is false; "" when it has neither
+    (the header is then "# N: <items.title>"). admin.js arrayItemSummary keeps it live."""
+    text = ""
+    for key, prop in properties.items():
+        if isinstance(prop, dict) and prop.get("enum") and item.get(key) in prop["enum"]:
+            text = str(_macros().option_title(prop, prop["enum"].index(item[key]))).strip()
+            break
+    if not text:
+        text = next((value.strip() for key, prop in properties.items()
+                     if isinstance(prop, dict) and prop.get("type") == "string" and not prop.get("enum")
+                     and prop.get("format") not in _UNNAMING_FORMATS
+                     and isinstance(value := item.get(key), str) and value.strip()), "")
+    enabled = properties.get("enabled")
+    if text and isinstance(enabled, dict) and enabled.get("type") == "boolean" and item.get("enabled") is False:
+        text += " \u00b7 off"
+    return text
 
 
 async def read_form(request) -> dict:

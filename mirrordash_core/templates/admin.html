@@ -16,6 +16,7 @@
     <!-- Self-hosted: a render-blocking Google Fonts request stalled the page without internet (setup hotspot) -->
     <link rel="stylesheet" href="/static/fonts/inter.css">
     <link rel="stylesheet" href="/static/admin/admin.css?v={{ version }}">
+    <link rel="stylesheet" href="/static/admin/field_extras.css?v={{ version }}">
     <link rel="stylesheet" href="/static/fontawesome/css/all.min.css">
     <!-- Marked.js and DOMPurify for secure markdown rendering of release notes -->
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js" defer></script>
@@ -132,8 +133,8 @@
         </div>
     </div>
 
-    <!-- A module's settings: a modal over nearly the whole screen (the whole screen on a phone), the module's
-         name, README and Uninstall in its header, the settings on the left and the preview on the right -->
+    <!-- A module's settings: a modal over nearly the whole screen (the whole screen on a phone): the module's name and
+         position in its header, the settings on the left and the preview on the right (below them on a phone) -->
     <div class="config-overlay" id="configOverlay" onclick="window.closeConfigSheet()"></div>
     <div class="config-sheet" id="configSheet" role="dialog" aria-modal="true" aria-labelledby="profileTitle">
         <div class="sheet-header">
@@ -141,40 +142,23 @@
                 <i class="fas fa-puzzle-piece"></i>
             </div>
             <div class="sheet-heading">
-                <div class="field-title-row"><h2 class="profile-title" id="profileTitle">Module Name</h2>
-                    <button type="button" class="help-btn" id="profileHelp" aria-haspopup="dialog" hidden><i class="fas fa-circle-info" aria-hidden="true"></i></button></div>
-                <p class="profile-desc" id="profileDesc">Description</p>
+                <h2 class="profile-title" id="profileTitle">Module Name</h2>
+                <button type="button" class="help-btn" id="profileHelp" aria-haspopup="dialog" hidden><i class="fas fa-circle-info" aria-hidden="true"></i></button>
+                <span class="profile-desc" id="profileDesc"></span>
             </div>
             <a class="btn secondary btn-sm" id="profileReadme" target="_blank" rel="noopener" hidden><i class="fab fa-github"></i> README</a>
-            <button class="btn danger btn-sm" id="uninstall-btn-global"
-                    hx-post="/admin/panels/modules/uninstall"
-                    hx-target="#global-status">
-                <i class="fas fa-trash-alt"></i> Uninstall
-            </button>
             <button class="sheet-close" onclick="window.closeConfigSheet()" aria-label="Close"><i class="fas fa-times"></i></button>
+        </div>
+        <!-- Asked by sheet_guard.js when the sheet is left with edits not saved -->
+        <div class="sheet-unsaved" id="sheetUnsaved" role="alertdialog" aria-labelledby="sheetUnsavedText" hidden>
+            <span id="sheetUnsavedText"></span>
+            <button type="button" class="btn secondary btn-sm" id="sheetKeepEditing">Keep editing</button>
+            <button type="button" class="btn danger btn-sm" id="sheetDiscard">Discard changes</button>
         </div>
         <div class="sheet-body">
           <div class="sheet-main">
-            <!-- The module's shared settings (shared_routes.py), loaded by openConfigSheet; empty for most modules -->
-            <div id="shared-settings-global"></div>
-
-            <!-- Instances Switcher Section -->
-            <div class="instances-section" id="instancesSection" style="display: none; margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px;">
-                <div class="instances-header" style="font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
-                    <span>Active Instances</span>
-                    <button class="btn secondary btn-sm" id="add-new-instance-btn" style="padding: 4px 10px; font-size: 0.75rem; border-radius: 6px;">
-                        <i class="fas fa-plus"></i> Add New
-                    </button>
-                </div>
-                <div id="instances-list-global" style="display: flex; flex-direction: column; gap: 8px;">
-                    <!-- Dynamic instances rows populated by JavaScript -->
-                </div>
-            </div>
-
-            <!-- Configuration fields loaded via HTMX -->
-            <div id="config-fields-global">
-                <!-- Injected config form -->
-            </div>
+            <!-- The settings form (admin_module_config.html), loaded by HTMX -->
+            <div id="config-fields-global"></div>
           </div>
             <!-- The module as the unsaved form would show it (admin.js refreshModulePreview, ARCHITECTURE #43):
                  a page of no site, which can't reach this one -->
@@ -265,6 +249,11 @@
     <script src="/static/admin/choices.js?v={{ version }}"></script>
     <script src="/static/admin/fields.js?v={{ version }}"></script>
     <script src="/static/admin/show_if.js?v={{ version }}"></script>
+    <script src="/static/admin/reset.js?v={{ version }}"></script>
+    <script src="/static/admin/summary.js?v={{ version }}"></script>
+    <script src="/static/admin/sheet.js?v={{ version }}"></script>
+    <script src="/static/admin/sheet_guard.js?v={{ version }}"></script>
+    <script src="/static/admin/sheet_errors.js?v={{ version }}"></script>
     <script src="/static/admin/shared_field.js?v={{ version }}"></script>
     <script src="/static/admin/help.js?v={{ version }}"></script>
     <script src="/static/admin/copy_value.js?v={{ version }}"></script>

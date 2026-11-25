@@ -1,3 +1,5 @@
+import re
+
 from mirrordash_core.forms import (
     cast_values_by_schema,
     parse_flat_form_data,
@@ -307,3 +309,108 @@ def test_a_switch_with_copy_value_gets_a_shared_as_row_filled_from_its_sibling_a
     assert on.index("slider round") < on.index("copy-row")
     off = render_schema_form(schema, {"entity_id": "", "share": False}, "modules[x]", "x")
     assert 'data-copy-value="mod.{entity_id}" hidden>' in off and ">mod.&lt;entity_id&gt;</code>" in off
+
+
+def _unit_schema(**extra):
+    return {"properties": {"interval": {"type": "integer", "title": "Interval", "default": 30, **extra}}}
+
+
+def test_a_unit_is_drawn_after_a_number_and_a_slider_readout():
+    html = render_schema_form(_unit_schema(unit="min"), {}, "modules[x]", "x")
+    assert '<span class="unit">minutes</span>' in html and 'type="number"' in html and 'value="30"' in html
+    slider = {"properties": {"size": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "unit": "%", "default": 100}}}
+    assert ">100 %</output>" in render_schema_form(slider, {}, "modules[x]", "x")
+
+
+def test_an_unknown_unit_is_not_drawn():
+    for unit in ("days", "", None, ["s"]):
+        assert "unit" not in render_schema_form(_unit_schema(unit=unit), {}, "modules[x]", "x").replace('data-unit=""', "")
+
+
+def test_a_slider_says_its_min_label_at_the_minimum():
+    schema = {"properties": {"width": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "default": 0,
+                                       "min_label": "Auto", "unit": "%"}}}
+    assert ">Auto</output>" in render_schema_form(schema, {}, "modules[x]", "x")
+    html = render_schema_form(schema, {"width": 40}, "modules[x]", "x")
+    assert ">40 %</output>" in html and 'data-min-label="Auto"' in html  # the oninput swaps it live
+
+
+def test_show_if_not_hides_a_field_while_the_value_is_one_of_the_listed():
+    schema = {"properties": {
+        "group": {"type": "string", "default": "", "title": "Group"},
+        "interval": {"type": "integer", "title": "Every", "show_if": {"group": {"not": [""]}}}}}
+
+    def wrapper(values):
+        import re
+        return re.search(r'data-show-if="([^"]*)"( hidden)?>', render_schema_form(schema, values, "m", "x"))
+    empty, named = wrapper({}), wrapper({"group": "kitchen"})
+    assert empty[1] == "{&#34;m[group]&#34;: {&#34;not&#34;: [&#34;&#34;]}}" and empty[2] == " hidden"
+    assert named[2] is None
+
+
+def test_suggestions_become_a_datalist_on_that_text_field():
+    schema = {"properties": {"carousel_group": {"type": "string", "title": "Group", "default": ""},
+                             "other": {"type": "string", "title": "Other"}}}
+    html = render_schema_form(schema, {}, "m", "x", suggestions={"carousel_group": ["a", "b<"]})
+    assert html.count("<datalist") == 1 and '<option value="a">' in html and '<option value="b&lt;">' in html
+    assert 'list="field-m-carousel-group-suggestions"' in html and 'id="field-m-carousel-group-suggestions"' in html
+    assert "<datalist" not in render_schema_form(schema, {}, "m", "x")
+
+
+def test_the_carousel_group_box_suggests_the_group_names_in_use(monkeypatch):
+    from mirrordash_core.features.modules.routes import _standard_forms
+    modules = {"clock": {"carousel_group": "top"}, "clock-2": {"carousel_group": "alpha"}, "news": {"carousel_group": "top"},
+               "photos": {"carousel_group": ""}, "weather": {}}
+    html = _standard_forms("clock", {}, modules["clock"], "modules[clock]", modules)["when_form"]
+    assert html.index('<option value="alpha">') < html.index('<option value="top">') and html.count("<option value=") == 2
+
+
+def test_fields_with_a_default_carry_it_for_the_reset_link():
+    from mirrordash_core.forms import standard_schema_for
+    schema = {"properties": {
+        "mode": {"type": "string", "enum": ["a", "b"], "enum_titles": ["Alpha", "Beta"], "default": "b"},
+        "on": {"type": "boolean", "default": True},
+        "every": {"type": "integer", "default": 15, "unit": "s"},
+        "nodefault": {"type": "string"},
+        "key": {"type": "string", "format": "password", "default": ""},
+        "rows": {"type": "array", "items": {"type": "object", "properties": {"n": {"type": "string", "default": "x"}}}, "default": []}}}
+    html = render_schema_form(schema, {}, "m", "x")
+    assert 'data-default="&#34;b&#34;" data-default-text="Beta"' in html
+    assert 'data-default="true" data-default-text="on"' in html
+    assert 'data-default="15" data-default-text="15 seconds"' in html
+    assert html.count("data-default=") == 3  # none for no default, a secret, a list or a row's field
+    # a module's own default for a standard field is the one the link goes back to
+    standard = standard_schema_for({"properties": {"width_percent": {"default": 40}, "show_header": {"default": False}}})
+    width = render_schema_form({"properties": {"width_percent": standard["properties"]["width_percent"]}}, {}, "m", "x")
+    assert 'data-default="40" data-default-text="40 %"' in width
+    header = render_schema_form({"properties": {"show_header": standard["properties"]["show_header"]}}, {}, "m", "x")
+    assert 'data-default="false"' in header
+
+
+def test_the_add_button_says_add_and_the_lowercased_items_title():
+    def button(items):
+        schema = {"properties": {"things": {"type": "array", "title": "Things", "items": {"type": "object", "properties": {}, **items}}}}
+        return render_schema_form(schema, {}, "m", "x")
+    assert "</i> Add entity</button>" in button({"title": "Entity"})
+    assert "</i> Add Item</button>" in button({})
+
+
+def test_a_list_row_header_is_its_first_choice_or_text_and_says_when_it_is_off():
+    props = {"theme": {"type": "string", "enum": ["christmas", "easter"], "enum_titles": ["Christmas", "Easter egg"]},
+             "enabled": {"type": "boolean"}, "label": {"type": "string"}}
+    row = lambda item, properties=props: render_array_item("m", "themes", properties, 0, item, "Theme")
+    header = lambda html: re.search(r'array-item-index-title"[^>]*>([^<]*)<', html)[1]
+    assert header(row({"theme": "christmas", "enabled": True})) == "Christmas"
+    assert header(row({"theme": "easter", "enabled": False})) == "Easter egg \u00b7 off"
+    assert header(row({"label": " Mine ", "enabled": False})) == "Mine \u00b7 off"  # no choice: the first text
+    assert header(row({"theme": "easter", "label": "Mine"})) == "Easter egg"  # the choice first
+    assert header(row({"enabled": False})) == "# 1: Theme"  # nothing to say
+    assert header(row({"theme": "x"}, {"theme": {"type": "string", "enum": ["x"]}})) == "X"  # no enum_titles
+
+
+def test_the_position_offers_no_reset():
+    """Going back to the default position would move the card to the middle: no reset link for it."""
+    from mirrordash_core.forms import STANDARD_SCHEMA, render_schema_form
+    html = render_schema_form({"properties": {"position": STANDARD_SCHEMA["properties"]["position"]}},
+                              {"position": "top_right"}, "modules[x]", "clock")
+    assert "data-default" not in html

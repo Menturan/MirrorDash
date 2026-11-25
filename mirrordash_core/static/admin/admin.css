@@ -1421,9 +1421,6 @@ input:checked + .slider:before {
 .checkbox-inline { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: white; cursor: pointer; }
 /* A shared setting (shared_field.js, ARCHITECTURE #62): its note on the left, the "Own value" switch on the right */
 /* The Shared Settings section above the instances: the same box and small uppercase header */
-.shared-section { margin-bottom: 20px; background: rgba(255,255,255,0.015); border: 1px solid rgba(255,255,255,0.03); border-radius: 12px; padding: 14px; }
-.shared-section-header { font-size: 0.72rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-.shared-section-header .btn { padding: 4px 10px; font-size: 0.75rem; border-radius: 6px; }
 .shared-box { border: 0; padding: 0; margin: 8px 0 0; min-width: 0; }
 .shared-box[hidden] { display: none; }
 .shared-title { display: block; font-size: 14px; }
@@ -1436,9 +1433,18 @@ input:checked + .slider:before {
 .shared-own { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--on-surface-variant); white-space: nowrap; cursor: pointer; }
 .shared-field { margin-bottom: 12px; }
 .shared-field > .schema-field { margin-bottom: 0; }
-.form-accordion { margin-bottom: 16px; border: 1px solid #27272a; border-radius: 6px; background: rgba(255, 255, 255, 0.01); overflow: hidden; }
-.form-accordion > summary { padding: 12px; font-weight: 600; color: white; cursor: pointer; user-select: none; background: rgba(255, 255, 255, 0.03); outline: none; }
-.form-accordion-body { padding: 12px; border-top: 1px solid #27272a; }
+/* One accordion for the whole sheet (module groups, the shared block, the three core rows): a chevron, the
+   title, and on the right a one-line summary when the row has one (summary.js) */
+.form-accordion { margin-bottom: 8px; border: 1px solid var(--border-color); border-radius: 8px; background: rgba(255, 255, 255, 0.02); overflow: hidden; }
+.form-accordion > summary { display: flex; align-items: center; gap: 10px; padding: 10px 12px; font-size: 0.9rem; font-weight: 500; color: white; cursor: pointer; user-select: none; list-style: none; outline: none; }
+.form-accordion > summary::-webkit-details-marker { display: none; }
+.form-accordion > summary::before { content: ""; flex: none; width: 6px; height: 6px; margin: 0 4px 0 2px; border-right: 2px solid var(--text-muted); border-bottom: 2px solid var(--text-muted); transform: rotate(-45deg); transition: transform 0.15s ease; }
+.form-accordion[open] > summary::before { transform: rotate(45deg); }
+.form-accordion > summary:hover { background: rgba(255, 255, 255, 0.04); }
+.form-accordion > summary:focus-visible { box-shadow: inset 0 0 0 2px var(--primary); }
+.acc-summary { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: right; font-size: 0.8rem; font-weight: 400; color: var(--text-muted); }
+.acc-summary.warn { color: var(--warning); }
+.form-accordion-body { padding: 12px; border-top: 1px solid var(--border-color); }
 .form-accordion-body > .field-description { font-size: 0.75rem; margin: 0 0 12px 0; line-height: 1.4; }
 .range-row { display: flex; align-items: center; gap: 12px; }
 .range-row input { flex: 1; accent-color: white; }
@@ -1498,43 +1504,58 @@ textarea.schema-textarea { min-height: 0; resize: vertical; background: #09090b;
 .color-swatch-btn { width: 20px; height: 20px; border-radius: 50%; border: 1px solid #52525b; cursor: pointer; outline: none; transition: transform 0.1s; }
 .color-swatch-btn.active { border: 2px solid white; transform: scale(1.15); box-shadow: 0 0 8px white; }
 
-/* A module's settings in the Configure drawer (features/modules/templates/admin_module_config.html) */
-.module-config-form { background: rgba(255, 255, 255, 0.02); padding: 1.25rem; border-radius: 6px; border: 1px solid #27272a; }
-/* The instance's name over its settings; it fades in when another instance's settings arrive, so the change shows */
-.module-config-instance { margin: 0 0 16px; padding-bottom: 12px; border-bottom: 1px solid #27272a; color: white;
-    font-size: 1.35rem; font-weight: 600; overflow-wrap: anywhere; animation: config-instance-in 0.35s ease-out; }
-@keyframes config-instance-in { from { opacity: 0; transform: translateY(4px); } }
-@media (prefers-reduced-motion: reduce) { .module-config-instance { animation-duration: 1s; animation-timing-function: linear; } }
-.module-config-title { margin: 0 0 4px 0; color: white; font-size: 1rem; }
+/* A module's settings in its sheet (features/modules/templates/admin_module_config.html) */
 /* An icon setting: the icon typed, drawn in a box before its name */
 .icon-row { display: flex; gap: 8px; }
 .icon-preview { flex: none; aspect-ratio: 1; display: grid; place-items: center; border: 1px solid #27272a; border-radius: 6px; color: white; }
 .icon-preview svg { width: 20px; height: 20px; }
 .icon-preview.unknown::after { content: "?"; color: #f59e0b; font-weight: 600; }
-.module-config-title i { margin-right: 6px; color: var(--accent-color); }
-.module-config-note { margin: 0 0 14px 0; font-size: 0.72rem; color: #71717a; }
-.module-config-own { margin: 20px 0 12px 0; border-top: 1px solid #3f3f46; padding-top: 16px; }
-.module-config-own h5 { margin: 0 0 12px 0; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; }
-.module-config-actions { margin: 20px -1.25rem -1.25rem; padding: 12px 1.25rem; display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end;
-    position: sticky; bottom: 0; background: #0f0f11; border-top: 1px solid #27272a; border-radius: 0 0 6px 6px; z-index: 1; }
-/* The drawer's settings two by two; the long ones (lists, keys, addresses, text) across */
-.module-config-own, .shared-fields, .standard-settings-content, .form-accordion-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
-:is(.module-config-own, .shared-fields, .form-accordion-body, .standard-settings-content, .show-if, .array-item-fields) > :is(h5, .schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
-/* A setting with show_if (show_if.js): its field stays in the grid; hidden while the other field doesn't match */
+
+/* The sheet is one column, the settings one under the other; the long ones too */
+.module-config-own { margin: 0 0 16px; }
+.sheet-main .form-accordion-body { display: block; }
+.sheet-row .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; }  /* the schedule's days in a row */
+/* A setting with show_if (show_if.js): its field stays in the form; hidden while the other field doesn't match */
 .show-if { display: contents; }
 .show-if[hidden] { display: none; }
-.standard-settings-content .schema-checkboxes { flex-flow: row wrap; column-gap: 18px; }  /* the schedule's days in a row */
-@media (max-width: 600px) { .module-config-own, .shared-fields, .standard-settings-content, .form-accordion-body { grid-template-columns: minmax(0, 1fr); } }
-.standard-settings-accordion { margin-top: 14px; border: 1px solid #27272a; border-radius: 6px; background: rgba(0, 0, 0, 0.1); overflow: hidden; }
-.standard-settings-accordion summary { padding: 10px 14px; color: #a1a1aa; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: space-between; list-style: none; outline: none; background: rgba(255, 255, 255, 0.02); transition: background 0.2s ease, color 0.2s ease; }
-.standard-settings-accordion summary > span { display: flex; align-items: center; gap: 6px; }
-.standard-settings-accordion summary .fa-cog { color: #71717a; }
-.standard-settings-accordion summary::-webkit-details-marker { display: none; }
-.standard-settings-accordion summary:hover { background: rgba(255, 255, 255, 0.05); color: white; }
-.standard-settings-accordion[open] summary { border-bottom: 1px solid #27272a; background: rgba(255, 255, 255, 0.04); color: white; }
-.standard-settings-accordion .accordion-arrow { font-size: 0.75rem; color: #71717a; transition: transform 0.2s ease; }
-.standard-settings-accordion[open] .accordion-arrow { transform: rotate(180deg); }
-.standard-settings-content { padding: 14px; background: rgba(0, 0, 0, 0.15); }
+/* A form wide in the Settings tab and on /design: two columns, the long ones across */
+.form-accordion-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 20px; align-items: start; }
+.form-accordion-body > :is(.schema-group, .field-description, .form-accordion, .wide), .array-item-fields > :is(.schema-group, .field-description, .form-accordion, .wide) { grid-column: 1 / -1; }
+@media (max-width: 600px) { .form-accordion-body { grid-template-columns: minmax(0, 1fr); } }
+
+/* The instances as chips; the selected one is the name box */
+.sheet-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 16px; }
+.sheet-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--border-color); border-radius: 8px; background: transparent; color: white; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.sheet-chip:hover { border-color: var(--border-hover); }
+.sheet-chip.selected { border-color: var(--primary); background: rgba(255, 255, 255, 0.08); cursor: text; }
+.sheet-chip.selected:focus-within { box-shadow: 0 0 0 2px var(--primary-glow); }
+.sheet-chip .fa-circle-dot, .sheet-chip .fa-pen { font-size: 0.7rem; color: var(--text-muted); }
+.sheet-chip.ghost { border-style: dashed; color: var(--text-muted); }
+.sheet-chip .chip-name { width: auto; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; outline: none; }
+.sheet-chip .chip-name:focus-visible { outline: none; box-shadow: none; }
+.chip-off { font-size: 0.7rem; color: var(--text-muted); }
+.chip-switch { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; font-size: 0.8rem; color: var(--text-secondary); }
+.sheet-rows { margin-top: 16px; }
+
+/* A message at its field (sheet_errors.js) */
+.field-error { margin: 6px 0 0; color: var(--danger); font-size: 0.8rem; }
+[aria-invalid="true"] { border-color: var(--danger) !important; }
+
+/* Save stays in reach at the bottom of the sheet; the footer scrolls with the form */
+.sheet-actions { position: sticky; bottom: 0; z-index: 1; margin: 16px -24px 0; padding: 12px 24px; display: flex; align-items: center; justify-content: flex-end; gap: 14px;
+    background: #09090b; border-top: 1px solid var(--border-color); }
+.save-status { color: var(--danger); font-size: 0.85rem; }
+.sheet-footer { padding: 16px 0 8px; }
+.sheet-footer-actions { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; }
+.btn-text { padding: 4px 0; border: 0; background: none; font: inherit; font-size: 0.9rem; cursor: pointer; }
+.btn-text.danger { color: var(--danger); }
+.btn-text:hover { text-decoration: underline; }
+.sheet-module-wide { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border-color); }
+.sheet-footer-label { margin: 0 0 6px; font-size: 0.8rem; color: var(--text-muted); }
+/* Asked when the sheet is left with edits not saved (sheet_guard.js) */
+.sheet-unsaved { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 20px; background: rgba(245, 158, 11, 0.1); border-bottom: 1px solid var(--warning); font-size: 0.9rem; color: white; }
+.sheet-unsaved[hidden] { display: none; }
+.sheet-unsaved > span { flex: 1; min-width: 12em; }
 
 /* ============================================================
    The page shell: sidebar, cards, dialogs (moved from admin.html)
@@ -2052,9 +2073,9 @@ header {
 }
 
 .sheet-header .profile-icon { width: 40px; height: 40px; border-radius: 10px; font-size: 1.1rem; box-shadow: none; flex: none; }
-.sheet-heading { flex: 1; min-width: 0; }
-.sheet-heading .profile-title { font-size: 1.1rem; }
-.sheet-heading .profile-desc { margin: 2px 0 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-heading { flex: 1; min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 8px; }
+.sheet-heading .profile-title { font-size: 1.1rem; margin: 0; }
+.sheet-heading .profile-desc { font-size: 0.8rem; color: var(--text-muted); }
 .sheet-header .btn { flex: none; }
 
 .sheet-close {
@@ -2080,7 +2101,7 @@ header {
     flex: 1;
     min-height: 0;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(400px, 42%);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 42%);
 }
 
 .sheet-main {
@@ -2118,16 +2139,13 @@ header {
     background: #000;
 }
 
-/* A phone: the whole screen, the preview above the settings, the two scrolling as one */
-@media (max-width: 960px) {
+/* A phone: the whole screen, the preview below the settings, the two scrolling as one */
+@media (max-width: 767px) {
     .config-sheet { inset: 0; max-width: none; border: 0; border-radius: 0; }
     .sheet-body { display: flex; flex-direction: column; overflow-y: auto; }
     .sheet-main { overflow: visible; }
-    .sheet-preview { order: -1; border-left: 0; border-bottom: 1px solid var(--border-color); height: 40vh; flex: none; }
-}
-@media (max-width: 600px) {
+    .sheet-preview { order: 1; border-left: 0; border-top: 1px solid var(--border-color); height: 40vh; flex: none; }
     .sheet-header { gap: 10px; padding: 12px; }
-    .sheet-heading .profile-desc { display: none; }
 }
 
 .profile-icon {

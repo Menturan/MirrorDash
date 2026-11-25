@@ -4,9 +4,9 @@
     <h2 class="explorer-section-title">Configuration Form Controls</h2>
     <p class="explorer-section-desc">
         MirrorDash builds each module's settings form from its <code>config_schema.json</code>, picking the control by
-        the property's type, format and name. Every field below is drawn by that same code from the JSON beside it:
+        the property's type and format, never its name. Every field below is drawn by that same code from the JSON beside it:
         copy the JSON into your schema's <code>"properties"</code> to get the control. They come alive in the admin page
-        (choices, uploads, Show). The admin page is in English only: write titles, descriptions and errors in English
+        (choices, uploads, Show). A setting with a <code>default</code> gets a "Reset to …" link by itself while its value differs. The admin page is in English only: write titles, descriptions and errors in English
         (a module's <code>translations/</code> are for the mirror).
     </p>
     {% for card in cards %}

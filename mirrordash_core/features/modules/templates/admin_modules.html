@@ -33,11 +33,9 @@
                     <div class="module-row{% if meta.instances and not on %} off{% endif %}" id="module-card-{{ name }}"
                          data-search="{{ (title ~ ' ' ~ name)|lower }}"
                          data-title="{{ title }}"
-                         data-description="{{ meta.schema.description or meta.summary or '' }}"
                          data-help="{{ meta.schema.help or '' }}"
                          data-screenshot="{{ meta.screenshot or '' }}"
-                         data-repo="{{ meta.repo or '' }}"
-                         data-instances="{{ meta.instances | tojson | forceescape }}">
+                         data-repo="{{ meta.repo or '' }}">
                         <span class="module-card-icon-container module-row-icon" aria-hidden="true">
                             {% if icon_class.startswith('data:') %}<span class="module-svg-icon" style="--icon: url('{{ icon_class }}')"></span>{% else %}<i class="fas {{ icon_class }}"></i>{% endif %}
                         </span>
@@ -60,7 +58,7 @@
                             <button class="btn secondary btn-sm" id="config-btn-{{ name }}"
                                     hx-get="/admin/panels/modules/config/{{ name }}{% if first_id %}?instance_id={{ first_id }}{% endif %}"
                                     hx-target="#config-fields-global"
-                                    onclick='openConfigureModule({{ name | tojson }}, {{ meta.package_name | tojson }}, {{ (first_id or "") | tojson }})'>
+                                    onclick='openConfigureModule({{ name | tojson }})'>
                                 {% if meta.instances %}Settings{% else %}Add to Mirror{% endif %}
                             </button>
                         </div>

@@ -3,6 +3,7 @@
 instance when a shared value changes, the check of config["module_settings"], the drawer's form, the plain
 backup and the uninstall."""
 import asyncio
+import re
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -188,9 +189,28 @@ def test_a_broken_shared_rule_is_named_by_the_shared_input_and_saves_nothing(sav
     reload.assert_not_awaited()
 
 
-def test_the_old_shared_section_has_no_save_route(saving):
+def test_a_required_shared_field_nothing_is_saved_for_is_named_a_saved_secret_is_not(saving):
+    client, config, reload = saving
+    rules = {**SCHEMA, "required": ["token"]}
+    with patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=rules):
+        response = post_save(client, "one", shared={"url": "http://ha", "token": ""})
+        assert response.status_code == 422 and response.json()["fields"] == {"shared[token]": "Token is required."}
+        assert config["module_settings"] == {}
+        reload.assert_not_awaited()
+        config["module_settings"] = {"mirrordash-ha": {"token": "keep-me"}}
+        assert post_save(client, "one", shared={"url": "http://ha", "token": ""}).status_code == 200
+    assert config["module_settings"]["mirrordash-ha"]["token"] == "keep-me"
+
+
+def test_the_shared_block_marks_only_the_required_fields_required():
+    html = shared_block({}, "mirrordash-ha", {**SCHEMA, "required": ["token"]}, 1)["html"]
+    assert re.search(r'<input[^>]*required[^>]*name="shared\[token\]"', html)
+    assert not re.search(r'<input[^>]*required[^>]*name="shared\[url\]"', html)
+
+
+def test_the_shared_section_has_no_route_of_its_own(saving):
     client, config, _ = saving
-    assert client.post("/admin/panels/modules/shared/mirrordash-ha", data={"shared[token]": "t"}, headers=HEADERS).status_code == 405
+    assert client.post("/admin/panels/modules/shared/mirrordash-ha", data={"shared[token]": "t"}, headers=HEADERS).status_code == 404
     assert config["module_settings"] == {}
 
 
@@ -304,7 +324,7 @@ def box_of(html, key):
 def test_a_shared_field_without_own_value_shows_a_line_and_the_switch_and_a_hidden_box(drawer):
     html = drawer("one")
     row, switch = row_of(html, "url")
-    assert "Shared: set in Shared Settings above." in row and "fa-link" in row and "Own value" in row
+    assert "Shared: set in Shared settings above." in row and "fa-link" in row and "Own value" in row
     assert " checked" not in switch  # Own value is off
     assert '<p class="field-description shared-note shared-note-own" hidden>' in row
     box = box_of(html, "url")
@@ -333,7 +353,7 @@ def test_a_secret_is_never_printed_in_a_note_or_a_data_attribute(drawer):
 def test_a_new_instance_starts_with_own_value_off(drawer):
     html = drawer("three")
     row, switch = row_of(html, "token")
-    assert "Shared: set in Shared Settings above." in row and " checked" not in switch
+    assert "Shared: set in Shared settings above." in row and " checked" not in switch
     assert box_of(html, "token").startswith(' class="shared-box" disabled hidden>')
 
 
@@ -366,7 +386,7 @@ def test_the_block_is_open_while_a_required_shared_field_is_empty():
 
 def test_the_sheet_gets_the_shared_block_and_the_chips(drawer):
     html = drawer("one")
-    assert "Shared settings: 192.168.1.5:8123 \u00b7 used by 2" in html and "<details" in html
+    assert "192.168.1.5:8123 \u00b7 used by 2" in html and "Shared settings" in html and "<details" in html
     assert 'name="shared[url]" value="http://192.168.1.5:8123"' in html and "s3cret-shared" not in html
 
 

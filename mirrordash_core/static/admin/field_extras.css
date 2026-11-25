@@ -1,0 +1,21 @@
+/* Extras of the schema form's fields: the unit after a number, the slider's readout, "Reset to <default>" */
+
+.input-suffix { display: flex; align-items: center; gap: 8px; }
+.input-suffix .form-control { flex: 1; min-width: 0; }
+.input-suffix .unit { color: var(--text-secondary, #a1a1aa); font-size: 0.85rem; }
+
+.range-row output { min-width: 4.5em; white-space: nowrap; }
+
+.field-title-row:has(.reset-link) { flex-wrap: wrap; }
+.reset-link {
+    margin-left: auto;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: var(--accent-color, #fff);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+.reset-link:hover { text-decoration: underline; }
+.reset-link[hidden] { display: none; }

@@ -97,6 +97,16 @@ def apply_posted_shared(config: dict, module_name: str, posted, schema: dict | N
         module_settings.pop(module_name, None)
 
 
+def missing_required_shared(settings: dict, schema: dict | None) -> dict[str, str]:
+    """A required shared setting that has no value at all, as the module gets its settings (with_shared): a
+    secret nothing is saved for, which broken_rules (it only checks what is there) doesn't see. {shared[<key>]:
+    "<Title> is required."}; a setting whose schema default is a value is never missing."""
+    required = (schema or {}).get("required") if isinstance((schema or {}).get("required"), list) else []
+    return {f"{FORM_PREFIX}[{key}]": f"{schema['properties'][key].get('title', key)} is required."
+            for key in shared_keys(schema) if key in required and key not in settings
+            and schema["properties"][key].get("default") in (None, "")}
+
+
 def _shown_shared_values(config: dict, module_name: str, schema: dict) -> dict:
     """What the sheet shows for each shared setting: the saved value, else the schema's default; never a secret."""
     saved = shared_values(config, module_name)
@@ -120,9 +130,10 @@ def shared_block(config: dict, module_name: str, schema: dict, instance_count: i
     properties = {key: schema["properties"][key] for key in keys}
     saved = shared_values(config, module_name)
     required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    shared_required = [key for key in keys if key in required]
     first = next((_short(value) for value in shown.values() if value not in ("", None)), "Not set")
     return {
-        "html": render_schema_form({"properties": properties}, shown, FORM_PREFIX, module_name),
+        "html": render_schema_form({"properties": properties, "required": shared_required}, shown, FORM_PREFIX, module_name),
         "summary": f"{first} \u00b7 used by {instance_count}",
         # A secret's emptiness is about the saved one: the form never prints it
         "open": any(key in required and (saved.get(key) if is_secret(properties[key]) else shown[key]) in ("", None) for key in keys),

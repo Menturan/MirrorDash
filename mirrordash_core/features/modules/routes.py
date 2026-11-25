@@ -55,6 +55,7 @@ from mirrordash_core.features.modules.shared_settings import (
     default_shared_value,
     drop_unowned_shared,
     is_secret,
+    missing_required_shared,
     shared_block,
     shared_keys,
     shared_values,
@@ -139,7 +140,7 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
         "instance_name": instance_config.get("instance_name") or "",
         "chips": chips,
         "shared_block": shared_block(config, module_name, schema, sum(1 for chip in chips if chip["id"] in modules_config)),
-        **_standard_forms(module_name, schema, instance_config, form_name_prefix),
+        **_standard_forms(module_name, schema, instance_config, form_name_prefix, modules_config),
         "module_form": render_schema_form({"properties": module_own_properties}, module_values, form_name_prefix,
                                           module_name, shared=shared),
         "package_name": ep.dist.name if ep.dist else module_name,
@@ -148,10 +149,14 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     })
 
 
-def _standard_forms(module_name: str, schema: dict, instance_config: dict, prefix: str) -> dict[str, str]:
+def _standard_forms(module_name: str, schema: dict, instance_config: dict, prefix: str,
+                    modules_config: dict) -> dict[str, str]:
     """The core's standard settings as the sheet's three sections (placement_form, when_form, heading_form),
     by each setting's "section". One call per section, so a show_if finds its sibling; an object (the
-    schedule) is a form of its own, first. The name is the instance chip's, not a section's."""
+    schedule) is a form of its own, first. The name is the instance chip's, not a section's. The carousel
+    group box suggests the group names in use by any instance."""
+    groups = sorted({group for cfg in modules_config.values() if isinstance(cfg, dict)
+                     and isinstance(group := cfg.get("carousel_group"), str) and group})
     standard = standard_schema_for(schema)["properties"]
     forms = {}
     for section in ("placement", "when", "heading"):
@@ -160,7 +165,8 @@ def _standard_forms(module_name: str, schema: dict, instance_config: dict, prefi
                                     f"{prefix}[{key}]", module_name)
                  for key, prop in properties.items() if prop.get("type") == "object"]
         flat = {key: prop for key, prop in properties.items() if prop.get("type") != "object"}
-        parts.append(render_schema_form({"properties": flat}, instance_config, prefix, module_name))
+        parts.append(render_schema_form({"properties": flat}, instance_config, prefix, module_name,
+                                        suggestions={"carousel_group": groups}))
         forms[f"{section}_form"] = "\n".join(parts)
     return forms
 
@@ -259,7 +265,8 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
     if check_rules and schema:
         # The rules check what the module gets: an input is the shared field's unless the instance has an own value
         input_name = lambda key: f"modules[{instance_id}][{key}]" if key in instance_config else f"{FORM_PREFIX}[{key}]"
-        if fields := broken_rules(with_shared(instance_config, config, schema), schema, input_name):
+        settings = with_shared(instance_config, config, schema)
+        if fields := {**missing_required_shared(settings, schema), **broken_rules(settings, schema, input_name)}:
             raise InvalidFields(fields)
     return config, instance_id
 

@@ -345,9 +345,9 @@ async function triggerRestart() {
     });
 }
 
-window.openConfigSheet = function(name, title, description, iconHtml, color, textColor, packageName, activeInstanceId) {
+window.openConfigSheet = function(name, title, iconHtml) {
     document.getElementById('profileTitle').innerText = title;
-    document.getElementById('profileDesc').innerText = description || 'Configure instance properties.';
+    document.getElementById('profileDesc').innerText = '';  // the position, set by sheet.js when the form arrives
     // The schema's root "help": an info button after the title (help.js); the module lists show the short text only
     const help = (document.getElementById('module-card-' + name) || {dataset: {}}).dataset.help || '';
     const helpButton = document.getElementById('profileHelp');
@@ -355,139 +355,26 @@ window.openConfigSheet = function(name, title, description, iconHtml, color, tex
     helpButton.dataset.help = help;
     helpButton.dataset.helpTitle = title;
     helpButton.setAttribute('aria-label', 'More about ' + title);
-    
+
     const profileIcon = document.getElementById('profileIcon');
-    if (profileIcon) {
-        profileIcon.style.background = color || 'rgba(255, 255, 255, 0.08)';
-        profileIcon.style.color = textColor || '#ffffff';
-        profileIcon.innerHTML = iconHtml || '<i class="fas fa-puzzle-piece"></i>';
-    }
-    
-    const uninstallBtn = document.getElementById('uninstall-btn-global');
-    if (uninstallBtn) {
-        if (packageName) {
-            uninstallBtn.style.display = 'inline-flex';
-            uninstallBtn.setAttribute('hx-vals', JSON.stringify({ package_name: packageName }));
-            uninstallBtn.setAttribute('hx-confirm', `Are you sure you want to uninstall ${title}? This will remove the package and restart the mirror.`);
-            htmx.process(uninstallBtn);
-        } else {
-            uninstallBtn.style.display = 'none';
-        }
-    }
-
-    // The shared settings, if the module has any (an empty answer hides the section)
-    const shared = document.getElementById('shared-settings-global');
-    shared.innerHTML = '';
-    htmx.ajax('GET', `/admin/panels/modules/shared/${encodeURIComponent(name)}`, {target: shared});
-
-    // Render instances list
-    const card = document.getElementById('module-card-' + name);
+    profileIcon.innerHTML = iconHtml || '<i class="fas fa-puzzle-piece"></i>';
 
     // No screenshot here: the preview shows the module itself (ARCHITECTURE #43); its README stays a link
+    const card = document.getElementById('module-card-' + name);
     const readme = document.getElementById('profileReadme');
     readme.hidden = !(card && card.dataset.repo);
     if (!readme.hidden) readme.href = card.dataset.repo + '#readme';
-    const instancesSection = document.getElementById('instancesSection');
-    const instancesList = document.getElementById('instances-list-global');
-    const addNewBtn = document.getElementById('add-new-instance-btn');
-
-    if (card && instancesSection && instancesList && addNewBtn) {
-        let instancesData = [];
-        try {
-            instancesData = JSON.parse(card.getAttribute('data-instances') || '[]');
-        } catch (e) {
-            console.error("Failed to parse instances JSON", e);
-        }
-        if (!instancesData) instancesData = [];
-        
-        if (Array.isArray(instancesData) && instancesData.length > 0) {
-            instancesSection.style.display = 'block';
-            instancesList.innerHTML = '';
-
-            // Configure Add New button to load blank config form and highlight itself
-            addNewBtn.onclick = function() {
-                // De-select list items
-                instancesList.querySelectorAll('.instance-item').forEach(el => {
-                    el.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-                    el.style.background = 'rgba(255, 255, 255, 0.01)';
-                });
-                addNewBtn.className = 'btn primary btn-sm';
-                htmx.ajax('GET', `/admin/panels/modules/config/${name}`, {target: '#config-fields-global', source: addNewBtn});
-            };
-
-            instancesData.forEach(inst => {
-                const row = document.createElement('div');
-                row.className = 'instance-item';
-                row.style.display = 'flex';
-                row.style.justifyContent = 'space-between';
-                row.style.alignItems = 'center';
-                row.style.padding = '10px 14px';
-                row.style.borderRadius = '8px';
-                row.style.cursor = 'pointer';
-                row.style.transition = 'all 0.2s';
-                
-                const isActive = inst.id === activeInstanceId;
-                if (isActive) {
-                    row.style.border = '1px solid var(--primary)';
-                    row.style.background = 'rgba(255, 255, 255, 0.06)';
-                    addNewBtn.className = 'btn secondary btn-sm';
-                } else {
-                    row.style.border = '1px solid rgba(255, 255, 255, 0.05)';
-                    row.style.background = 'rgba(255, 255, 255, 0.01)';
-                }
-
-                const posVal = inst.position || 'middle_center';
-                const positionLabel = posVal.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
-
-                row.innerHTML = `
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 6px; height: 6px; border-radius: 50%; background-color: ${inst.enabled ? 'var(--success)' : 'var(--text-muted)'}; box-shadow: ${inst.enabled ? '0 0 6px var(--success-glow)' : 'none'};"></div>
-                        <span class="inst-title" style="font-size: 0.85rem; font-weight: 500; color: white;"></span>
-                    </div>
-                    <span style="display: inline-flex; align-items: center; gap: 12px;">
-                        <span class="status-badge" style="background: rgba(255, 255, 255, 0.04); color: #a1a1aa; border: 1px solid rgba(255,255,255,0.08); font-size: 0.65rem; padding: 2px 6px; border-radius: 4px;">
-                            ${positionLabel}
-                        </span>
-                        <label class="switch" onclick="event.stopPropagation()" style="transform: scale(0.8); margin: 0; display: inline-block;">
-                            <input type="checkbox" ${inst.enabled ? 'checked' : ''} 
-                                   hx-post="/admin/panels/modules/config/${name}/toggle?instance_id=${inst.id}"
-                                   hx-swap="none">
-                            <span class="slider round"></span>
-                        </label>
-                        <i class="fas fa-pen-to-square" style="color: var(--text-muted); font-size: 0.7rem; opacity: 0.6; transition: opacity 0.2s;"></i>
-                    </span>
-                `;
-                row.querySelector('.inst-title').textContent = inst.title || inst.id;
-
-                row.onclick = function() {
-                    // Update active states
-                    instancesList.querySelectorAll('.instance-item').forEach(el => {
-                        el.style.borderColor = 'rgba(255, 255, 255, 0.05)';
-                        el.style.background = 'rgba(255, 255, 255, 0.01)';
-                    });
-                    row.style.border = '1px solid var(--primary)';
-                    row.style.background = 'rgba(255, 255, 255, 0.06)';
-                    addNewBtn.className = 'btn secondary btn-sm';
-                    
-                    htmx.ajax('GET', `/admin/panels/modules/config/${name}?instance_id=${inst.id}`, {target: '#config-fields-global', source: row});
-                };
-
-                instancesList.appendChild(row);
-                htmx.process(row);
-            });
-        } else {
-            instancesSection.style.display = 'none';
-        }
-    }
 
     document.getElementById('configOverlay').classList.add('open');
 };
 
-window.closeConfigSheet = function() {
+// Closing asks first when there are edits not saved (sheet_guard.js); force skips the question
+window.closeConfigSheet = function(force) {
+    if (force !== true && !window.sheetGuard(() => window.closeConfigSheet(true))) return;
     document.getElementById('configOverlay').classList.remove('open');
     const fields = document.getElementById('config-fields-global');
     if (fields) fields.innerHTML = '';
-    document.getElementById('shared-settings-global').innerHTML = '';
+    document.dispatchEvent(new Event('sheet-closed'));
     clearTimeout(previewTimer);
     clearTimeout(previewPoll);
     previewRun++;  // an answer still on its way is dropped
@@ -497,7 +384,7 @@ window.closeConfigSheet = function() {
 // Escape closes a module's settings, as any modal (not while another dialog, e.g. a confirm, is on top)
 document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && document.getElementById('configOverlay').classList.contains('open')
-        && !document.querySelector('.modal-overlay[style*="flex"]')) window.closeConfigSheet();
+        && !document.querySelector('.modal-overlay[style*="display: flex"]')) window.closeConfigSheet();
 });
 
 // The drawer's preview (ARCHITECTURE #43): the unsaved form, posted as Save would post it, rendered by the
@@ -556,11 +443,13 @@ function setUpIconInputs(root) {
 document.addEventListener('input', (event) => { if (event.target.matches?.('[data-icon-input]')) drawIcon(event.target); });
 // A setting the browser finds breaks its schema's rules (schema_form.html rules, ARCHITECTURE #49) may sit in a
 // folded list item or section, or be hidden by show_if (ARCHITECTURE #50): open and show them, or the browser
-// can't point at it and the save just doesn't happen
-document.addEventListener('invalid', (event) => {
-    for (let fold = event.target.closest('details'); fold; fold = fold.parentElement.closest('details')) fold.open = true;
-    for (let hidden = event.target.closest('.show-if[hidden]'); hidden; hidden = hidden.parentElement.closest('.show-if[hidden]')) hidden.hidden = false;
-}, true);
+// can't point at it and the save just doesn't happen. (The module sheet doesn't use the browser's check:
+// sheet_errors.js shows the server's answer, with the same reveal.)
+window.revealField = (field) => {
+    for (let fold = field.closest('details'); fold; fold = fold.parentElement.closest('details')) fold.open = true;
+    for (let hidden = field.closest('.show-if[hidden]'); hidden; hidden = hidden.parentElement.closest('.show-if[hidden]')) hidden.hidden = false;
+};
+document.addEventListener('invalid', (event) => window.revealField(event.target), true);
 // The whole settings form, or a new item in one of its lists
 document.body.addEventListener('htmx:afterSwap', (event) => {
     if (!event.target.closest?.('#config-fields-global')) return;
@@ -688,51 +577,17 @@ document.body.addEventListener('htmx:afterSwap', (event) => {
     refreshModulePreview();
 });
 
-window.openConfigureModule = function(name, packageName, activeInstanceId) {
+window.openConfigureModule = function(name) {
     const card = document.getElementById('module-card-' + name);
     if (!card) return;
-    
-    const title = card.dataset.title || name;
-    const description = card.dataset.description || '';
-    
     const iconContainer = card.querySelector('.module-card-icon-container');
-    let iconHtml = '<i class="fas fa-puzzle-piece"></i>';
-    if (iconContainer) {
-        iconHtml = iconContainer.innerHTML;
-    }
-
-    // Resolve initial default instance ID if none is active
-    if (activeInstanceId === undefined || activeInstanceId === null) {
-        let instancesData = [];
-        try {
-            instancesData = JSON.parse(card.getAttribute('data-instances') || '[]');
-        } catch (e) {}
-        if (!instancesData) instancesData = [];
-        activeInstanceId = instancesData.length > 0 ? instancesData[0].id : '';
-    }
-    
-    openSettings = { name, packageName };
-    window.openConfigSheet(name, title, description, iconHtml, null, null, packageName, activeInstanceId);
+    openSettings = { name };
+    window.openConfigSheet(name, card.dataset.title || name, iconContainer ? iconContainer.innerHTML : '');
 };
 let openSettings = null;  // the module whose settings are open
 
-// Remove from Mirror closes the settings; Save keeps them open (configSaved)
-document.body.addEventListener('closeConfig', () => window.closeConfigSheet());
-
-// After a Save the modules list is drawn again; then the instances in the settings are too (a new position,
-// a new instance), and a new instance's settings become its own, so a second Save doesn't add it again
-document.body.addEventListener('configSaved', (event) => {
-    const { module, instance, isNew } = event.detail;
-    if (!openSettings || openSettings.name !== module || !document.getElementById('configOverlay').classList.contains('open')) return;
-    const before = document.getElementById('modules-live');
-    document.body.addEventListener('htmx:afterSettle', function redraw() {
-        if (document.getElementById('modules-live') === before) return;  // another request settled
-        document.body.removeEventListener('htmx:afterSettle', redraw);
-        if (!document.getElementById('configOverlay').classList.contains('open')) return;  // closed meanwhile
-        window.openConfigureModule(module, openSettings.packageName, instance);
-        if (isNew) htmx.ajax('GET', `/admin/panels/modules/config/${module}?instance_id=${encodeURIComponent(instance)}`, { target: '#config-fields-global' });
-    });
-});
+// Remove from mirror closes the settings; Save keeps them open (configSaved, sheet.js)
+document.body.addEventListener('closeConfig', () => window.closeConfigSheet(true));
 
 window.showRestartOverlay = function(title, message) {
     const overlay = document.getElementById('restart-overlay');
@@ -834,7 +689,11 @@ document.body.addEventListener('htmx:responseError', (event) => {
     }
     // Never fail silently: show FastAPI's {"detail": ...} message, or a generic one.
     let detail = '';
-    try { detail = JSON.parse(xhr.responseText).detail; } catch (_) {}
+    try {
+        const body = JSON.parse(xhr.responseText);
+        if (body.fields) return;  // a field's error: sheet_errors.js shows it at the field
+        detail = body.detail;
+    } catch (_) {}
     showGlobal(typeof detail === 'string' && detail ? detail : `Something went wrong (error ${xhr.status}).`, 'error');
 });
 
@@ -952,22 +811,30 @@ function moveArrayItem(btn, direction) {
     container.dispatchEvent(new Event('input', { bubbles: true }));  // the preview follows the new order
 }
 
-// A folded list item's line: its first filled field whose name ends in "name" (custom_name, name), else its
-// first filled text field, and the next filled one beside it; "# 2: Calendar" while it is empty.
-// ponytail: a guess from the field names; a schema hint (x-summary) is the upgrade path.
+// A folded list item's line (forms.py _row_summary does the same on the server): the text of its first choice
+// box (a select), else its first filled text field, " · off" after it while its "enabled" switch is off; the
+// next filled text field beside it; "# 2: Calendar" while there is nothing to say. Only the row's own fields
+// count, not those of a list or object inside it.
 function arrayItemSummary(card) {
     const title = card.querySelector('.array-item-index-title');
     const sub = card.querySelector('.array-item-sub');
     if (!title || !sub) return;
-    const filled = [...card.querySelectorAll('.array-item-fields input[type="text"]')]
-        .filter(input => !input.closest('.swatch-row') && !input.matches('[data-icon-input]') && input.value.trim());
-    const label = filled.find(input => /name\]$/.test(input.name)) || filled[0];
+    const own = {};  // the row's fields by their last name part
+    const named = [...card.querySelectorAll('.array-item-fields [name]')].map((el) => [el, el.name.match(/^(.*\[\d+\])\[([^\][]+)\]$/)]);
+    const prefix = named.filter(([, m]) => m).map(([, m]) => m[1]).sort((x, y) => x.length - y.length)[0];
+    named.forEach(([el, m]) => { if (m && m[1] === prefix && !(m[2] in own && el.type === 'hidden')) own[m[2]] = el; });
+    const fields = Object.values(own);
+    const filled = fields.filter((input) => input.matches('input[type="text"]') && !input.closest('.swatch-row')
+        && !input.matches('[data-icon-input]') && input.value.trim());
+    const choice = fields.find((el) => el.tagName === 'SELECT' && el.selectedOptions[0]?.text.trim());
+    const label = choice ? choice.selectedOptions[0].text.trim() : filled[0]?.value.trim();
     const index = [...card.parentElement.querySelectorAll('.array-item-card')].indexOf(card);
-    title.textContent = label ? label.value : `# ${index + 1}: ${title.dataset.itemTitle || 'Item'}`;
-    sub.textContent = filled.find(input => input !== label)?.value || '';
+    const off = own.enabled?.type === 'checkbox' && !own.enabled.checked;
+    title.textContent = label ? label + (off ? ' \u00b7 off' : '') : `# ${index + 1}: ${title.dataset.itemTitle || 'Item'}`;
+    sub.textContent = filled.find((input) => input.value.trim() !== label)?.value.trim() || '';
 }
 
-document.addEventListener('input', (event) => {
+for (const type of ['input', 'change']) document.addEventListener(type, (event) => {
     const card = event.target.closest && event.target.closest('.array-item-card');
     if (card) arrayItemSummary(card);
 });

@@ -1,102 +1,117 @@
-{# A module instance's settings in the Configure drawer: the core's standard settings, then the module's own #}
-<form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML" class="module-config-form">
-    {# Whose settings these are: choosing another instance changes this first, which shows on a phone too #}
-    <h3 class="module-config-instance">{{ instance_title }}</h3>
-    {% if is_new %}
-    <p class="alert alert--info">A new one on the mirror. Choose where it goes, then select Add to Mirror.</p>
-    {% endif %}
+{# One instance's settings in the module's sheet, as the context of routes.py get_module_config_form gives them:
+   the shared block, the instance chips, the module's own fields in one column, then the core's settings in
+   three folded rows (their one-line summaries are drawn by summary.js), Save, and a footer. A [data-region]
+   is swapped by itself after a save (sheet.js). #}
+{% set selected = chips | selectattr("selected") | first %}
+{% set toggle_url = "/admin/panels/modules/config/" ~ module_name ~ "/toggle?instance_id=" ~ instance_id %}
+<form hx-post="/admin/panels/modules/config/{{ module_name }}/save?instance_id={{ instance_id }}" hx-target="#global-status" hx-swap="innerHTML"
+      class="module-config-form" novalidate data-title="{{ instance_title }}"
+      data-where="{% if is_new %}Not on the mirror yet{% else %}{{ selected.position_label }}{% endif %}">
     {% if shared_block %}
-    <details class="standard-settings-accordion"{% if shared_block.open %} open{% endif %}>
-        <summary>
-            <span><i class="fas fa-link"></i> Shared settings: {{ shared_block.summary }}</span>
-            <i class="fas fa-chevron-down accordion-arrow"></i>
-        </summary>
-        <div class="standard-settings-content">{{ shared_block.html | safe }}</div>
+    {# Open when a required shared setting is empty; summary.js then names what is missing in the summary slot #}
+    <details class="form-accordion sheet-row" data-shared{% if shared_block.open %} open data-needs-input{% endif %}>
+        <summary><span class="acc-title">Shared settings</span>
+            <span class="acc-summary" data-region="shared-summary" data-text="{{ shared_block.summary }}">{{ shared_block.summary }}</span></summary>
+        <div class="form-accordion-body">{{ shared_block.html | safe }}</div>
     </details>
     {% endif %}
-    <div class="form-group">
-        <label for="instance-name">Name</label>
-        <input type="text" id="instance-name" name="modules[{{ instance_id }}][instance_name]" value="{{ instance_name }}" maxlength="40">
-    </div>
 
-    <details class="standard-settings-accordion">
-        <summary>
-            <span><i class="fas fa-cog"></i> Placement</span>
-            <i class="fas fa-chevron-down accordion-arrow"></i>
-        </summary>
-        <div class="standard-settings-content">{{ placement_form | safe }}</div>
-    </details>
-
-    <details class="standard-settings-accordion">
-        <summary>
-            <span><i class="fas fa-clock"></i> When it shows</span>
-            <i class="fas fa-chevron-down accordion-arrow"></i>
-        </summary>
-        <div class="standard-settings-content">{{ when_form | safe }}</div>
-    </details>
-
-    <details class="standard-settings-accordion">
-        <summary>
-            <span><i class="fas fa-heading"></i> Heading</span>
-            <i class="fas fa-chevron-down accordion-arrow"></i>
-        </summary>
-        <div class="standard-settings-content">{{ heading_form | safe }}</div>
-    </details>
-
-    {% if module_form %}
-    <div class="module-config-own">
-        <h5>Module Settings</h5>
-        {{ module_form | safe }}
-    </div>
-    {% endif %}
-
-    <div class="module-config-actions">
-        {% if is_new %}
-        <button type="submit" class="btn primary btn-sm"><i class="fas fa-plus"></i> Add to Mirror</button>
+    <div class="sheet-chips" data-region="chips">
+        {% for chip in chips %}
+        {% if chip.selected %}
+        {# The name is the chip: blank gives the module's own name and a number #}
+        <span class="sheet-chip selected"><i class="fas fa-circle-dot" aria-hidden="true"></i>
+            <input type="text" class="chip-name" name="modules[{{ instance_id }}][instance_name]" value="{{ instance_name }}"
+                   placeholder="{{ chip.title if not instance_name else 'Name' }}" maxlength="40" aria-label="Name of this one">
+            <i class="fas fa-pen" aria-hidden="true"></i></span>
         {% else %}
-        <button type="button" class="btn danger btn-sm"
-                hx-post="/admin/panels/modules/config/{{ module_name }}/remove?instance_id={{ instance_id }}"
-                hx-target="#global-status"
-                hx-confirm="Are you sure you want to deactivate and remove this module instance from the mirror screen?">
-            <i class="fas fa-times"></i> Remove from Mirror
-        </button>
-        <button type="submit" class="btn primary btn-sm"><i class="fas fa-save"></i> Save Configuration</button>
+        <button type="button" class="sheet-chip"
+                hx-get="/admin/panels/modules/config/{{ module_name }}?instance_id={{ chip.id }}" hx-target="#config-fields-global">
+            {{ chip.title }}{% if not chip.enabled %} <span class="chip-off">off</span>{% endif %}</button>
+        {% endif %}
+        {% endfor %}
+        {% if not is_new %}
+        <button type="button" class="sheet-chip ghost"
+                hx-get="/admin/panels/modules/config/{{ module_name }}" hx-target="#config-fields-global"><i class="fas fa-plus" aria-hidden="true"></i> Another</button>
+        <label class="chip-switch">On the mirror
+            <span class="switch"><input type="checkbox" {% if selected.enabled %}checked{% endif %} aria-label="{{ instance_title }} on the mirror"
+                   hx-post="{{ toggle_url }}" hx-params="none" hx-trigger="change" hx-swap="none"
+                   hx-on::response-error="this.checked = !this.checked"
+                   hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'refreshModules')">
+            <span class="slider round"></span></span></label>
         {% endif %}
     </div>
-</form>
-{% if site_name %}
-{# For every card of this module; a module in the core's venv (the image's clock) always runs its scripts #}
-<form hx-post="/admin/panels/modules/scripts/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-      hx-on::response-error="this.reset()">
-    <div class="form-group">
-        <div class="form-label-desc">
-            <label for="module-scripts">Run its scripts on the mirror</label>
-            <p class="field-description">Some modules need them, for a ticking clock or a scrolling list. A module's
-                scripts can read what the other modules show on the mirror and send it anywhere: allow them only
-                for a module you trust. On by itself for MirrorDash's own modules.</p>
-        </div>
-        <label class="switch">
-            <input type="hidden" name="on" value="false">
-            <input type="checkbox" id="module-scripts" name="on" value="true" {% if scripts_allowed %}checked{% endif %}>
-            <span class="slider round"></span>
-        </label>
+    {% if is_new %}
+    <p class="alert alert--info">A new one on the mirror. Choose where it goes, then select Add to mirror.</p>
+    {% endif %}
+
+    {% if module_form %}
+    <div class="module-config-own">{{ module_form | safe }}</div>
+    {% endif %}
+
+    <div class="sheet-rows">
+        {% for key, title, rows in [("placement", "Placement", placement_form), ("when", "When it shows", when_form), ("heading", "Heading", heading_form)] %}
+        <details class="form-accordion sheet-row" data-summary="{{ key }}">
+            <summary><span class="acc-title">{{ title }}</span><span class="acc-summary"></span></summary>
+            <div class="form-accordion-body">{{ rows | safe }}</div>
+        </details>
+        {% endfor %}
+    </div>
+
+    <div class="sheet-actions" data-region="actions">
+        <span class="save-status" aria-live="polite"></span>
+        <button type="submit" class="btn primary">{% if is_new %}Add to mirror{% else %}Save changes{% endif %}</button>
     </div>
 </form>
-{# Also for every card of this module: kept out of the nightly update (Settings → Updates) when off #}
-<form hx-post="/admin/panels/modules/auto-update/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
-      hx-on::response-error="this.reset()">
-    <div class="form-group">
-        <div class="form-label-desc">
-            <label for="module-auto-update">Update automatically</label>
-            <p class="field-description">At night, with <em>Update modules automatically</em> on in Settings → Updates.
-                Off: this module is only updated when you press Update. For every card of this module.</p>
-        </div>
-        <label class="switch">
-            <input type="hidden" name="on" value="false">
-            <input type="checkbox" id="module-auto-update" name="on" value="true" {% if auto_update_allowed %}checked{% endif %}>
-            <span class="slider round"></span>
-        </label>
+
+{# Outside the form: these post by themselves, not with Save #}
+<div class="sheet-footer" data-region="footer">
+    <div class="sheet-footer-actions">
+        {% if not is_new %}
+        <button type="button" class="btn-text danger"
+                hx-post="/admin/panels/modules/config/{{ module_name }}/remove?instance_id={{ instance_id }}" hx-target="#global-status"
+                hx-confirm="Remove {{ instance_title }} from the mirror? Its settings are deleted.">Remove {{ instance_title }} from mirror</button>
+        {% endif %}
+        <button type="button" class="btn-text danger" data-uninstall
+                hx-post="/admin/panels/modules/uninstall" hx-target="#global-status"
+                hx-vals="{{ {'package_name': package_name | string} | tojson | forceescape }}">Uninstall <span data-module-title>{{ module_name }}</span></button>
     </div>
-</form>
-{% endif %}
-<script>triggerLucide();</script>
+    {% if site_name %}
+    {# For every card of this module; a module in the core's venv (the image's clock) always runs its scripts #}
+    <div class="sheet-module-wide">
+        <p class="sheet-footer-label">Applies to the whole module, every instance of <span data-module-title>{{ module_name }}</span></p>
+        <form hx-post="/admin/panels/modules/scripts/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+              hx-on::response-error="this.reset()">
+            <div class="form-group toggle-group">
+                <div class="form-label-desc">
+                    <label for="module-scripts">Run its scripts on the mirror</label>
+                    <p class="field-description">Some modules need them, for a ticking clock or a scrolling list. A module's
+                        scripts can read what the other modules show on the mirror and send it anywhere: allow them only
+                        for a module you trust. On by itself for MirrorDash's own modules.</p>
+                </div>
+                <label class="switch">
+                    <input type="hidden" name="on" value="false">
+                    <input type="checkbox" id="module-scripts" name="on" value="true" {% if scripts_allowed %}checked{% endif %}>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </form>
+        {# Kept out of the nightly update (Settings → Updates) when off #}
+        <form hx-post="/admin/panels/modules/auto-update/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+              hx-on::response-error="this.reset()">
+            <div class="form-group toggle-group">
+                <div class="form-label-desc">
+                    <label for="module-auto-update">Update automatically</label>
+                    <p class="field-description">At night, with <em>Update modules automatically</em> on in Settings → Updates.
+                        Off: this module is only updated when you press Update.</p>
+                </div>
+                <label class="switch">
+                    <input type="hidden" name="on" value="false">
+                    <input type="checkbox" id="module-auto-update" name="on" value="true" {% if auto_update_allowed %}checked{% endif %}>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </form>
+    </div>
+    {% endif %}
+</div>

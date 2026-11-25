@@ -9,6 +9,11 @@
 {%- if f.help %}<button type="button" class="help-btn" aria-label="More about {{ f.title }}" aria-haspopup="dialog" data-help="{{ f.help }}" data-help-title="{{ f.title }}"><i class="fas fa-circle-info" aria-hidden="true"></i></button>{% endif -%}
 {%- endmacro %}
 
+{# On a field's wrapper: what reset.js goes back to ("Reset to <default>"), when the field can be reset #}
+{% macro reset_data(f) -%}
+{%- if f.can_reset %} data-default="{{ f.default_json }}" data-default-text="{{ f.default_text }}"{% endif -%}
+{%- endmacro %}
+
 {% macro label(f, with_for=true) -%}
 <div class="form-label-desc"><div class="field-title-row"><label{% if with_for %} for="{{ f.id }}"{% endif %} class="field-title">{{ f.title }}</label>{{ help_button(f) }}</div><p class="field-description">{{ f.description }}</p></div>
 {%- endmacro %}
@@ -39,7 +44,7 @@
 
 {# A switch with a "copy_value": a "Shared as" row after it, shown while it is on, with the text and a copy button (copy_value.js) #}
 {% macro toggle(f) -%}
-<div class="form-group toggle-group schema-field">{{ label(f) }}
+<div class="form-group toggle-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
     <label class="switch"><input type="hidden" name="{{ f.name }}" value="false">
     <input type="checkbox" id="{{ f.id }}" name="{{ f.name }}" value="true"{% if f.stored_value %} checked{% endif %}>
     <span class="slider round"></span></label></div>
@@ -49,7 +54,7 @@
 {%- endmacro %}
 
 {% macro select(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
     <select{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}" class="form-control">{{ options(f.schema, f.stored_value) }}</select></div>
 {%- endmacro %}
 
@@ -68,13 +73,13 @@
     {{ checkbox_list(f) }}</div>
 {%- endmacro %}
 
-{% macro array(f, cards, item_title) -%}
+{% macro array(f, cards, item_title, add_label) -%}
 {% set container = "array-container-" ~ f.key %}
 <div class="form-group schema-group">{{ label(f, false) }}
     <div class="array-items-container" id="{{ container }}">{{ cards }}</div>
     <button type="button" class="btn secondary btn-sm" hx-get="/admin/panels/config/add-array-item"
             hx-vals='js:{index: document.querySelectorAll("#{{ container }} .array-item-card").length, name_prefix: {{ f.prefix|tojson }}, array_key: {{ f.key|tojson }}, item_title: {{ item_title|tojson }}, module_name: {{ f.module_name|tojson }}}'
-            hx-target="#{{ container }}" hx-swap="beforeend"><i class="fas fa-plus"></i> Add {{ item_title }}</button></div>
+            hx-target="#{{ container }}" hx-swap="beforeend"><i class="fas fa-plus"></i> {{ add_label }}</button></div>
 {%- endmacro %}
 
 {% macro accordion(f, inner) -%}
@@ -82,20 +87,22 @@
     <div class="form-accordion-body">{% if f.description %}<p class="field-description">{{ f.description }}</p>{% endif %}{{ inner }}</div></details>
 {%- endmacro %}
 
+{# The readout is the number and its unit ("100 %"), or the min_label at the minimum ("Auto") #}
 {% macro slider(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
-    <div class="range-row"><input type="range" min="{{ f.schema['minimum'] }}" max="{{ f.schema['maximum'] }}" step="{{ f.schema.get('step', '1' if f.schema['type'] == 'integer' else 'any') }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control-range" oninput="this.nextElementSibling.value = this.value">
-    <output>{{ f.value }}</output></div></div>
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
+    <div class="range-row"><input type="range" min="{{ f.schema['minimum'] }}" max="{{ f.schema['maximum'] }}" step="{{ f.schema.get('step', '1' if f.schema['type'] == 'integer' else 'any') }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control-range" oninput="const o = this.nextElementSibling; o.value = o.dataset.minLabel && Number(this.value) === Number(this.min) ? o.dataset.minLabel : (this.value + ' ' + (o.dataset.unit || '')).trim()">
+    <output data-min-label="{{ f.min_label }}" data-unit="{{ f.unit }}">{{ f.slider_text(f.stored_value) }}</output></div></div>
 {%- endmacro %}
 
 {% macro number(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
-    <input{{ rules(f) }} type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
+    {%- if f.unit %}<div class="input-suffix"><input{{ rules(f) }} type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"><span class="unit">{{ f.unit }}</span></div>
+    {%- else %}<input{{ rules(f) }} type="number" step="{{ '1' if f.schema['type'] == 'integer' else 'any' }}" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control">{% endif %}</div>
 {%- endmacro %}
 
 {# A colour: the design's swatches, or any CSS colour typed (a var() too) #}
 {% macro color(f) -%}
-<div class="form-group schema-field wide">{{ label(f) }}
+<div class="form-group schema-field wide"{{ reset_data(f) }}>{{ label(f) }}
     <div class="swatch-row"><div class="swatches">
     {%- for title, value, preview_hex_color in SWATCHES %}
     <button type="button" class="color-swatch-btn{% if f.stored_value == value %} active{% endif %}" style="background-color: {{ preview_hex_color }};" title="{{ title }}" onclick="selectSubFieldColor(this, '{{ f.id }}', '{{ value }}')"></button>
@@ -104,30 +111,31 @@
 {%- endmacro %}
 
 {% macro password(f) -%}
-<div class="form-group schema-field wide">{{ label(f) }}
+<div class="form-group schema-field wide"{{ reset_data(f) }}>{{ label(f) }}
     <div class="pw-field"><input{{ rules(f) }} type="password" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"><button type="button" class="pw-reveal" data-reveal="{{ f.id }}" aria-controls="{{ f.id }}" aria-pressed="false">Show</button></div></div>
 {%- endmacro %}
 
 {% macro textarea(f) -%}
-<div class="form-group schema-field wide">{{ label(f) }}
+<div class="form-group schema-field wide"{{ reset_data(f) }}>{{ label(f) }}
     <textarea{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}" rows="3" class="form-control schema-textarea">{{ f.value }}</textarea></div>
 {%- endmacro %}
 
 {% macro text(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
-    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
+    <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"{% if f.suggestions %} list="{{ f.id }}-suggestions" autocomplete="off"{% endif %}>
+    {%- if f.suggestions %}<datalist id="{{ f.id }}-suggestions">{% for name in f.suggestions %}<option value="{{ name }}">{% endfor %}</datalist>{% endif %}</div>
 {%- endmacro %}
 
 {# "HH:MM" or blank, in the browser's own time picker (24h or 12h as the phone has it) #}
 {% macro time(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
     <input{{ rules(f) }} type="time" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" class="form-control"></div>
 {%- endmacro %}
 
 {# An address at home the module may reach (client.py lets the module host through to it). The schema's
    default is only a hint, never filled in: saving the form must not open an address the owner didn't type. #}
 {% macro lan_url(f) -%}
-<div class="form-group schema-field wide">{{ label(f) }}
+<div class="form-group schema-field wide"{{ reset_data(f) }}>{{ label(f) }}
     <input{{ rules(f) }} type="text" id="{{ f.id }}" name="{{ f.name }}" value="{{ f.value }}" placeholder="{{ f.schema.get('default', '') }}" class="form-control">
     <p class="field-description">MirrorDash lets this module reach this address on your home network, and nothing else there.</p></div>
 {%- endmacro %}
@@ -138,7 +146,7 @@
 {%- endmacro %}
 
 {% macro icon(f) -%}
-<div class="form-group schema-field">{{ label(f) }}
+<div class="form-group schema-field"{{ reset_data(f) }}>{{ label(f) }}
     {{ icon_input(f) }}</div>
 {%- endmacro %}
 
@@ -163,7 +171,7 @@
    module answers, the saved choice is the only option, so saving the form unchanged keeps it. #}
 {% macro choice(f) -%}
 {% set saved = f.stored_value if f.stored_value is mapping and f.stored_value.get("id") else {} %}
-<div class="form-group schema-field wide">{{ label(f) }}
+<div class="form-group schema-field wide"{{ reset_data(f) }}>{{ label(f) }}
     <div class="choice-field" data-choice-field="{{ f.schema.format }}" data-choice-key="{{ f.key }}">
     {%- if f.schema.format == "list" %}
         <select{{ rules(f) }} id="{{ f.id }}" name="{{ f.name }}[id]" class="form-control" data-choice-input>
@@ -203,11 +211,11 @@
 {% macro fields_empty() -%}<p class="field-description">Nothing to set for this one.</p>{%- endmacro %}
 
 {# One card in a list setting (e.g. a calendar), folded to one line (admin.js arrayItemSummary fills it in) #}
-{% macro array_item(index, item_title, fields, is_open) -%}
+{% macro array_item(index, item_title, fields, is_open, summary="") -%}
 <details class="array-item-card"{% if is_open %} open{% endif %}>
     <summary class="array-item-head">
         <i class="fas fa-chevron-right array-item-chevron" aria-hidden="true"></i>
-        <span class="array-item-summary"><span class="array-item-index-title" data-item-title="{{ item_title }}"># {{ index + 1 }}: {{ item_title }}</span><span class="array-item-sub"></span></span>
+        <span class="array-item-summary"><span class="array-item-index-title" data-item-title="{{ item_title }}">{{ summary or "# " ~ (index + 1) ~ ": " ~ item_title }}</span><span class="array-item-sub"></span></span>
         <span class="array-item-tools">
             <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'up')" title="Move up" aria-label="Move up"><i class="fas fa-arrow-up"></i></button>
             <button type="button" class="btn secondary btn-sm" onclick="event.preventDefault(); moveArrayItem(this, 'down')" title="Move down" aria-label="Move down"><i class="fas fa-arrow-down"></i></button>
@@ -229,7 +237,7 @@
     <div class="shared-row" data-shared-control="{{ f.id }}" data-shared-value="{{ state.shared_value|tojson if state.shared_value is boolean else state.shared_value }}">
         <div class="shared-notes">
             <strong class="shared-title">{{ f.schema.title or f.key }}</strong>{{ help_button(f) }}
-            <p class="field-description shared-note shared-note-linked"{% if state.own %} hidden{% endif %}><i class="fas fa-link"></i> Shared: set in Shared Settings above.</p>
+            <p class="field-description shared-note shared-note-linked"{% if state.own %} hidden{% endif %}><i class="fas fa-link"></i> Shared: set in Shared settings above.</p>
             <p class="field-description shared-note shared-note-own"{% if not state.own %} hidden{% endif %}><i class="fas fa-user"></i> Only this instance. The shared value {% if is_secret %}stays as it is.{% else %}is <span class="shared-note-value">{{ shown }}</span>.{% endif %}</p>
         </div>
         <label class="shared-own"><span>Own value</span><span class="switch"><input type="checkbox" name="shared_own[{{ f.key }}]" value="true"{% if state.own %} checked{% endif %}><span class="slider round"></span></span></label>

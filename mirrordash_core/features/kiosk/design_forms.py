@@ -122,6 +122,27 @@ EXAMPLES = [
                          "enum_titles": ["Black and white", "In colour"], "default": "gray",
                          "show_if": {"show_cover": [True]}}},
      {}, [], ""),
+    ("Unit After a Number", "unit: \"s\" | \"min\" | \"h\" | \"%\"  on a number or slider",
+     "Draws the unit after the box (seconds, minutes, hours, %), after a slider's readout. The value stays a plain "
+     "number, so write the title without the unit (\"Update interval\", not \"Update interval (s)\"). Older MirrorDash "
+     "versions ignore it.", {
+         "interval": {"type": "integer", "title": "Update interval", "default": 300, "unit": "s"},
+         "size": {"type": "integer", "format": "slider", "title": "Size", "minimum": 50, "maximum": 150,
+                  "default": 100, "unit": "%"}},
+     {}, [], ""),
+    ("Words at the Slider's Minimum", "min_label  on a slider",
+     "At its minimum the slider's readout shows this text instead of the number, as it moves: a minimum that means "
+     "\"automatic\" or \"off\". Older MirrorDash versions ignore it.", {
+         "width": {"type": "integer", "format": "slider", "title": "Width", "minimum": 0, "maximum": 100, "step": 5,
+                   "default": 0, "unit": "%", "min_label": "Auto"}},
+     {}, [], ""),
+    ("Shown Unless a Value", "show_if: {\"<other key>\": {\"not\": [values]}}",
+     "Try it: type a group name. The same keyword with <code>not</code> shows the field while the other one has "
+     "anything but these values (here: any group name at all). Older MirrorDash versions show the field always.", {
+         "group": {"type": "string", "title": "Take turns with", "default": ""},
+         "interval": {"type": "integer", "title": "Switch every", "default": 15, "unit": "s",
+                      "show_if": {"group": {"not": [""]}}}},
+     {}, [], ""),
     ("Boxes to Tick", "type: array  +  items.type: string  +  items.enum  (also in a list item)", "", {
         "builtin_feeds": {"type": "array", "title": "Built-in Feeds", "description": "The news sources to show.",
                           "items": {"type": "string", "enum": ["bbc_news", "sr_ekot", "cnn_edition"],

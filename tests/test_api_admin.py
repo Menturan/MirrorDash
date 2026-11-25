@@ -1454,7 +1454,7 @@ def test_module_config_drawer_shows_standard_then_own_settings(client):
     assert html.count('name="modules[mirrordash-clock][position]"') == 1 and 'name="modules[mirrordash-clock][format]"' in html
     assert '<option value="top_left" selected>' in html
     assert "instance_id=mirrordash-clock-2" in new  # a second instance gets its own id
-    assert "Save Configuration" in html and "Add to Mirror" not in html
+    assert "Save changes" in html and "Add to mirror" not in html
     assert 'name="modules[mirrordash-clock][enabled]"' not in html  # no form field: the switches change it
     # The schedule's own collapsible section, every day ticked until the owner chooses
     days = re.findall(r'type="checkbox" [^>]*name="modules\[mirrordash-clock\]\[schedule\]\[days\]"[^>]*>', html)
@@ -1501,7 +1501,7 @@ def test_new_instance_gets_its_own_id_when_key_and_entry_point_are_spelled_diffe
          patch("mirrordash_core.features.modules.routes.load_config", return_value=cfg):
         new = client.get("/admin/panels/modules/config/mirrordash_clock", headers={"X-API-Key": "secret"}).text
     assert "save?instance_id=mirrordash_clock-2" in new
-    assert "Add to Mirror" in new and "/remove" not in new  # nothing to remove before it's added
+    assert "Add to mirror" in new and "/remove" not in new  # nothing to remove before it's added
 
 
 def test_saved_logs_can_be_seen_downloaded_and_deleted(client, tmp_path, monkeypatch):

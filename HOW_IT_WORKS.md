@@ -46,7 +46,7 @@ flowchart TB
 |---|---|
 | **module** | A Python package that shows something on the mirror (`mirrordash-weather`). Found through its entry point in the `mirrordash.modules` group (#3). |
 | **instance** | One use of a module, with its own settings: two clocks are two instances of one module. Its id is its key in `config["modules"]`. |
-| **card** | The HTML one instance shows on the screen. The core decides where it goes (its *placement*: area, carousel, size). |
+| **card** | The HTML one instance shows on the screen. The core decides where it goes (its *placement*: area, carousel, size; a card never spreads over the screen, #67). |
 | **the core** | `mirrordash_core`, the server. "Core's side" means code that runs in that process. |
 | **module host** | The service the modules run in (`features/modules/host.py`), apart from the core. |
 | **forkserver** | The module host's first process: it makes every other process as the right user (`forkserver.py`). |
@@ -193,16 +193,16 @@ sequenceDiagram
     R-->>A: "Settings saved."
 ```
 
-1. **The admin page** shows the settings form, built from the module's JSON schema (`config_schema.json`) by `forms.py`, without running the module.
-2. **Save** posts it to `features/modules/routes.py` `save_module_config_route`, which:
+1. **The admin page** shows the settings sheet, built from the module's JSON schema (`config_schema.json`) and the core's standard settings (`forms.STANDARD_SCHEMA`: placement, size, opacity, heading, schedule, carousel) by `forms.py`, without running the module. The module's own settings come first; the standard ones are folded rows below, and a module's shared settings are a block at the top (#62, #67).
+2. **Save changes** posts the instance and the shared block in one request to `features/modules/routes.py` `save_module_config_route`, which:
    - reads the form (`forms.read_form`) and types each value by the schema (`cast_values_by_schema`),
-   - moves a shared setting (`"shared": true`) the instance has no own value for to the module's shared values (`features/modules/shared_settings.py`, #62),
+   - writes the posted shared values to the module's shared values and drops the instance's copy of a shared setting it has no own value for (`features/modules/shared_settings.py`, #62),
    - checks the whole config (`features/modules/schema.py` `validate_config`, the trust boundary) and this instance's
      settings against the rules its schema sets on what is typed (`features/modules/setting_rules.py`: required,
-     pattern, minimum/maximum, length; the browser checks the same ones first),
+     pattern, minimum/maximum, length; the browser checks the same ones first); every broken rule is answered at once, HTTP 422 with a message per field, which the sheet shows at each field (#67),
    - saves it (`config.py` `save_config`: written whole, the last good copy kept).
 3. **`module_host.reload_modules()`** tells the screen to reload and runs `_sync`: an instance whose settings changed is stopped and started again with the new ones; the others keep running and send their cards again.
-4. **The answer** is a small event for the page (`notify` in `admin.py`): "Settings saved." The settings drawer stays open.
+4. **The answer** is a small event for the page (`notify` in `admin.py`): "Settings saved." The settings sheet stays open.
 
 The system settings (Hardware, Power, Developer) take the same road through `features/settings/system_settings.py`, and are applied straight away instead of restarting modules.
 

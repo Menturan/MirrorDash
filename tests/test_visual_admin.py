@@ -1,4 +1,5 @@
 import contextlib
+import copy
 import importlib.metadata
 import os
 import socket
@@ -45,8 +46,17 @@ MOCK_CONFIG = {
             "enabled": True,
             "position": "top_right",
             "format": "24h"
+        },
+        "mirrordash_homeassistant": {
+            "module": "mirrordash_homeassistant", "enabled": True, "position": "middle_center",
+            "instance_name": "Kitchen", "layout": "detailed"
+        },
+        "mirrordash_homeassistant-2": {
+            "module": "mirrordash_homeassistant", "enabled": False, "position": "bottom_left", "layout": "compact"
         }
-    }
+    },
+    # Home Assistant's shared settings: both instances use them
+    "module_settings": {"mirrordash_homeassistant": {"url": "http://ha.local:8123", "token": "saved-token"}}
 }
 
 MOCK_BACKUPS = {
@@ -78,8 +88,19 @@ class FakeCalendar:
     config_schema = {"title": "Calendar", "properties": {}}
 
 
+class FakeHomeAssistant:
+    """A module with shared settings (an address and a token the owner must give) and a setting of its own."""
+    config_schema = {"title": "Home Assistant", "required": ["url", "token"], "properties": {
+        "url": {"type": "string", "title": "Home Assistant URL", "shared": True, "default": "http://ha.local:8123",
+                "pattern": "^https?://.*", "pattern_message": "Start with http:// or https://"},
+        "token": {"type": "string", "format": "password", "title": "Access token", "shared": True},
+        "layout": {"type": "string", "title": "Layout style", "enum": ["detailed", "compact"], "default": "detailed"},
+        "refresh": {"type": "integer", "title": "Refresh every", "minimum": 5, "default": 30}}}
+
+
 FAKE_MODULES = importlib.metadata.EntryPoints([
     importlib.metadata.EntryPoint("mirrordash_clock", f"{__name__}:FakeClock", "mirrordash.modules"),
+    importlib.metadata.EntryPoint("mirrordash_homeassistant", f"{__name__}:FakeHomeAssistant", "mirrordash.modules"),
     importlib.metadata.EntryPoint("mirrordash_calendar", f"{__name__}:FakeCalendar", "mirrordash.modules"),
 ])
 
@@ -145,6 +166,11 @@ def patch_all_system():
         for m in ("module_files", "loader", "service"):
             stack.enter_context(patch(f"mirrordash_core.features.modules.{m}.module_entry_points", lambda: list(FAKE_MODULES)))
         stack.enter_context(patch("mirrordash_core.features.modules.installed.module_entry_points", lambda: list(FAKE_MODULES)))
+        # A real module's schema is a file next to its plugin: the stand-ins give theirs as the class has it
+        schemas = {ep.name: ep.load().config_schema for ep in FAKE_MODULES}
+        for m in ("schema", "routes", "service"):
+            stack.enter_context(patch(f"mirrordash_core.features.modules.{m}.get_module_schema",
+                                      lambda ep, also_in=None: schemas.get(ep.name) if ep else None))
 
         # Intercept subprocesses in admin_system.py
         stack.enter_context(patch("mirrordash_core.features.updates.service.asyncio.create_subprocess_exec", return_value=mock_proc))
@@ -187,8 +213,11 @@ def server_url():
 
 @pytest.fixture(autouse=True)
 def mock_backend_functions():
+    before = copy.deepcopy(MOCK_CONFIG)
     with patch_all_system(), patch("mirrordash_core.config.save_config") as mock_save:
         yield mock_save
+    MOCK_CONFIG.clear()  # a save edits the config it was handed: every test starts from the same one
+    MOCK_CONFIG.update(before)
 
 def navigate_authenticated(page, server_url):
     # Log in as the page does: the answer sets the session cookie, which page.request shares with the page
@@ -222,7 +251,7 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     page.wait_for_selector("#configOverlay.open", state="visible")
     assert overlay.is_visible()
 
-    # Wide, with the preview beside the settings; on a phone the preview sits above them (ARCHITECTURE #43)
+    # Wide, with the preview beside the settings; on a phone (under 768 px) the preview sits below them (ARCHITECTURE #43)
     page.wait_for_selector("#config-fields-global .module-config-form")
     page.wait_for_function("document.getElementById('modulePreview').srcdoc !== ''")
     preview = page.locator("#modulePreview")
@@ -231,19 +260,26 @@ def test_admin_dashboard_navigation_and_drawer(page, server_url):
     assert preview.bounding_box()["x"] > page.locator("#config-fields-global").bounding_box()["x"] + 300
     page.set_viewport_size({"width": 390, "height": 844})
     page.wait_for_timeout(400)
-    assert preview.bounding_box()["y"] < page.locator("#config-fields-global").bounding_box()["y"]
+    fields_box = page.locator("#config-fields-global").bounding_box()
+    assert preview.bounding_box()["y"] >= fields_box["y"] + fields_box["height"] - 1
     page.set_viewport_size({"width": 1280, "height": 720})
 
-    # The schedule: its own collapsible section after the other standard settings, every day ticked
-    schedule = page.locator(".standard-settings-accordion", has_text="Schedule")
-    schedule.locator("summary").click()
-    assert schedule.locator("input[type=checkbox]:checked").count() == 7
-    assert schedule.locator("input[type=time]").count() == 2
+    # The header: the module's name and where it is now; Uninstall is in the footer
+    assert page.locator("#profileTitle").text_content() == "Clock"
+    assert page.locator("#profileDesc").text_content() == "Top right"
+    assert page.locator("#uninstall-btn-global").count() == 0
+
+    # The schedule is part of "When it shows": every day ticked, and the row says so
+    when = page.locator(".sheet-row[data-summary=when]")
+    assert when.locator(".acc-summary").text_content() == "Every day · all day"
+    when.locator("summary").click()
+    assert when.locator("input[type=checkbox]:checked").count() == 7
+    assert when.locator("input[type=time]").count() == 2
     if os.environ.get("SCHEDULE_SHOT"):
-        schedule.locator("input[type=checkbox][value=sat]").uncheck()
-        schedule.locator("input[type=checkbox][value=sun]").uncheck()
-        schedule.locator("input[type=time]").first.fill("06:00")
-        schedule.locator("input[type=time]").last.fill("09:00")
+        when.locator("input[type=checkbox][value=sat]").uncheck()
+        when.locator("input[type=checkbox][value=sun]").uncheck()
+        when.locator("input[type=time]").first.fill("06:00")
+        when.locator("input[type=time]").last.fill("09:00")
         page.locator("#config-fields-global").screenshot(path=os.environ["SCHEDULE_SHOT"])
 
     # Click close button to collapse
@@ -488,29 +524,172 @@ def test_add_to_mirror(page, server_url):
     # Wait for the config fields inside the drawer to load and contain Configuration Parameters
     fields = page.locator("#config-fields-global")
     page.wait_for_selector("#config-fields-global form", state="visible")
-    inner_html = fields.inner_html()
-    assert "Standard Settings" in inner_html
+    assert fields.locator("button[type=submit]").text_content() == "Add to mirror"
+    assert fields.locator(".sheet-chip.selected .chip-name").get_attribute("placeholder") == "Calendar"
+    assert fields.locator(".sheet-footer", has_text="Remove").count() == 0  # nothing to remove before it's added
 
     assert len([err for err in console_errors if "error" in err]) == 0
 
 
 
-def test_save_keeps_the_settings_open_under_the_instances_name(page, server_url):
+def open_sheet(page, server_url, module="mirrordash_clock", instance=None):
+    """The module's settings, opened from the Modules tab; instance picks its chip (the tile's button)."""
     navigate_authenticated(page, server_url)
     page.click("#page-tab-modules")
-    page.click("#config-btn-mirrordash_clock")
-    heading = page.locator("#config-fields-global .module-config-instance")
-    heading.wait_for()
-    assert heading.text_content() == "Clock"
-    page.evaluate("document.querySelector('#instances-list-global .instance-item').dataset.before = 'save'")
+    page.click(f"#config-btn-{module}")
+    page.wait_for_selector("#config-fields-global .module-config-form")
+    if instance:
+        page.click(f".sheet-chip:has-text('{instance}')")
+        page.wait_for_selector(f".sheet-chip.selected .chip-name[value='{instance}']")
+
+
+def test_save_keeps_the_settings_open_and_only_redraws_what_changed(page, server_url):
+    open_sheet(page, server_url)
+    chip = page.locator(".sheet-chip.selected .chip-name")
+    assert chip.get_attribute("placeholder") == "Clock" and chip.input_value() == ""
+    page.locator(".sheet-row[data-summary=placement] summary").click()
+    page.evaluate("document.querySelector('.sheet-chips').dataset.before = 'save'")
 
     with page.expect_response("**/save?**"):
         page.click("#config-fields-global button[type=submit]")
-    # The instances are drawn again from the refreshed modules list, and the settings stay open
-    page.wait_for_function("!document.querySelector('#instances-list-global [data-before]')")
+    # The chips are drawn again from the saved config; the open row and the sheet stay as they were
+    page.wait_for_function("!document.querySelector('.sheet-chips[data-before]')")
     assert "open" in page.locator("#configOverlay").get_attribute("class")
-    assert heading.text_content() == "Clock"
-    assert page.locator("#instances-list-global .instance-item").count() == 1
+    assert page.locator(".sheet-row[data-summary=placement]").evaluate("row => row.open")
+    assert page.locator(".sheet-chip").count() == 2  # Clock, + Another
+
+
+def test_the_module_settings_come_first_then_the_shared_block_folds_or_opens_on_what_is_missing(page, server_url):
+    open_sheet(page, server_url, "mirrordash_homeassistant")
+    y = lambda selector: page.locator(selector).first.bounding_box()["y"]
+    # The shared block on top, then the chips, the module's own fields, then the core's three rows
+    assert y("[data-shared]") < y(".sheet-chips") < y("select[name$='[layout]']") < y(".sheet-row[data-summary=placement]")
+    assert page.locator("#profileDesc").text_content() == "Middle center"
+    shared = page.locator("[data-shared]")
+    assert not shared.evaluate("block => block.open")  # the token is saved: folded to one row
+    assert shared.locator(".acc-title").text_content() == "Shared settings"
+    assert shared.locator(".acc-summary").text_content() == "ha.local:8123 · used by 2"
+    assert page.locator(".sheet-chip.selected .chip-name").input_value() == "Kitchen"
+    other = page.locator(".sheet-chip:not(.selected):not(.ghost)").text_content()
+    assert "Home Assistant 2" in other and "off" in other  # a chip of an instance that is off says so
+
+    page.click(".sheet-close")
+    page.wait_for_selector("#configOverlay.open", state="hidden")
+    with patch.dict(MOCK_CONFIG, {"module_settings": {"mirrordash_homeassistant": {"url": "http://ha.local:8123"}}}):
+        page.click("#config-btn-mirrordash_homeassistant")
+        page.wait_for_selector("[data-shared][open]")
+    assert page.locator("[data-shared] .acc-summary").text_content().strip() == "Access token missing"
+    assert "warn" in page.locator("[data-shared] .acc-summary").get_attribute("class")
+
+
+def test_one_save_posts_the_shared_settings_with_the_instance(page, server_url):
+    with patch.dict(MOCK_CONFIG, {"module_settings": {}}):
+        open_sheet(page, server_url, "mirrordash_homeassistant")
+        page.locator("[name='shared[token]']").fill("a-new-token")
+        assert page.locator("[data-shared] .acc-summary").text_content() == "ha.local:8123 · used by 2"  # nothing is missing now
+        with page.expect_request("**/save?**") as saved:
+            page.click("#config-fields-global button[type=submit]")
+    body = saved.value.post_data
+    assert "shared%5Btoken%5D=a-new-token" in body and "modules%5Bmirrordash_homeassistant%5D%5Binstance_name%5D=Kitchen" in body
+
+
+def test_every_broken_field_shows_its_message_at_the_field_and_the_save_counts_them(page, server_url):
+    open_sheet(page, server_url, "mirrordash_homeassistant")
+    page.locator("[data-shared] summary").click()
+    page.locator("[name='shared[url]']").fill("ha.local")
+    page.locator("input[name$='[refresh]']").fill("1")
+    with page.expect_response("**/save?**") as response:
+        page.click("#config-fields-global button[type=submit]")
+    assert response.value.status == 422
+    assert set(response.value.json()["fields"]) == {"shared[url]", "modules[mirrordash_homeassistant][refresh]"}
+    errors = page.locator(".field-error")
+    errors.first.wait_for()
+    assert errors.count() == 2
+    group = lambda name: page.locator(f"[name='{name}']").locator("xpath=ancestor::div[contains(@class,'form-group')]")
+    assert group("shared[url]").locator(".field-error").text_content() == "Home Assistant URL Start with http:// or https://."
+    assert group("modules[mirrordash_homeassistant][refresh]").locator(".field-error").text_content() == "Refresh every must be at least 5."
+    assert page.locator("[name='shared[url]'][aria-invalid=true]").count() == 1
+    assert page.locator(".save-status").text_content() == "2 fields need fixing"
+    assert page.locator("#global-status").is_hidden()  # a field's error is no toast
+    box = page.locator("[name='shared[url]']").bounding_box()
+    assert 0 <= box["y"] < 720  # the first one is scrolled into view
+    page.locator("[name='shared[url]']").fill("http://ha.local:8123")  # editing a field clears its message
+    assert page.locator(".field-error").count() == 1 and page.locator(".save-status").text_content() == "1 field needs fixing"
+    assert page.locator("[name='shared[url]'][aria-invalid]").count() == 0
+
+
+def test_leaving_the_sheet_with_edits_asks_first_and_a_saved_sheet_does_not(page, server_url):
+    open_sheet(page, server_url, "mirrordash_homeassistant")
+    bar = page.locator("#sheetUnsaved")
+    page.click(".sheet-close")  # nothing changed: it just closes
+    page.wait_for_selector("#configOverlay.open", state="hidden")
+
+    page.click("#config-btn-mirrordash_homeassistant")
+    page.wait_for_selector("#config-fields-global .module-config-form")
+    page.select_option("select[name$='[layout]']", "compact")
+    page.click(".sheet-close")
+    assert bar.is_visible() and bar.locator("#sheetUnsavedText").text_content() == "You have unsaved changes to Kitchen."
+    page.click("#sheetKeepEditing")
+    assert bar.is_hidden() and "open" in page.locator("#configOverlay").get_attribute("class")
+    page.keyboard.press("Escape")  # Escape asks too; a second one is "Keep editing"
+    assert bar.is_visible()
+    page.keyboard.press("Escape")
+    assert bar.is_hidden() and "open" in page.locator("#configOverlay").get_attribute("class")
+
+    page.click(".sheet-chip:not(.selected):not(.ghost)")  # another instance's chip asks too
+    assert bar.is_visible()
+    page.click("#sheetDiscard")
+    page.wait_for_selector(".sheet-chip.selected .chip-name[value='']")
+    assert bar.is_hidden() and page.locator("select[name$='[layout]']").input_value() == "compact"  # Hall's own value
+
+    page.select_option("select[name$='[layout]']", "detailed")
+    page.click("#config-fields-global button[type=submit]")
+    page.wait_for_function("document.getElementById('global-status').textContent.includes('Settings saved')")
+    page.click(".sheet-close")  # saved: no question
+    page.wait_for_selector("#configOverlay.open", state="hidden")
+    assert bar.is_hidden()
+
+
+def test_the_rows_say_in_one_line_what_is_set_and_follow_the_edits(page, server_url):
+    open_sheet(page, server_url, "mirrordash_homeassistant")
+    summary = lambda row: page.locator(f".sheet-row[data-summary={row}] .acc-summary").text_content()
+    assert (summary("placement"), summary("when"), summary("heading")) == (
+        "Middle center · auto width", "Every day · all day", "Shown · Home Assistant")
+    page.locator(".sheet-row[data-summary=placement] summary").click()
+    page.select_option("select[name$='[position]']", "top_right")
+    assert summary("placement") == "Top right · auto width"
+    page.locator(".sheet-row[data-summary=when] summary").click()
+    for day in ("sat", "sun"):
+        page.locator(f"input[type=checkbox][value={day}]").uncheck()
+    page.locator("input[type=time][name$='[from]']").fill("07:00")
+    page.locator("input[type=time][name$='[to]']").fill("22:00")
+    assert summary("when") == "Weekdays · 07:00–22:00"
+    page.locator(".sheet-row[data-summary=heading] summary").click()
+    page.locator("input[name$='[heading]']").fill("Kitchen")
+    assert summary("heading") == "Shown · Kitchen"
+    page.locator(".sheet-row[data-summary=heading] .switch").click()
+    assert summary("heading") == "Hidden"
+
+
+def test_the_footer_removes_the_instance_or_uninstalls_the_module_and_the_phone_shows_the_preview_last(page, server_url):
+    open_sheet(page, server_url, "mirrordash_homeassistant")
+    footer = page.locator(".sheet-footer")
+    assert footer.locator("button", has_text="Remove Kitchen from mirror").count() == 1
+    assert footer.locator("button", has_text="Uninstall Home Assistant").count() == 1
+    assert page.locator("#profileDesc").text_content() == "Middle center"
+    posted = []
+    page.route("**/admin/panels/modules/uninstall", lambda route: (posted.append(route.request.post_data), route.fulfill(status=200, body=""))[1])
+    footer.locator("button", has_text="Uninstall Home Assistant").click()
+    page.click("#confirm-ok-btn")  # the app's own question, as before
+    for _ in range(50):
+        if posted:
+            break
+        page.wait_for_timeout(100)
+    assert posted == ["package_name=mirrordash_homeassistant"]
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_timeout(400)
+    assert page.locator(".sheet-preview").bounding_box()["y"] > footer.bounding_box()["y"]
+    page.set_viewport_size({"width": 1280, "height": 720})
 
 
 def test_an_icon_setting_suggests_lucide_names_and_draws_the_one_typed(page, server_url):
@@ -859,7 +1038,8 @@ def test_the_screen_scale_grows_the_cards_and_the_top_badges_but_not_the_regions
     page.goto("http://mirror.test/static/index.html")
     page.wait_for_function("window.__ws")
     send = lambda message: page.evaluate("msg => window.__ws.onmessage({ data: msg })", json.dumps(message))
-    send({"module": "clock", "position": "top_right", "html": "<div style='width: 200px; height: 50px'>12:00</div>"})
+    # Small enough that twice its size stays under the card's cap (a third of the screen, style.css "Card size")
+    send({"module": "clock", "position": "top_right", "html": "<div style='width: 100px; height: 50px'>12:00</div>"})
     page.evaluate("document.getElementById('error-badge').hidden = false")
     measure = """() => {
         const box = e => { const r = document.querySelector(e).getBoundingClientRect(); return [r.width, r.left + r.width / 2, r.top]; };
@@ -1571,3 +1751,20 @@ def test_a_copy_value_row_follows_its_sibling_field_and_its_switch_and_works_in_
     assert row.is_hidden()
     card.locator(".switch").click()
     assert row.is_visible()
+
+
+def test_a_list_rows_header_follows_its_choice_and_its_enabled_switch(page, server_url):
+    page.goto(f"{server_url}/design#forms")
+    page.add_script_tag(url="/static/admin/admin.js")
+    row = page.locator(".component-card", has_text="List of Items").locator(".array-item-card").first
+    header = lambda: row.locator(".array-item-index-title").text_content()
+    assert header() == "Detailed"  # the first choice box
+    row.evaluate("r => r.open = true")
+    row.locator("select[name$='[layout]']").select_option("compact")
+    assert header() == "Compact"
+    # An "enabled" switch (the schema here has none, so one is added by hand) puts " · off" after it
+    row.evaluate("""r => r.querySelector('.array-item-fields').insertAdjacentHTML('beforeend',
+        '<input type="hidden" name="modules[demo][entities][0][enabled]" value="false">'
+        + '<input type="checkbox" name="modules[demo][entities][0][enabled]" value="true" checked>')""")
+    row.locator("input[type=checkbox][name$='[enabled]']").evaluate("box => box.click()")
+    assert header() == "Compact · off"

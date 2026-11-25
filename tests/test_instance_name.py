@@ -28,7 +28,7 @@ def test_a_name_must_be_short_text():
             validate_config({"modules": {"c": {"instance_name": bad}}})
 
 
-def test_the_settings_start_with_the_name():
+def test_the_selected_chip_is_the_name_field():
     auth = {"admin_auth": {"hash": hash_password("secret", "0123456789abcdef"), "salt": "0123456789abcdef"}}
     modules = {"modules": {"mirrordash_clock-2": {"module": "mirrordash_clock", "instance_name": "Hall Clock"}}}
     with patch("mirrordash_core.admin.load_config", return_value=auth), \
@@ -38,6 +38,5 @@ def test_the_settings_start_with_the_name():
          patch("mirrordash_core.features.modules.routes.site_name", return_value="x"):
         html = TestClient(app).get("/admin/panels/modules/config/mirrordash_clock?instance_id=mirrordash_clock-2",
                                    headers={"X-API-Key": "secret"}).text
-    assert '<h3 class="module-config-instance">Hall Clock</h3>' in html
-    name_field = html.index('name="modules[mirrordash_clock-2][instance_name]"')
-    assert name_field < html.index('name="modules[mirrordash_clock-2][position]"') and 'maxlength="40"' in html
+    assert 'class="chip-name" name="modules[mirrordash_clock-2][instance_name]" value="Hall Clock"' in html and 'maxlength="40"' in html
+    assert "Remove Hall Clock from mirror" in html

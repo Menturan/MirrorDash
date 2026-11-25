@@ -25,3 +25,10 @@ def test_the_design_page_shows_them_all():
     assert forms.count('class="component-card"') == len(EXAMPLES)
     assert html.escape('"pattern_message": "An address starting with http:// or https://"', quote=False) in forms.replace("&#34;", '"')
     assert "addDemoArrayItem" not in page  # the hand-made demo is gone
+
+
+def test_the_new_form_keywords_have_cards():
+    cards = {name: card for card, (name, *_rest) in zip(design_cards(), EXAMPLES, strict=True)}
+    assert '<span class="unit">seconds</span>' in cards["Unit After a Number"]["form"]
+    assert "Auto</output>" in cards["Words at the Slider's Minimum"]["form"]
+    assert '"not"' in cards["Shown Unless a Value"]["code"] and "data-show-if" in cards["Shown Unless a Value"]["form"]
