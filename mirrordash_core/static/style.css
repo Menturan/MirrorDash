@@ -239,9 +239,11 @@ body, html {
 /* Card size (core.js showModuleHtml, the admin preview). The usable screen is inside the safe margins, as the
    cards are placed; --screen-scale zooms the card's lengths, so they are divided by it. Auto caps a card at a
    third of the width and half of the height; Custom (core.js sets the properties and data-fixed-width) sets the
-   share. A card cuts what does not fit and fades the bottom out (data-overflowing, core.js). The layers are
-   not sized. container-type only with a definite width: on a shrink-to-fit card it would collapse it, so a
-   module's container queries and cqi units need a Custom (or module default) width. */
+   share. A module's preferred width (config_schema.json, "preferred_width" in rem; data-preferred-width) is what
+   Auto makes the card: that wide, or the whole usable width if that is less, without the third. A card cuts what
+   does not fit (js/kiosk/overflow.js scrolls it or, with data-overflow="fade", fades the bottom out). The layers
+   are not sized. container-type only with a definite width: on a shrink-to-fit card it would collapse it, so a
+   module's container queries and cqi units need a Custom or a preferred width. */
 :root {
     --md-usable-width: calc((100vw - var(--safe-margin-left) - var(--safe-margin-right)) / var(--screen-scale, 1));
     --md-usable-height: calc((100vh - var(--safe-margin-top) - var(--safe-margin-bottom)) / var(--screen-scale, 1));
@@ -257,8 +259,22 @@ body, html {
     width: var(--md-card-max-width);
     container-type: inline-size;
 }
-.region:not(.layer) [data-module][data-overflowing], .preview [data-module][data-overflowing] {
+.region:not(.layer) [data-module][data-preferred-width]:not([data-fixed-width]),
+.preview [data-module][data-preferred-width]:not([data-fixed-width]) {
+    --md-card-max-width: var(--md-usable-width);
+    width: min(var(--md-preferred-width), var(--md-card-max-width));
+    container-type: inline-size;
+}
+/* More below: the fade, until a scrolling card is at its end. data-scroll-dip: the dip between two rounds
+   (overflow.js jumps to the top in the middle of it; its length is OVERFLOW_DIP * 2). */
+.region:not(.layer) [data-module][data-overflowing]:not([data-scroll-end]), .preview [data-module][data-overflowing]:not([data-scroll-end]) {
     mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+}
+.region:not(.layer) [data-module][data-scroll-dip], .preview [data-module][data-scroll-dip] {
+    animation: scroll-dip 0.8s ease-in-out;
+}
+@keyframes scroll-dip {
+    50% { filter: opacity(0); }
 }
 
 /* Notification / Alert card style */

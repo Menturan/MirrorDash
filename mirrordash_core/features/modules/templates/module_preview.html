@@ -23,16 +23,18 @@
 {% if html is not none %}
 <div class="preview"><div id="card" data-module="{{ instance_id }}"
      {% if placement.width_percent > 0 %}data-fixed-width{% endif %}
-     style="{% if placement.width_percent > 0 %}--md-card-max-width: calc(var(--md-usable-width) * {{ placement.width_percent / 100 }});{% endif %}{% if placement.height_percent > 0 %}--md-card-max-height: calc(var(--md-usable-height) * {{ placement.height_percent / 100 }});{% endif %}opacity: {{ placement.opacity_percent / 100 }};"></div></div>
+     {% if placement.preferred_width %}data-preferred-width{% endif %} data-overflow="{{ 'fade' if placement.overflow == 'fade' else 'scroll' }}"
+     style="{% if placement.preferred_width %}--md-preferred-width: {{ placement.preferred_width }};{% endif %}{% if placement.width_percent > 0 %}--md-card-max-width: calc(var(--md-usable-width) * {{ placement.width_percent / 100 }});{% endif %}{% if placement.height_percent > 0 %}--md-card-max-height: calc(var(--md-usable-height) * {{ placement.height_percent / 100 }});{% endif %}opacity: {{ placement.opacity_percent / 100 }};"></div></div>
 <script type="application/json" id="card-html">{{ html | tojson }}</script>
 <script type="application/json" id="modules-css">{{ modules_css | tojson }}</script>
 <script nonce="{{ nonce }}" src="/static/js/lucide.min.js"></script>
 <script nonce="{{ nonce }}" src="/static/js/kiosk/design-tokens.js"></script>
+<script nonce="{{ nonce }}" src="/static/js/kiosk/overflow.js"></script>
 <script nonce="{{ nonce }}">
     const read = id => JSON.parse(document.getElementById(id).textContent);
     const card = document.getElementById('card');
     const shadow = card.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${read('modules-css')}</style>` + read('card-html');
+    shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${read('modules-css')}${OVERFLOW_CSS}</style>` + read('card-html');
     if (window.lucide) lucide.createIcons({ root: shadow });
     // The card's own scripts (a ticking clock) as on the mirror, if its module may run them there: in this
     // page of no site, without the session cookie and with nowhere to connect, they reach nothing else
@@ -58,10 +60,8 @@
         document.body.style.height = `${Math.ceil(height * scale)}px`;
     };
     new ResizeObserver(fit).observe(preview);
-    // What does not fit fades out at the bottom, as on the mirror (js/kiosk/core.js watchOverflow)
-    const overflow = new ResizeObserver(() => card.toggleAttribute('data-overflowing', card.scrollHeight > card.clientHeight + 1));
-    overflow.observe(card);
-    for (const part of shadow.children) if (!['STYLE', 'SCRIPT'].includes(part.tagName)) overflow.observe(part);
+    // What does not fit scrolls or fades out, as on the mirror (js/kiosk/overflow.js)
+    watchOverflow(card);
     addEventListener('resize', fit);
 </script>
 {% else %}

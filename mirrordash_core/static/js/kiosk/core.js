@@ -182,17 +182,6 @@ function runCardScripts(shadow, scriptsAllowed) {
     }
 }
 
-// A card cuts what does not fit (style.css "Card size"); data-overflowing makes the bottom fade out. Watched
-// again after each redraw: the card and what is in its shadow root change size as the content does.
-const overflowWatchers = new WeakMap();
-function watchOverflow(card) {
-    overflowWatchers.get(card)?.disconnect();
-    const watcher = new ResizeObserver(() => card.toggleAttribute('data-overflowing', card.scrollHeight > card.clientHeight + 1));
-    overflowWatchers.set(card, watcher);
-    watcher.observe(card);
-    for (const part of card.shadowRoot?.children ?? []) if (!['STYLE', 'SCRIPT'].includes(part.tagName)) watcher.observe(part);
-}
-
 // A module's HTML: its card (made, or moved to its area or carousel group), its wrapper settings, and its
 // content in the card's shadow root with the design tokens and the component library
 function showModuleHtml(data) {
@@ -227,6 +216,10 @@ function showModuleHtml(data) {
     card.style.setProperty('--md-card-max-width', share(data.width_percent, '--md-usable-width'));
     card.style.setProperty('--md-card-max-height', share(data.height_percent, '--md-usable-height'));
     card.toggleAttribute('data-fixed-width', data.width_percent > 0);
+    // Auto width with a module's preferred width (rem, from its schema; the core checked it): that wide
+    card.toggleAttribute('data-preferred-width', typeof data.preferred_width === 'string');
+    card.style.setProperty('--md-preferred-width', data.preferred_width || '');
+    card.dataset.overflow = data.overflow === 'fade' ? 'fade' : 'scroll';  // overflow.js
     card.style.opacity = data.opacity_percent != null ? String(data.opacity_percent / 100) : '';
     card.toggleAttribute('data-show-in-privacy', data.show_in_privacy === true);  // style.css, privacy mode
     card.toggleAttribute('data-scheduled-out', scheduledOut.includes(data.module));  // style.css, its schedule
@@ -236,7 +229,7 @@ function showModuleHtml(data) {
     card.hidden = data.html.trim() === '';
 
     const shadow = card.shadowRoot || card.attachShadow({ mode: 'open' });
-    shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}</style>` + data.html;
+    shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}${OVERFLOW_CSS}</style>` + data.html;
     if (window.lucide) lucide.createIcons({ root: shadow });
     runCardScripts(shadow, data.scripts);
     watchOverflow(card);

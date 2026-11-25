@@ -31,13 +31,16 @@ STANDARD_SCHEMA = {"properties": {
                  "description": "Which anchor region on the mirror this module floats from. Background and Foreground fill the whole screen, behind and in front of the others."},
     "width_percent": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "step": 5, "default": 0,
                       "title": "Width", "section": "placement", "min_label": "Auto", "unit": "%",
-                      "description": "Share of the screen width inside the margins. Auto: at most a third of it."},
+                      "description": "Share of the screen width inside the margins. Auto: the module's own preferred width, else at most a third of it."},
     "height_percent": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "step": 5, "default": 0,
                        "title": "Height", "section": "placement", "min_label": "Auto", "unit": "%",
-                       "description": "Share of the screen height inside the margins. Auto: at most half of it. What does not fit fades out."},
+                       "description": "Share of the screen height inside the margins. Auto: at most half of it. What does not fit scrolls or fades out."},
     "opacity_percent": {"type": "integer", "format": "slider", "minimum": 10, "maximum": 100, "step": 5, "default": 100,
                         "title": "Opacity", "section": "placement", "unit": "%",
                         "description": "How solid it is: 100 is fully visible."},
+    "overflow": {"type": "string", "default": "scroll", "enum": ["scroll", "fade"], "enum_titles": ["Scroll", "Fade"],
+                 "title": "When it doesn't fit", "section": "placement",
+                 "description": "Scroll slowly through what doesn't fit, or fade it out at the bottom."},
     "show_header": {"type": "boolean", "default": True, "title": "Show heading", "section": "heading",
                     "description": "Show the module's heading above its content."},
     "heading": {"type": "string", "default": "", "maxLength": 60, "title": "Heading text", "section": "heading",
@@ -62,7 +65,7 @@ STANDARD_SCHEMA = {"properties": {
                           "description": "Seconds between slides."},
 }}
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
-MODULE_DEFAULT_KEYS = ("show_header", "heading", "width_percent", "height_percent", "opacity_percent")
+MODULE_DEFAULT_KEYS = ("show_header", "heading", "opacity_percent", "overflow")
 
 
 def standard_schema_for(module_schema: dict) -> dict:

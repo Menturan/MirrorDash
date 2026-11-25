@@ -657,6 +657,10 @@ def test_the_rows_say_in_one_line_what_is_set_and_follow_the_edits(page, server_
         "Middle center · auto width", "Every day · all day", "Shown · Home Assistant")
     page.locator(".sheet-row[data-summary=placement] summary").click()
     page.select_option("select[name$='[position]']", "top_right")
+    assert summary("placement") == "Top right · auto width"  # scroll is the default: nothing said
+    page.select_option("select[name$='[overflow]']", "fade")
+    assert summary("placement") == "Top right · auto width · fades"
+    page.select_option("select[name$='[overflow]']", "scroll")
     assert summary("placement") == "Top right · auto width"
     page.locator(".sheet-row[data-summary=when] summary").click()
     for day in ("sat", "sun"):
@@ -969,7 +973,9 @@ def test_every_design_component_looks_the_same_in_a_card_without_scripts(page):
     page.wait_for_function("window.__ws")
     html = "".join(f"<div data-sample>{c['html']}</div>" for c in shown)
     page.evaluate("msg => window.__ws.onmessage({ data: msg })",
-                  json.dumps({"module": "community", "position": "middle_center", "html": html, "scripts": False}))
+                  # fade: a scrolling card's heading turns opaque (overflow.js), and these samples overflow one card
+                  json.dumps({"module": "community", "position": "middle_center", "html": html, "scripts": False,
+                              "overflow": "fade"}))
     page.wait_for_timeout(500)
     card = "document.querySelector(\"[data-module='community']\").shadowRoot"
     in_card = page.evaluate(f"""([classes, props]) => {{ {helpers}

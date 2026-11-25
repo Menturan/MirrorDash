@@ -94,28 +94,39 @@ def test_the_standard_settings_are_the_final_keys_each_in_a_section():
 
     properties = STANDARD_SCHEMA["properties"]
     assert list(properties) == ["instance_name", "position", "width_percent", "height_percent", "opacity_percent",
-                                "show_header", "heading", "show_in_privacy", "schedule", "carousel_group", "carousel_interval"]
+                                "overflow", "show_header", "heading", "show_in_privacy", "schedule", "carousel_group", "carousel_interval"]
     assert {key: prop["section"] for key, prop in properties.items()} == {
         "instance_name": "name", "position": "placement", "width_percent": "placement", "height_percent": "placement",
-        "opacity_percent": "placement", "show_header": "heading", "heading": "heading", "show_in_privacy": "when",
+        "opacity_percent": "placement", "overflow": "placement", "show_header": "heading", "heading": "heading", "show_in_privacy": "when",
         "schedule": "when", "carousel_group": "when", "carousel_interval": "when"}
     assert (properties["width_percent"]["min_label"], properties["width_percent"]["unit"]) == ("Auto", "%")
+    overflow = properties["overflow"]
+    assert (overflow["enum"], overflow["enum_titles"], overflow["default"], overflow["title"]) == (
+        ["scroll", "fade"], ["Scroll", "Fade"], "scroll", "When it doesn't fit")
     assert properties["carousel_interval"]["show_if"] == {"carousel_group": {"not": [""]}}
     assert properties["opacity_percent"]["minimum"] == 10 and properties["show_header"]["title"] == "Show heading"
     assert not {"max_width", "max_height", "z_index", "opacity", "enabled"} & set(properties)
 
 
 def test_a_modules_default_for_a_standard_key_replaces_the_cores():
-    from mirrordash_core.forms import STANDARD_SCHEMA, standard_schema_for
+    from mirrordash_core.forms import (
+        MODULE_DEFAULT_KEYS,
+        STANDARD_SCHEMA,
+        standard_schema_for,
+    )
 
     module = {"properties": {"show_header": {"type": "boolean", "default": False, "title": "Own"},
-                             "width_percent": {"default": 40}, "heading": {"type": "string"},  # no default: core's
+                             "overflow": {"default": "fade"}, "heading": {"type": "string"},  # no default: core's
                              "city": {"type": "string", "default": "Oslo"}}}  # not a standard key: ignored
     properties = standard_schema_for(module)["properties"]
     assert properties["show_header"]["default"] is False and properties["show_header"]["title"] == "Show heading"
-    assert properties["width_percent"]["default"] == 40 and properties["heading"]["default"] == ""
+    assert properties["overflow"]["default"] == "fade" and properties["heading"]["default"] == ""
     assert "city" not in properties and properties["opacity_percent"]["default"] == 100
-    assert STANDARD_SCHEMA["properties"]["width_percent"]["default"] == 0  # core's own is left alone
+    assert STANDARD_SCHEMA["properties"]["overflow"]["default"] == "scroll"  # core's own is left alone
+    # the size is the owner's (or the module's preferred_width), no module default
+    sized = standard_schema_for({"properties": {"width_percent": {"default": 40}, "height_percent": {"default": 40}}})["properties"]
+    assert sized["width_percent"]["default"] == 0 and sized["height_percent"]["default"] == 0
+    assert "width_percent" not in MODULE_DEFAULT_KEYS and "height_percent" not in MODULE_DEFAULT_KEYS
     assert standard_schema_for({})["properties"] == STANDARD_SCHEMA["properties"]
 
 
@@ -123,13 +134,25 @@ def test_placement_gives_the_new_keys_with_the_modules_defaults():
     from mirrordash_core.features.modules.client import PLACEMENT_KEYS, placement
 
     assert placement({}, "w") == {"position": "middle_center", "module": "w", "carousel_group": None, "carousel_interval": 15,
-                                  "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "show_in_privacy": False}
-    schema = {"properties": {"width_percent": {"default": 40}, "opacity_percent": {"default": 80}}}
-    assert placement({}, "w", schema)["width_percent"] == 40 and placement({}, "w", schema)["opacity_percent"] == 80
-    saved = placement({"width_percent": 0, "opacity_percent": 60, "position": "top_left"}, "w", schema)
-    assert (saved["width_percent"], saved["opacity_percent"], saved["position"]) == (0, 60, "top_left")  # saved wins, even Auto
-    assert {"width_percent", "height_percent", "opacity_percent"} <= PLACEMENT_KEYS
+                                  "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "overflow": "scroll",
+                                  "preferred_width": None, "show_in_privacy": False}
+    schema = {"properties": {"overflow": {"default": "fade"}, "opacity_percent": {"default": 80}}}
+    assert placement({}, "w", schema)["overflow"] == "fade" and placement({}, "w", schema)["opacity_percent"] == 80
+    saved = placement({"overflow": "scroll", "opacity_percent": 60, "position": "top_left"}, "w", schema)
+    assert (saved["overflow"], saved["opacity_percent"], saved["position"]) == ("scroll", 60, "top_left")  # saved wins
+    assert {"width_percent", "height_percent", "opacity_percent", "overflow"} <= PLACEMENT_KEYS
     assert not {"max_width", "max_height", "z_index", "opacity"} & PLACEMENT_KEYS
+
+
+def test_a_preferred_width_is_a_positive_rem_length_or_ignored():
+    from mirrordash_core.features.modules.client import placement
+
+    def preferred(value):
+        return placement({}, "w", {"preferred_width": value})["preferred_width"]
+    assert preferred("28rem") == "28rem" and preferred("17.5rem") == "17.5rem" and preferred(".5rem") == ".5rem"
+    for bad in ("28px", "28", "rem", "0rem", "-4rem", "28 rem", "calc(1rem)", "28rem; color: red", 28, None, ["28rem"]):
+        assert preferred(bad) is None, bad
+    assert placement({}, "w", {"preferred_width": "20rem", "properties": {}})["width_percent"] == 0  # Auto stays Auto
 
 
 def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monkeypatch):
@@ -1016,7 +1039,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         await _until(lambda: manager.broadcast.await_count >= 1)
         assert manager.broadcast.await_args.args[0] == {
             "position": "top_left", "module": "garage", "carousel_group": None, "carousel_interval": 15,
-            "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "show_in_privacy": False,
+            "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "overflow": "scroll", "preferred_width": None, "show_in_privacy": False,
             "order": 0, "scripts": False, "html": "<p>closed</p>"}
         assert (tmp_path / "modules" / "data" / "garage").is_dir()
 

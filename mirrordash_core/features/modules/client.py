@@ -20,6 +20,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import socket
 import sys
@@ -63,7 +64,18 @@ CRASH_LIMIT = 3
 RESTART_DELAY = 5
 # Its place on the screen: changing one moves the card without restarting the module
 PLACEMENT_KEYS = {"position", "carousel_group", "carousel_interval", "width_percent", "height_percent", "opacity_percent",
-                  "show_in_privacy", "schedule"}
+                  "overflow", "show_in_privacy", "schedule"}
+
+
+PREFERRED_WIDTH = re.compile(r"^(?:\d+(?:\.\d+)?|\.\d+)rem$")
+
+
+def preferred_width(module_schema: dict | None) -> str | None:
+    """The module's "preferred_width" (config_schema.json, top level) if it is a positive <number>rem, else None."""
+    value = (module_schema or {}).get("preferred_width")
+    if isinstance(value, str) and PREFERRED_WIDTH.match(value) and float(value[:-3]) > 0:
+        return value
+    return None
 
 
 def placement(module_cfg: dict, instance_id: str, module_schema: dict | None = None) -> dict:
@@ -81,6 +93,8 @@ def placement(module_cfg: dict, instance_id: str, module_schema: dict | None = N
         "width_percent": value("width_percent"),
         "height_percent": value("height_percent"),
         "opacity_percent": value("opacity_percent"),
+        "overflow": value("overflow"),
+        "preferred_width": preferred_width(module_schema),
         "show_in_privacy": module_cfg.get("show_in_privacy") is True,
     }
 

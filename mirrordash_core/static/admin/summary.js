@@ -15,6 +15,7 @@ function placementSummary(row) {
     const height = Number(rowInput(row, 'height_percent')?.value || 0);
     const parts = [position?.selectedOptions[0]?.text, width ? `${width}% wide` : 'auto width'];
     if (height) parts.push(`${height}% tall`);
+    if (rowInput(row, 'overflow')?.value === 'fade') parts.push('fades');  // scroll is the default: not said
     return parts.filter(Boolean).join(' · ');
 }
 

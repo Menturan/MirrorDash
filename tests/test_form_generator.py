@@ -380,9 +380,9 @@ def test_fields_with_a_default_carry_it_for_the_reset_link():
     assert 'data-default="15" data-default-text="15 seconds"' in html
     assert html.count("data-default=") == 3  # none for no default, a secret, a list or a row's field
     # a module's own default for a standard field is the one the link goes back to
-    standard = standard_schema_for({"properties": {"width_percent": {"default": 40}, "show_header": {"default": False}}})
-    width = render_schema_form({"properties": {"width_percent": standard["properties"]["width_percent"]}}, {}, "m", "x")
-    assert 'data-default="40" data-default-text="40 %"' in width
+    standard = standard_schema_for({"properties": {"opacity_percent": {"default": 40}, "show_header": {"default": False}}})
+    opacity = render_schema_form({"properties": {"opacity_percent": standard["properties"]["opacity_percent"]}}, {}, "m", "x")
+    assert 'data-default="40" data-default-text="40 %"' in opacity
     header = render_schema_form({"properties": {"show_header": standard["properties"]["show_header"]}}, {}, "m", "x")
     assert 'data-default="false"' in header
 

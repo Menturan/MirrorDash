@@ -146,5 +146,20 @@ def test_the_preview_sizes_the_card_like_the_mirror():
     assert "data-fixed-width" in custom
     assert "--md-card-max-width: calc(var(--md-usable-width) * 0.4)" in custom
     assert "--md-card-max-height: calc(var(--md-usable-height) * 0.25)" in custom and "opacity: 0.6" in custom
-    assert "data-overflowing" in custom  # the same bottom fade, toggled by the page's own observer
+    assert "watchOverflow(card)" in custom and "/static/js/kiosk/overflow.js" in custom  # the mirror's own watcher, one file
+    assert "new ResizeObserver(() => card.toggleAttribute" not in custom  # no copy of it here
+    assert 'data-overflow="scroll"' in custom and 'data-overflow="fade"' in _preview_page(overflow="fade")
     assert "max_width" not in custom
+
+
+def test_the_preview_gives_a_preferred_width_to_an_auto_card_only():
+    from mirrordash_core.admin import templates
+    from mirrordash_core.features.modules.client import placement as placement_of
+
+    def page(cfg, schema):
+        return templates.env.get_template("module_preview.html").render(
+            html="<p>x</p>", message="", instance_id="a", nonce="n", scripts=False, modules_css="", placement=placement_of(cfg, "a", schema))
+    wide = page({}, {"preferred_width": "28rem"})
+    assert "data-preferred-width" in wide and "--md-preferred-width: 28rem;" in wide
+    assert "data-preferred-width" not in page({}, {"preferred_width": "28px"})
+    assert "data-preferred-width" not in page({}, {})

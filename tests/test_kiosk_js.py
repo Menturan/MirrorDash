@@ -89,8 +89,13 @@ def test_index_html_uses_modular_js(client):
 def test_the_card_size_is_set_from_the_percentages_and_the_old_keys_are_gone(client):
     core = client.get("/static/js/kiosk/core.js").text
     assert "data.width_percent" in core and "data.height_percent" in core and "data.opacity_percent" in core
-    assert "data-fixed-width" in core and "data-overflowing" in core and "ResizeObserver" in core
+    assert "data-fixed-width" in core and "data-preferred-width" in core and "data.preferred_width" in core and "data.overflow" in core
+    overflow = client.get("/static/js/kiosk/overflow.js").text
+    assert "data-overflowing" in overflow and "ResizeObserver" in overflow and "function watchOverflow" in overflow
+    assert "watchOverflow" not in core.replace("watchOverflow(card);", "") and "${OVERFLOW_CSS}" in core
+    assert "/static/js/kiosk/overflow.js" in client.get("/static/index.html").text
     for old in ("max_width", "max_height", "z_index", "zIndex", "data.opacity ", "style.maxWidth"):
         assert old not in core
     css = client.get("/static/style.css").text
+    assert "data-preferred-width" in css and "--md-preferred-width" in css
     assert "--md-card-max-width" in css and "--md-card-max-height" in css and "container-type: inline-size" in css
