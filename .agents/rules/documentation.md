@@ -25,7 +25,7 @@ trigger: always_on
 
 After changing any doc, heading or doc link (also in admin templates and `docs/`), run `uv run pytest -q tests/test_docs.py`: it checks that every `#anchor` lands on a heading, every relative link on a file, and every admin path (*Settings → …*) on a label.
 
-The website's pictures are copies, not links: after changing `mirrordash_concept.png`, remake them with `cwebp -q 82 mirrordash_concept.png -o docs/concept.webp`, `cwebp -q 80 -resize 700 0 mirrordash_concept.png -o docs/concept-700.webp` and a 1.9:1 crop to `docs/og.jpg` (`convert … -crop`), and update the sizes in `docs/index.html`.
+The website's pictures are copies, not links: after changing `mirrordash_photo.jpg` (a real photo of a mirror, never a generated picture), remake them with `cwebp -q 80 -resize 1600 0 mirrordash_photo.jpg -o docs/hallway.webp`, `cwebp -q 80 -resize 800 0 mirrordash_photo.jpg -o docs/hallway-800.webp` and a 1.9:1 crop to `docs/og.jpg` (`magick … -crop`, 1200×632), and update the sizes in `docs/index.html`.
 
 The module pictures on the start page (`docs/modules/<name>.webp`) are copies of each module's `screenshot.png` (`../mirrordash-modules/mirrordash-<name>/`): after one changes, `cwebp -q 82 screenshot.png -o docs/modules/<name>.webp` and update its `width`/`height` in `docs/index.html`. Two differ: Photos is made 800 px wide (`-resize 800 0`), and Home Assistant is the top 400 px of its picture (`-crop 0 0 293 400`), which ends after a whole row.
 

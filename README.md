@@ -15,7 +15,7 @@
 
 **Website:** [mirrordash.net](https://mirrordash.net)
 
-![MirrorDash on a mirror](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_concept.png)
+![MirrorDash on a mirror in a hallway](https://raw.githubusercontent.com/Menturan/MirrorDash/master/mirrordash_photo.jpg)
 
 ### From SD card to mirror in three steps
 
