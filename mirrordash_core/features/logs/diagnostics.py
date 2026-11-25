@@ -3,18 +3,22 @@
 
 Nothing here needs more rights than the app has: the module host checks its own sandbox (host.py's
 sandbox_checks), the rest is what systemctl, rauc and the logs tell any user. The download holds the
-versions, these checks and the logs, never the settings (tokens, passwords).
+versions, the installed modules, the screen, the connection type and signal, these checks, the saved logs
+and the logs: never the settings (tokens, passwords), no Wi-Fi name (SSID) and no monitor serial.
 
 ponytail: the module host answers for itself, so a module that took it over could report a closed sandbox;
-the checks find a kernel or unit that doesn't filter, not a hostile module (systemd-analyze security in
-the download is the outside view).
+the checks find a kernel or unit that doesn't filter, not a hostile module.
 """
 
 import asyncio
 from datetime import UTC, datetime
 
-from mirrordash_core.config import get_core_version
+from mirrordash_core.config import get_core_version, load_config
+from mirrordash_core.features.logs.saved import SAVED_LOG_DIR, saved_logs
 from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.installed import installed_modules
+from mirrordash_core.features.power.privacy import SCREEN_SCALES
+from mirrordash_core.features.wifi.network import get_wifi_info
 from mirrordash_core.host import OS_BUILD_FILE, OS_VERSION_FILE
 
 HOST_UNIT = "mirrordash-modules.service"
@@ -82,6 +86,50 @@ def read(path) -> str:
         return "-"
 
 
+def modules_list() -> str:
+    try:
+        lines = [f"{m['name']} ({m['package_name']}) {m['version']}, {m['type']}"
+                 + (f", {m['source']}" if m.get("source") else f", local folder {m['folder_name']}" if m["type"] == "local" else "")
+                 for m in installed_modules()]
+    except Exception as e:
+        return f"(could not list: {e})"
+    return "\n".join(lines) or "None"
+
+
+async def screen() -> str:
+    """Resolution, rotation and scale from the settings (only these) and what the screen reports, minus
+    the monitor's serial number."""
+    config = load_config()
+    system, scale = config.get("system") or {}, (config.get("globals") or {}).get("screen_scale")
+    scale = scale if type(scale) is int and scale in SCREEN_SCALES else 100
+    reported = "\n".join(line for line in (await run("wlr-randr")).splitlines() if "Serial" not in line)
+    return (f"rotation: {system.get('rotation', 'normal')}\nresolution: {system.get('resolution', 'auto')}\n"
+            f"screen scale: {scale} %\n{reported}")
+
+
+async def network() -> str:
+    """The connection type and signal; never the network's name."""
+    try:
+        info = await get_wifi_info()
+    except Exception as e:
+        return f"(could not read: {e})"
+    kind = f"{info['type']} (setup mode)" if info["type"] == "hotspot" else info["type"]
+    return f"type: {kind}, signal: {info['signal']} %"
+
+
+def saved_logs_tails() -> str:
+    """The saved logs (logs.saved) with the last 150 lines of each."""
+    logs = saved_logs()
+    parts = ["\n".join(f"{log['created']}  {log['kind']}  {log['filename']}  {log['size']}" for log in logs) or "None"]
+    for log in logs:
+        try:
+            tail = "\n".join((SAVED_LOG_DIR / log["filename"]).read_text(errors="replace").splitlines()[-150:])
+        except OSError as e:
+            tail = f"(unreadable: {e})"
+        parts.append(f"--- {log['filename']} (last 150 lines) ---\n{tail}")
+    return "\n\n".join(parts)
+
+
 async def report(app_log: str, module_log: str) -> str:
     """The diagnostics download: plain text, one section per heading."""
     state = await host_state()
@@ -90,13 +138,16 @@ async def report(app_log: str, module_log: str) -> str:
     sections = {
         "Versions": f"MirrorDash {get_core_version()}\nOS build {read(OS_BUILD_FILE)} ({read(OS_VERSION_FILE)})\n"
                     + await run("uname", "-a"),
+        "Installed modules": modules_list(),
+        "Screen": await screen(),
+        "Network": await network(),
         "Module sandbox": state["error"] or (checks if state["sandboxed"] else "Not sandboxed (not on a mirror)\n" + checks),
         "Module host": host + f"\ncore memory: {state['core_memory']}",
-        "Module host's sandbox (systemd-analyze security)": await run("systemd-analyze", "security", "--no-pager", HOST_UNIT),
         "OS slots (rauc status)": await run("rauc", "status"),
         "Failed services": await run("systemctl", "--failed", "--no-pager"),
         "Power (vcgencmd get_throttled)": await run("vcgencmd", "get_throttled"),
         "Memory and storage": await run("free", "-m") + "\n\n" + await run("df", "-h", "/", "/storage"),
+        "Saved logs": saved_logs_tails(),
         "MirrorDash log": app_log,
         "Modules' log": module_log,
         "System log, warnings since boot": await run("journalctl", "-b", "-p", "warning", "-n", "300", "--no-pager",

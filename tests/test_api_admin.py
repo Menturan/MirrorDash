@@ -1541,6 +1541,35 @@ def test_diagnostics_show_the_sandbox_checks_and_take_the_host_s_answer_as_input
     assert "=== Module sandbox ===" in text and "a log line" in text
 
 
+def test_the_diagnostics_download_tells_modules_screen_network_and_saved_logs_but_no_private_names(client, monkeypatch, tmp_path):
+    from mirrordash_core.features.logs import diagnostics
+    outputs = {"wlr-randr": "HDMI-A-1 \"Acme\"\n  Serial: ABC123\n  Enabled: yes", "rauc": "slot A"}
+    monkeypatch.setattr(diagnostics, "run", AsyncMock(side_effect=lambda *cmd, **kw: outputs.get(cmd[0], "ok")))
+    monkeypatch.setattr(diagnostics.module_host, "diagnose", AsyncMock(side_effect=ConnectionError("x")))
+    monkeypatch.setattr(diagnostics, "installed_modules", lambda: [
+        {"name": "news", "package_name": "mirrordash-news", "version": "1.2.0", "type": "pypi",
+         "source": "git+https://github.com/o/news@abc"},
+        {"name": "mine", "package_name": "mine", "version": "0.1.0", "type": "local", "folder_name": "mine_dir"}])
+    monkeypatch.setattr(diagnostics, "get_wifi_info", AsyncMock(return_value={"ssid": "SecretHomeNet", "signal": 72, "type": "wifi"}))
+    monkeypatch.setattr(diagnostics, "load_config", lambda: {"system": {"rotation": "left"}, "globals": {"screen_scale": 125}})
+    monkeypatch.setattr(diagnostics, "SAVED_LOG_DIR", tmp_path)
+    from mirrordash_core.features.logs import saved
+    monkeypatch.setattr(saved, "SAVED_LOG_DIR", tmp_path)
+    (tmp_path / "os-trial-20261018-1200.log").write_text("first\nthe failure tail")
+    with patch("mirrordash_core.features.logs.routes.get_logs", new_callable=AsyncMock, return_value={"logs": "a log line"}):
+        text = client.get("/admin/logs/diagnostics.txt", headers={"X-API-Key": "secret"}).text
+    for title in ("Installed modules", "Screen", "Network", "Saved logs"):
+        assert f"=== {title} ===" in text
+    assert "news (mirrordash-news) 1.2.0, pypi, git+https://github.com/o/news@abc" in text
+    assert "mine (mine) 0.1.0, local, local folder mine_dir" in text
+    assert "type: wifi, signal: 72 %" in text and "SecretHomeNet" not in text
+    assert "rotation: left" in text and "resolution: auto" in text and "screen scale: 125 %" in text
+    assert "Enabled: yes" in text and "ABC123" not in text and "Serial" not in text
+    assert "--- os-trial-20261018-1200.log (last 150 lines) ---\nfirst\nthe failure tail" in text
+    assert "systemd-analyze" not in text
+    assert text.index("=== Versions") < text.index("=== Installed modules") < text.index("=== Screen") < text.index("=== Network") < text.index("=== Module sandbox")
+
+
 def test_the_developer_logging_switch(client, tmp_path, monkeypatch):
     import time
 
