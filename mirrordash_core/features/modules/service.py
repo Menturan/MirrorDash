@@ -101,6 +101,24 @@ def instance_title(instance_id: str, instance_config: dict, schema: dict | None 
     return name if first_instance_id == instance_id else f"{name} {instance_id.rsplit('-', 1)[1]}"
 
 
+def is_instance_of(instance_id: str, instance_config: dict, module_name: str) -> bool:
+    """Whether the instance is of the module (- and _ count as the same)."""
+    return str(instance_config.get("module", instance_id)).replace("-", "_") == module_name.replace("-", "_")
+
+
+def instance_chips(module_name: str, selected_id: str, modules_config: dict, schema: dict | None) -> list[dict]:
+    """The module's instances as the sheet's chips: id, title, enabled, position_label ("Top left"), selected.
+    An instance not saved yet (selected_id) is the last chip."""
+    instances = {instance_id: instance_config for instance_id, instance_config in modules_config.items()
+                 if isinstance(instance_config, dict) and is_instance_of(instance_id, instance_config, module_name)}
+    instances.setdefault(selected_id, {})
+    return [{"id": instance_id, "title": instance_title(instance_id, instance_config, schema),
+             "enabled": instance_config.get("enabled", True),
+             "position_label": instance_config.get("position", "middle_center").replace("_", " ").capitalize(),
+             "selected": instance_id == selected_id}
+            for instance_id, instance_config in instances.items()]
+
+
 def screen_layout() -> dict[str, list[dict]]:
     """Which instances sit at each screen position. Read from the config, so turned-off instances show
     too, and so does an instance whose module is no longer installed (module is None)."""

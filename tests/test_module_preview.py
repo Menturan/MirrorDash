@@ -128,3 +128,23 @@ def test_a_list_item_folds_unless_it_is_new():
     empty = render_array_item("modules[cal]", "calendars", {"name": {"type": "string"}}, 1, {}, "Calendar")
     assert filled.startswith('<details class="array-item-card">') and "<summary" in filled
     assert empty.startswith('<details class="array-item-card" open>')
+
+
+def _preview_page(**placement):
+    """module_preview.html as the route draws it, with the placement of the unsaved form."""
+    from mirrordash_core.admin import templates
+    from mirrordash_core.features.modules.client import placement as placement_of
+    context = {"html": "<p>x</p>", "message": "", "instance_id": "ha-one", "nonce": "n", "scripts": False,
+               "modules_css": "", "placement": placement_of(placement, "ha-one")}
+    return templates.env.get_template("module_preview.html").render(**context)
+
+
+def test_the_preview_sizes_the_card_like_the_mirror():
+    auto = _preview_page()
+    assert "data-fixed-width" not in auto and "--md-card-max-width" not in auto and "opacity: 1.0" in auto
+    custom = _preview_page(width_percent=40, height_percent=25, opacity_percent=60)
+    assert "data-fixed-width" in custom
+    assert "--md-card-max-width: calc(var(--md-usable-width) * 0.4)" in custom
+    assert "--md-card-max-height: calc(var(--md-usable-height) * 0.25)" in custom and "opacity: 0.6" in custom
+    assert "data-overflowing" in custom  # the same bottom fade, toggled by the page's own observer
+    assert "max_width" not in custom

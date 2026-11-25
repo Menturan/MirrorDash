@@ -5,27 +5,42 @@
     {% if is_new %}
     <p class="alert alert--info">A new one on the mirror. Choose where it goes, then select Add to Mirror.</p>
     {% endif %}
-    <h4 class="module-config-title"><i class="fas fa-sliders-h"></i>Standard Settings</h4>
-    <p class="module-config-note">These settings are provided by MirrorDash core for every module.</p>
-    {{ position_form | safe }}
+    {% if shared_block %}
+    <details class="standard-settings-accordion"{% if shared_block.open %} open{% endif %}>
+        <summary>
+            <span><i class="fas fa-link"></i> Shared settings: {{ shared_block.summary }}</span>
+            <i class="fas fa-chevron-down accordion-arrow"></i>
+        </summary>
+        <div class="standard-settings-content">{{ shared_block.html | safe }}</div>
+    </details>
+    {% endif %}
+    <div class="form-group">
+        <label for="instance-name">Name</label>
+        <input type="text" id="instance-name" name="modules[{{ instance_id }}][instance_name]" value="{{ instance_name }}" maxlength="40">
+    </div>
 
     <details class="standard-settings-accordion">
         <summary>
-            <span><i class="fas fa-cog"></i> Other Standard Settings</span>
+            <span><i class="fas fa-cog"></i> Placement</span>
             <i class="fas fa-chevron-down accordion-arrow"></i>
         </summary>
-        <div class="standard-settings-content">{{ standard_form | safe }}</div>
+        <div class="standard-settings-content">{{ placement_form | safe }}</div>
     </details>
 
     <details class="standard-settings-accordion">
         <summary>
-            <span><i class="fas fa-clock"></i> {{ schedule.title }}</span>
+            <span><i class="fas fa-clock"></i> When it shows</span>
             <i class="fas fa-chevron-down accordion-arrow"></i>
         </summary>
-        <div class="standard-settings-content">
-            <p class="field-description wide">{{ schedule.description }}</p>
-            {{ schedule_form | safe }}
-        </div>
+        <div class="standard-settings-content">{{ when_form | safe }}</div>
+    </details>
+
+    <details class="standard-settings-accordion">
+        <summary>
+            <span><i class="fas fa-heading"></i> Heading</span>
+            <i class="fas fa-chevron-down accordion-arrow"></i>
+        </summary>
+        <div class="standard-settings-content">{{ heading_form | safe }}</div>
     </details>
 
     {% if module_form %}

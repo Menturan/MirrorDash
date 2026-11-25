@@ -18,6 +18,7 @@ from mirrordash_core.features.modules.defaults import with_defaults
 from mirrordash_core.features.modules.shared_settings import (
     is_shareable,
     merged_instances,
+    shared_block,
     shared_keys,
     with_shared,
 )
@@ -78,7 +79,7 @@ def test_the_lan_allow_list_follows_a_shared_address():
 
 @pytest.fixture
 def saving():
-    """The save route with a module whose schema is SCHEMA; yields (client, the saved config's getter)."""
+    """The save route with a module whose schema is SCHEMA; yields (client, the saved config, the reload mock)."""
     config = {"globals": {}, "module_settings": {}, "modules": {"one": {"module": "mirrordash-ha"}}}
     with patch("mirrordash_core.admin.load_config", return_value=AUTH), \
          patch.object(schema, "_installed_module_schemas", return_value={"mirrordash_ha": SCHEMA}), \
@@ -86,30 +87,32 @@ def saving():
          patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=SCHEMA), \
          patch("mirrordash_core.features.modules.routes.load_config", side_effect=lambda: __import__("copy").deepcopy(config)), \
          patch("mirrordash_core.features.modules.routes.save_config", side_effect=lambda saved: config.update(saved)), \
-         patch("mirrordash_core.features.modules.shared_routes.find_entry_point", return_value=MagicMock()), \
-         patch("mirrordash_core.features.modules.shared_routes.get_module_schema", return_value=SCHEMA), \
-         patch("mirrordash_core.features.modules.shared_routes.load_config", side_effect=lambda: __import__("copy").deepcopy(config)), \
-         patch("mirrordash_core.features.modules.shared_routes.save_config", side_effect=lambda saved: config.update(saved)), \
-         patch("mirrordash_core.features.modules.shared_routes.module_host.reload_modules", new_callable=AsyncMock) as reload, \
-         patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new=reload):
+         patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock) as reload:
         yield TestClient(app), config, reload
 
 
-def save(client, instance, own=(), **values):
+def post_save(client, instance, own=(), shared=None, **values):
+    """One Save: the instance's fields, its Own value switches and the shared fields, in one request."""
+    values = {"entity": "sun.sun", **values}  # a real form always sends the module's own fields
     form = {f"modules[{instance}][{key}]": value for key, value in values.items()}
     form |= {f"shared_own[{key}]": "true" for key in own}
-    response = client.post(f"/admin/panels/modules/config/mirrordash-ha/save?instance_id={instance}", data=form, headers=HEADERS)
+    form |= {f"shared[{key}]": value for key, value in (shared or {}).items()}
+    return client.post(f"/admin/panels/modules/config/mirrordash-ha/save?instance_id={instance}", data=form, headers=HEADERS)
+
+
+def save(client, instance, own=(), shared=None, **values):
+    response = post_save(client, instance, own, shared, **values)
     assert response.status_code == 200, response.text
 
 
-def test_saving_an_instance_never_changes_the_shared_values_and_drops_a_shared_field_without_own_value(saving):
+def test_saving_without_a_shared_part_leaves_the_shared_values_and_drops_a_shared_field_without_own_value(saving):
     client, config, reload = saving
     shared = {"url": "http://192.168.1.5:8123", "token": "shared-token"}
     config["module_settings"] = {"mirrordash-ha": dict(shared)}
     config["modules"]["one"]["token"] = "an-old-own-one"
     save(client, "one", url="http://192.168.1.9:8123", token="typed", entity="light.x")
     assert config["module_settings"]["mirrordash-ha"] == shared  # not touched
-    assert config["modules"]["one"] == {"module": "mirrordash-ha", "entity": "light.x"}  # own off: the key is gone
+    assert config["modules"]["one"] == {"module": "mirrordash-ha", "entity": "light.x", "enabled": True}  # own off: the key is gone
     reload.assert_awaited_once()
 
 
@@ -124,7 +127,7 @@ def test_saving_with_own_value_on_keeps_it_in_the_instance(saving):
 def test_a_new_instance_without_own_value_adds_no_key_of_its_own(saving):
     client, config, _ = saving
     save(client, "two", url="http://192.168.1.5:8123", token="t")
-    assert config["modules"]["two"] == {"module": "mirrordash-ha"}
+    assert config["modules"]["two"] == {"module": "mirrordash-ha", "entity": "sun.sun", "enabled": True}
     assert config["module_settings"] == {}
 
 
@@ -137,71 +140,58 @@ def test_the_rules_check_what_the_module_gets():
     check_setting_rules(with_shared(instance, {"module_settings": {"mirrordash-ha": {"url": "http://x"}}}, rules), rules)
 
 
-# The Shared Settings section: GET and POST
+# One Save: the shared fields ride with the instance
 
-SHARED = "/admin/panels/modules/shared/mirrordash-ha"
-
-
-def post_shared(client, headers=HEADERS, **values):
-    return client.post(SHARED, data={f"shared[{key}]": value for key, value in values.items()}, headers=headers)
-
-
-def test_the_section_is_drawn_with_the_saved_values_and_never_the_saved_secret(saving):
-    client, config, _ = saving
-    config["module_settings"] = {"mirrordash-ha": {"url": "http://192.168.1.5:8123", "token": "s3cret-shared", "unit": "F"}}
-    html = client.get(SHARED, headers=HEADERS).text
-    assert "Shared Settings" in html and 'name="shared[url]" value="http://192.168.1.5:8123"' in html
-    assert 'name="shared[token]" value=""' in html and "s3cret-shared" not in html
-    assert "leave it empty to keep it" in html and 'name="shared[entity]"' not in html
-    assert 'hx-post="/admin/panels/modules/shared/mirrordash-ha"' in html
-
-
-def test_the_section_starts_with_the_schemas_defaults_and_without_a_saved_address(saving):
-    client, _, _ = saving
-    html = client.get(SHARED, headers=HEADERS).text
-    assert 'name="shared[url]" value=""' in html and "leave it empty" not in html
-    assert '<option value="C" selected>' in html or 'value="C" selected' in html
-
-
-def test_a_module_without_shared_settings_gets_an_empty_section(saving):
-    client, _, _ = saving
-    with patch("mirrordash_core.features.modules.shared_routes.get_module_schema", return_value={"properties": {"entity": {"type": "string"}}}):
-        assert client.get(SHARED, headers=HEADERS).text == ""
-        assert post_shared(client, entity="x").status_code == 400
-
-
-def test_the_shared_save_writes_the_values_and_reloads_the_modules(saving):
+def test_one_save_writes_the_shared_values_and_the_instance_and_reloads_once(saving):
     client, config, reload = saving
     config["modules"]["two"] = {"module": "mirrordash-ha", "token": "own"}
-    response = post_shared(client, url="http://192.168.1.9:8123", token="new-shared", unit="F", entity="ignored")
-    assert response.status_code == 200 and "Shared settings saved." in response.headers["HX-Trigger-After-Swap"]
+    response = post_save(client, "one", shared={"url": "http://192.168.1.9:8123", "token": "new-shared", "unit": "F", "entity": "ignored"},
+                         entity="light.x")
+    assert response.status_code == 200 and "Settings saved." in response.headers["HX-Trigger-After-Swap"]
     assert config["module_settings"]["mirrordash-ha"] == {"url": "http://192.168.1.9:8123", "token": "new-shared", "unit": "F"}
+    assert config["modules"]["one"] == {"module": "mirrordash-ha", "entity": "light.x", "enabled": True}
     assert config["modules"]["two"]["token"] == "own"  # an own value is not touched
     reload.assert_awaited_once()
+
+
+def test_adding_a_new_instance_saves_the_shared_fields_too(saving):
+    client, config, _ = saving
+    save(client, "two", shared={"url": "http://192.168.1.9:8123"}, entity="x")
+    assert config["module_settings"]["mirrordash-ha"] == {"url": "http://192.168.1.9:8123"}
+    assert config["modules"]["two"] == {"module": "mirrordash-ha", "entity": "x", "enabled": True}
 
 
 def test_a_secret_left_empty_keeps_the_saved_one_and_a_stale_key_is_dropped(saving):
     client, config, _ = saving
     config["module_settings"] = {"mirrordash-ha": {"token": "keep-me", "entity": "stale"}}
-    assert post_shared(client, url="http://192.168.1.9:8123", token="").status_code == 200
+    save(client, "one", shared={"url": "http://192.168.1.9:8123", "token": ""})
     assert config["module_settings"]["mirrordash-ha"] == {"token": "keep-me", "url": "http://192.168.1.9:8123"}
 
 
-def test_an_invalid_shared_value_is_rejected_and_saves_nothing(saving):
+def test_an_invalid_shared_value_saves_nothing(saving):
     client, config, reload = saving
-    response = post_shared(client, unit="K")
+    response = post_save(client, "one", shared={"unit": "K"})
     assert response.status_code == 400 and "must be one of" in response.json()["detail"]
     assert config["module_settings"] == {}
     reload.assert_not_awaited()
 
 
-def test_the_shared_routes_need_the_key_and_a_known_module(saving):
-    client, config, _ = saving
-    assert client.get(SHARED).status_code in (401, 403) and post_shared(client, headers={}, token="t").status_code in (401, 403)
+def test_a_broken_shared_rule_is_named_by_the_shared_input_and_saves_nothing(saving):
+    client, config, reload = saving
+    rules = {**SCHEMA, "required": ["url"], "properties": {**SCHEMA["properties"], "url": {**SCHEMA["properties"]["url"], "pattern": "https?://.+"}}}
+    with patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=rules):
+        response = post_save(client, "one", shared={"url": ""})
+        assert response.status_code == 422 and response.json()["fields"] == {"shared[url]": "Address is required."}
+        response = post_save(client, "one", own=["url"], url="ftp://x", shared={"url": "http://ok"})
+        assert response.json()["fields"] == {"modules[one][url]": "Address doesn't have the right format."}  # the own value counts
     assert config["module_settings"] == {}
-    with patch("mirrordash_core.features.modules.shared_routes.find_entry_point", return_value=None):
-        assert client.get(SHARED, headers=HEADERS).status_code == 404
-        assert post_shared(client, token="t").status_code == 404
+    reload.assert_not_awaited()
+
+
+def test_the_old_shared_section_has_no_save_route(saving):
+    client, config, _ = saving
+    assert client.post("/admin/panels/modules/shared/mirrordash-ha", data={"shared[token]": "t"}, headers=HEADERS).status_code == 405
+    assert config["module_settings"] == {}
 
 
 def test_preview_and_choices_get_the_shared_value(saving):
@@ -219,6 +209,11 @@ def test_preview_and_choices_get_the_shared_value(saving):
     with patch("mirrordash_core.features.modules.routes.module_host.preview", new_callable=AsyncMock, return_value=None) as preview:
         client.post("/admin/panels/modules/preview/mirrordash-ha?instance_id=one", data=form, headers=HEADERS)
     assert preview.call_args[0][1]["token"] == "mine"
+    form = {"modules[one][entity]": "x", "shared[token]": "typed-shared"}  # an unsaved shared value shows too
+    with patch("mirrordash_core.features.modules.routes.module_host.preview", new_callable=AsyncMock, return_value=None) as preview:
+        client.post("/admin/panels/modules/preview/mirrordash-ha?instance_id=one", data=form, headers=HEADERS)
+    assert preview.call_args[0][1]["token"] == "typed-shared"
+    assert config["module_settings"] == {"mirrordash-ha": {"token": "shared-token"}}  # but nothing is saved
 
 
 # Every instance restarts when a shared value changes
@@ -340,6 +335,39 @@ def test_a_new_instance_starts_with_own_value_off(drawer):
     row, switch = row_of(html, "token")
     assert "Shared: set in Shared Settings above." in row and " checked" not in switch
     assert box_of(html, "token").startswith(' class="shared-box" disabled hidden>')
+
+
+# The shared block: its summary and whether it is open
+
+REQUIRED = {**SCHEMA, "required": ["url", "token"]}
+
+
+def test_the_summary_is_the_first_plain_value_as_a_host_and_the_number_of_instances():
+    config = {"module_settings": {"mirrordash-ha": {"url": "http://192.168.1.5:8123/path", "token": "s3cret"}}}
+    block = shared_block(config, "mirrordash-ha", SCHEMA, 2)
+    assert block["summary"] == "192.168.1.5:8123 \u00b7 used by 2" and "s3cret" not in block["html"]
+    assert 'name="shared[url]"' in block["html"] and 'name="shared[entity]"' not in block["html"]
+    assert shared_block({}, "mirrordash-ha", SCHEMA, 1)["summary"] == "C \u00b7 used by 1"  # the first value shown: a default
+    only_secret = {"properties": {"token": SCHEMA["properties"]["token"]}}
+    assert shared_block({"module_settings": {"mirrordash-ha": {"token": "t"}}}, "mirrordash-ha", only_secret, 0)["summary"] == "Not set \u00b7 used by 0"
+    assert shared_block(config, "mirrordash-ha", {"properties": {"entity": {"type": "string"}}}, 1) is None  # nothing shared
+
+
+def test_the_block_is_open_while_a_required_shared_field_is_empty():
+    saved = {"module_settings": {"mirrordash-ha": {"url": "http://ha", "token": "t"}}}
+    assert shared_block(saved, "mirrordash-ha", REQUIRED, 1)["open"] is False
+    assert shared_block({}, "mirrordash-ha", REQUIRED, 1)["open"] is True  # nothing saved yet
+    no_secret = {"module_settings": {"mirrordash-ha": {"url": "http://ha"}}}
+    assert shared_block(no_secret, "mirrordash-ha", REQUIRED, 1)["open"] is True  # the saved secret counts, not the printed ""
+    assert shared_block({"module_settings": {"mirrordash-ha": {"url": ""}}}, "mirrordash-ha", {**SCHEMA, "required": ["url"]}, 1)["open"] is True
+    assert shared_block({}, "mirrordash-ha", SCHEMA, 1)["open"] is False  # none required
+    assert shared_block({}, "mirrordash-ha", {**SCHEMA, "required": ["unit"]}, 1)["open"] is False  # its default is a value
+
+
+def test_the_sheet_gets_the_shared_block_and_the_chips(drawer):
+    html = drawer("one")
+    assert "Shared settings: 192.168.1.5:8123 \u00b7 used by 2" in html and "<details" in html
+    assert 'name="shared[url]" value="http://192.168.1.5:8123"' in html and "s3cret-shared" not in html
 
 
 # The plain backup and the uninstall

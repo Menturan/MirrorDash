@@ -10,7 +10,10 @@ from fastapi.testclient import TestClient
 
 from mirrordash_core.admin import hash_password
 from mirrordash_core.app import app
-from mirrordash_core.features.modules.setting_rules import check_setting_rules
+from mirrordash_core.features.modules.setting_rules import (
+    broken_rules,
+    check_setting_rules,
+)
 from mirrordash_core.forms import render_array_item, render_schema_form
 
 SCHEMA = {
@@ -48,6 +51,13 @@ def test_a_broken_rule_is_named_for_the_owner(change, message):
     assert str(broken.value) == message
 
 
+def test_every_broken_rule_is_named_by_its_input():
+    broken = broken_rules({**GOOD, "url": "", "days": 11, "calendars": [{"url": "https://c"}, {"url": ""}]}, SCHEMA,
+                          lambda key: f"modules[s][{key}]")
+    assert broken == {"modules[s][url]": "Address is required.", "modules[s][days]": "Days must be at most 10.",
+                      "modules[s][calendars][1][url]": "Calendars #2: URL is required."}
+
+
 def test_empty_breaks_only_required_and_unsent_keys_are_left_alone():
     check_setting_rules(GOOD, SCHEMA)
     check_setting_rules({**GOOD, "switch_time": "", "token": ""}, SCHEMA)  # empty, not required: no pattern, no length
@@ -82,7 +92,23 @@ def test_a_save_is_refused_but_the_preview_still_draws_a_form_being_filled_in():
          patch("mirrordash_core.features.modules.routes.module_host.preview", new_callable=AsyncMock, return_value="<p>card</p>"):
         client = TestClient(app)
         r = client.post("/admin/panels/modules/config/md_s/save?instance_id=s", data=FORM, headers=HEADERS)
-        assert r.status_code == 400 and "Address Starts with http:// or https://." in r.text
+        assert r.status_code == 422 and r.json()["detail"] == "Address Starts with http:// or https://."
+        assert r.json()["fields"] == {"modules[s][url]": "Address Starts with http:// or https://."}
         save.assert_not_called()
         r = client.post("/admin/panels/modules/preview/md_s?instance_id=s", data=FORM, headers=HEADERS)
         assert r.headers["X-Preview"] == "sample"
+
+
+def test_a_save_with_several_broken_fields_names_them_all_and_saves_nothing():
+    form = {**FORM, "modules[s][url]": "", "modules[s][days]": "11", "modules[s][calendars][0][url]": ""}
+    with patch("mirrordash_core.admin.load_config", return_value=AUTH), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value={"globals": {}, "modules": {}}), \
+         patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=SimpleNamespace(dist=None)), \
+         patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=SCHEMA), \
+         patch("mirrordash_core.features.modules.routes.save_config") as save:
+        r = TestClient(app).post("/admin/panels/modules/config/md_s/save?instance_id=s", data=form, headers=HEADERS)
+    assert r.status_code == 422
+    assert r.json()["fields"] == {"modules[s][url]": "Address is required.", "modules[s][days]": "Days must be at most 10.",
+                                  "modules[s][calendars][0][url]": "Calendars #1: URL is required."}
+    assert r.json()["detail"] == "Address is required."
+    save.assert_not_called()

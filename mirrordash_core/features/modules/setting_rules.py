@@ -37,23 +37,33 @@ def _broken_rule(value, prop: dict) -> str | None:
     return None
 
 
-def check_setting_rules(settings: dict, schema: dict, where: str = "") -> None:
-    """Raise ValueError naming the first setting of settings (one instance's, as the form typed them) that
-    breaks a rule of schema; where is the list item it sits in, for the message."""
+def broken_rules(settings: dict, schema: dict, name_of=lambda key: key, where: str = "") -> dict[str, str]:
+    """Every setting of settings (one instance's, as the form typed them) that breaks a rule of schema:
+    {the form input's name: what is wrong, in words for the owner}. name_of gives a key's input name; where
+    is the list item it sits in, for the message."""
     properties = schema.get("properties") if isinstance(schema.get("properties"), dict) else {}
     required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    broken = {}
     for key, prop in properties.items():
         if key not in settings or not isinstance(prop, dict):
             continue
         value, title = settings[key], f"{where}{prop.get('title', key)}"
         if _is_empty(value):
             if key in required:
-                raise ValueError(f"{title} is required.")
+                broken[name_of(key)] = f"{title} is required."
             continue
         if problem := _broken_rule(value, prop):
-            raise ValueError(f"{title} {problem}.")
+            broken[name_of(key)] = f"{title} {problem}."
         items = prop.get("items")
         if isinstance(value, list) and isinstance(items, dict) and items.get("type") == "object":
             for number, item in enumerate(value, 1):
                 if isinstance(item, dict):
-                    check_setting_rules(item, items, f"{prop.get('title', key)} #{number}: ")
+                    broken |= broken_rules(item, items, lambda sub, base=name_of(key), row=number - 1: f"{base}[{row}][{sub}]",
+                                           f"{prop.get('title', key)} #{number}: ")
+    return broken
+
+
+def check_setting_rules(settings: dict, schema: dict) -> None:
+    """Raise ValueError with the first broken rule of broken_rules."""
+    if broken := broken_rules(settings, schema):
+        raise ValueError(next(iter(broken.values())))

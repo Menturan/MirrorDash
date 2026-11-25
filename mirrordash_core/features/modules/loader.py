@@ -109,7 +109,7 @@ def _inject_module_helpers(plugin_instance, package_name: str, translations: dic
 
 def _make_render_template(plugin_instance, package_name: str, config: dict):
     """`self.render_template("card.html", **context)` over the module's templates/ folder, with its
-    translations and show_header filled in; None when the module has no templates."""
+    translations, show_header and heading filled in; None when the module has no templates."""
     loaders = []
     with contextlib.suppress(Exception):
         loaders.append(PackageLoader(package_name, "templates"))
@@ -125,7 +125,9 @@ def _make_render_template(plugin_instance, package_name: str, config: dict):
     def render_template(template_name: str, **context) -> str:
         if "translations" not in context and hasattr(plugin_instance, "translations"):
             context["translations"] = plugin_instance.translations
+        # config has the module's own defaults filled in (defaults.with_defaults), so a module's default wins over True
         context.setdefault("show_header", config.get("show_header", True))
+        context.setdefault("heading", config.get("heading") or "")
         try:
             return environment.get_template(template_name).render(**context)
         except Exception as render_err:

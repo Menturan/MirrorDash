@@ -1220,7 +1220,6 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_p
     
     # Form data prefixing the instance key modules[clock-one]
     payload = {
-        "modules[clock-one][enabled]": "true",
         "modules[clock-one][position]": "top_right",
         "modules[clock-one][show_seconds]": "true",
         # The Schedule section: the days' hidden blank and the ticked ones, a time picker left blank
@@ -1238,12 +1237,27 @@ def test_save_module_instance_config(mock_reload, mock_save, mock_load, _entry_p
     assert "clock-one" in saved["modules"]
     assert saved["modules"]["clock-one"]["module"] == "mirrordash-clock"
     assert saved["modules"]["clock-one"]["position"] == "top_right"
-    assert saved["modules"]["clock-one"]["enabled"] is True
+    assert saved["modules"]["clock-one"]["enabled"] is True  # a new instance is on
     assert saved["modules"]["clock-one"]["show_seconds"] == "true"  # no schema here: text stays text
     assert saved["modules"]["clock-one"]["schedule"] == {"days": ["mon", "fri"], "from": "06:30", "to": ""}
     payload["modules[clock-one][schedule][days]"] = ""  # none ticked
     client.post("/admin/panels/modules/config/mirrordash-clock/save?instance_id=clock-one", data=payload, headers=headers)
     assert mock_save.call_args[0][0]["modules"]["clock-one"]["schedule"]["days"] == []
+
+
+@patch("mirrordash_core.features.modules.schema._installed_module_schemas", return_value={})
+@patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=None)
+@patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=MagicMock())
+@patch("mirrordash_core.features.modules.routes.load_config")
+@patch("mirrordash_core.features.modules.routes.save_config")
+@patch("mirrordash_core.features.modules.routes.module_host.reload_modules", new_callable=AsyncMock)
+def test_a_save_keeps_enabled_as_saved_since_the_form_has_no_such_field(mock_reload, mock_save, mock_load, _ep, _schema, _installed, client):
+    mock_load.return_value = {"globals": {}, "modules": {"clock-one": {"module": "mirrordash-clock", "enabled": False}}}
+    # Even a posted "enabled" is not the owner's way to change it
+    payload = {"modules[clock-one][position]": "top_right", "modules[clock-one][enabled]": "true"}
+    r = client.post("/admin/panels/modules/config/mirrordash-clock/save?instance_id=clock-one", data=payload, headers={"X-API-Key": "secret"})
+    assert r.status_code == 200
+    assert mock_save.call_args[0][0]["modules"]["clock-one"]["enabled"] is False
 
 
 @patch("mirrordash_core.features.modules.routes.load_config")
@@ -1437,14 +1451,45 @@ def test_module_config_drawer_shows_standard_then_own_settings(client):
         html = client.get("/admin/panels/modules/config/mirrordash-clock?instance_id=mirrordash-clock",
                           headers={"X-API-Key": "secret"}).text
         new = client.get("/admin/panels/modules/config/mirrordash-clock", headers={"X-API-Key": "secret"}).text
-    assert html.count("Screen Position") == 1 and "Module Settings" in html
+    assert html.count('name="modules[mirrordash-clock][position]"') == 1 and 'name="modules[mirrordash-clock][format]"' in html
     assert '<option value="top_left" selected>' in html
     assert "instance_id=mirrordash-clock-2" in new  # a second instance gets its own id
     assert "Save Configuration" in html and "Add to Mirror" not in html
+    assert 'name="modules[mirrordash-clock][enabled]"' not in html  # no form field: the switches change it
     # The schedule's own collapsible section, every day ticked until the owner chooses
     days = re.findall(r'type="checkbox" [^>]*name="modules\[mirrordash-clock\]\[schedule\]\[days\]"[^>]*>', html)
     assert len(days) == 7 and all(" checked" in day for day in days)
     assert 'type="time" id="field-modules-mirrordash-clock--schedule--from"' in html
+
+
+def test_the_sheet_gets_the_chips_and_one_form_per_section(client):
+    schema = {"title": "Clock", "properties": {"format": {"type": "string", "title": "Format"},
+                                               "show_header": {"type": "boolean", "default": False}}}  # a module default
+    cfg = {"modules": {"mirrordash-clock": {"module": "mirrordash-clock", "position": "top_left", "instance_name": "Hall"},
+                       "mirrordash-clock-2": {"module": "mirrordash_clock", "enabled": False},
+                       "other": {"module": "mirrordash-news"}}}
+    key = {"X-API-Key": "secret"}
+    with patch("mirrordash_core.features.modules.routes.find_entry_point", return_value=MagicMock()), \
+         patch("mirrordash_core.features.modules.routes.get_module_schema", return_value=schema), \
+         patch("mirrordash_core.features.modules.routes.load_config", return_value=cfg), \
+         patch("mirrordash_core.features.modules.routes.templates.TemplateResponse") as render:
+        client.get("/admin/panels/modules/config/mirrordash-clock?instance_id=mirrordash-clock-2", headers=key)
+        context = render.call_args.kwargs["context"]
+        client.get("/admin/panels/modules/config/mirrordash-clock", headers=key)  # a new one
+        new_context = render.call_args.kwargs["context"]
+    assert context["chips"] == [
+        {"id": "mirrordash-clock", "title": "Hall", "enabled": True, "position_label": "Top left", "selected": False},
+        {"id": "mirrordash-clock-2", "title": "Clock 2", "enabled": False, "position_label": "Middle center", "selected": True}]
+    assert [chip["id"] for chip in new_context["chips"]] == ["mirrordash-clock", "mirrordash-clock-2", "mirrordash-clock-3"]
+    assert new_context["chips"][-1]["selected"] and new_context["shared_block"] is None
+    name = "modules[mirrordash-clock-2]"
+    assert f'name="{name}[position]"' in context["placement_form"] and f'name="{name}[width_percent]"' in context["placement_form"]
+    assert f'name="{name}[schedule][days]"' in context["when_form"] and f'name="{name}[carousel_group]"' in context["when_form"]
+    assert f'name="{name}[show_header]"' in context["heading_form"] and f'name="{name}[heading]"' in context["heading_form"]
+    assert f'name="{name}[show_header]"' not in context["module_form"] and f'name="{name}[format]"' in context["module_form"]
+    show_header = re.search(r'<input type="checkbox"[^>]*name="modules\[mirrordash-clock-2\]\[show_header\]"[^>]*>', context["heading_form"])
+    assert show_header and " checked" not in show_header[0]  # the module's own default (off) is the form's
+    assert all(key in context for key in ("site_name", "scripts_allowed", "auto_update_allowed", "package_name"))
 
 
 def test_new_instance_gets_its_own_id_when_key_and_entry_point_are_spelled_differently(client):

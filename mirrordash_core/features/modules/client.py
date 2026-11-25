@@ -46,6 +46,7 @@ from mirrordash_core.features.modules.shared_settings import (
     with_shared,
 )
 from mirrordash_core.features.video import playback
+from mirrordash_core.forms import standard_schema_for
 from mirrordash_core.host import run_in_background, run_restart
 from mirrordash_core.screen import manager
 from mirrordash_core.venv import get_venv_paths
@@ -61,21 +62,25 @@ CRASH_WINDOW = 300
 CRASH_LIMIT = 3
 RESTART_DELAY = 5
 # Its place on the screen: changing one moves the card without restarting the module
-PLACEMENT_KEYS = {"position", "carousel_group", "carousel_interval", "max_width", "max_height", "z_index", "opacity",
+PLACEMENT_KEYS = {"position", "carousel_group", "carousel_interval", "width_percent", "height_percent", "opacity_percent",
                   "show_in_privacy", "schedule"}
 
 
-def placement(module_cfg: dict, instance_id: str) -> dict:
-    """The screen message's fields for an instance's place (js/kiosk/core.js reads them)."""
+def placement(module_cfg: dict, instance_id: str, module_schema: dict | None = None) -> dict:
+    """The screen message's fields for an instance's place (js/kiosk/core.js reads them). What the owner
+    never saved is the module's default for it (its schema), else the core's."""
+    standard = standard_schema_for(module_schema or {})["properties"]
+
+    def value(key):
+        return module_cfg.get(key, standard[key]["default"])
     return {
-        "position": module_cfg.get("position", "middle_center"),
+        "position": value("position"),
         "module": instance_id,
         "carousel_group": module_cfg.get("carousel_group"),
-        "carousel_interval": module_cfg.get("carousel_interval", 15),
-        "max_width": module_cfg.get("max_width"),
-        "max_height": module_cfg.get("max_height"),
-        "z_index": module_cfg.get("z_index"),
-        "opacity": module_cfg.get("opacity"),
+        "carousel_interval": value("carousel_interval"),
+        "width_percent": value("width_percent"),
+        "height_percent": value("height_percent"),
+        "opacity_percent": value("opacity_percent"),
         "show_in_privacy": module_cfg.get("show_in_privacy") is True,
     }
 
@@ -390,21 +395,24 @@ class ModuleHost:
             globals_cfg = config.get("globals", {})
             # order: the settings' order, which the screen keeps within an area (js/kiosk/core.js insertInOrder)
             eps = module_entry_points()
-            self._placement = {instance_id: {**placement(cfg, instance_id), "order": order, "scripts": scripts_allowed(
-                                   find_entry_point(cfg.get("module", instance_id), eps), config)}
-                               for order, (instance_id, cfg) in enumerate(modules.items())}
-            # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
-            from mirrordash_core.features.modules import guard
-            held = self.paused | guard.paused(config)
             from mirrordash_core.features.modules.schema import (
                 _installed_module_schemas,  # as lan.py: no import cycle
             )
             schemas = _installed_module_schemas()
+
+            def schema_of(instance_id, cfg):
+                return schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {}
+            self._placement = {instance_id: {**placement(cfg, instance_id, schema_of(instance_id, cfg)), "order": order,
+                                             "scripts": scripts_allowed(find_entry_point(cfg.get("module", instance_id), eps), config)}
+                               for order, (instance_id, cfg) in enumerate(modules.items())}
+            # Not started: those paused after crashing, and those the screen's crash guard paused (saved)
+            from mirrordash_core.features.modules import guard
+            held = self.paused | guard.paused(config)
             # The shared settings of the module in (#62), so a change of one restarts every instance of the module
             wanted = {}
             for instance_id, cfg in modules.items():
                 if cfg.get("enabled", True) and instance_id not in held:
-                    schema = schemas.get(str(cfg.get("module", instance_id)).replace("-", "_")) or {}
+                    schema = schema_of(instance_id, cfg)
                     wanted[instance_id] = with_defaults(with_shared(cfg, config, schema), schema)
             # The host answers once its self-check ran (host.PROBE_TIMEOUT at most)
             reply = await self._request({"t": "uids", "instances": list(wanted)}, 90)

@@ -9,7 +9,7 @@ import secrets
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, PlainTextResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from mirrordash_core.admin import (
     job_response,
@@ -26,7 +26,7 @@ from mirrordash_core.config import (
 from mirrordash_core.features.modules import discover, guard
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request, locate_field
-from mirrordash_core.features.modules.client import module_host
+from mirrordash_core.features.modules.client import module_host, placement
 from mirrordash_core.features.modules.instances import set_instances_enabled
 from mirrordash_core.features.modules.module_files import (
     SAFE_NAME,
@@ -40,6 +40,7 @@ from mirrordash_core.features.modules.service import (
     allow_scripts,
     check_module_update,
     install_module,
+    instance_chips,
     list_modules,
     module_updates,
     noted,
@@ -47,11 +48,14 @@ from mirrordash_core.features.modules.service import (
     uninstall_module,
     update_modules,
 )
-from mirrordash_core.features.modules.setting_rules import check_setting_rules
+from mirrordash_core.features.modules.setting_rules import broken_rules
 from mirrordash_core.features.modules.shared_settings import (
+    FORM_PREFIX,
+    apply_posted_shared,
     default_shared_value,
     drop_unowned_shared,
     is_secret,
+    shared_block,
     shared_keys,
     shared_values,
     with_shared,
@@ -59,13 +63,13 @@ from mirrordash_core.features.modules.shared_settings import (
 from mirrordash_core.fetch import fetch_json_cached
 from mirrordash_core.forms import (
     STANDARD_FIELDS,
-    STANDARD_SCHEMA,
     SharedState,
     cast_standard_fields,
     cast_values_by_schema,
     read_form,
     render_fields,
     render_schema_form,
+    standard_schema_for,
 )
 from mirrordash_core.host import get_disk_usage
 from mirrordash_core.screen import manager
@@ -118,35 +122,47 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
     schema = get_module_schema(ep) or {}
     # The core's standard fields are shown separately, even if a module declared them too
     module_own_properties = {key: prop for key, prop in schema.get("properties", {}).items() if key not in STANDARD_FIELDS}
-    modules_config = load_config().get("modules", {})
+    config = load_config()
+    modules_config = config.get("modules", {})
     instance_id = instance_id or _new_instance_id(module_name, modules_config)
     instance_config = modules_config.get(instance_id) or {}
     form_name_prefix = f"modules[{instance_id}]"
-    standard = STANDARD_SCHEMA["properties"]
-    standard_without_position = {key: prop for key, prop in standard.items() if key not in ("instance_name", "position", "schedule")}
-
-    def form(properties: dict, values: dict = instance_config, prefix: str = form_name_prefix, **kwargs) -> str:
-        return render_schema_form({"properties": properties}, values, prefix, module_name, **kwargs)
 
     # Shared settings (#62): the hidden box holds the shared value (never a secret) until the instance has an own one
     shared = _shared_states(module_name, schema, instance_config)
     module_values = {**instance_config, **{key: state.shared_value for key, state in shared.items() if not state.own}}
+    chips = instance_chips(module_name, instance_id, modules_config, schema)
 
     return templates.TemplateResponse(request=request, name="admin_module_config.html", context={
         "module_name": module_name, "instance_id": instance_id, "is_new": instance_id not in modules_config,
         "instance_title": modules_service.instance_title(instance_id, instance_config, schema),
-        # The name first, so the owner sees whose settings these are and can change it
-        "position_form": form({"instance_name": standard["instance_name"], "position": standard["position"]}),
-        "standard_form": form(standard_without_position),
-        # Its own collapsible section beside the other standard settings
-        "schedule": standard["schedule"],
-        "schedule_form": form(standard["schedule"]["properties"],
-                              instance_config.get("schedule") if isinstance(instance_config.get("schedule"), dict) else {},
-                              f"{form_name_prefix}[schedule]"),
-        "module_form": form(module_own_properties, module_values, shared=shared),
-        "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, load_config()),
-        "auto_update_allowed": site_name(ep) not in load_config().get("module_auto_update_off", []),
+        "instance_name": instance_config.get("instance_name") or "",
+        "chips": chips,
+        "shared_block": shared_block(config, module_name, schema, sum(1 for chip in chips if chip["id"] in modules_config)),
+        **_standard_forms(module_name, schema, instance_config, form_name_prefix),
+        "module_form": render_schema_form({"properties": module_own_properties}, module_values, form_name_prefix,
+                                          module_name, shared=shared),
+        "package_name": ep.dist.name if ep.dist else module_name,
+        "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, config),
+        "auto_update_allowed": site_name(ep) not in config.get("module_auto_update_off", []),
     })
+
+
+def _standard_forms(module_name: str, schema: dict, instance_config: dict, prefix: str) -> dict[str, str]:
+    """The core's standard settings as the sheet's three sections (placement_form, when_form, heading_form),
+    by each setting's "section". One call per section, so a show_if finds its sibling; an object (the
+    schedule) is a form of its own, first. The name is the instance chip's, not a section's."""
+    standard = standard_schema_for(schema)["properties"]
+    forms = {}
+    for section in ("placement", "when", "heading"):
+        properties = {key: prop for key, prop in standard.items() if prop.get("section") == section}
+        parts = [render_schema_form(prop, instance_config[key] if isinstance(instance_config.get(key), dict) else {},
+                                    f"{prefix}[{key}]", module_name)
+                 for key, prop in properties.items() if prop.get("type") == "object"]
+        flat = {key: prop for key, prop in properties.items() if prop.get("type") != "object"}
+        parts.append(render_schema_form({"properties": flat}, instance_config, prefix, module_name))
+        forms[f"{section}_form"] = "\n".join(parts)
+    return forms
 
 
 def _shared_states(module_name: str, schema: dict, instance_config: dict) -> dict[str, SharedState]:
@@ -193,13 +209,22 @@ def _new_instance_id(module_name: str, modules_config: dict) -> str:
                 if f"{module_name}_{number}".replace("-", "_") not in taken)
 
 
+class InvalidFields(Exception):
+    """A save breaks the schema's rules: fields maps every form input's name to what is wrong with it."""
+
+    def __init__(self, fields: dict[str, str]):
+        super().__init__(next(iter(fields.values())))
+        self.fields = fields
+
+
 async def _config_from_form(module_name: str, request: Request, instance_id: str | None,
                             check_rules: bool = False) -> tuple[dict, str]:
     """One instance's settings form as the whole config would be with it: its values as the module's
-    schema types them, then checked whole by validate_config (the trust boundary), and with check_rules (a
-    save) against the rules its schema sets on what is typed (setting_rules.py, ARCHITECTURE #49): not for
-    the preview or a list's choices, which run on a form still being filled in. (config, instance_id);
-    HTTPException 404/400 when the module or the form is wrong."""
+    schema types them, the shared values posted with it (shared[...]) in module_settings, then checked whole
+    by validate_config (the trust boundary), and with check_rules (a save) against the rules its schema sets
+    on what is typed (setting_rules.py, ARCHITECTURE #49): not for the preview or a list's choices, which run
+    on a form still being filled in. (config, instance_id); HTTPException 404/400 when the module or the form
+    is wrong, InvalidFields with every broken rule for check_rules."""
     ep = find_entry_point(module_name)
     if not ep:
         raise HTTPException(status_code=404, detail="Module not found")
@@ -217,17 +242,25 @@ async def _config_from_form(module_name: str, request: Request, instance_id: str
     instance_config["module"] = module_name
 
     config = load_config()
-    config.setdefault("modules", {})[instance_id] = instance_config
-    # A shared setting without "Own value" isn't the instance's: Shared Settings saves it (#62); the rules check what the module gets
+    modules_config = config.setdefault("modules", {})
+    # "enabled" is no form field (the map's and the instance's switch change it): a save keeps what is saved
+    saved = modules_config.get(instance_id)
+    instance_config["enabled"] = saved.get("enabled", True) if isinstance(saved, dict) else True
+    modules_config[instance_id] = instance_config
+    # A shared setting without "Own value" isn't the instance's: the shared fields posted with it are the module's (#62)
+    apply_posted_shared(config, module_name, posted.get(FORM_PREFIX), schema)
     own = posted.get("shared_own") if isinstance(posted.get("shared_own"), dict) else {}
     drop_unowned_shared(instance_config, {key for key, on in own.items() if on in ("true", True)}, schema)
     from mirrordash_core.features.modules.schema import validate_config
     try:
         validate_config(config)
-        if check_rules and schema:
-            check_setting_rules(with_shared(instance_config, config, schema), schema)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    if check_rules and schema:
+        # The rules check what the module gets: an input is the shared field's unless the instance has an own value
+        input_name = lambda key: f"modules[{instance_id}][{key}]" if key in instance_config else f"{FORM_PREFIX}[{key}]"
+        if fields := broken_rules(with_shared(instance_config, config, schema), schema, input_name):
+            raise InvalidFields(fields)
     return config, instance_id
 
 
@@ -259,7 +292,7 @@ async def preview_module_route(module_name: str, request: Request, instance_id: 
     return templates.TemplateResponse(
         request=request, name="module_preview.html", headers={"X-Preview": source if html is not None else "none"},
         context={"html": html, "message": message, "instance_id": instance_id, "nonce": secrets.token_urlsafe(16),
-                 "max_width": card.get("max_width") or "", "opacity": card.get("opacity"),
+                 "placement": placement(card, instance_id, get_module_schema(find_entry_point(module_name))),
                  "scripts": config is not None and scripts_allowed(find_entry_point(module_name), config),
                  "modules_css": MODULES_CSS.read_text(encoding="utf-8")})
 
@@ -310,9 +343,13 @@ async def module_fields_route(module_name: str, request: Request, instance_id: s
 
 @router.post("/panels/modules/config/{module_name}/save", dependencies=[Depends(require_api_key)])
 async def save_module_config_route(module_name: str, request: Request, instance_id: str | None = None):
-    """Save one instance's settings form (_config_from_form checks it first)."""
+    """Save one instance's settings form with the shared settings posted beside it (_config_from_form checks it
+    first): 422 {"detail": the first message, "fields": {input name: message}} when it breaks rules."""
     is_new = instance_id not in load_config().get("modules", {})
-    config, instance_id = await _config_from_form(module_name, request, instance_id, check_rules=True)
+    try:
+        config, instance_id = await _config_from_form(module_name, request, instance_id, check_rules=True)
+    except InvalidFields as e:  # the sheet draws each message at its field; htmx swaps nothing
+        return JSONResponse({"detail": str(e), "fields": e.fields}, status_code=422)
     save_config(config)
     guard.note("changed", instance_id)  # the crash guard's step 1 pauses the module changed last
     guard.release(instance_id)  # saved again: back on the screen if the guard had paused it

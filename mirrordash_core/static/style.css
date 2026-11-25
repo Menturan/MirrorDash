@@ -236,6 +236,31 @@ body, html {
     padding: var(--internal-padding);
 }
 
+/* Card size (core.js showModuleHtml, the admin preview). The usable screen is inside the safe margins, as the
+   cards are placed; --screen-scale zooms the card's lengths, so they are divided by it. Auto caps a card at a
+   third of the width and half of the height; Custom (core.js sets the properties and data-fixed-width) sets the
+   share. A card cuts what does not fit and fades the bottom out (data-overflowing, core.js). The layers are
+   not sized. container-type only with a definite width: on a shrink-to-fit card it would collapse it, so a
+   module's container queries and cqi units need a Custom (or module default) width. */
+:root {
+    --md-usable-width: calc((100vw - var(--safe-margin-left) - var(--safe-margin-right)) / var(--screen-scale, 1));
+    --md-usable-height: calc((100vh - var(--safe-margin-top) - var(--safe-margin-bottom)) / var(--screen-scale, 1));
+}
+.region:not(.layer) [data-module], .preview [data-module] {
+    --md-card-max-width: calc(var(--md-usable-width) / 3);
+    --md-card-max-height: calc(var(--md-usable-height) / 2);
+    max-width: var(--md-card-max-width);
+    max-height: var(--md-card-max-height);
+    overflow: hidden;
+}
+.region:not(.layer) [data-module][data-fixed-width], .preview [data-module][data-fixed-width] {
+    width: var(--md-card-max-width);
+    container-type: inline-size;
+}
+.region:not(.layer) [data-module][data-overflowing], .preview [data-module][data-overflowing] {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+}
+
 /* Notification / Alert card style */
 [data-module="notification"] {
     border-radius: var(--radius-alert);

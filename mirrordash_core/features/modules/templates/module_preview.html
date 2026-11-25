@@ -1,7 +1,9 @@
 {# The drawer's preview of a card (routes.preview_module_route), shown as the srcdoc of an iframe with
    sandbox="allow-scripts": a page of no site, where only the scripts with this nonce run, never the module's.
    The card goes into a shadow root as on the mirror (js/kiosk/core.js showModuleHtml), then the page zooms
-   out until it fits. #}
+   out until it fits. The card is sized as on the mirror (style.css "Card size") on a 1920 x 1080 screen with
+   the 60 px margins, so its share of the screen is the same whatever the drawer's width. placement: what
+   client.placement() gives for the unsaved form. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -11,7 +13,8 @@
 <link rel="stylesheet" href="/static/style.css">
 <style>
     html, body { margin: 0; background: #000; overflow-x: hidden; overflow-y: auto; cursor: default; }
-    .preview { position: absolute; top: 0; left: 50%; width: max-content; max-width: 900px; padding: 24px;
+    :root { --md-usable-width: 1800px; --md-usable-height: 960px; }
+    .preview { position: absolute; top: 0; left: 50%; width: max-content; padding: 24px;
                transform: translateX(-50%); transform-origin: top center; }
     .preview-empty { color: #8a8a8a; font: 14px/1.5 Inter, system-ui, sans-serif; text-align: center; padding: 48px 24px; margin: 0; }
 </style>
@@ -19,7 +22,8 @@
 <body>
 {% if html is not none %}
 <div class="preview"><div id="card" data-module="{{ instance_id }}"
-     style="{% if max_width %}max-width: {{ max_width }};{% endif %}{% if opacity is not none %}opacity: {{ opacity }};{% endif %}"></div></div>
+     {% if placement.width_percent > 0 %}data-fixed-width{% endif %}
+     style="{% if placement.width_percent > 0 %}--md-card-max-width: calc(var(--md-usable-width) * {{ placement.width_percent / 100 }});{% endif %}{% if placement.height_percent > 0 %}--md-card-max-height: calc(var(--md-usable-height) * {{ placement.height_percent / 100 }});{% endif %}opacity: {{ placement.opacity_percent / 100 }};"></div></div>
 <script type="application/json" id="card-html">{{ html | tojson }}</script>
 <script type="application/json" id="modules-css">{{ modules_css | tojson }}</script>
 <script nonce="{{ nonce }}" src="/static/js/lucide.min.js"></script>
@@ -54,6 +58,10 @@
         document.body.style.height = `${Math.ceil(height * scale)}px`;
     };
     new ResizeObserver(fit).observe(preview);
+    // What does not fit fades out at the bottom, as on the mirror (js/kiosk/core.js watchOverflow)
+    const overflow = new ResizeObserver(() => card.toggleAttribute('data-overflowing', card.scrollHeight > card.clientHeight + 1));
+    overflow.observe(card);
+    for (const part of shadow.children) if (!['STYLE', 'SCRIPT'].includes(part.tagName)) overflow.observe(part);
     addEventListener('resize', fit);
 </script>
 {% else %}

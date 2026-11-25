@@ -23,29 +23,29 @@ POSITIONS = ["top_left","top_center", "top_right",
 # Settings the core gives every module (module developers must NOT declare these in config_schema)
 STANDARD_SCHEMA = {"properties": {
     # The owner's own name for this one (features/modules/service.py instance_title); not "title", which a
-    # module may well use for a heading of its own
-    "instance_name": {"type": "string", "default": "", "maxLength": 40, "title": "Name",
+    # module may well use for a heading of its own. Edited on the instance chip. "enabled" is no form field:
+    # saving keeps what is saved (features/modules/routes.py)
+    "instance_name": {"type": "string", "default": "", "maxLength": 40, "title": "Name", "section": "name",
                       "description": "What this one is called on the admin page and in its notifications, e.g. Kitchen Clock. Blank: the module's own name."},
-    "enabled": {"type": "boolean", "default": True, "title": "Enabled",
-                "description": "Enable or disable this module on the mirror."},
-    "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Screen Position",
+    "position": {"type": "string", "default": "middle_center", "enum": POSITIONS, "title": "Position", "section": "placement",
                  "description": "Which anchor region on the mirror this module floats from. Background and Foreground fill the whole screen, behind and in front of the others."},
-    "carousel_group": {"type": "string", "default": "", "title": "Carousel Group",
-                       "description": "Assign a group name to rotate this module with others in the same region."},
-    "carousel_interval": {"type": "integer", "default": 15, "title": "Carousel Interval (s)",
-                          "description": "Seconds between carousel slides."},
-    "max_width": {"type": "string", "default": "", "title": "Max Width",
-                  "description": "CSS length (e.g. 400px, 30vw). Leave blank for no constraint."},
-    "max_height": {"type": "string", "default": "", "title": "Max Height",
-                   "description": "CSS length (e.g. 300px, 50vh). Leave blank for no constraint."},
-    "z_index": {"type": "integer", "default": "", "title": "Z-Index",
-                "description": "Stacking order when modules overlap. Higher = on top."},
-    "opacity": {"type": "number", "default": "", "title": "Opacity",
-                "description": "Module transparency: 1 = fully visible, 0 = invisible."},
-    "show_in_privacy": {"type": "boolean", "default": False, "title": "Shown in Privacy Mode",
+    "width_percent": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "step": 5, "default": 0,
+                      "title": "Width", "section": "placement", "min_label": "Auto", "unit": "%",
+                      "description": "Share of the screen width inside the margins. Auto: at most a third of it."},
+    "height_percent": {"type": "integer", "format": "slider", "minimum": 0, "maximum": 100, "step": 5, "default": 0,
+                       "title": "Height", "section": "placement", "min_label": "Auto", "unit": "%",
+                       "description": "Share of the screen height inside the margins. Auto: at most half of it. What does not fit fades out."},
+    "opacity_percent": {"type": "integer", "format": "slider", "minimum": 10, "maximum": 100, "step": 5, "default": 100,
+                        "title": "Opacity", "section": "placement", "unit": "%",
+                        "description": "How solid it is: 100 is fully visible."},
+    "show_header": {"type": "boolean", "default": True, "title": "Show heading", "section": "heading",
+                    "description": "Show the module's heading above its content."},
+    "heading": {"type": "string", "default": "", "maxLength": 60, "title": "Heading text", "section": "heading",
+                "description": "Blank: the module's own title."},
+    "show_in_privacy": {"type": "boolean", "default": False, "title": "Show in privacy mode", "section": "when",
                         "description": "Stay on the screen in privacy mode, for guests: the clock, the weather, a guest album. Modules without it are hidden then."},
     # Its own collapsible section in the module's settings (features/power/schedule.py)
-    "schedule": {"type": "object", "title": "Schedule",
+    "schedule": {"type": "object", "title": "Schedule", "section": "when",
                  "description": "Show this module only on some days and at some times; outside them it is hidden. A time like 22:00 to 06:00 runs over midnight and belongs to the day it starts.",
                  "properties": {
                      "days": {"type": "array", "items": {"type": "string", "enum": list(DAYS)}, "default": list(DAYS),
@@ -55,8 +55,28 @@ STANDARD_SCHEMA = {"properties": {
                      "to": {"type": "string", "format": "time", "default": "", "title": "To",
                             "description": "Blank: until midnight."},
                  }},
+    "carousel_group": {"type": "string", "default": "", "title": "Take turns with", "section": "when",
+                       "description": "A group name: modules in the same region with the same name take turns on the screen."},
+    "carousel_interval": {"type": "integer", "default": 15, "title": "Switch every", "section": "when", "unit": "s",
+                          "show_if": {"carousel_group": {"not": [""]}},
+                          "description": "Seconds between slides."},
 }}
 STANDARD_FIELDS = list(STANDARD_SCHEMA["properties"])
+MODULE_DEFAULT_KEYS = ("show_header", "heading", "width_percent", "height_percent", "opacity_percent")
+
+
+def standard_schema_for(module_schema: dict) -> dict:
+    """STANDARD_SCHEMA with the module's own defaults for the standard keys it names (MODULE_DEFAULT_KEYS):
+    the module author's choice, which the owner can still change. The module's entry is otherwise ignored."""
+    module_properties = module_schema.get("properties") if isinstance(module_schema, dict) else None
+    module_properties = module_properties if isinstance(module_properties, dict) else {}
+    properties = {}
+    for key, prop in STANDARD_SCHEMA["properties"].items():
+        theirs = module_properties.get(key)
+        if key in MODULE_DEFAULT_KEYS and isinstance(theirs, dict) and "default" in theirs:
+            prop = {**prop, "default": theirs["default"]}
+        properties[key] = prop
+    return {"properties": properties}
 # A setting whose choices the module gives (ARCHITECTURE #48): saved as {"id", "name"}
 CHOICE_FORMATS = ("list", "search")
 # A setting whose boxes the module builds (ARCHITECTURE #63): saved as {field: value} of the boxes it gave last

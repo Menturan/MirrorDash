@@ -52,7 +52,7 @@ def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, m
         (tmp_path / pkg / "__init__.py").write_text("")
         (tmp_path / pkg / "translations" / "en.json").write_text('{"greeting": "Hello", "bye": "Bye"}')
         (tmp_path / pkg / "translations" / "sv.json").write_text(f'{{"greeting": "{greeting}"}}')
-        (tmp_path / pkg / "templates" / "card.html").write_text(pkg + ": {{ translations.greeting }} {{ show_header }}")
+        (tmp_path / pkg / "templates" / "card.html").write_text(pkg + ": {{ translations.greeting }} {{ show_header }}[{{ heading }}]")
     monkeypatch.syspath_prepend(str(tmp_path))
 
     instances = []
@@ -64,9 +64,72 @@ def test_helpers_give_each_module_its_own_translations_and_templates(tmp_path, m
     a, b = instances
     assert (a.translate("greeting"), b.translate("greeting")) == ("Hej", "Hallå")
     assert a.translate("bye") == "Bye" and a.translate("missing") == "missing" and a.translate("missing", "x") == "x"
-    assert a.render_template("card.html") == "md_test_a: Hej False"
-    assert b.render_template("card.html") == "md_test_b: Hallå False"
+    assert a.render_template("card.html") == "md_test_a: Hej False[]"  # no heading text of its own: blank
+    assert b.render_template("card.html") == "md_test_b: Hallå False[]"
     assert load_translations(tmp_path / "md_test_a", "en") == {"greeting": "Hello", "bye": "Bye"}
+
+
+def test_render_template_gets_the_heading_and_show_header_of_the_instance(tmp_path, monkeypatch):
+    from mirrordash_core.features.modules.defaults import with_defaults
+    from mirrordash_core.features.modules.loader import _inject_module_helpers
+
+    (tmp_path / "md_test_c" / "templates").mkdir(parents=True)
+    (tmp_path / "md_test_c" / "__init__.py").write_text("")
+    (tmp_path / "md_test_c" / "templates" / "card.html").write_text("{{ show_header }}|{{ heading }}")
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    def rendered(config):
+        instance = type("Plugin", (), {})()
+        _inject_module_helpers(instance, "md_test_c", {}, "md_test_c", config, FakeLink())
+        return instance.render_template("card.html")
+    assert rendered({}) == "True|"  # core's defaults: heading on, no text of its own
+    assert rendered({"show_header": False, "heading": "Kitchen"}) == "False|Kitchen"
+    schema = {"properties": {"show_header": {"type": "boolean", "default": False}}}  # the module author's default
+    assert rendered(with_defaults({}, schema)) == "False|"
+    assert rendered(with_defaults({"show_header": True}, schema)) == "True|"  # the owner's choice wins
+
+
+def test_the_standard_settings_are_the_final_keys_each_in_a_section():
+    from mirrordash_core.forms import STANDARD_SCHEMA
+
+    properties = STANDARD_SCHEMA["properties"]
+    assert list(properties) == ["instance_name", "position", "width_percent", "height_percent", "opacity_percent",
+                                "show_header", "heading", "show_in_privacy", "schedule", "carousel_group", "carousel_interval"]
+    assert {key: prop["section"] for key, prop in properties.items()} == {
+        "instance_name": "name", "position": "placement", "width_percent": "placement", "height_percent": "placement",
+        "opacity_percent": "placement", "show_header": "heading", "heading": "heading", "show_in_privacy": "when",
+        "schedule": "when", "carousel_group": "when", "carousel_interval": "when"}
+    assert (properties["width_percent"]["min_label"], properties["width_percent"]["unit"]) == ("Auto", "%")
+    assert properties["carousel_interval"]["show_if"] == {"carousel_group": {"not": [""]}}
+    assert properties["opacity_percent"]["minimum"] == 10 and properties["show_header"]["title"] == "Show heading"
+    assert not {"max_width", "max_height", "z_index", "opacity", "enabled"} & set(properties)
+
+
+def test_a_modules_default_for_a_standard_key_replaces_the_cores():
+    from mirrordash_core.forms import STANDARD_SCHEMA, standard_schema_for
+
+    module = {"properties": {"show_header": {"type": "boolean", "default": False, "title": "Own"},
+                             "width_percent": {"default": 40}, "heading": {"type": "string"},  # no default: core's
+                             "city": {"type": "string", "default": "Oslo"}}}  # not a standard key: ignored
+    properties = standard_schema_for(module)["properties"]
+    assert properties["show_header"]["default"] is False and properties["show_header"]["title"] == "Show heading"
+    assert properties["width_percent"]["default"] == 40 and properties["heading"]["default"] == ""
+    assert "city" not in properties and properties["opacity_percent"]["default"] == 100
+    assert STANDARD_SCHEMA["properties"]["width_percent"]["default"] == 0  # core's own is left alone
+    assert standard_schema_for({})["properties"] == STANDARD_SCHEMA["properties"]
+
+
+def test_placement_gives_the_new_keys_with_the_modules_defaults():
+    from mirrordash_core.features.modules.client import PLACEMENT_KEYS, placement
+
+    assert placement({}, "w") == {"position": "middle_center", "module": "w", "carousel_group": None, "carousel_interval": 15,
+                                  "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "show_in_privacy": False}
+    schema = {"properties": {"width_percent": {"default": 40}, "opacity_percent": {"default": 80}}}
+    assert placement({}, "w", schema)["width_percent"] == 40 and placement({}, "w", schema)["opacity_percent"] == 80
+    saved = placement({"width_percent": 0, "opacity_percent": 60, "position": "top_left"}, "w", schema)
+    assert (saved["width_percent"], saved["opacity_percent"], saved["position"]) == (0, 60, "top_left")  # saved wins, even Auto
+    assert {"width_percent", "height_percent", "opacity_percent"} <= PLACEMENT_KEYS
+    assert not {"max_width", "max_height", "z_index", "opacity"} & PLACEMENT_KEYS
 
 
 def test_the_core_finds_a_modules_files_without_running_its_code(tmp_path, monkeypatch):
@@ -953,7 +1016,7 @@ async def test_modules_run_in_the_module_host_and_reach_the_core_only_through_it
         await _until(lambda: manager.broadcast.await_count >= 1)
         assert manager.broadcast.await_args.args[0] == {
             "position": "top_left", "module": "garage", "carousel_group": None, "carousel_interval": 15,
-            "max_width": None, "max_height": None, "z_index": None, "opacity": None, "show_in_privacy": False,
+            "width_percent": 0, "height_percent": 0, "opacity_percent": 100, "show_in_privacy": False,
             "order": 0, "scripts": False, "html": "<p>closed</p>"}
         assert (tmp_path / "modules" / "data" / "garage").is_dir()
 

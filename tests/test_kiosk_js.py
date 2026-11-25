@@ -85,3 +85,12 @@ def test_index_html_uses_modular_js(client):
     # Original inline script should be gone
     assert 'DESIGN_TOKENS_HTML' not in resp.text
     assert 'checkSystemOverlayPrompts' not in resp.text
+
+def test_the_card_size_is_set_from_the_percentages_and_the_old_keys_are_gone(client):
+    core = client.get("/static/js/kiosk/core.js").text
+    assert "data.width_percent" in core and "data.height_percent" in core and "data.opacity_percent" in core
+    assert "data-fixed-width" in core and "data-overflowing" in core and "ResizeObserver" in core
+    for old in ("max_width", "max_height", "z_index", "zIndex", "data.opacity ", "style.maxWidth"):
+        assert old not in core
+    css = client.get("/static/style.css").text
+    assert "--md-card-max-width" in css and "--md-card-max-height" in css and "container-type: inline-size" in css

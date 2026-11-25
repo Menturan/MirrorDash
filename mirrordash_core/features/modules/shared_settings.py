@@ -7,7 +7,16 @@ an instance names it in its "module". An instance's own value is its key in conf
 the key being there is what "own" means. with_shared is the one place the two meet; every place that hands
 an instance's settings to a module goes through it, so the module never sees the difference."""
 
-from mirrordash_core.forms import CHOICE_FORMATS, STANDARD_FIELDS
+from urllib.parse import urlparse
+
+from mirrordash_core.forms import (
+    CHOICE_FORMATS,
+    STANDARD_FIELDS,
+    cast_values_by_schema,
+    render_schema_form,
+)
+
+FORM_PREFIX = "shared"  # the shared fields' input names: shared[<key>]
 
 # A single value: not a list, an object or files
 SINGLE_VALUE_TYPES = ("string", "integer", "number", "boolean")
@@ -68,3 +77,53 @@ def drop_unowned_shared(instance_config: dict, own: set[str], schema: dict | Non
     for key in shared_keys(schema):
         if key not in own:
             instance_config.pop(key, None)
+
+
+def apply_posted_shared(config: dict, module_name: str, posted, schema: dict | None) -> None:
+    """The sheet's shared fields as the module's shared values, in config only (the caller saves it). A secret
+    left empty keeps the saved one; a key the schema no longer marks shared is dropped."""
+    keys = shared_keys(schema)
+    if not keys or not isinstance(posted, dict):
+        return
+    posted = cast_values_by_schema(posted, schema)
+    values = {key: value for key, value in shared_values(config, module_name).items() if key in keys}
+    for key in keys:
+        if key in posted and not (is_secret(schema["properties"][key]) and posted[key] == ""):
+            values[key] = posted[key]
+    module_settings = config.setdefault("module_settings", {})
+    if values:
+        module_settings[module_name] = values
+    else:
+        module_settings.pop(module_name, None)
+
+
+def _shown_shared_values(config: dict, module_name: str, schema: dict) -> dict:
+    """What the sheet shows for each shared setting: the saved value, else the schema's default; never a secret."""
+    saved = shared_values(config, module_name)
+    return {key: "" if is_secret(schema["properties"][key]) else saved[key] if key in saved else default_shared_value(schema["properties"][key])
+            for key in shared_keys(schema)}
+
+
+def _short(value) -> str:
+    """A shared value as a few words: an address as its host."""
+    text = str(value)
+    return (urlparse(text).netloc if "://" in text else text)[:40]
+
+
+def shared_block(config: dict, module_name: str, schema: dict, instance_count: int) -> dict | None:
+    """The sheet's shared block: {"html": its fields, "summary": the first value and "used by N", "open": a
+    required shared field is empty}; None when the module has no shared settings."""
+    keys = shared_keys(schema)
+    if not keys:
+        return None
+    shown = _shown_shared_values(config, module_name, schema)
+    properties = {key: schema["properties"][key] for key in keys}
+    saved = shared_values(config, module_name)
+    required = schema.get("required") if isinstance(schema.get("required"), list) else []
+    first = next((_short(value) for value in shown.values() if value not in ("", None)), "Not set")
+    return {
+        "html": render_schema_form({"properties": properties}, shown, FORM_PREFIX, module_name),
+        "summary": f"{first} \u00b7 used by {instance_count}",
+        # A secret's emptiness is about the saved one: the form never prints it
+        "open": any(key in required and (saved.get(key) if is_secret(properties[key]) else shown[key]) in ("", None) for key in keys),
+    }

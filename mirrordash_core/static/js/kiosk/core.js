@@ -182,6 +182,17 @@ function runCardScripts(shadow, scriptsAllowed) {
     }
 }
 
+// A card cuts what does not fit (style.css "Card size"); data-overflowing makes the bottom fade out. Watched
+// again after each redraw: the card and what is in its shadow root change size as the content does.
+const overflowWatchers = new WeakMap();
+function watchOverflow(card) {
+    overflowWatchers.get(card)?.disconnect();
+    const watcher = new ResizeObserver(() => card.toggleAttribute('data-overflowing', card.scrollHeight > card.clientHeight + 1));
+    overflowWatchers.set(card, watcher);
+    watcher.observe(card);
+    for (const part of card.shadowRoot?.children ?? []) if (!['STYLE', 'SCRIPT'].includes(part.tagName)) watcher.observe(part);
+}
+
 // A module's HTML: its card (made, or moved to its area or carousel group), its wrapper settings, and its
 // content in the card's shadow root with the design tokens and the component library
 function showModuleHtml(data) {
@@ -211,13 +222,12 @@ function showModuleHtml(data) {
     card.classList.toggle('carousel-slide', !!data.carousel_group);
     if (!data.carousel_group) card.classList.remove('carousel-active');
 
-    // Apply standard per-module wrapper properties from config.
-    // Any CSS-valid value works (e.g. max_width "400px", opacity 0.5, z_index 10).
-    // Cleared to '' when absent so removing a config value takes effect live.
-    card.style.maxWidth  = data.max_width  || '';
-    card.style.maxHeight = data.max_height || '';
-    card.style.zIndex    = data.z_index != null ? String(data.z_index) : '';
-    card.style.opacity   = data.opacity  != null ? String(data.opacity)  : '';
+    // Size and opacity (style.css "Card size"): 0 % is Auto, the cap style.css gives every card
+    const share = (percent, usable) => (percent > 0 ? `calc(var(${usable}) * ${percent / 100})` : '');
+    card.style.setProperty('--md-card-max-width', share(data.width_percent, '--md-usable-width'));
+    card.style.setProperty('--md-card-max-height', share(data.height_percent, '--md-usable-height'));
+    card.toggleAttribute('data-fixed-width', data.width_percent > 0);
+    card.style.opacity = data.opacity_percent != null ? String(data.opacity_percent / 100) : '';
     card.toggleAttribute('data-show-in-privacy', data.show_in_privacy === true);  // style.css, privacy mode
     card.toggleAttribute('data-scheduled-out', scheduledOut.includes(data.module));  // style.css, its schedule
     card.toggleAttribute('data-video-is-playing', videoIsPlaying);
@@ -229,6 +239,7 @@ function showModuleHtml(data) {
     shadow.innerHTML = `<style>${DESIGN_TOKENS_CSS}${MODULES_CSS}</style>` + data.html;
     if (window.lucide) lucide.createIcons({ root: shadow });
     runCardScripts(shadow, data.scripts);
+    watchOverflow(card);
 
     if (oldParent && oldParent.classList.contains('carousel-group-container') && oldParent !== parentContainer) {
         updateCarouselGroup(oldParent);

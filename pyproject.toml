@@ -50,7 +50,7 @@ build-backend = "hatchling.build"
 packages = ["mirrordash_core"]
 
 [tool.pytest.ini_options]
-addopts = "--ignore=tests/test_visual_admin.py --browser chromium --browser webkit"
+addopts = "--ignore=tests/test_visual_admin.py --ignore=tests/test_visual_card_size.py --browser chromium --browser webkit"
 asyncio_default_fixture_loop_scope = "function"
 
 # Lint (CI runs `ruff check`): the rules that catch real mistakes, not a style. Run `uvx ruff check --fix`.
