@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <link rel="stylesheet" href="stage.css">
+    <script src="vendor/gsap-3.15.1.min.js"></script>
+    <script src="story.js"></script>
+  </head>
+  <body>
+    <div id="root" data-composition-id="tour" data-start="0" data-duration="55.9" data-width="1920" data-height="1080">
+      <div id="photo">
+        <img id="photo-img" src="assets/hallway.jpg" alt="A MirrorDash mirror on a hallway wall">
+        <div id="photo-dim"></div>
+        <div id="open-title">MirrorDash</div>
+        <div id="open-sub">Smart mirror software for Raspberry Pi</div>
+      </div>
+      <div id="stage">
+        <div id="frame"></div>
+        <div id="glass">
+        <div class="m small" id="m-boot"><img src="assets/m-boot.png" alt=""><div class="glow" style="background-image:url(assets/m-boot.png)"></div></div>
+        <div class="m " id="m-wifi"><img src="assets/m-wifi.png" alt=""><div class="glow" style="background-image:url(assets/m-wifi.png)"></div></div>
+        <div class="m " id="m-admin"><img src="assets/m-admin.png" alt=""><div class="glow" style="background-image:url(assets/m-admin.png)"></div></div>
+        <div class="m " id="m-clock"><img src="assets/m-clock.png" alt=""><div class="glow" style="background-image:url(assets/m-clock.png)"></div><div class="cut" style="left:0;top:0;width:756px;height:738px"></div></div>
+        <div class="m " id="m-full"><img src="assets/m-full.png" alt=""><div class="glow" style="background-image:url(assets/m-full.png)"></div><div class="cut" style="left:0;top:266px;width:756px;height:472px"></div></div>
+        <div id="sheen"></div>
+        </div>
+        <div id="phone"><div class="notch"></div><div id="screen">
+          <img class="clip" id="v-hold" src="assets/p-modules-last.png" alt="" data-start="31.2" data-duration="4.6" data-track-index="3">
+          <video class="clip" id="v-download" src="assets/p-download.mp4" muted playsinline data-start="4.8" data-duration="4.0" data-media-start="0" data-track-index="1"></video>
+          <video class="clip" id="v-wifi" src="assets/p-wifi.mp4" muted playsinline data-start="8.3" data-duration="7.0" data-media-start="0.2" data-track-index="0"></video>
+          <video class="clip" id="v-admin" src="assets/p-admin.mp4" muted playsinline data-start="14.8" data-duration="8.6" data-media-start="0.2" data-track-index="1"></video>
+          <video class="clip" id="v-modules" src="assets/p-modules.mp4" muted playsinline data-start="22.9" data-duration="9.0" data-media-start="0.9" data-track-index="0"></video>
+          <video class="clip" id="v-settings" src="assets/p-settings.mp4" muted playsinline data-start="34.1" data-duration="18.4" data-media-start="0.6" data-track-index="1"></video>
+        </div></div>
+        <div class="cap " id="c1"><div class="step">STEP 1</div><div class="line">Download and flash the image</div></div>
+        <div class="cap " id="c2"><div class="step">STEP 2</div><div class="line">Join its Wi-Fi from your phone</div></div>
+        <div class="cap " id="c3"><div class="step">STEP 3</div><div class="line">Choose a password</div></div>
+        <div class="cap " id="c4"><div class="step">STEP 4</div><div class="line">Add what you want to see</div></div>
+        <div class="cap " id="c5"><div class="step"></div><div class="line">That’s it. Just a mirror, a little smarter.</div></div>
+        <div class="cap " id="c6"><div class="step"></div><div class="line">Change anything from your phone</div></div>
+      </div>
+    <div id="end" data-at="52.5">
+      <img src="assets/mark.png" alt="">
+      <div class="t">mirrordash.net</div>
+      <div class="s">Free and open source</div>
+    </div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      story("tour");
+    </script>
+  </body>
+</html>

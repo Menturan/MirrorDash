@@ -1,0 +1,46 @@
+/* The stage of the concept videos: a dark room, the mirror's glass on the left, a phone on the right. 1920x1080. */
+@font-face { font-family: "InterSite"; src: url("assets/fonts/inter.woff2") format("woff2"); font-weight: 100 900; }
+:root { --void: #000; --white: #fff; --gray: #999; --font: "InterSite", sans-serif; }
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; font-family: var(--font); -webkit-font-smoothing: antialiased; }
+#root { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; background: #000; overflow: hidden; }
+
+/* the real photo */
+#photo, #stage, #end { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; }
+#photo { overflow: hidden; }
+#photo-img { position: absolute; left: 0; top: -170px; width: 1920px; height: 1440px; transform-origin: 53% 50%; }
+#photo-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 55%, rgba(0,0,0,.35), rgba(0,0,0,.78) 90%); }
+#open-title { position: absolute; left: 0; top: 400px; width: 1920px; text-align: center; color: var(--white); font-size: 140px; font-weight: 300; letter-spacing: -.02em; }
+#open-sub { position: absolute; left: 0; top: 585px; width: 1920px; text-align: center; color: #d0d0d0; font-size: 44px; font-weight: 300; }
+
+/* the stage */
+#stage { background: linear-gradient(180deg, #101010, #080808); }
+#frame { position: absolute; left: 64px; top: 234px; width: 1252px; height: 770px; background: #242426; border-top: 2px solid #606064;
+  box-shadow: 0 50px 90px rgba(0,0,0,.65); }
+#glass { position: absolute; left: 80px; top: 250px; width: 1220px; height: 738px; background: #060607; overflow: hidden; box-shadow: 0 0 0 2px #060607; }
+.m { position: absolute; left: 0; top: 0; width: 1220px; height: 738px; opacity: 0; overflow: hidden; }
+.m img { position: absolute; left: 0; top: 0; width: 1220px; height: 738px; }
+.m .glow { position: absolute; left: 0; top: 0; width: 1220px; height: 738px; background-size: 1220px 738px; filter: blur(7px) brightness(.45); mix-blend-mode: screen; }
+.m.small img { left: 490px; top: 289px; width: 240px; height: 160px; }
+.m.small .glow { left: 490px; top: 289px; width: 240px; height: 160px; background-size: 240px 160px; }   /* the boot splash, small in the middle */
+.cut { position: absolute; background: #000; }
+#sheen { position: absolute; left: 0; top: 0; width: 1220px; height: 738px; z-index: 9; pointer-events: none;
+  background: linear-gradient(135deg, transparent 18%, rgba(255,255,255,.07) 24%, transparent 30%, transparent 34%,
+    rgba(255,255,255,.045) 36%, transparent 37%, transparent 66%, rgba(255,255,255,.04) 70%, transparent 74%); }
+
+#phone { position: absolute; left: 1412px; top: 86px; width: 426px; height: 896px; border-radius: 58px; background: #181a1a;
+  border: 2px solid #464649; box-shadow: 0 40px 80px rgba(0,0,0,.6); }
+#phone .notch { position: absolute; left: 163px; top: 10px; width: 100px; height: 12px; border-radius: 6px; background: #0a0a0b; }
+#screen { position: absolute; left: 16px; top: 24px; width: 390px; height: 844px; border-radius: 40px; overflow: hidden; background: #000; }
+#screen .clip { position: absolute; left: 0; top: 0; width: 390px; height: 844px; object-fit: fill; }
+
+/* captions: the step small and grey above the line */
+.cap { position: absolute; left: 80px; top: 78px; width: 1330px; opacity: 0; }
+.cap .step { font-size: 24px; font-weight: 600; letter-spacing: .08em; color: var(--gray); height: 36px; line-height: 36px; }
+.cap .line { font-size: 60px; font-weight: 300; color: var(--white); line-height: 76px; letter-spacing: -.01em; white-space: nowrap; }
+.cap.small .line { font-size: 44px; line-height: 58px; }
+
+#end { background: #000; opacity: 0; }
+#end img { position: absolute; left: 885px; top: 260px; width: 150px; height: 150px; }
+#end .t { position: absolute; left: 0; top: 450px; width: 1920px; text-align: center; color: var(--white); font-size: 96px; font-weight: 300; letter-spacing: -.01em; }
+#end .s { position: absolute; left: 0; top: 590px; width: 1920px; text-align: center; color: var(--gray); font-size: 40px; font-weight: 300; }

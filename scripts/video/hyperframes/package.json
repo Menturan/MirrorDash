@@ -1,0 +1,11 @@
+{
+  "name": "mirrordash-videos",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "npx --yes hyperframes@0.9.98 preview",
+    "check": "npx --yes hyperframes@0.9.98 check",
+    "render": "npx --yes hyperframes@0.9.98 render",
+    "publish": "npx --yes hyperframes@0.9.98 publish"
+  }
+}

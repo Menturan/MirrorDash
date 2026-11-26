@@ -1,15 +1,22 @@
 """Phone clips of the real app (one .webm each) and stills of the mirror's own screens, for the concept videos.
 
-    uv run python scripts/video/record.py build_workspace/video/clips
-    uv run --with pillow --with fonttools --with brotli python scripts/video/compose.py build_workspace/video .
+The videos: record -> prep -> render -> encode (more in README.md):
 
-The app runs in this process on a throwaway HOME (stage.py); nothing touches this computer, and the install
-of a module is stopped before it starts. compose.py's scene times follow the clips: after recording again,
-check where Confirm is tapped in p-modules.webm and move the fade_at times to match. The site's loop is
-build_workspace/video/out/mirrordash-loop.mp4 scaled to 1280 px into docs/video/loop.mp4.
+    uv run python scripts/video/record.py build_workspace/video/clips          # this file: clips + taps.json
+    python3 scripts/video/prep.py assets build_workspace/video/clips          # media into hyperframes/assets/
+    cd scripts/video/hyperframes
+    for v in loop intro tour; do npx hyperframes@0.9.98 render -c $v.html -o renders/$v.mp4 -q high --video-frame-format png; done
+    cd ../../.. && python3 scripts/video/prep.py encode scripts/video/hyperframes/renders   # -> docs/video/
+
+The app runs in this process on a throwaway HOME (stage.py) with only the Clock installed and Weather offered; nothing
+touches this computer, and the install of a module is stopped before it starts. The scenes follow the clips: after
+recording again, compare taps.json (seconds into each clip at which a finger touches) with TAPS in
+hyperframes/story.js and the data-start / data-media-start of the clips in loop.html, intro.html and tour.html.
 """
+import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import stage
@@ -18,6 +25,8 @@ from playwright.sync_api import sync_playwright
 out = Path(sys.argv[1])
 out.mkdir(parents=True, exist_ok=True)
 url = stage.start()
+taps = {}                 # clip name -> seconds into the clip of each tap (taps.json, for the video's zoom-ins)
+started = 0.0
 PHONE = {"width": 390, "height": 844}
 
 # A soft white dot where the finger taps, so a viewer sees what was pressed
@@ -38,7 +47,11 @@ def clip(browser, name, steps):
     ctx = browser.new_context(viewport=PHONE, record_video_dir=str(out / "raw"), record_video_size=PHONE,
                               has_touch=False, is_mobile=False)
     ctx.add_init_script(TAPS)
+    global started, current
     page = ctx.new_page()
+    started = time.monotonic()
+    current = name
+    taps[name] = []
     steps(page)
     path = page.video.path()
     ctx.close()
@@ -47,6 +60,7 @@ def clip(browser, name, steps):
 
 
 def tap(page, selector, wait=700):
+    taps[current].append(round(time.monotonic() - started, 2))
     page.locator(selector).first.click()
     page.wait_for_timeout(wait)
 
@@ -104,22 +118,24 @@ def modules(page):
     login(page)
     page.mouse.move(195, 500)
     tap(page, "#page-tab-modules", 800)
-    page.locator("button:has-text('Install')").first.wait_for(timeout=30000)
+    page.locator("button[hx-confirm^='Install Weather']").wait_for(timeout=30000)
     page.on("dialog", lambda d: d.accept())                          # "Install Weather?"
     install = page.locator("button[hx-confirm^='Install Weather']")
     scroll_to(page, install)
     page.wait_for_timeout(1200)
+    taps[current].append(round(time.monotonic() - started, 2))
     install.click()
     page.wait_for_timeout(1300)
     tap(page, "button:has-text('Confirm')", 2500)                   # the admin page's own "Are you sure?"
 
 
 def download(page):
-    page.route("**/releases/download/**", lambda r: r.abort())       # the tap shows; the 1 GB file doesn't come
+    page.route("**/releases/download/**", lambda r: r.fulfill(      # the tap shows; the 1 GB file doesn't come, and the
+        headers={"content-disposition": "attachment; filename=x.img.xz"}, body=""))   # page stays (an abort leaves it white)
     page.goto("https://mirrordash.net/download")
     page.locator("#download:has-text('Download 0')").wait_for(timeout=20000)
     page.wait_for_timeout(1500)
-    tap(page, "#download", 1500)
+    tap(page, "#download", 2200)
 
 
 def settings(page):
@@ -154,3 +170,4 @@ with sync_playwright() as p:
     clip(b, "p-settings", settings)
     b.close()
 shutil.rmtree(out / "raw", ignore_errors=True)
+(out / "taps.json").write_text(json.dumps(taps, indent=1))
