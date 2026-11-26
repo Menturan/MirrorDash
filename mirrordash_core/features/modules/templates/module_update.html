@@ -1,9 +1,11 @@
 {# A module has a newer version (routes.check_module_update_route): its badge and buttons, swapped
    in out of band. The version comes from PyPI or a GitHub release, so it is only ever text here.
    target: what to install (the PyPI name, or git+url@tag); notes: PyPI has release notes; needs: an update
-   refused it for needing a newer MirrorDash (service.too_new), then it is text and no Upgrade button. #}
+   refused it for needing a newer MirrorDash (service.too_new), then it is text and no Upgrade button;
+   prerelease: the target is a test version (the module's Test versions switch is on), marked "Test". #}
 <div id="update-badge-{{ module_name }}" hx-swap-oob="true">
     <span class="status-badge update-avail">Update Available (v{{ latest_version }})</span>
+    {% if prerelease %}<span class="status-badge test-version-label">Test</span>{% endif %}
     {% if needs %}<p class="muted">v{{ latest_version }}: {{ needs }}</p>{% endif %}
 </div>
 <div id="update-actions-{{ module_name }}" class="update-item-actions" hx-swap-oob="true">

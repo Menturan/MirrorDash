@@ -40,6 +40,7 @@ from mirrordash_core.features.settings import system_settings
 from mirrordash_core.features.updates import routes as updates
 from mirrordash_core.features.updates import service as updates_service
 from mirrordash_core.features.updates.catch_up import catch_up
+from mirrordash_core.features.updates.known import forget as known_updates_forget
 from mirrordash_core.features.wifi import routes as wifi
 from mirrordash_core.host import run_in_background
 from mirrordash_core.venv import confirm_venv
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
     system_settings.apply_saved_system_settings_at_startup()
     updates_service.turn_modules_back_on_after_rollback()
     event_bus.subscribe("hardware.button", buttons.on_button)
+    event_bus.subscribe("modules.test_versions", known_updates_forget)
     module_host.on_state = mqtt_bridge.module_state
     # Each on its own: one that fails mustn't leave the others unstarted (or unstopped)
     for step in (module_host.start_modules, display_power_manager.start, gpio_inputs.start, internet_monitor.start,

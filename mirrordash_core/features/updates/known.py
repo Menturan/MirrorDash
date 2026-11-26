@@ -40,6 +40,6 @@ def _fresh() -> bool:
     return _known is not None and time.monotonic() - _made_at < KNOWN_MAX_AGE
 
 
-def forget() -> None:
+def forget(_event=None) -> None:  # also an event subscriber
     global _known
     _known = None

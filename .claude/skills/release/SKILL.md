@@ -68,6 +68,8 @@ echo y | uv run --project "$SDK" mirrordash-sdk release X.Y.Z       # after the 
 It validates, runs the module's tests, sets the version, tags `vX.Y.Z`, pushes, makes the GitHub Release
 (notes generated from the commits) and puts the `mirrordash-module` topic on the repository, which mirrors need to list it. Mirrors offer it on the module's card. A new module starts at `1.0.0`.
 
+A version like `1.10.0rc1` becomes a GitHub pre-release: only mirrors that switched *Test versions* on for that module (its settings sheet) are offered it, also at night; everyone else keeps the newest stable release. A module on a test version stays there until a newer stable release is out, so release `1.10.0` after the test.
+
 For `mirrordash-clock`: the OS image installs its newest release by itself, so the new tag reaches mirrors
 with the next OS image; nothing to bump.
 

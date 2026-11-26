@@ -24,6 +24,7 @@ from mirrordash_core.features.modules.module_files import (
 )
 from mirrordash_core.features.modules.module_requirements import folder_problem
 from mirrordash_core.features.modules.package_names import package_key
+from mirrordash_core.features.modules.releases import candidate_release
 from mirrordash_core.features.modules.schema import get_module_schema
 from mirrordash_core.features.modules.site_folders import site_links, site_paths
 from mirrordash_core.fetch import REMOTE_JSON_TTL, answered_at, fetch_json_cached
@@ -257,6 +258,11 @@ def allow_auto_update(name: str | None, allowed: bool) -> None:
     _set_listed("module_auto_update_off", name, not allowed)
 
 
+def allow_test_versions(name: str | None, allowed: bool) -> None:
+    """Whether update checks offer the module installed in site/<name> its pre-releases (config's "module_test_versions")."""
+    _set_listed("module_test_versions", name, allowed)
+
+
 async def modules_to_auto_update(config: dict) -> list[dict]:
     """What the nightly update may install (module_updates' dicts): every module with a newer release,
     but not the ones the owner turned off in their settings (config's "module_auto_update_off")."""
@@ -358,14 +364,14 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
     """An installed module (entry point name) against its latest release: GitHub's when it was installed from
     there (PEP 610 direct_url.json), else PyPI's. None when it isn't installed, else {"module_name", "package_name",
     "current_version", "latest_version" (None when up to date or nobody answered), "target" (what update_modules installs),
-    "needs" (the message of a release an update refused for needing a newer MirrorDash, else None), "notes" (PyPI has release notes), "checked_at" (when the answer was fetched, seconds since 1970)}."""
+    "needs" (the message of a release an update refused for needing a newer MirrorDash, else None), "prerelease" (the target is a test version), "notes" (PyPI has release notes), "checked_at" (when the answer was fetched, seconds since 1970)}."""
     ep = find_entry_point(module_name)
     if not ep:
         return None
     package_name = ep.dist.name if ep.dist else module_name
     current_version = ep.dist.version if ep.dist else "0.0.0"
     result = {"module_name": module_name, "package_name": package_name, "current_version": current_version,
-              "latest_version": None, "target": package_name, "notes": True, "checked_at": None, "needs": None}
+              "latest_version": None, "target": package_name, "notes": True, "checked_at": None, "needs": None, "prerelease": False}
 
     # Where pip/uv installed it from (PEP 610): a git URL and commit for a module from GitHub
     direct_url_info = None
@@ -378,18 +384,20 @@ async def check_module_update(module_name: str, max_age: float = REMOTE_JSON_TTL
         owner_repo = github_owner_repo(url) if vcs_info.get("vcs") == "git" else None
         if not owner_repo:
             return result
-        api_url = f"https://api.github.com/repos/{owner_repo[0]}/{owner_repo[1]}/releases/latest"
-        release_data = await fetch_json_cached(api_url, headers={"Accept": "application/vnd.github.v3+json"}, max_age=max_age)
-        result["checked_at"] = answered_at(api_url)
-        tag_name = release_data.get("tag_name") if isinstance(release_data, dict) else None
-        if not tag_name:
+        test_versions = bool(site_name(ep) in load_config().get("module_test_versions", []))
+        release, result["checked_at"] = await candidate_release(owner_repo[0], owner_repo[1], test_versions, max_age)
+        if not release:
             return result
+        tag_name = release["tag_name"]
         latest_version = tag_name.lstrip("v")
         # Installed from exactly this release (upgrades install git+url@tag): up to date,
         # even when the package's own version doesn't match the tag (v1.0.0 shipped 0.1.0).
         on_latest = vcs_info.get("requested_revision") == tag_name
-        if not on_latest and version_key(latest_version) > version_key(current_version):
-            result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False)
+        # Only ever upwards: on a test version with the switch off, nothing is offered until a newer stable one is out
+        installed = max(version_key(current_version), version_key((vcs_info.get("requested_revision") or "").lstrip("v")))
+        if not on_latest and version_key(latest_version) > installed:
+            result.update(latest_version=latest_version, target=f"git+{url}@{tag_name}", notes=False,
+                          prerelease=bool(release.get("prerelease")))
             result["needs"] = too_new.get(result["target"], (None, None))[1]
         return result
 
@@ -454,6 +462,7 @@ async def uninstall_module(package_name: str) -> dict:
     if instances or gone:
         save_config(config)
     allow_scripts(package_key(package_name), False)
+    allow_test_versions(package_key(package_name), False)
     return {"status": "success", "message": f"Uninstalled {package_name}. Restarting..."}
 
 

@@ -23,6 +23,7 @@ from mirrordash_core.config import (
     load_config,
     save_config,
 )
+from mirrordash_core.event_bus import event_bus
 from mirrordash_core.features.modules import discover, guard
 from mirrordash_core.features.modules import service as modules_service
 from mirrordash_core.features.modules.choice_field import choice_request, locate_field
@@ -38,6 +39,7 @@ from mirrordash_core.features.modules.schema import get_module_schema
 from mirrordash_core.features.modules.service import (
     allow_auto_update,
     allow_scripts,
+    allow_test_versions,
     check_module_update,
     install_module,
     instance_chips,
@@ -146,6 +148,7 @@ async def get_module_config_form(request: Request, module_name: str, instance_id
         "package_name": ep.dist.name if ep.dist else module_name,
         "site_name": site_name(ep), "scripts_allowed": scripts_allowed(ep, config),
         "auto_update_allowed": site_name(ep) not in config.get("module_auto_update_off", []),
+        "test_versions_on": site_name(ep) in config.get("module_test_versions", []),
     })
 
 
@@ -203,6 +206,19 @@ async def set_module_auto_update(module_name: str, request: Request):
     allowed = (await read_form(request)).get("on") in (True, "true")
     allow_auto_update(name, allowed)
     return notify(f"{module_name} is updated {'automatically' if allowed else 'only when you press Update'}.")
+
+
+@router.post("/panels/modules/test-versions/{module_name}", dependencies=[Depends(require_api_key)])
+async def set_module_test_versions(module_name: str, request: Request):
+    """The owner's yes or no to a module's test versions (pre-releases) being offered as updates (check_module_update)."""
+    ep = find_entry_point(module_name)
+    if not (name := site_name(ep) if ep else None):
+        raise HTTPException(status_code=404, detail="Module not found")
+    allowed = (await read_form(request)).get("on") in (True, "true")
+    allow_test_versions(name, allowed)
+    event_bus.publish("modules.test_versions", module_name)  # the kept update check was made for the other setting (updates/known.py)
+    await check_module_update(module_name, max_age=0)  # asked again now, so the row's badge shows the answer
+    return notify(f"{module_name}'s test versions are {'offered' if allowed else 'no longer offered'}.")
 
 
 def _new_instance_id(module_name: str, modules_config: dict) -> str:

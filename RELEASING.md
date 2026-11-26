@@ -19,7 +19,7 @@ Both are made with one script, `scripts/release.py`, and every real release is s
 | Both | First the app (**1** → **2**), then the image (**3** → **4**). |
 
 The SDK (`mirrordash-sdk`) and modules are released from their own repositories: the SDK with its own
-`scripts/release.py`, modules with a GitHub Release (see the SDK's MODULE_GUIDE).
+`scripts/release.py`, modules with a GitHub Release (see the SDK's MODULE_GUIDE). A module version like `1.10.0rc1` is a GitHub pre-release, offered only to mirrors that switched *Test versions* on for that module.
 
 ## Before your first release (once)
 

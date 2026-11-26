@@ -112,6 +112,22 @@
                 </label>
             </div>
         </form>
+        {# Pre-releases offered as updates (service.candidate_release), also at night when it is on #}
+        <form hx-post="/admin/panels/modules/test-versions/{{ module_name }}" hx-target="#global-status" hx-swap="innerHTML" hx-trigger="change"
+              hx-on::response-error="this.reset()" hx-on::after-request="if (event.detail.successful) htmx.trigger(document.body, 'refreshModules')">
+            <div class="form-group toggle-group">
+                <div class="form-label-desc">
+                    <label for="module-test-versions">Test versions</label>
+                    <p class="field-description">Offer this module's test versions (e.g. 1.10.0rc1) as updates, also at night.
+                        They may have bugs. Off: you stay on a test version until a newer stable one is out.</p>
+                </div>
+                <label class="switch">
+                    <input type="hidden" name="on" value="false">
+                    <input type="checkbox" id="module-test-versions" name="on" value="true" {% if test_versions_on %}checked{% endif %}>
+                    <span class="slider round"></span>
+                </label>
+            </div>
+        </form>
     </div>
     {% endif %}
 </div>

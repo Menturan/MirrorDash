@@ -909,6 +909,13 @@ input:checked + .slider:before {
     border-color: rgba(160, 255, 186, 0.2);
 }
 
+/* A test version (pre-release) next to its Update Available: outlined, neutral */
+.status-badge.test-version-label {
+    margin-left: 6px;
+    color: var(--text-secondary, #a0a0a0);
+    border-color: currentColor;
+}
+
 .status-badge.update-avail {
     background: rgba(245, 158, 11, 0.1);
     color: var(--warning-color);
