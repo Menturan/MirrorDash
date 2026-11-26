@@ -25,7 +25,7 @@
 
 No keyboard, no terminal, no config files, now or later.
 
-> **Status: beta.** Developed and tested on a Raspberry Pi 3 B. The image carries what a Pi 4 and a Pi 5 need, but hasn't been tried on them yet: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
+> **Status: beta.** Developed and tested on a Raspberry Pi 3 B+. The image carries what a Pi 4 and a Pi 5 need, but hasn't been tried on them yet: [tell us](https://github.com/Menturan/MirrorDash/discussions) how it goes.
 
 ## Why it's different from the smart mirror you built last time
 

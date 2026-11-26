@@ -45,24 +45,31 @@ ol b { color: var(--white); font-weight: 500; }
   <a href="https://github.com/Menturan/MirrorDash/discussions">Discussions</a>
 </footer>
 <script>
-// The newest released (not test) OS image; without this script, the button opens the releases page
-fetch("https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=30")
-  .then(r => r.ok ? r.json() : Promise.reject(r.status))
-  .then(releases => {
+// The newest released (not test) OS image; without this script, the button opens the releases page.
+// App, test and module releases come in between, so it looks through up to five pages of 100.
+async function newestImage() {
+  for (let page = 1; page <= 5; page++) {
+    const r = await fetch("https://api.github.com/repos/Menturan/MirrorDash/releases?per_page=100&page=" + page);
+    if (!r.ok) return;
+    const releases = await r.json();
     for (const rel of releases) {
       const img = !rel.draft && !rel.prerelease && rel.tag_name.includes("-os") && rel.assets.find(a => a.name.endsWith(".img.xz"));
-      if (!img) continue;
-      const sum = rel.assets.find(a => a.name === img.name + ".sha256");
-      document.getElementById("download").href = img.browser_download_url;
-      document.getElementById("download").textContent = "Download " + rel.tag_name.replace(/^v/, "");
-      document.getElementById("meta").innerHTML = img.name + " · " + Math.round(img.size / 1048576) + " MB · " +
-        new Date(rel.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) +
-        (sum ? ' · <a href="' + sum.browser_download_url + '">SHA-256</a>' : "") +
-        ' · <a href="' + rel.html_url + '">What\'s new</a>';
-      return;
+      if (img) return { rel, img };
     }
-  })
-  .catch(() => {});
+    if (releases.length < 100) return;
+  }
+}
+newestImage().then(found => {
+  if (!found) return;
+  const { rel, img } = found;
+  const sum = rel.assets.find(a => a.name === img.name + ".sha256");
+  document.getElementById("download").href = img.browser_download_url;
+  document.getElementById("download").textContent = "Download " + rel.tag_name.replace(/^v/, "");
+  document.getElementById("meta").innerHTML = img.name + " · " + Math.round(img.size / 1048576) + " MB · " +
+    new Date(rel.published_at).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" }) +
+    (sum ? ' · <a href="' + sum.browser_download_url + '">SHA-256</a>' : "") +
+    ' · <a href="' + rel.html_url + '">What\'s new</a>';
+}).catch(() => {});
 </script>
 </body>
 </html>
