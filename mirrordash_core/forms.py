@@ -256,7 +256,8 @@ def _item_schema(prop: dict) -> dict:
 
 def _is_choices(key: str, prop: dict) -> bool:
     """A list of strings from an enum: a box per choice."""
-    return prop.get("type") == "array" and _item_schema(prop).get("type") == "string" and bool(_item_schema(prop).get("enum"))
+    items = _item_schema(prop)
+    return prop.get("type") == "array" and items.get("type") == "string" and bool(items.get("enum") or items.get("enum_source"))
 
 
 # Which input a schema property gets: the first rule that matches. The type picks it, the format changes
@@ -528,6 +529,8 @@ def _cast_to_schema_type(value, prop: dict):
         item_schema = prop.get("items", {})
         if item_schema.get("type") == "object":
             return [cast_values_by_schema(item, item_schema) if isinstance(item, dict) else item for item in items]
+        if item_schema.get("enum_source"):  # a module that is gone is dropped, no error (ARCHITECTURE #68)
+            return [item for item in items if item in item_schema.get("enum", [])]
         return items
     if prop.get("format") in CHOICE_FORMATS:  # {"id", "name"} as text, or {} for no choice
         return ({"id": str(value["id"]), "name": str(value.get("name", ""))}

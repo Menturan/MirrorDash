@@ -62,8 +62,10 @@
    list item: moving the item renames ids (admin.js reindexArrayContainer), and the label holds its box. #}
 {% macro checkbox_list(f, with_ids=true) -%}
 {% set chosen = f.stored_value if f.stored_value is sequence and f.stored_value is not string and f.stored_value is not mapping else [] %}
+{% set options = f.schema["items"].get("enum", []) %}
+{% if not options and f.schema["items"].get("enum_source") == "installed_modules" %}<p class="field-description">No other modules are installed.</p>{% endif %}
 <div class="schema-checkboxes"><input type="hidden" name="{{ f.name }}" value="">
-    {%- for opt in f.schema["items"]["enum"] %}
+    {%- for opt in options %}
     <label class="checkbox-inline"><input type="checkbox"{% if with_ids %} id="{{ html_id(f.id, opt) }}"{% endif %} name="{{ f.name }}" value="{{ opt }}"{% if opt in chosen %} checked{% endif %}><span>{{ option_title(f.schema["items"], loop.index0) }}</span></label>
     {%- endfor %}</div>
 {%- endmacro %}

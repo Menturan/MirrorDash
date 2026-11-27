@@ -2,19 +2,23 @@
 """The event bus: one part of the app tells others that something happened, without knowing who listens.
 
 A publisher calls event_bus.publish("hardware.button", data); every callback subscribed to that name gets
-data, an async one on the app's event loop. In the core every event also goes on to the modules (forward,
+data, an async one on the app's event loop. A name starting "*." ("*.heads_up") listens to that event from every
+package: one leading segment ([A-Za-z0-9_]+), then exactly the rest. No other wildcard form exists ("*", "a.*",
+"*.*" are stored and match only themselves). In the core every event also goes on to the modules (forward,
 features/modules/client.py); in a module's own process a public event goes back to the core, which gives
 it to every module instance (share)."""
 
 import asyncio
 import inspect
 import logging
+import re
 from collections.abc import Callable
 from typing import Any
 
 from mirrordash_core.host import run_in_background
 
 logger = logging.getLogger("mirrordash.core.event_bus")
+PACKAGE = re.compile(r"^[A-Za-z0-9_]+$")  # the first segment of an event name that a "*." subscription matches
 
 class EventBus:
     def __init__(self):
@@ -64,13 +68,15 @@ class EventBus:
             running = asyncio.get_running_loop()
         except RuntimeError:
             running = None
-        subscribers = self._subscribers.get(event_type, [])
+        subscribers = list(self._subscribers.get(event_type, []))
+        package, dot, rest = event_type.partition(".")
+        if dot and PACKAGE.match(package):  # split once; "a.b.x" is package "a", rest "b.x", so "*.x" misses it
+            subscribers += self._subscribers.get(f"*.{rest}", [])
         if not subscribers:
             return
 
         logger.debug(f"Publishing event '{event_type}' with data: {data}")
-        # Take a copy of the list to prevent modification issues during iteration
-        for callback in list(subscribers):
+        for callback in subscribers:  # a copy: callbacks may (un)subscribe meanwhile
             if inspect.iscoroutinefunction(callback):
                 if running:
                     run_in_background(self._safe_await(callback, data, event_type))

@@ -35,6 +35,11 @@ There are two kinds of releases:
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
 
+### App
+
+- **Modules can listen to one event from every module**: a module that subscribes to `*.heads_up` gets that event from any module, without knowing their names.
+- **Boxes of installed modules in a module's settings**: a setting can list the installed modules (not the module itself) as boxes to tick; a tick for a module that was uninstalled is dropped on save. With no other module installed the form says so.
+
 ## [0.21.0] - 2026-11-27
 
 ### App

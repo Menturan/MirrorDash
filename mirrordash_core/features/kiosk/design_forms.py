@@ -3,10 +3,12 @@
 own code (forms.render_schema_form) from the schema printed beside it, so the picture and its JSON can't
 drift apart. Only the words around them are written here."""
 
+import copy
 import json
 
 from markupsafe import Markup
 
+from mirrordash_core.features.modules.schema import fill_enum_sources
 from mirrordash_core.features.modules.shared_settings import (
     default_shared_value,
     shared_keys,
@@ -149,6 +151,15 @@ EXAMPLES = [
                                     "enum_titles": ["BBC News", "SR Ekot", "CNN Edition"]},
                           "default": ["bbc_news"]}},
      {"builtin_feeds": ["bbc_news", "cnn_edition"]}, [], ""),
+    ("Boxes of Installed Modules", "type: array  +  items.type: string  +  items.enum_source: \"installed_modules\"",
+     "The core fills <code>items.enum</code> with the installed modules except this one, sorted by title, and "
+     "<code>enum_titles</code> with their titles (a module can't know them). With no other module installed the "
+     "form says so instead of drawing boxes. A saved module that is gone is dropped on save, without an error. "
+     "Older MirrorDash versions draw a text box.", {
+         "allowed_senders": {"type": "array", "title": "Modules That May Send",
+                             "description": "A module installed later is off until you tick it.", "default": [],
+                             "items": {"type": "string", "enum_source": "installed_modules"}}},
+     {}, [], ""),
     ("List of Items", "type: array  +  items.type: object", LIST_ITEM_FIELDS, {
         "entities": {"type": "array", "title": "Entities", "description": "The devices to show.", "default": [],
                      "items": {"type": "object", "title": "Entity", "required": ["entity_id"], "properties": {
@@ -257,6 +268,7 @@ def _code(properties: dict, required: list) -> str:
 def _form(properties: dict, values: dict, required: list) -> Markup:
     """The settings of an example drawn by the form's own code; a fields setting with the module's answer
     (FIELDS_DRAWN) in place of "Loading…", which the admin page's fields.js would ask the module for."""
+    properties = fill_enum_sources(copy.deepcopy(properties), "demo")  # the installed modules, as the admin fills them
     html = render_schema_form({"properties": properties, "required": required}, values, "modules[demo]", "demo",
                               _shared_states(properties, values))
     if "extras" in properties and properties["extras"].get("format") == "fields":

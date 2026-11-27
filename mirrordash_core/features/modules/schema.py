@@ -28,6 +28,14 @@ MAX_CHOICE_TEXT = 200  # characters of a choice's id or name, as the module host
 
 
 def get_module_schema(ep, also_in=None) -> dict | None:
+    """The module's schema from _read_schema, with its enum_source lists filled in (fill_enum_sources)."""
+    schema = _read_schema(ep, also_in)
+    if schema:
+        fill_enum_sources(schema, ep.name if ep else "")
+    return schema
+
+
+def _read_schema(ep, also_in=None) -> dict | None:
     """A module's config_schema.json (or schema.json) next to its plugin file, with its icon.svg as
     "icon" (a data: URL, shown as a mask so its scripts never run). Read as files: the core never
     imports a module (ARCHITECTURE #41). also_in: see module_file."""
@@ -53,6 +61,38 @@ def get_module_schema(ep, also_in=None) -> dict | None:
             schema["icon"] = "data:image/svg+xml;base64," + base64.b64encode(svg_content).decode()
 
     return schema
+
+
+def fill_enum_sources(node, own_name: str, installed: list | None = None):
+    """items.enum_source "installed_modules" (ARCHITECTURE #68): items.enum becomes the package names of the
+    installed modules but this one (own_name), sorted by title, and items.enum_titles their titles. Done here,
+    where a schema is read, so the form and the save see the same list. Walks into nested properties and items;
+    returns node."""
+    if isinstance(node, list):
+        for child in node:
+            fill_enum_sources(child, own_name, installed)
+    elif isinstance(node, dict):
+        if node.get("enum_source") == "installed_modules":
+            if installed is None:
+                installed = _installed_titles(own_name)
+            node["enum"], node["enum_titles"] = [name for name, _ in installed], [title for _, title in installed]
+        for child in node.values():
+            if isinstance(child, (dict, list)):
+                fill_enum_sources(child, own_name, installed)
+    return node
+
+
+def _installed_titles(own_name: str) -> list[tuple[str, str]]:
+    """(package name, title) of every installed module but own_name, sorted by title: the title the Modules tab shows."""
+    from mirrordash_core.features.modules.module_files import module_entry_points
+    from mirrordash_core.features.modules.service import module_title
+    own = own_name.replace("-", "_")
+    found = {}
+    for ep in module_entry_points():
+        name = ep.name.replace("-", "_")
+        if name != own:
+            found[name] = (_read_schema(ep) or {}).get("title") or module_title(ep.name)
+    return sorted(found.items(), key=lambda item: item[1].lower())
 
 
 # A module setting's JSON-schema type and the Python check for it (bool is an int in Python)
