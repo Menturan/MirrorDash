@@ -9,11 +9,6 @@ There are two kinds of releases:
 
 ## [Unreleased]
 
-### App
-
-- **Modules can listen to one event from every module**: a module that subscribes to `*.heads_up` gets that event from any module, without knowing their names.
-- **Boxes of installed modules in a module's settings**: a setting can list the installed modules (not the module itself) as boxes to tick; a tick for a module that was uninstalled is dropped on save. With no other module installed the form says so.
-
 ### OS image
 
 - **No going back to an older system**: a system update older than the one the mirror runs is refused, so an update can't take the mirror back to a version with a known security hole. Installing the same version again still works, and the update page says why it was refused.
@@ -39,6 +34,13 @@ There are two kinds of releases:
 - Modules can play sound, such as a radio module, through the 3.5 mm jack or a screen's own speakers over HDMI. None of them can listen to a microphone, also one plugged in later.
 - The OS image's own scripts, which run with full rights, no longer read or write through a link the MirrorDash app could put in its folder, nor run what such a file holds; the screen-brightness rule lets only a brightness through.
 - The script that opens the home network to modules takes only plain addresses: an address with extra text after it can no longer change the mirror's other firewall rules.
+
+## [0.21.1] - 2026-11-27
+
+### App
+
+- **Modules can listen to one event from every module**: a module that subscribes to `*.heads_up` gets that event from any module, without knowing their names.
+- **Boxes of installed modules in a module's settings**: a setting can list the installed modules (not the module itself) as boxes to tick; a tick for a module that was uninstalled is dropped on save. With no other module installed the form says so.
 
 ## [0.21.0] - 2026-11-27
 
